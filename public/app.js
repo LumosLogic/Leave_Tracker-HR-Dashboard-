@@ -1426,7 +1426,8 @@ function renderLeaveFormCard(index) {
     </div>`;
 }
 
-function openApplyLeaveModal() {
+async function openApplyLeaveModal() {
+  if (state.employees.length === 0) await fetchEmployees();
   leaveFormCount = 0;
   openModal(`
     <div class="modal-header">
@@ -1610,7 +1611,8 @@ async function submitEditLeave(id) {
   } catch (err) { toast(err.message, 'error'); }
 }
 
-function openLateEarlyModal() {
+async function openLateEarlyModal() {
+  if (state.employees.length === 0) await fetchEmployees();
   const empOptions = state.employees.map(e => `<option value="${e.id}">${e.name} — ${e.department || ''}</option>`).join('');
   openModal(`
     <div class="modal-header">
