@@ -1308,6 +1308,10 @@ body.dark .day-detail-header { background: #0D1117; }
 /* Employee detail item */
 body.dark .employee-detail-item { border-color: #30363D; }
 body.dark .employee-detail-item:hover { background: #1C2128; }
+/* Login card */
+body.dark .login-card { background: #161B22; }
+body.dark .login-title { color: var(--text); }
+body.dark .login-subtitle { color: var(--text-muted); }
 /* Dark mode toggle icon button */
 .dark-mode-btn {
   width: 36px; height: 36px;
