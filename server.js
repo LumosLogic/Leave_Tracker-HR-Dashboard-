@@ -179,11 +179,11 @@ app.get('/api/employees', auth, async (req, res) => {
 
 app.post('/api/employees', auth, adminOnly, async (req, res) => {
   try {
-    const { name, email, password, role, department, position, avatar_color } = req.body;
+    const { name, email, password, role, department, position, avatar_color, date_of_birth } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, password required' });
     const hashed = bcrypt.hashSync(password, 10);
     const { data, error } = await supabase.from('users')
-      .insert({ name, email: email.toLowerCase(), password: hashed, role: role||'employee', department: department||'General', position: position||'Staff', avatar_color: avatar_color||'#4F46E5' })
+      .insert({ name, email: email.toLowerCase(), password: hashed, role: role||'employee', department: department||'General', position: position||'Staff', avatar_color: avatar_color||'#4F46E5', date_of_birth: date_of_birth||null })
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
@@ -193,8 +193,8 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
 
 app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { name, email, role, department, position, avatar_color, password } = req.body;
-    const update = { name, email, role, department, position, avatar_color };
+    const { name, email, role, department, position, avatar_color, password, date_of_birth } = req.body;
+    const update = { name, email, role, department, position, avatar_color, date_of_birth: date_of_birth||null };
     if (password) update.password = bcrypt.hashSync(password, 10);
     const { data } = await supabase.from('users').update(update).eq('id', req.params.id)
       .select('id, name, email, role, department, position, avatar_color').single();
@@ -321,6 +321,30 @@ app.post('/api/attendance/mark-absent', auth, adminOnly, async (req, res) => {
     await supabase.from('attendance')
       .upsert({ user_id, date, status: 'absent' }, { onConflict: 'user_id,date' });
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin create or fully edit any attendance record
+app.post('/api/attendance/admin-edit', auth, adminOnly, async (req, res) => {
+  try {
+    const { user_id, date, check_in, check_out, status, is_late, is_early_exit, notes } = req.body;
+    if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
+    const work_hours = check_in && check_out
+      ? Math.max(0, (toMinutes(check_out) - toMinutes(check_in)) / 60) : 0;
+    const { data, error } = await supabase.from('attendance')
+      .upsert({
+        user_id: parseInt(user_id), date,
+        check_in:      check_in      || null,
+        check_out:     check_out     || null,
+        status:        status        || 'present',
+        is_late:       !!is_late,
+        is_early_exit: !!is_early_exit,
+        work_hours:    Math.round(work_hours * 100) / 100,
+        notes:         notes         || null,
+      }, { onConflict: 'user_id,date' })
+      .select().single();
+    if (error) throw new Error(error.message);
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -746,6 +770,116 @@ app.post('/api/clockify/sync', auth, adminOnly, async (req, res) => {
     await supabase.from('clockify_config').update({ last_synced: new Date().toISOString() }).eq('id', config.id);
     res.json({ success: true, synced: results.length, results });
   } catch (err) { res.status(500).json({ error: 'Clockify sync failed: ' + (err.response?.data?.message || err.message) }); }
+});
+
+// ─── Culture (Birthdays / Holidays / Events) ──────────────────────────────────
+app.get('/api/culture', auth, async (req, res) => {
+  try {
+    const today    = new Date().toISOString().split('T')[0];
+    const todayMD  = today.slice(5); // MM-DD
+
+    // Upcoming 30 days
+    const future30 = new Date(); future30.setDate(future30.getDate() + 30);
+    const f30Str   = future30.toISOString().split('T')[0];
+
+    // Birthdays from employees
+    const { data: users } = await supabase.from('users')
+      .select('id, name, avatar_color, department, date_of_birth').eq('role', 'employee');
+
+    const birthdaysToday    = (users || []).filter(u => u.date_of_birth && u.date_of_birth.slice(5) === todayMD);
+    const upcomingBirthdays = [];
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() + i);
+      const mm   = String(d.getMonth() + 1).padStart(2, '0');
+      const dd   = String(d.getDate()).padStart(2, '0');
+      const mmdd = `${mm}-${dd}`;
+      const ds   = d.toISOString().split('T')[0];
+      (users || []).filter(u => u.date_of_birth && u.date_of_birth.slice(5) === mmdd)
+        .forEach(u => upcomingBirthdays.push({ ...u, birthday_date: ds, days_until: i }));
+    }
+
+    // Holidays & Events in next 30 days
+    const [{ data: holidays }, { data: events }] = await Promise.all([
+      supabase.from('holidays').select('*').gte('date', today).lte('date', f30Str).order('date').limit(10),
+      supabase.from('events').select('*').gte('date', today).lte('date', f30Str).order('date').limit(10),
+    ]);
+
+    res.json({ birthdaysToday: birthdaysToday || [], upcomingBirthdays, holidays: holidays || [], events: events || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/my-stats', auth, async (req, res) => {
+  try {
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const ym    = `${year}-${String(month).padStart(2, '0')}`;
+    const [{ data: att }, { data: lvs }] = await Promise.all([
+      supabase.from('attendance').select('status, is_late').eq('user_id', req.user.id).like('date', `${ym}-%`),
+      supabase.from('leaves').select('id').eq('user_id', req.user.id).eq('status', 'approved')
+        .lte('start_date', `${ym}-31`).gte('end_date', `${ym}-01`),
+    ]);
+    const presentCount = (att || []).filter(r => ['present','half_day','wfh'].includes(r.status)).length;
+    const leavesCount  = (lvs || []).length;
+    const lateCount    = (att || []).filter(r => r.is_late).length;
+    res.json({ presentCount, leavesCount, lateCount, month, year });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Holidays CRUD ────────────────────────────────────────────────────────────
+app.get('/api/holidays', auth, async (req, res) => {
+  const { data } = await supabase.from('holidays').select('*').order('date');
+  res.json(data || []);
+});
+app.post('/api/holidays', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, date, type, description } = req.body;
+    if (!name || !date) return res.status(400).json({ error: 'Name and date required' });
+    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'' }).select().single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/holidays/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const { name, date, type, description } = req.body;
+    const { data } = await supabase.from('holidays').update({ name, date, type, description }).eq('id', req.params.id).select().single();
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.delete('/api/holidays/:id', auth, adminOnly, async (req, res) => {
+  try {
+    await supabase.from('holidays').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Events CRUD ──────────────────────────────────────────────────────────────
+app.get('/api/events', auth, async (req, res) => {
+  const { data } = await supabase.from('events').select('*').order('date');
+  res.json(data || []);
+});
+app.post('/api/events', auth, adminOnly, async (req, res) => {
+  try {
+    const { title, date, end_date, description } = req.body;
+    if (!title || !date) return res.status(400).json({ error: 'Title and date required' });
+    const { data, error } = await supabase.from('events').insert({ title, date, end_date: end_date||null, description: description||'', created_by: req.user.id }).select().single();
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/events/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const { title, date, end_date, description } = req.body;
+    const { data } = await supabase.from('events').update({ title, date, end_date: end_date||null, description }).eq('id', req.params.id).select().single();
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.delete('/api/events/:id', auth, adminOnly, async (req, res) => {
+  try {
+    await supabase.from('events').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Frontend fallback ────────────────────────────────────────────────────────

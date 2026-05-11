@@ -374,6 +374,259 @@ function setHeaderTitle(title, sub = '') {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CULTURE WIDGETS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderCultureWidgets(culture) {
+  const isAdmin = state.user.role === 'admin';
+  const { birthdaysToday = [], upcomingBirthdays = [], holidays = [], events = [] } = culture;
+
+  // ── Birthdays ──
+  const birthdayCard = `
+    <div class="card" style="height:100%">
+      <div class="card-header" style="padding:14px 16px">
+        <div class="card-title" style="font-size:.9rem">🎂 Birthdays</div>
+      </div>
+      <div class="card-body" style="padding:0 16px 14px">
+        ${birthdaysToday.length > 0 ? `
+          <div style="margin-bottom:10px">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;letter-spacing:.06em">🎉 Today</div>
+            ${birthdaysToday.map(u => `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+                <div style="width:34px;height:34px;border-radius:50%;background:${u.avatar_color||'#4F46E5'};display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;color:#fff;flex-shrink:0">${initials(u.name)}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">${u.department||''}</div>
+                </div>
+                <span style="font-size:1.1rem">🎂</span>
+              </div>`).join('')}
+          </div>` : ''}
+        ${upcomingBirthdays.length > 0 ? `
+          <div>
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;letter-spacing:.06em">Upcoming (7 days)</div>
+            ${upcomingBirthdays.map(u => `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+                <div style="width:34px;height:34px;border-radius:50%;background:${u.avatar_color||'#4F46E5'};display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;color:#fff;flex-shrink:0">${initials(u.name)}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
+                  <div style="font-size:.72rem;color:var(--text-muted)">In ${u.days_until} day${u.days_until > 1 ? 's' : ''}</div>
+                </div>
+              </div>`).join('')}
+          </div>` : ''}
+        ${birthdaysToday.length === 0 && upcomingBirthdays.length === 0 ? `
+          <div class="empty-state" style="padding:16px 0"><div class="empty-icon">🎂</div><p style="font-size:.8rem">No birthdays in the next 7 days</p></div>` : ''}
+      </div>
+    </div>`;
+
+  // ── Holidays ──
+  const holidayCard = `
+    <div class="card" style="height:100%">
+      <div class="card-header" style="padding:14px 16px">
+        <div class="card-title" style="font-size:.9rem">📅 Upcoming Holidays</div>
+        ${isAdmin ? `<button class="btn btn-outline btn-sm" style="font-size:.72rem;padding:4px 10px" onclick="openManageHolidaysModal()">Manage</button>` : ''}
+      </div>
+      <div class="card-body" style="padding:0 16px 14px">
+        ${holidays.length === 0 ? `
+          <div class="empty-state" style="padding:16px 0"><div class="empty-icon">📅</div><p style="font-size:.8rem">No holidays in next 30 days</p></div>` :
+          holidays.map(h => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);gap:8px">
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.name}</div>
+                <div style="font-size:.72rem;color:var(--text-muted)">${fmtDate(h.date)}</div>
+              </div>
+              <span style="font-size:.68rem;font-weight:600;padding:2px 7px;border-radius:99px;background:#F0FDF4;color:#15803D;flex-shrink:0">${h.type}</span>
+            </div>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Events ──
+  const eventCard = `
+    <div class="card" style="height:100%">
+      <div class="card-header" style="padding:14px 16px">
+        <div class="card-title" style="font-size:.9rem">🎉 Upcoming Events</div>
+        ${isAdmin ? `<button class="btn btn-outline btn-sm" style="font-size:.72rem;padding:4px 10px" onclick="openManageEventsModal()">Manage</button>` : ''}
+      </div>
+      <div class="card-body" style="padding:0 16px 14px">
+        ${events.length === 0 ? `
+          <div class="empty-state" style="padding:16px 0"><div class="empty-icon">🎉</div><p style="font-size:.8rem">No upcoming events</p></div>` :
+          events.map(ev => `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+              <div style="width:36px;height:36px;border-radius:8px;background:#FEF9C3;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">🎉</div>
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:.85rem">${ev.title}</div>
+                <div style="font-size:.72rem;color:var(--text-muted)">${fmtDate(ev.date)}${ev.end_date && ev.end_date !== ev.date ? ' – ' + fmtDate(ev.end_date) : ''}</div>
+                ${ev.description ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ev.description}</div>` : ''}
+              </div>
+            </div>`).join('')}
+      </div>
+    </div>`;
+
+  return `
+    <div style="margin-top:22px">
+      <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:12px">Culture & Calendar</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start">
+        ${birthdayCard}
+        ${holidayCard}
+        ${eventCard}
+      </div>
+    </div>`;
+}
+
+// ── Manage Holidays Modal ──────────────────────────────────────────────────────
+async function openManageHolidaysModal() {
+  const holidays = await apiGet('/holidays').catch(() => []);
+  openModal(`
+    <div class="modal-header">
+      <div class="modal-title">📅 Manage Holidays</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">${I('x')}</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:18px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Add New Holiday</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Holiday Name</label>
+            <input class="form-control" id="h-name" placeholder="e.g. Diwali" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-control" id="h-date" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-control" id="h-type">
+              <option value="public">Public</option>
+              <option value="optional">Optional</option>
+              <option value="restricted">Restricted</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Description</label>
+            <input class="form-control" id="h-desc" placeholder="Optional description" />
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="submitAddHoliday()">Add Holiday</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">All Holidays</div>
+        <div id="holiday-list-container">
+          ${holidays.length === 0
+            ? `<div style="font-size:.82rem;color:var(--text-muted)">No holidays added yet.</div>`
+            : holidays.map(h => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);gap:8px" id="hrow-${h.id}">
+                  <div style="min-width:0">
+                    <div style="font-weight:600;font-size:.85rem">${h.name}</div>
+                    <div style="font-size:.72rem;color:var(--text-muted)">${fmtDate(h.date)} · <span style="text-transform:capitalize">${h.type}</span></div>
+                  </div>
+                  <button class="btn btn-danger btn-sm" style="font-size:.72rem;padding:3px 8px" onclick="deleteHoliday(${h.id})">${I('trash')}</button>
+                </div>`).join('')}
+        </div>
+      </div>
+    </div>`, 'modal-md');
+}
+
+async function submitAddHoliday() {
+  const name = document.getElementById('h-name')?.value?.trim();
+  const date = document.getElementById('h-date')?.value;
+  const type = document.getElementById('h-type')?.value;
+  const description = document.getElementById('h-desc')?.value?.trim();
+  if (!name) return toast('Enter holiday name', 'warning');
+  if (!date) return toast('Select a date', 'warning');
+  try {
+    await apiPost('/holidays', { name, date, type, description });
+    toast('Holiday added!', 'success');
+    closeModal();
+    openManageHolidaysModal();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function deleteHoliday(id) {
+  if (!confirm('Delete this holiday?')) return;
+  try {
+    await apiDelete(`/holidays/${id}`);
+    document.getElementById(`hrow-${id}`)?.remove();
+    toast('Holiday deleted', 'info');
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// ── Manage Events Modal ───────────────────────────────────────────────────────
+async function openManageEventsModal() {
+  const events = await apiGet('/events').catch(() => []);
+  openModal(`
+    <div class="modal-header">
+      <div class="modal-title">🎉 Manage Events</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">${I('x')}</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:18px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Add New Event</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">Event Title</label>
+            <input class="form-control" id="ev-title" placeholder="e.g. Team Building Day" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input type="date" class="form-control" id="ev-date" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">End Date (optional)</label>
+            <input type="date" class="form-control" id="ev-end" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input class="form-control" id="ev-desc" placeholder="Optional description" />
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="submitAddEvent()">Add Event</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">All Events</div>
+        <div id="event-list-container">
+          ${events.length === 0
+            ? `<div style="font-size:.82rem;color:var(--text-muted)">No events added yet.</div>`
+            : events.map(ev => `
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);gap:8px" id="evrow-${ev.id}">
+                  <div style="min-width:0">
+                    <div style="font-weight:600;font-size:.85rem">${ev.title}</div>
+                    <div style="font-size:.72rem;color:var(--text-muted)">${fmtDate(ev.date)}${ev.end_date && ev.end_date !== ev.date ? ' – ' + fmtDate(ev.end_date) : ''}</div>
+                    ${ev.description ? `<div style="font-size:.75rem;color:var(--text-muted)">${ev.description}</div>` : ''}
+                  </div>
+                  <button class="btn btn-danger btn-sm" style="font-size:.72rem;padding:3px 8px;flex-shrink:0" onclick="deleteEvent(${ev.id})">${I('trash')}</button>
+                </div>`).join('')}
+        </div>
+      </div>
+    </div>`, 'modal-md');
+}
+
+async function submitAddEvent() {
+  const title = document.getElementById('ev-title')?.value?.trim();
+  const date  = document.getElementById('ev-date')?.value;
+  const end_date = document.getElementById('ev-end')?.value || null;
+  const description = document.getElementById('ev-desc')?.value?.trim();
+  if (!title) return toast('Enter event title', 'warning');
+  if (!date)  return toast('Select a date', 'warning');
+  try {
+    await apiPost('/events', { title, date, end_date, description });
+    toast('Event added!', 'success');
+    closeModal();
+    openManageEventsModal();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Delete this event?')) return;
+  try {
+    await apiDelete(`/events/${id}`);
+    document.getElementById(`evrow-${id}`)?.remove();
+    toast('Event deleted', 'info');
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // CHECK-IN WIDGET
 // ══════════════════════════════════════════════════════════════════════════════
 async function loadCheckinWidget() {
@@ -392,16 +645,17 @@ function renderCheckinWidget(record) {
   } else if (!record.check_out) {
     const elapsed = getElapsed(record.check_in);
     w.innerHTML = `
-      <div class="checkin-status">
-        <div class="checkin-time">${I('clock')} In: ${fmtTime(record.check_in)} <span id="elapsed-time">${elapsed}</span></div>
+      <div class="checkin-status" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="status-badge ${record.is_late ? 'late' : 'present'}">${record.is_late ? 'Late' : 'Present'}</span>
+        <span style="font-size:.88rem;font-weight:700;color:var(--text)">⏱ <span id="elapsed-time">${elapsed}</span></span>
       </div>
       <button class="btn btn-danger btn-sm" onclick="doCheckOut()">${I('logout')} Check Out</button>`;
   } else {
     w.innerHTML = `
-      <div class="checkin-status" style="font-size:.8rem;color:var(--text-muted)">
-        ${I('clock')} ${fmtTime(record.check_in)} – ${fmtTime(record.check_out)} · ${fmtHours(record.work_hours)}
-        ${record.is_late ? '<span class="status-badge late" style="margin-left:4px">Late</span>' : ''}
-        ${record.status === 'half_day' ? '<span class="status-badge half_day" style="margin-left:4px">Half Day</span>' : ''}
+      <div class="checkin-status" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="status-badge ${record.status||'present'}">${statusLabel(record.status||'present')}</span>
+        ${record.is_late ? '<span class="status-badge late">Late</span>' : ''}
+        <span style="font-size:.88rem;font-weight:700;color:var(--primary)">⏱ ${fmtHours(record.work_hours)}</span>
       </div>`;
   }
 }
@@ -456,10 +710,15 @@ async function loadDashboard() {
   try {
     await apiPost('/attendance/cleanup-orphaned', {}).catch(() => {});
     const qs = state.dashboardDate ? { date: state.dashboardDate } : {};
-    const data = await apiGet('/dashboard', qs);
+    const [data, culture, myStats] = await Promise.all([
+      apiGet('/dashboard', qs),
+      apiGet('/culture').catch(() => ({ birthdaysToday: [], upcomingBirthdays: [], holidays: [], events: [] })),
+      (!state.dashboardDate && state.user.role !== 'admin') ? apiGet('/my-stats').catch(() => null) : Promise.resolve(null),
+    ]);
     state.dashboard = data;
-    content.innerHTML = renderDashboard(data);
+    content.innerHTML = renderDashboard(data, culture, myStats);
     bindDashboard();
+    if (!state.dashboardDate) loadCheckinWidget();
   } catch (err) {
     content.innerHTML = `<div class="empty-state"><p>Failed to load dashboard: ${err.message}</p></div>`;
   }
@@ -468,7 +727,7 @@ function setDashboardDate(val) {
   state.dashboardDate = val || null;
   loadDashboard();
 }
-function renderDashboard(d) {
+function renderDashboard(d, culture, myStats) {
   const isAdmin  = state.user.role === 'admin';
   const isToday  = d.isToday;
   const suffix   = isToday ? 'Today' : 'on Date';
@@ -578,7 +837,27 @@ function renderDashboard(d) {
           <div>${leaveQueue}</div>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${myStats ? `
+    <div class="stats-grid" style="margin-top:20px">
+      <div class="stat-card success">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value">${myStats.presentCount}</div>
+        <div class="stat-label">Present This Month</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-icon">🌴</div>
+        <div class="stat-value">${myStats.leavesCount}</div>
+        <div class="stat-label">Leaves Taken</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-icon">⏰</div>
+        <div class="stat-value">${myStats.lateCount}</div>
+        <div class="stat-label">Late Entries</div>
+      </div>
+    </div>` : ''}
+    ${culture ? renderCultureWidgets(culture) : ''}
+    `;
 }
 function bindDashboard() {
   // Buttons are using global onclick handlers
@@ -896,6 +1175,11 @@ function renderEmpRow(r, ds, showLive) {
         ${isLeave ? `
           <div style="margin-top:4px;font-size:.72rem;color:var(--warning);font-style:italic">On approved leave — no tracking</div>` : ''}
       </div>
+      ${state.user.role === 'admin' ? `
+        <div style="flex-shrink:0;align-self:center;display:flex;flex-direction:column;gap:4px;margin-left:8px">
+          <button class="btn btn-outline btn-sm" style="white-space:nowrap;font-size:.75rem" onclick="openEditAttModal(${userId},'${ds}')">${I('edit')} Edit</button>
+          ${st !== 'absent' ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap;font-size:.75rem" onclick="markAbsentInModal(${userId},'${ds}')">✕ Absent</button>` : ''}
+        </div>` : ''}
     </div>`;
 }
 
@@ -1057,6 +1341,94 @@ async function syncClockifyDay(ds) {
     closeModal();
     openDayModal(ds);
   } catch (err) { toast('Clockify sync: ' + err.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN ATTENDANCE EDIT (from day modal)
+// ══════════════════════════════════════════════════════════════════════════════
+async function openEditAttModal(userId, ds) {
+  const records = state.calendarData[ds] || [];
+  const r = records.find(x => x.user_id === parseInt(userId));
+  const emp = [...(state.employees || [])].find(e => e.id === parseInt(userId)) || {};
+  closeModal();
+  openModal(`
+    <div class="modal-header">
+      <div class="modal-title">${I('edit')} Edit Attendance — ${emp.name || ''}</div>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal();openDayModal('${ds}')">${I('x')}</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <div style="font-size:.9rem;font-weight:600;padding:8px 0;color:var(--text)">${fmtDate(ds)}</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Check-In Time</label>
+          <input type="time" class="form-control" id="att-ci" value="${(r?.check_in || '').slice(0,5)}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Check-Out Time</label>
+          <input type="time" class="form-control" id="att-co" value="${(r?.check_out || '').slice(0,5)}" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-control" id="att-status">
+          <option value="present"  ${(r?.status||'present')==='present' ?'selected':''}>Present</option>
+          <option value="absent"   ${r?.status==='absent'  ?'selected':''}>Absent</option>
+          <option value="half_day" ${r?.status==='half_day'?'selected':''}>Half Day</option>
+          <option value="wfh"      ${r?.status==='wfh'     ?'selected':''}>Work From Home</option>
+          <option value="on_leave" ${r?.status==='on_leave'?'selected':''}>On Leave</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:20px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer">
+          <input type="checkbox" id="att-late"  ${r?.is_late       ?'checked':''} /> Late Entry
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer">
+          <input type="checkbox" id="att-early" ${r?.is_early_exit ?'checked':''} /> Early Exit
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input class="form-control" id="att-notes" value="${r?.notes||''}" placeholder="Optional notes…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal();openDayModal('${ds}')">Back</button>
+      <button class="btn btn-primary" onclick="submitEditAtt(${userId},'${ds}',${r?.id||'null'})">Save Changes</button>
+    </div>`, 'modal-md');
+}
+
+async function submitEditAtt(userId, ds, existingId) {
+  const check_in     = document.getElementById('att-ci')?.value    || null;
+  const check_out    = document.getElementById('att-co')?.value    || null;
+  const status       = document.getElementById('att-status')?.value;
+  const is_late      = document.getElementById('att-late')?.checked;
+  const is_early_exit = document.getElementById('att-early')?.checked;
+  const notes        = document.getElementById('att-notes')?.value  || '';
+  try {
+    if (existingId && existingId !== 'null') {
+      await apiPut(`/attendance/${existingId}`, { check_in, check_out, status, is_late, is_early_exit, notes });
+    } else {
+      await apiPost('/attendance/admin-edit', { user_id: parseInt(userId), date: ds, check_in, check_out, status, is_late, is_early_exit, notes });
+    }
+    toast('Attendance updated', 'success');
+    await fetchCalendarData();
+    closeModal();
+    openDayModal(ds);
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function markAbsentInModal(userId, ds) {
+  if (!confirm('Mark this employee as absent for ' + fmtDate(ds) + '?')) return;
+  try {
+    await apiPost('/attendance/mark-absent', { user_id: parseInt(userId), date: ds });
+    toast('Marked as absent', 'warning');
+    await fetchCalendarData();
+    closeModal();
+    openDayModal(ds);
+  } catch (err) { toast(err.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1884,10 +2256,26 @@ async function renderEmployeeProfile(year, month) {
     const halfDayCount = approvedLeaves.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInMonth(l, year, month, effectiveEnd), 0);
     const wfhCount     = approvedLeaves.filter(l => l.leave_time === 'wfh').reduce((s, l) => s + countLeaveDaysInMonth(l, year, month, effectiveEnd), 0);
     const lateCount    = attendance.filter(r => r.is_late).length;
-    const presentCount = Math.max(0, workingDays - onLeaveCount);
+    const absentCount  = attendance.filter(r => r.status === 'absent').length;
+    const presentCount = Math.max(0, workingDays - onLeaveCount - absentCount);
     const monthValue   = `${year}-${String(month).padStart(2,'0')}`;
 
-    const leaveCards = leaves.length === 0
+    const absentCards = attendance
+      .filter(r => r.status === 'absent')
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(r => `
+        <div class="leave-card">
+          <div style="width:36px;height:36px;border-radius:50%;background:${emp.avatar_color||'#4F46E5'};display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:700;color:#fff;flex-shrink:0">${initials(emp.name)}</div>
+          <div class="leave-card-left">
+            <div class="flex items-center gap-2" style="flex-wrap:wrap">
+              <div class="leave-card-name">${emp.name}</div>
+              <span class="status-badge absent" style="font-size:.7rem">❌ Absent</span>
+            </div>
+            <div class="leave-card-dates">${I('calendar')} ${fmtDate(r.date)}</div>
+          </div>
+        </div>`).join('');
+
+    const leaveCards = (leaves.length === 0 && absentCount === 0)
       ? `<div class="empty-state"><div class="empty-icon">🎉</div><p>No leave records for ${MONTHS[month-1]} ${year}</p></div>`
       : leaves.map(l => `
         <div class="leave-card">
@@ -1907,7 +2295,7 @@ async function renderEmployeeProfile(year, month) {
             ${l.reason ? `<div class="leave-card-reason">"${l.reason}"</div>` : ''}
             ${l.approver_name ? `<div class="text-sm text-muted" style="margin-top:2px">By: ${l.approver_name}</div>` : ''}
           </div>
-        </div>`).join('');
+        </div>`).join('') + absentCards;
 
     content.innerHTML = `
       <div class="page-header">
@@ -1926,6 +2314,7 @@ async function renderEmployeeProfile(year, month) {
       <div class="stats-grid" style="margin-bottom:24px">
         <div class="stat-card success"><div class="stat-icon">✅</div><div class="stat-value">${presentCount}</div><div class="stat-label">Present Days</div></div>
         <div class="stat-card danger"><div class="stat-icon">🌴</div><div class="stat-value">${onLeaveCount}</div><div class="stat-label">Leave Days</div></div>
+        <div class="stat-card danger"><div class="stat-icon">❌</div><div class="stat-value">${absentCount}</div><div class="stat-label">Absent Days</div></div>
         <div class="stat-card info"><div class="stat-icon">🌓</div><div class="stat-value">${halfDayCount}</div><div class="stat-label">Half Days</div></div>
         <div class="stat-card" style="border-top:3px solid #06B6D4"><div class="stat-icon" style="background:#CFFAFE;color:#0E7490">🏠</div><div class="stat-value">${wfhCount}</div><div class="stat-label">WFH Days</div></div>
         <div class="stat-card orange"><div class="stat-icon">⏰</div><div class="stat-value">${lateCount}</div><div class="stat-label">Late Entries</div></div>
@@ -2012,6 +2401,10 @@ function openAddEmployeeModal() {
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Date of Birth <span style="font-size:.75rem;color:var(--text-muted)">(for birthday reminders)</span></label>
+        <input type="date" class="form-control" id="emp-dob" />
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2021,13 +2414,14 @@ function openAddEmployeeModal() {
 async function submitAddEmployee() {
   try {
     await apiPost('/employees', {
-      name:         document.getElementById('emp-name').value,
-      email:        document.getElementById('emp-email').value,
-      password:     document.getElementById('emp-password').value,
-      department:   document.getElementById('emp-dept').value || 'General',
-      position:     document.getElementById('emp-pos').value  || 'Staff',
-      role:         document.getElementById('emp-role').value,
-      avatar_color: document.getElementById('emp-color').value,
+      name:           document.getElementById('emp-name').value,
+      email:          document.getElementById('emp-email').value,
+      password:       document.getElementById('emp-password').value,
+      department:     document.getElementById('emp-dept').value || 'General',
+      position:       document.getElementById('emp-pos').value  || 'Staff',
+      role:           document.getElementById('emp-role').value,
+      avatar_color:   document.getElementById('emp-color').value,
+      date_of_birth:  document.getElementById('emp-dob')?.value || null,
     });
     toast('Employee added!', 'success');
     closeModal();
@@ -2081,6 +2475,10 @@ function openEditEmployeeModal(u) {
           </select>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Date of Birth <span style="font-size:.75rem;color:var(--text-muted)">(for birthday reminders)</span></label>
+        <input type="date" class="form-control" id="ee-dob" value="${u.date_of_birth||''}" />
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -2090,12 +2488,13 @@ function openEditEmployeeModal(u) {
 async function submitEditEmployee(id) {
   try {
     const body = {
-      name:         document.getElementById('ee-name').value,
-      email:        document.getElementById('ee-email').value,
-      department:   document.getElementById('ee-dept').value,
-      position:     document.getElementById('ee-pos').value,
-      role:         document.getElementById('ee-role').value,
-      avatar_color: document.getElementById('ee-color').value,
+      name:           document.getElementById('ee-name').value,
+      email:          document.getElementById('ee-email').value,
+      department:     document.getElementById('ee-dept').value,
+      position:       document.getElementById('ee-pos').value,
+      role:           document.getElementById('ee-role').value,
+      avatar_color:   document.getElementById('ee-color').value,
+      date_of_birth:  document.getElementById('ee-dob')?.value || null,
     };
     const pw = document.getElementById('ee-password').value;
     if (pw) body.password = pw;
@@ -2335,6 +2734,15 @@ window.calNavNext         = calNavNext;
 window.calToday           = calToday;
 window.setCalMode         = setCalMode;
 window.syncClockifyDay    = syncClockifyDay;
+window.openEditAttModal   = openEditAttModal;
+window.submitEditAtt      = submitEditAtt;
+window.markAbsentInModal  = markAbsentInModal;
+window.openManageHolidaysModal = openManageHolidaysModal;
+window.submitAddHoliday        = submitAddHoliday;
+window.deleteHoliday           = deleteHoliday;
+window.openManageEventsModal   = openManageEventsModal;
+window.submitAddEvent          = submitAddEvent;
+window.deleteEvent             = deleteEvent;
 window.stopClockifyLive   = stopClockifyLive;
 window.openApplyLeaveModal   = openApplyLeaveModal;
 window.onLeaveTimeChange     = onLeaveTimeChange;

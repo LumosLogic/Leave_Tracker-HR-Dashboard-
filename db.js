@@ -16,6 +16,40 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // ─── Auto-seed demo data on first run ─────────────────────────────────────────
 async function seed() {
+  // Seed holidays independently (works even if users already exist)
+  try {
+    const { count: hCount } = await supabase.from('holidays').select('*', { count: 'exact', head: true });
+    if (hCount === 0) {
+      await supabase.from('holidays').insert([
+        { name: "New Year's Day",    date: '2026-01-01', type: 'public',   description: 'New Year celebration' },
+        { name: 'Republic Day',      date: '2026-01-26', type: 'public',   description: 'National holiday' },
+        { name: 'Holi',              date: '2026-03-03', type: 'public',   description: 'Festival of colors' },
+        { name: 'Good Friday',       date: '2026-04-03', type: 'public',   description: 'Christian holiday' },
+        { name: 'Eid ul-Fitr',       date: '2026-04-12', type: 'public',   description: 'Festival of breaking fast' },
+        { name: 'Independence Day',  date: '2026-08-15', type: 'public',   description: 'National holiday' },
+        { name: 'Ganesh Chaturthi', date: '2026-08-30', type: 'public',   description: 'Hindu festival' },
+        { name: 'Gandhi Jayanti',    date: '2026-10-02', type: 'public',   description: 'National holiday' },
+        { name: 'Diwali',            date: '2026-10-28', type: 'public',   description: 'Festival of lights' },
+        { name: 'Christmas Day',     date: '2026-12-25', type: 'public',   description: 'Christmas celebration' },
+      ]);
+      console.log('✓ Holidays seeded');
+    }
+  } catch (e) { /* table may not exist yet — run schema.sql first */ }
+
+  // Seed events independently
+  try {
+    const { count: eCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
+    if (eCount === 0) {
+      await supabase.from('events').insert([
+        { title: 'Team Building Day',     date: '2026-05-20', description: 'Outdoor team activities at Central Park' },
+        { title: 'Q2 All Hands Meeting',  date: '2026-06-01', description: 'Quarterly company-wide meeting — attendance mandatory' },
+        { title: 'Company Anniversary',   date: '2026-06-15', description: 'Celebrating 5 years of excellence!' },
+        { title: 'Annual Appraisal Week', date: '2026-07-01', end_date: '2026-07-05', description: 'Performance review discussions with managers' },
+      ]);
+      console.log('✓ Events seeded');
+    }
+  } catch (e) { /* table may not exist yet */ }
+
   const { count } = await supabase
     .from('users')
     .select('*', { count: 'exact', head: true });
@@ -112,6 +146,13 @@ async function seed() {
     { user_id: eve.id,   start_date:'2026-04-14', end_date:'2026-04-15', leave_type:'casual',  reason:'Personal work',      status:'rejected', approved_by: admin.id, approved_at: '2026-04-05T14:00:00Z' },
     { user_id: bob.id,   start_date:'2026-04-14', end_date:'2026-04-14', leave_type:'sick',    reason:'Not feeling well',   status:'pending'  },
   ]);
+
+  // Sample birthdays — alice's birthday = today (05-11) for demo purposes
+  await supabase.from('users').update({ date_of_birth: '1995-05-11' }).eq('email', 'alice@company.com');
+  await supabase.from('users').update({ date_of_birth: '1993-05-14' }).eq('email', 'bob@company.com');
+  await supabase.from('users').update({ date_of_birth: '1997-06-10' }).eq('email', 'carol@company.com');
+  await supabase.from('users').update({ date_of_birth: '1990-07-22' }).eq('email', 'david@company.com');
+  await supabase.from('users').update({ date_of_birth: '1994-08-05' }).eq('email', 'eve@company.com');
 
   console.log('✓ Database seeded successfully');
   console.log('  Admin:    admin@company.com / admin123');

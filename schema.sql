@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS leaves (
   start_date  TEXT NOT NULL,
   end_date    TEXT NOT NULL,
   leave_type  TEXT DEFAULT 'casual',
+  leave_time  TEXT DEFAULT 'full',
+  half_type   TEXT,
   reason      TEXT,
   status      TEXT DEFAULT 'pending',
   approved_by BIGINT REFERENCES users(id),
@@ -68,3 +70,30 @@ ALTER TABLE attendance     DISABLE ROW LEVEL SECURITY;
 ALTER TABLE leaves         DISABLE ROW LEVEL SECURITY;
 ALTER TABLE work_schedule  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE clockify_config DISABLE ROW LEVEL SECURITY;
+
+-- Add date of birth to users (for birthday tracking)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth TEXT;
+
+-- Company Holidays
+CREATE TABLE IF NOT EXISTS holidays (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  type        TEXT DEFAULT 'public',
+  description TEXT DEFAULT '',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Company Events
+CREATE TABLE IF NOT EXISTS events (
+  id          BIGSERIAL PRIMARY KEY,
+  title       TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  end_date    TEXT,
+  description TEXT DEFAULT '',
+  created_by  BIGINT REFERENCES users(id),
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE holidays DISABLE ROW LEVEL SECURITY;
+ALTER TABLE events   DISABLE ROW LEVEL SECURITY;
