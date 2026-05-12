@@ -795,18 +795,13 @@ function renderDashboard(d, culture, myStats) {
   const isToday  = d.isToday;
   const suffix   = isToday ? 'Today' : 'on Date';
   const statCards = [
-    { label: 'Total Employees',     value: d.totalEmployees, icon: '👥', cls: 'primary' },
-    { label: `Present ${suffix}`,   value: d.presentToday,   icon: '✅', cls: 'success', hint: 'Total employees minus on leave' },
-    { label: 'On Leave',            value: d.onLeaveToday,   icon: '🌴', cls: 'warning' },
-    { label: `WFH ${suffix}`,       value: d.wfhToday,       icon: '🏠', cls: 'info'    },
+    { label: 'Total Employees',   value: d.totalEmployees, icon: '👥', cls: 'primary' },
+    { label: `Present ${suffix}`, value: d.presentToday,   icon: '✅', cls: 'success', hint: 'Total employees minus on leave' },
+    { label: 'On Leave',          value: d.onLeaveToday,   icon: '🌴', cls: 'warning' },
+    { label: `WFH ${suffix}`,     value: d.wfhToday,       icon: '🏠', cls: 'info'    },
     ...(isToday ? [
       { label: 'On Clockify',     value: d.onClockify,    icon: '⏱', cls: 'success' },
-      { label: 'Not On Clockify', value: d.notOnClockify, icon: '🕐', cls: 'danger'  },
     ] : []),
-    { label: 'Late Entries',        value: d.lateToday,      icon: '⏰', cls: 'orange'  },
-    { label: 'Early Exits',         value: d.earlyExitToday, icon: '◀',  cls: 'purple'  },
-    { label: 'Half Days',           value: d.halfDayToday,   icon: '🌓', cls: 'info'    },
-    ...(isAdmin ? [{ label: 'Pending Leaves', value: d.pendingLeaves, icon: '📋', cls: 'info' }] : []),
   ];
 
   const activityRows = (d.recentActivity || []).length === 0
@@ -1774,9 +1769,8 @@ async function refreshAfterLeaveChange() {
   if (state.view === 'leaves') renderLeavesView();
   if (state.view === 'dashboard') loadDashboard();
   if (state.view === 'calendar') loadCalendar();
-  // Always refresh dashboard stats and calendar data in background for real-time accuracy
-  if (state.view !== 'dashboard') loadDashboard().catch(() => {});
-  if (state.view !== 'calendar') loadCalendar().catch(() => {});
+  // Refresh background data without touching the DOM (only fetch, don't render)
+  if (state.view !== 'calendar') fetchCalendarData().catch(() => {});
 }
 async function approveLeave(id) {
   try {
