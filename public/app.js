@@ -228,42 +228,104 @@ function renderContent() {
 function renderLoginPage() {
   return `
     <div class="login-page">
-      <div class="login-card">
-        <div class="login-logo">
-          <div class="login-logo-icon">📅</div>
-          <div>
-            <h1>HR Tracker</h1>
-            <p>Leave & Attendance System</p>
+      <!-- LEFT BRAND PANEL -->
+      <div class="login-left">
+        <div class="login-orb-1"></div>
+        <div class="login-orb-2"></div>
+        <div class="login-orb-3"></div>
+        <div class="login-brand">
+          <div class="login-brand-logo">
+            <span style="font-size:2rem;line-height:1">📅</span>
           </div>
-        </div>
-        <div class="login-title">Welcome back</div>
-        <div class="login-subtitle">Sign in to your account</div>
-        <div class="login-demo">
-          <strong>Demo Credentials</strong>
-          <p>
-            Admin: admin@company.com / admin123<br>
-            Employee: alice@company.com / password123
-          </p>
-        </div>
-        <form id="login-form">
-          <div class="form-group">
-            <label class="form-label">Email Address</label>
-            <input class="form-control" type="email" id="login-email" value="admin@company.com" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <div style="position:relative">
-              <input class="form-control" type="password" id="login-password" value="admin123" required style="padding-right:42px" />
-              <button type="button" id="toggle-password" onclick="(function(){var i=document.getElementById('login-password'),b=document.getElementById('toggle-password');if(i.type==='password'){i.type='text';b.innerHTML='<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'><path d=\\'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24\\'></path><line x1=\\'1\\' y1=\\'1\\' x2=\\'23\\' y2=\\'23\\'></line></svg>';}else{i.type='password';b.innerHTML='<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'><path d=\\'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\\'></path><circle cx=\\'12\\' cy=\\'12\\' r=\\'3\\'></circle></svg>';}})();" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6B7280;display:flex;align-items:center;padding:0">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-              </button>
+          <div class="login-headline">HR Workforce<br/>Intelligence</div>
+          <div class="login-tagline">The operating system for your people operations — leave, attendance &amp; analytics in one place.</div>
+          <div class="login-features">
+            <div class="login-feature-item">
+              <div class="login-feature-icon">⚡</div>
+              <div class="login-feature-text">
+                <strong>Real-time Attendance</strong>
+                <span>Clock-in/out with live status across your entire org</span>
+              </div>
+            </div>
+            <div class="login-feature-item">
+              <div class="login-feature-icon">📋</div>
+              <div class="login-feature-text">
+                <strong>Smart Leave Management</strong>
+                <span>Multi-type leave workflows with instant approvals</span>
+              </div>
+            </div>
+            <div class="login-feature-item">
+              <div class="login-feature-icon">📊</div>
+              <div class="login-feature-text">
+                <strong>Analytics Dashboard</strong>
+                <span>Beautiful charts &amp; insights to drive HR decisions</span>
+              </div>
+            </div>
+            <div class="login-feature-item">
+              <div class="login-feature-icon">🔒</div>
+              <div class="login-feature-text">
+                <strong>Enterprise Security</strong>
+                <span>Role-based access control with JWT authentication</span>
+              </div>
             </div>
           </div>
-          <div id="login-error" style="color:#EF4444;font-size:.83rem;margin-bottom:12px;display:none"></div>
-          <button type="submit" class="btn btn-primary btn-full btn-lg" id="login-btn">
-            Sign In
-          </button>
-        </form>
+          <div class="login-stats-card">
+            <div class="login-stat-pill">
+              <div class="login-stat-pill-value">99.9%</div>
+              <div class="login-stat-pill-label">Uptime</div>
+            </div>
+            <div class="login-stat-pill">
+              <div class="login-stat-pill-value">500+</div>
+              <div class="login-stat-pill-label">Teams</div>
+            </div>
+            <div class="login-stat-pill">
+              <div class="login-stat-pill-value">24/7</div>
+              <div class="login-stat-pill-label">Support</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT FORM PANEL -->
+      <div class="login-right">
+        <div class="login-card">
+          <div class="login-form-header">
+            <div class="login-form-title">Welcome back</div>
+            <div class="login-form-sub">Sign in to your workspace to continue</div>
+          </div>
+
+          <div class="login-demo">
+            <strong>Demo Credentials</strong>
+            <p>
+              Admin: admin@company.com / admin123<br/>
+              Employee: alice@company.com / password123
+            </p>
+          </div>
+
+          <form id="login-form">
+            <div class="form-group">
+              <label class="form-label">Email Address</label>
+              <input class="form-control" type="email" id="login-email" value="admin@company.com" required placeholder="you@company.com" autocomplete="email" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <div style="position:relative">
+                <input class="form-control" type="password" id="login-password" value="admin123" required style="padding-right:48px" placeholder="••••••••" autocomplete="current-password" />
+                <button type="button" id="toggle-password" onclick="(function(){var i=document.getElementById('login-password'),b=document.getElementById('toggle-password');if(i.type==='password'){i.type='text';b.innerHTML='<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'><path d=\\'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24\\'></path><line x1=\\'1\\' y1=\\'1\\' x2=\\'23\\' y2=\\'23\\'></line></svg>';}else{i.type='password';b.innerHTML='<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'><path d=\\'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\\'></path><circle cx=\\'12\\' cy=\\'12\\' r=\\'3\\'></circle></svg>';}})();" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,.35);display:flex;align-items:center;padding:4px;transition:color .2s;border-radius:6px" onmouseover="this.style.color='rgba(255,255,255,.8)'" onmouseout="this.style.color='rgba(255,255,255,.35)'">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
+            </div>
+            <div id="login-error" style="color:#FCA5A5;font-size:.83rem;margin-bottom:14px;display:none;background:rgba(239,68,68,.12);padding:10px 14px;border-radius:10px;border:1px solid rgba(239,68,68,.25)"></div>
+            <button type="submit" class="btn btn-primary btn-full btn-lg" id="login-btn" style="margin-top:4px;font-size:1rem;font-weight:700;letter-spacing:.02em">
+              Sign In →
+            </button>
+          </form>
+
+          <div style="margin-top:28px;text-align:center;font-size:.72rem;color:rgba(255,255,255,.2)">
+            Secure HR Management System &nbsp;·&nbsp; v2.0
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -272,7 +334,7 @@ function bindLogin() {
     e.preventDefault();
     const btn = document.getElementById('login-btn');
     const errEl = document.getElementById('login-error');
-    btn.disabled = true; btn.textContent = 'Signing in…';
+    btn.disabled = true; btn.innerHTML = '<div class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff;width:18px;height:18px"></div> Signing in…';
     errEl.style.display = 'none';
     try {
       const { token, user } = await apiPost('/auth/login', {
@@ -284,7 +346,7 @@ function bindLogin() {
     } catch (err) {
       errEl.textContent = err.message;
       errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Sign In';
+      btn.disabled = false; btn.innerHTML = 'Sign In →';
     }
   });
 }
@@ -295,14 +357,14 @@ function bindLogin() {
 function renderLayout() {
   const u = state.user;
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'calendar',  label: 'Calendar',  icon: 'calendar'  },
-    { id: 'leaves',    label: 'Leaves',    icon: 'leave'     },
-    ...(u.role === 'admin' ? [{ id: 'employees', label: 'Employees', icon: 'employees' }] : []),
-    { id: 'settings',  label: 'Settings',  icon: 'settings'  },
+    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', emoji: '⚡' },
+    { id: 'calendar',  label: 'Calendar',  icon: 'calendar',  emoji: '📅' },
+    { id: 'leaves',    label: 'Leaves',    icon: 'leave',     emoji: '🌴' },
+    ...(u.role === 'admin' ? [{ id: 'employees', label: 'Employees', icon: 'employees', emoji: '👥' }] : []),
+    { id: 'settings',  label: 'Settings',  icon: 'settings',  emoji: '⚙️' },
   ];
   const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const dateStr = today.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
   return `
     <div class="app-layout" id="app-layout">
       <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -312,23 +374,23 @@ function renderLayout() {
             <div class="sidebar-logo-icon">📅</div>
             <div class="sidebar-logo-text">
               <h2>HR Tracker</h2>
-              <p>Attendance System</p>
+              <p>Workforce Intelligence</p>
             </div>
           </div>
         </div>
         <nav class="sidebar-nav">
-          <div class="nav-label">Main</div>
-          ${navItems.map(item => `
-            <button class="nav-item ${state.view === item.id ? 'active' : ''}" data-view="${item.id}">
+          <div class="nav-label">Navigation</div>
+          ${navItems.map((item, idx) => `
+            <button class="nav-item ${state.view === item.id ? 'active' : ''}" data-view="${item.id}" style="animation:sidebarItemIn .3s ${.05 + idx * .06}s both">
               ${I(item.icon)} ${item.label}
             </button>`).join('')}
         </nav>
         <div class="sidebar-user">
           <div class="sidebar-user-info">
-            <div class="sidebar-avatar" style="background:${u.avatar_color||'#4F46E5'}">${initials(u.name)}</div>
-            <div>
+            <div class="sidebar-avatar" style="background:${u.avatar_color||'#7C3AED'}">${initials(u.name)}</div>
+            <div style="flex:1;min-width:0">
               <div class="sidebar-user-name">${u.name}</div>
-              <div class="sidebar-user-role">${u.role === 'admin' ? 'HR Admin' : u.position || 'Employee'}</div>
+              <div class="sidebar-user-role">${u.role === 'admin' ? '✦ HR Admin' : u.position || 'Employee'}</div>
             </div>
           </div>
           <button class="sidebar-logout" onclick="logout()">
@@ -345,6 +407,7 @@ function renderLayout() {
             <h1>Dashboard</h1>
           </div>
           <div class="header-spacer"></div>
+          <div class="header-date" id="header-checkin-compact" style="display:none"></div>
           <div class="header-date">${dateStr}</div>
           <button class="dark-mode-btn" id="dark-mode-btn" onclick="toggleDarkMode()" title="Toggle dark mode" aria-label="Toggle dark mode">
             <svg id="dark-icon-moon" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
@@ -792,70 +855,94 @@ function renderDashboard(d, culture, myStats) {
   const displayDate = new Date((d.today || new Date().toISOString().split('T')[0]) + 'T12:00:00')
     .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? '☀️ Good morning' : hour < 17 ? '👋 Good afternoon' : '🌙 Good evening';
+
   return `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px">
-      <div style="font-size:.95rem;font-weight:600;color:var(--text-muted)">${isToday ? 'Showing: Today' : `Showing: ${displayDate}`}</div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <input type="date" class="form-control" style="width:auto;padding:6px 10px;font-size:.85rem"
-          value="${state.dashboardDate || ''}"
-          max="${new Date().toISOString().split('T')[0]}"
-          onchange="setDashboardDate(this.value)" />
-        ${!isToday ? `<button class="btn btn-outline btn-sm" onclick="setDashboardDate('')">Today</button>` : ''}
+    <!-- Dashboard Hero Banner -->
+    <div style="
+      background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 40%, #06B6D4 100%);
+      border-radius: 18px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(124,58,237,.35), 0 4px 16px rgba(124,58,237,.2);
+      animation: fadeInDown .4s cubic-bezier(.4,0,.2,1) both;
+    ">
+      <!-- Decorative orbs -->
+      <div style="position:absolute;top:-60px;right:-60px;width:240px;height:240px;background:radial-gradient(circle,rgba(255,255,255,.12) 0%,transparent 65%);border-radius:50%;pointer-events:none"></div>
+      <div style="position:absolute;bottom:-40px;left:30%;width:160px;height:160px;background:radial-gradient(circle,rgba(6,182,212,.2) 0%,transparent 65%);border-radius:50%;pointer-events:none"></div>
+      <!-- Grid pattern -->
+      <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;pointer-events:none;border-radius:18px"></div>
+
+      <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+        <div>
+          <div style="font-size:.8rem;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">${greet}</div>
+          <div style="font-size:1.75rem;font-weight:900;color:#fff;letter-spacing:-.03em;line-height:1.15">${state.user.name.split(' ')[0]} 👋</div>
+          <div style="font-size:.88rem;color:rgba(255,255,255,.65);margin-top:6px;font-weight:400">${isToday ? displayDate : `Viewing: ${displayDate}`}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <input type="date" style="padding:9px 14px;font-size:.84rem;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-weight:600;cursor:pointer;backdrop-filter:blur(10px)"
+            value="${state.dashboardDate || ''}"
+            max="${new Date().toISOString().split('T')[0]}"
+            onchange="setDashboardDate(this.value)" />
+          ${!isToday ? `<button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);backdrop-filter:blur(10px)" onclick="setDashboardDate('')">↺ Today</button>` : ''}
+        </div>
       </div>
     </div>
+
     <div class="stats-grid">
       ${statCards.map(c => `
         <div class="stat-card ${c.cls}" title="${c.hint || ''}">
           <div class="stat-icon">${c.icon}</div>
           <div class="stat-value">${c.value ?? '—'}</div>
           <div class="stat-label">${c.label}</div>
-          ${c.hint ? `<div style="font-size:.65rem;color:var(--text-muted);margin-top:2px">${c.hint}</div>` : ''}
+          ${c.hint ? `<div style="font-size:.62rem;color:var(--text-muted);margin-top:1px;font-weight:500">${c.hint}</div>` : ''}
         </div>`).join('')}
     </div>
+
     <div class="dashboard-grid">
-      <div class="card">
+      <div class="card" style="animation:fadeInLeft .4s .1s cubic-bezier(.4,0,.2,1) both">
         <div class="card-header">
           <div>
-            <div class="card-title">${isToday ? "Today's" : ''} Attendance</div>
+            <div class="card-title">${isToday ? "⚡ Live Attendance" : '📊 Attendance'}</div>
             <div class="card-subtitle">${displayDate}</div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="navigate('calendar')">${I('calendar')} Full Calendar</button>
+          <button class="btn btn-outline btn-sm" onclick="navigate('calendar')">${I('calendar')} Calendar</button>
         </div>
         <div class="card-body">
           <div class="activity-list">${activityRows}</div>
         </div>
       </div>
-      <div class="card">
+      <div class="card" style="animation:fadeInRight .4s .15s cubic-bezier(.4,0,.2,1) both">
         <div class="card-header">
           <div>
-            <div class="card-title">${isAdmin ? 'Leave Requests' : 'My Leaves'}</div>
+            <div class="card-title">${isAdmin ? '📋 Leave Requests' : '🌴 My Leaves'}</div>
             ${isAdmin ? '<div class="card-subtitle">Pending approvals</div>' : ''}
           </div>
-          <button class="btn btn-outline btn-sm" onclick="navigate('leaves')">${I('leave')} View All</button>
+          <button class="btn btn-outline btn-sm" onclick="navigate('leaves')">${I('leave')} All</button>
         </div>
         <div class="card-body">
           <div>${leaveQueue}</div>
         </div>
       </div>
     </div>
+
     ${myStats ? `
-    <div class="stats-grid" style="margin-top:20px">
-      <div class="stat-card success">
-        <div class="stat-icon">✅</div>
-        <div class="stat-value">${myStats.presentCount}</div>
-        <div class="stat-label">Present This Month</div>
+    <div style="margin-top:22px">
+      <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+        <span style="display:inline-block;width:16px;height:2px;background:linear-gradient(90deg,#7C3AED,#06B6D4);border-radius:99px"></span>
+        My Stats This Month
+        <span style="display:inline-block;width:16px;height:2px;background:linear-gradient(90deg,#06B6D4,#7C3AED);border-radius:99px"></span>
       </div>
-      <div class="stat-card warning">
-        <div class="stat-icon">🌴</div>
-        <div class="stat-value">${myStats.leavesCount}</div>
-        <div class="stat-label">Leaves Taken</div>
-      </div>
-      <div class="stat-card orange">
-        <div class="stat-icon">⏰</div>
-        <div class="stat-value">${myStats.lateCount}</div>
-        <div class="stat-label">Late Entries</div>
+      <div class="stats-grid">
+        <div class="stat-card success"><div class="stat-icon">✅</div><div class="stat-value">${myStats.presentCount}</div><div class="stat-label">Days Present</div></div>
+        <div class="stat-card warning"><div class="stat-icon">🌴</div><div class="stat-value">${myStats.leavesCount}</div><div class="stat-label">Leaves Taken</div></div>
+        <div class="stat-card orange"><div class="stat-icon">⏰</div><div class="stat-value">${myStats.lateCount}</div><div class="stat-label">Late Entries</div></div>
       </div>
     </div>` : ''}
+
     ${culture ? renderCultureWidgets(culture) : ''}
     `;
 }
