@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Employee Dashboard - Lumens HR</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "on-surface": "#151c27",
+                        "surface-container-highest": "#dce2f3",
+                        "surface-container-low": "#f0f3ff",
+                        "secondary-container": "#8a4cfc",
+                        "background": "#f9f9ff",
+                        "on-secondary-fixed-variant": "#5a00c6",
+                        "tertiary": "#7e3000",
+                        "on-primary": "#ffffff",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-secondary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-primary-fixed": "#0f0069",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface-variant": "#464555",
+                        "on-secondary-fixed": "#25005a",
+                        "on-tertiary-container": "#ffd2be",
+                        "on-primary-container": "#dad7ff",
+                        "on-tertiary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "outline": "#777587",
+                        "primary-container": "#4f46e5",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-secondary-container": "#fffbff",
+                        "tertiary-container": "#a44100",
+                        "error-container": "#ffdad6",
+                        "on-error-container": "#93000a",
+                        "outline-variant": "#c7c4d8",
+                        "inverse-primary": "#c3c0ff",
+                        "inverse-on-surface": "#ebf1ff",
+                        "surface-variant": "#dce2f3",
+                        "surface": "#f9f9ff",
+                        "surface-bright": "#f9f9ff",
+                        "primary": "#3525cd",
+                        "on-background": "#151c27",
+                        "primary-fixed": "#e2dfff",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-container": "#e7eefe",
+                        "on-tertiary-fixed": "#351000",
+                        "inverse-surface": "#2a313d",
+                        "surface-container-high": "#e2e8f8",
+                        "surface-tint": "#4d44e3",
+                        "secondary-fixed": "#eaddff",
+                        "secondary": "#712ae2",
+                        "surface-dim": "#d3daea",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "secondary-fixed-dim": "#d2bbff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "2xl": "48px",
+                        "sm": "8px",
+                        "base": "4px",
+                        "container-max": "1440px",
+                        "gutter": "24px",
+                        "sidebar-width": "260px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "3xl": "64px",
+                        "xs": "4px",
+                        "xl": "32px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "label-md": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                        "title-lg": ["18px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .soft-depth-card {
+            box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.04);
+            transition: box-shadow 0.2s ease-in-out;
+        }
+        .soft-depth-card:hover {
+            box-shadow: 0 8px 20px 0 rgba(0, 0, 0, 0.06);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md">
+<div class="flex min-h-screen">
+<!-- SideNavBar Component -->
+<aside class="w-[260px] h-screen sticky top-0 left-0 bg-surface-container-lowest border-r border-outline-variant shadow-sm flex flex-col py-lg px-md z-50">
+<div class="mb-xl flex items-center gap-sm px-sm">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined">corporate_fare</span>
+</div>
+<div>
+<h1 class="text-title-lg font-headline-lg text-primary tracking-tight">Lumens HR</h1>
+<p class="font-label-md text-label-md text-on-surface-variant">Enterprise Edition</p>
+</div>
+</div>
+<nav class="flex-1 space-y-base overflow-y-auto">
+<!-- Active Item -->
+<a class="flex items-center gap-md px-md py-sm bg-primary-container/10 text-primary border-l-[3px] border-primary font-medium hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<!-- Inactive Items -->
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">fingerprint</span>
+<span class="font-label-md text-label-md">Attendance</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">event_busy</span>
+<span class="font-label-md text-label-md">Leave Management</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-label-md text-label-md">Calendar</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-label-md text-label-md">Employees</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">beach_access</span>
+<span class="font-label-md text-label-md">Holidays</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">event</span>
+<span class="font-label-md text-label-md">Events</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">assessment</span>
+<span class="font-label-md text-label-md">Reports</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="font-label-md text-label-md">Notifications</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-lg border-t border-outline-variant flex items-center gap-sm px-sm">
+<img alt="Administrator Profile" class="w-10 h-10 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjGULUZHZexNkLxvdbVPCqS139qmktQvpggqmeb_hp7xEdtZO4hVtqrFeq979QMeLNWZ-adoMgn66avVeJIrwjQvjcEoIUW5hLcwwmxGxEcDCuX5XinOVS91fdq-HONyL6xwEMvFbVqWg5GqqWybRTZCy43Tqaiiscc2_UaC6laFF-e3btAi71oftxvRWcQwZNYYkFbNWYXs3wRAlW7qPlJn-D32Mq8lYN4DJJvubtXk4lE0ylINTDn0btDJ050fHGLSP_p4KLkq5A"/>
+<div class="overflow-hidden">
+<p class="font-label-md text-label-md text-on-surface truncate">Alex Sterling</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant truncate">Product Designer</p>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0">
+<!-- TopNavBar Component -->
+<header class="w-full h-16 sticky top-0 z-40 bg-surface border-b border-outline-variant flex items-center px-lg">
+<div class="flex justify-between items-center w-full max-w-container-max mx-auto">
+<div class="flex items-center gap-xl flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-full py-2 pl-10 pr-4 text-body-md focus:ring-2 focus:ring-primary-container transition-all" placeholder="Search for employees, tasks or files..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<button class="bg-primary-container text-on-primary px-lg py-2 rounded-lg font-label-md text-label-md hover:opacity-90 active:scale-95 transition-all">
+                            Apply Leave
+                        </button>
+</div>
+</div>
+</header>
+<!-- Dashboard Content -->
+<div class="p-lg overflow-y-auto">
+<div class="max-w-container-max mx-auto space-y-lg">
+<!-- Top Section: Welcome & Working Hours -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-lg items-stretch">
+<!-- Welcome Message -->
+<div class="lg:col-span-8 flex flex-col justify-center">
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-xs">Good morning, Alex!</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">It's a beautiful Monday. You have 3 meetings today and 1 pending leave request.</p>
+</div>
+<!-- Working Hour Timer Widget -->
+<div class="lg:col-span-4 bg-surface-container-lowest soft-depth-card rounded-xl p-lg flex flex-col items-center justify-center text-center border border-outline-variant/30">
+<p class="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-sm">Current Session</p>
+<div class="font-display-lg text-display-lg text-primary mb-md font-mono tabular-nums">06:42:15</div>
+<div class="flex gap-md w-full">
+<button class="flex-1 bg-primary text-on-primary py-3 rounded-lg font-label-md flex items-center justify-center gap-sm active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-[18px]">logout</span>
+                                    Check-out
+                                </button>
+<button class="flex-1 bg-surface-container-high text-on-surface py-3 rounded-lg font-label-md flex items-center justify-center gap-sm hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px]">pause_circle</span>
+                                    Break
+                                </button>
+</div>
+</div>
+</div>
+<!-- Bento Grid for Stats -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-lg">
+<!-- Remaining Leaves -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl p-lg border border-outline-variant/30">
+<div class="flex items-center justify-between mb-md">
+<div class="p-2 bg-secondary-container/10 rounded-lg">
+<span class="material-symbols-outlined text-secondary">calendar_today</span>
+</div>
+<span class="text-label-sm font-label-sm px-2 py-1 bg-secondary-container/10 text-secondary rounded">Annual</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">12 Days</h4>
+<p class="font-label-md text-label-md text-on-surface-variant mt-xs">Remaining Leaves</p>
+</div>
+<!-- Leave Balance Progress -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl p-lg border border-outline-variant/30">
+<div class="flex items-center justify-between mb-md">
+<div class="p-2 bg-tertiary-container/10 rounded-lg">
+<span class="material-symbols-outlined text-tertiary">pie_chart</span>
+</div>
+<span class="text-label-sm font-label-sm text-on-surface-variant">Used 8/20</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden mb-sm">
+<div class="bg-tertiary h-full w-[40%] rounded-full"></div>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant">Leave Balance Progress</p>
+</div>
+<!-- Attendance Status -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl p-lg border border-outline-variant/30">
+<div class="flex items-center justify-between mb-md">
+<div class="p-2 bg-primary-container/10 rounded-lg">
+<span class="material-symbols-outlined text-primary">check_circle</span>
+</div>
+<span class="text-label-sm font-label-sm px-2 py-1 bg-green-100 text-green-700 rounded">On Time</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">98.4%</h4>
+<p class="font-label-md text-label-md text-on-surface-variant mt-xs">Average Attendance</p>
+</div>
+<!-- Productivity/Trend -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl p-lg border border-outline-variant/30 relative overflow-hidden">
+<div class="flex items-center justify-between mb-md">
+<div class="p-2 bg-error-container/10 rounded-lg">
+<span class="material-symbols-outlined text-error">trending_up</span>
+</div>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">+4.2 hrs</h4>
+<p class="font-label-md text-label-md text-on-surface-variant mt-xs">Overtime this month</p>
+</div>
+</div>
+<!-- Widgets Section -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-lg">
+<!-- Company Events & Hero -->
+<div class="lg:col-span-8 space-y-lg">
+<div class="relative bg-inverse-surface rounded-2xl p-xl overflow-hidden min-h-[240px] flex flex-col justify-center">
+<img class="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay" data-alt="A diverse group of creative professionals collaborating in a high-tech, modern office lounge. The lighting is warm and cinematic, featuring large floor-to-ceiling windows showing a blurred cityscape at dusk. The overall aesthetic is professional, minimalist, and energetic, with deep primary indigo and soft ambient shadows defining the spatial depth of the corporate environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuClIVRDc0H9XavML1mth3v5zeTuLRY09lZxPWCKEQ2MqOQvlbE-2XyoWovwHx6GbcHqFe7vnn8j1wywqKHcd22K11G2J7xal8FUaDXueJTmyA9gpD3reIhGcGkWWIdVTUpsnDWbToCRanzxfkAOGo7mDnMThRJsQcPnE42_mf85R_F35pUTczDfWy5QqbzOhrwZfoRKUj_I9Z6aLQiKGxdGchxx5oJEZpJ84AGA7zuVyxSvvB1SFHDp9rMMyykFj4dx3-n51oiQqlq1"/>
+<div class="relative z-10 space-y-md max-w-md">
+<span class="px-3 py-1 bg-primary text-on-primary rounded-full text-label-sm font-label-sm uppercase">Next Event</span>
+<h3 class="font-headline-lg text-headline-lg text-white">Quarterly Team Retreat 2024</h3>
+<p class="text-white/80 font-body-lg">Join us next Friday at the Lakeside Resort for our annual strategy and bonding event.</p>
+<button class="bg-white text-on-surface px-lg py-2 rounded-lg font-label-md hover:bg-white/90 transition-colors">View Details</button>
+</div>
+</div>
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl border border-outline-variant/30 p-lg">
+<div class="flex items-center justify-between mb-lg">
+<h3 class="font-title-lg text-title-lg">Upcoming Holidays</h3>
+<button class="text-primary font-label-md hover:underline">View Calendar</button>
+</div>
+<div class="space-y-md">
+<div class="flex items-center justify-between p-md bg-surface-container-low rounded-lg">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 bg-white rounded-lg flex flex-col items-center justify-center shadow-sm">
+<span class="text-label-sm font-label-sm text-error uppercase">Dec</span>
+<span class="text-title-lg font-headline-md leading-tight">25</span>
+</div>
+<div>
+<p class="font-label-md font-bold">Christmas Day</p>
+<p class="text-label-sm text-on-surface-variant">Wednesday • Public Holiday</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+<div class="flex items-center justify-between p-md bg-surface-container-low rounded-lg">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 bg-white rounded-lg flex flex-col items-center justify-center shadow-sm">
+<span class="text-label-sm font-label-sm text-error uppercase">Jan</span>
+<span class="text-title-lg font-headline-md leading-tight">01</span>
+</div>
+<div>
+<p class="font-label-md font-bold">New Year's Day</p>
+<p class="text-label-sm text-on-surface-variant">Wednesday • Public Holiday</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Side Widgets -->
+<div class="lg:col-span-4 space-y-lg">
+<!-- Birthday Reminders -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl border border-outline-variant/30 p-lg">
+<div class="flex items-center gap-sm mb-lg">
+<span class="material-symbols-outlined text-secondary">cake</span>
+<h3 class="font-title-lg text-title-lg">Birthdays</h3>
+</div>
+<div class="space-y-lg">
+<div class="flex items-center gap-md">
+<div class="relative">
+<img alt="Employee" class="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0HFqi3OM69Dhxo89koBb8KOIwsUbUOpmdqXY0XiRLsmZg_npYdk1RiY5oNhiiufzwgfpkWFpUjYDRvAJJxKtmg3HWIrzALy2ZuZfth2NsdWRkNdNALVrliDPta8ysHT5H-lHAPV5O9BwhWH59nhuLdByJgs-5BrlsaKyrerGZ-9jrvDSCYjsSC-HfN2wfxM1oL_fPaOm8HGZdgnbGHPl5ZvbHVz8jpg1hMazm2TujKouDJE2r5X-KOhjYWXQEpVJWLT6hRsB0ikQz"/>
+<div class="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-sm">
+<span class="material-symbols-outlined text-[14px] text-secondary" style="font-variation-settings: 'FILL' 1;">cake</span>
+</div>
+</div>
+<div>
+<p class="font-label-md font-bold">Sarah Jenkins</p>
+<p class="text-label-sm text-on-surface-variant">Today • Marketing Lead</p>
+</div>
+<button class="ml-auto text-primary p-2 hover:bg-primary-container/10 rounded-full transition-colors">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+<div class="flex items-center gap-md">
+<div class="relative">
+<img alt="Employee" class="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_HgwMV6WVwFNJGL5cicQfRaOc_kiyZPDRkDyUY26LXCSEFpEQpCS8PQqTA52XhUCw-kl4MZZJ0F7j8pfhbCxncV4jriO58q7cpKd9oU8btNWXV6WfnUVY1r9G32jN2LhtqVGLl5UyBvWfM3SBjcAoMXisfMzET7WWpMapJ1dKFwmwRsOjljwDcr8sFUzvwU31kUFSVvfVe8scZdXW8KNaAYm-TYGffmh2iSkrsOIh5CAsSy7UijeAB5NwVOlmKdcqeQIbdpDoK0eB"/>
+</div>
+<div>
+<p class="font-label-md font-bold">Robert Fox</p>
+<p class="text-label-sm text-on-surface-variant">Tomorrow • HR Executive</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Action Card -->
+<div class="bg-primary-container text-on-primary rounded-xl p-lg relative overflow-hidden">
+<div class="relative z-10">
+<h4 class="font-headline-md text-headline-md mb-xs">Need a break?</h4>
+<p class="font-body-md opacity-80 mb-md">Plan your next vacation or medical leave in seconds.</p>
+<button class="w-full bg-white text-primary py-3 rounded-lg font-label-md font-bold hover:bg-opacity-90 transition-all">Request Leave Now</button>
+</div>
+<span class="material-symbols-outlined absolute -bottom-4 -right-4 text-[120px] opacity-10">beach_access</span>
+</div>
+<!-- Policy/Docs Links -->
+<div class="bg-surface-container-lowest soft-depth-card rounded-xl border border-outline-variant/30 p-lg">
+<h3 class="font-title-lg text-title-lg mb-md">Company Policy</h3>
+<ul class="space-y-sm">
+<li>
+<a class="flex items-center justify-between text-body-md text-on-surface-variant hover:text-primary p-2 rounded-lg transition-colors group" href="#">
+<span>Leave Policy 2024</span>
+<span class="material-symbols-outlined text-[20px] opacity-0 group-hover:opacity-100 transition-opacity">download</span>
+</a>
+</li>
+<li>
+<a class="flex items-center justify-between text-body-md text-on-surface-variant hover:text-primary p-2 rounded-lg transition-colors group" href="#">
+<span>Attendance Guidelines</span>
+<span class="material-symbols-outlined text-[20px] opacity-0 group-hover:opacity-100 transition-opacity">download</span>
+</a>
+</li>
+<li>
+<a class="flex items-center justify-between text-body-md text-on-surface-variant hover:text-primary p-2 rounded-lg transition-colors group" href="#">
+<span>Benefits Handbook</span>
+<span class="material-symbols-outlined text-[20px] opacity-0 group-hover:opacity-100 transition-opacity">download</span>
+</a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

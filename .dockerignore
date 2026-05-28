@@ -1,0 +1,12 @@
+node_modules
+.env
+service-account.json
+client/
+*.log
+.git
+.gitignore
+.claude
+stitch_modern_hrms_saas_dashboard
+check-users.js
+create-root-admin.js
+README.md

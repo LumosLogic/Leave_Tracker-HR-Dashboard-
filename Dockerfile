@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-EXPOSE 3000
+# Cloud Run injects PORT env var (default 8080); app already reads process.env.PORT
+EXPOSE 8080
 
 CMD ["node", "server.js"]

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Holidays &amp; Events - Lumens HR</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f9f9ff;
+    }
+  </style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface": "#f9f9ff",
+            "on-tertiary-fixed": "#351000",
+            "inverse-on-surface": "#ebf1ff",
+            "tertiary": "#7e3000",
+            "on-surface-variant": "#464555",
+            "on-primary": "#ffffff",
+            "secondary-fixed-dim": "#d2bbff",
+            "inverse-surface": "#2a313d",
+            "outline-variant": "#c7c4d8",
+            "on-tertiary-container": "#ffd2be",
+            "on-primary-fixed": "#0f0069",
+            "on-error": "#ffffff",
+            "on-secondary-fixed": "#25005a",
+            "primary-fixed": "#e2dfff",
+            "inverse-primary": "#c3c0ff",
+            "on-secondary-container": "#fffbff",
+            "surface-container-highest": "#dce2f3",
+            "surface-dim": "#d3daea",
+            "on-primary-container": "#dad7ff",
+            "on-surface": "#151c27",
+            "secondary-fixed": "#eaddff",
+            "tertiary-fixed": "#ffdbcc",
+            "on-error-container": "#93000a",
+            "surface-tint": "#4d44e3",
+            "surface-container-high": "#e2e8f8",
+            "secondary": "#712ae2",
+            "on-tertiary-fixed-variant": "#7b2f00",
+            "on-tertiary": "#ffffff",
+            "surface-bright": "#f9f9ff",
+            "tertiary-fixed-dim": "#ffb695",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-low": "#f0f3ff",
+            "on-background": "#151c27",
+            "on-secondary": "#ffffff",
+            "error-container": "#ffdad6",
+            "secondary-container": "#8a4cfc",
+            "primary-container": "#4f46e5",
+            "error": "#ba1a1a",
+            "surface-variant": "#dce2f3",
+            "background": "#f9f9ff",
+            "on-primary-fixed-variant": "#3323cc",
+            "primary": "#3525cd",
+            "outline": "#777587",
+            "surface-container": "#e7eefe",
+            "primary-fixed-dim": "#c3c0ff",
+            "on-secondary-fixed-variant": "#5a00c6",
+            "tertiary-container": "#a44100"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "lg": "24px",
+            "xl": "32px",
+            "sm": "8px",
+            "xs": "4px",
+            "3xl": "64px",
+            "base": "4px",
+            "2xl": "48px",
+            "sidebar-width": "260px",
+            "container-max": "1440px",
+            "md": "16px",
+            "gutter": "24px"
+          },
+          "fontFamily": {
+            "body-lg": ["Inter"],
+            "label-md": ["Inter"],
+            "display-lg": ["Inter"],
+            "label-sm": ["Inter"],
+            "headline-lg": ["Inter"],
+            "body-md": ["Inter"],
+            "headline-md": ["Inter"],
+            "title-lg": ["Inter"]
+          },
+          "fontSize": {
+            "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+            "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+            "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+            "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "600"}],
+            "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+            "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+            "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+            "title-lg": ["18px", {"lineHeight": "28px", "fontWeight": "600"}]
+          }
+        },
+      },
+    }
+  </script>
+</head>
+<body class="bg-surface text-on-surface">
+<div class="flex min-h-screen">
+<!-- SideNavBar Component -->
+<aside class="w-[260px] h-screen sticky top-0 left-0 bg-surface-container-lowest dark:bg-inverse-surface border-r border-outline-variant dark:border-outline shadow-sm dark:shadow-none flex flex-col h-full py-lg px-md z-50">
+<div class="mb-3xl px-sm">
+<h1 class="text-title-lg font-headline-lg text-primary dark:text-inverse-primary tracking-tight">Lumens HR</h1>
+<p class="font-label-md text-label-md text-on-surface-variant">Enterprise Edition</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="fingerprint">fingerprint</span>
+<span class="font-label-md text-label-md">Attendance</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="event_busy">event_busy</span>
+<span class="font-label-md text-label-md">Leave Management</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_today">calendar_today</span>
+<span class="font-label-md text-label-md">Calendar</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-label-md text-label-md">Employees</span>
+</a>
+<!-- Active Tab: Holidays -->
+<a class="flex items-center gap-md px-md py-sm rounded-lg bg-primary-container/10 dark:bg-primary-fixed-dim/20 text-primary dark:text-inverse-primary border-l-[3px] border-primary dark:border-inverse-primary font-medium opacity-90 transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="beach_access" style="font-variation-settings: 'FILL' 1;">beach_access</span>
+<span class="font-label-md text-label-md">Holidays</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="event">event</span>
+<span class="font-label-md text-label-md">Events</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-label-md text-label-md">Reports</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="font-label-md text-label-md">Notifications</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-sm flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center overflow-hidden border border-outline-variant">
+<img alt="Administrator Profile" data-alt="A professional headshot of a middle-aged male administrator with a friendly expression, set against a clean, softly lit corporate office background. The lighting is bright and even, reinforcing a professional and trustworthy HR atmosphere consistent with a modern enterprise software interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBnlO5e73Vfe8PgQpioicZ_L_wl6Y89jwuMsKlomUg1349nbKrZ4KUTW01loHjqtFvDtsTtj_05cqI6wzcU04cKWNHjKnaZfktKUSKnkFfLUK-QKYFSsy8Cg9s3hET_OqI36NRlKP52YR8OvKTTXP9oCtjzmerHYKjVVKyhgLqE7uP0b098EGctWEvudq-hH6sf5gjw638mjJQPXIaa_7aakciS9G9p2wCPY2SzcmNPzIt39DLGNvmQAyFw4XE8FwzKKv8AMdyb0Hjn"/>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold">Admin User</span>
+<span class="text-[10px] uppercase tracking-wider text-outline">HR Director</span>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col">
+<!-- TopNavBar Component -->
+<header class="w-full h-16 sticky top-0 z-40 bg-surface dark:bg-on-background border-b border-outline-variant dark:border-outline flat no shadows">
+<div class="flex justify-between items-center px-lg w-full max-w-container-max mx-auto h-full">
+<div class="flex items-center gap-xl">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
+<input class="pl-10 pr-lg py-sm bg-surface-container-low border border-outline-variant rounded-full text-body-md focus:ring-2 focus:ring-primary focus:border-primary w-64 transition-all" placeholder="Search events..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<div class="flex items-center gap-sm mr-md">
+<button class="p-sm rounded-full text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-sm rounded-full text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+<button class="bg-primary text-on-primary px-lg py-sm rounded-lg font-label-md text-label-md shadow-sm hover:opacity-90 active:scale-95 transition-all">
+              Apply Leave
+            </button>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-lg max-w-container-max mx-auto w-full space-y-xl">
+<!-- Header Section -->
+<section class="flex flex-col md:flex-row md:items-end justify-between gap-md">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Holidays &amp; Events</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-base">Plan your schedule around upcoming public holidays and company milestones.</p>
+</div>
+<div class="flex gap-sm">
+<button class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg text-label-md font-label-md hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="filter_list">filter_list</span>
+              Filter
+            </button>
+<button class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg text-label-md font-label-md hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="download">download</span>
+              Export PDF
+            </button>
+</div>
+</section>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-lg">
+<!-- Column 1: Public Holidays List (Large) -->
+<div class="lg:col-span-8 space-y-lg">
+<div class="flex items-center justify-between">
+<h3 class="font-title-lg text-title-lg text-on-surface">Upcoming Public Holidays</h3>
+<span class="text-primary font-label-md text-label-md cursor-pointer hover:underline">View full calendar</span>
+</div>
+<!-- Holiday Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<!-- Holiday Card 1 -->
+<div class="bg-surface-container-lowest p-lg rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-300 border border-transparent hover:border-outline-variant group">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-primary-fixed rounded-lg text-on-primary-fixed group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="celebration">celebration</span>
+</div>
+<div class="text-right">
+<span class="block font-headline-md text-headline-md text-on-surface">25</span>
+<span class="block font-label-sm text-label-sm text-outline-variant uppercase tracking-tighter">Dec 2023</span>
+</div>
+</div>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-xs">Christmas Day</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Annual Christian festival celebrating Christ's birth, observed as a cultural holiday.</p>
+<div class="mt-lg pt-md border-t border-surface-container flex items-center gap-sm">
+<span class="px-sm py-xs bg-success-container/10 text-green-700 rounded text-[10px] font-bold uppercase tracking-widest">Mandatory Off</span>
+<span class="text-label-md text-on-surface-variant ml-auto">Monday</span>
+</div>
+</div>
+<!-- Holiday Card 2 -->
+<div class="bg-surface-container-lowest p-lg rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-300 border border-transparent hover:border-outline-variant group">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-secondary-fixed rounded-lg text-on-secondary-fixed group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="flare">flare</span>
+</div>
+<div class="text-right">
+<span class="block font-headline-md text-headline-md text-on-surface">01</span>
+<span class="block font-label-sm text-label-sm text-outline-variant uppercase tracking-tighter">Jan 2024</span>
+</div>
+</div>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-xs">New Year's Day</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">The first day of the year in the Gregorian calendar, a global time of renewal.</p>
+<div class="mt-lg pt-md border-t border-surface-container flex items-center gap-sm">
+<span class="px-sm py-xs bg-success-container/10 text-green-700 rounded text-[10px] font-bold uppercase tracking-widest">Mandatory Off</span>
+<span class="text-label-md text-on-surface-variant ml-auto">Monday</span>
+</div>
+</div>
+<!-- Holiday Card 3 -->
+<div class="bg-surface-container-lowest p-lg rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-300 border border-transparent hover:border-outline-variant group">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-tertiary-fixed rounded-lg text-on-tertiary-fixed group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="flag">flag</span>
+</div>
+<div class="text-right">
+<span class="block font-headline-md text-headline-md text-on-surface">26</span>
+<span class="block font-label-sm text-label-sm text-outline-variant uppercase tracking-tighter">Jan 2024</span>
+</div>
+</div>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-xs">Republic Day</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Commemorating the date on which the Constitution of the nation came into effect.</p>
+<div class="mt-lg pt-md border-t border-surface-container flex items-center gap-sm">
+<span class="px-sm py-xs bg-success-container/10 text-green-700 rounded text-[10px] font-bold uppercase tracking-widest">Mandatory Off</span>
+<span class="text-label-md text-on-surface-variant ml-auto">Friday</span>
+</div>
+</div>
+<!-- Holiday Card 4 -->
+<div class="bg-surface-container-lowest p-lg rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)] transition-all duration-300 border border-transparent hover:border-outline-variant group">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-primary-fixed-dim rounded-lg text-on-primary-fixed-variant group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="color_lens">color_lens</span>
+</div>
+<div class="text-right">
+<span class="block font-headline-md text-headline-md text-on-surface">25</span>
+<span class="block font-label-sm text-label-sm text-outline-variant uppercase tracking-tighter">Mar 2024</span>
+</div>
+</div>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-xs">Holi Festival</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">The festival of colors, celebrating the arrival of spring and victory of good over evil.</p>
+<div class="mt-lg pt-md border-t border-surface-container flex items-center gap-sm">
+<span class="px-sm py-xs bg-orange-100 text-orange-700 rounded text-[10px] font-bold uppercase tracking-widest">Regional Off</span>
+<span class="text-label-md text-on-surface-variant ml-auto">Monday</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 2: Company Events (Sidebar style) -->
+<div class="lg:col-span-4 space-y-lg">
+<div class="flex items-center justify-between">
+<h3 class="font-title-lg text-title-lg text-on-surface">Company Events</h3>
+<button class="p-xs bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+<div class="space-y-md">
+<!-- Event Card 1 (Retreat) -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-lowest border border-outline-variant shadow-sm">
+<div class="h-32 w-full overflow-hidden">
+<img alt="Team Retreat" data-alt="A cinematic, high-angle shot of a diverse professional team engaged in a collaborative workshop within a bright, glass-walled mountain lodge. Sunlight streams through the windows, illuminating a workspace filled with laptops and colorful sticky notes. The atmosphere is energetic and focused, reflecting a premium corporate culture." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtSlmT8LXoY2C6x6t4VsJDcNR66aHk3pMBtpYcuWOtCGMbcruc6obD8PUKFhFc5CJH-qsK4jo5f8mTCZK7HH5ygz-qfe8w1VIEiRJpT8USA6LAf2Jq3E1bYJyKGvKkQcxVSFwGrUaE-0-wRk4Wr31UYL5UayOFn8erAqIjH6Lym-lqH_LHoeC6Hzo-_oaDh69sjsThkgJ1wLvs9pvzLPL7-eoACi4kKcmHxqd79WWuv94HUAkdHwtlL1YNvA_MfbkJXUs59pXsNsWK"/>
+</div>
+<div class="p-md">
+<div class="flex items-center gap-sm mb-xs">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="hiking">hiking</span>
+<span class="font-label-md text-label-md text-primary font-bold">Annual Retreat</span>
+</div>
+<h5 class="font-title-lg text-title-lg text-on-surface">Mountain Summit 2024</h5>
+<div class="flex items-center gap-sm mt-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="location_on">location_on</span>
+<span class="text-body-md font-body-md">Aspen, Colorado</span>
+</div>
+<div class="flex items-center gap-sm mt-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="schedule">schedule</span>
+<span class="text-body-md font-body-md">Feb 12 - Feb 15, 2024</span>
+</div>
+<button class="mt-md w-full py-sm bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md rounded-lg transition-colors">
+                    View Details
+                  </button>
+</div>
+</div>
+<!-- Event Card 2 (Workshop) -->
+<div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant shadow-sm flex gap-md items-center">
+<div class="w-16 h-16 rounded-lg bg-secondary-fixed flex flex-col items-center justify-center shrink-0">
+<span class="text-headline-md font-bold text-on-secondary-fixed">18</span>
+<span class="text-[10px] font-bold uppercase text-on-secondary-fixed opacity-70">Nov</span>
+</div>
+<div class="flex-1">
+<h5 class="font-label-md text-label-md font-bold text-on-surface">AI &amp; Ethics Workshop</h5>
+<p class="text-body-md font-body-md text-on-surface-variant line-clamp-1">Speaker: Dr. Sarah Jenkins</p>
+<div class="flex items-center gap-xs mt-base text-[11px] text-primary">
+<span class="material-symbols-outlined text-[14px]" data-icon="video_camera_front">video_camera_front</span>
+                    Online Session
+                  </div>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Event Card 3 (Townhall) -->
+<div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant shadow-sm flex gap-md items-center">
+<div class="w-16 h-16 rounded-lg bg-tertiary-fixed flex flex-col items-center justify-center shrink-0">
+<span class="text-headline-md font-bold text-on-tertiary-fixed">22</span>
+<span class="text-[10px] font-bold uppercase text-on-tertiary-fixed opacity-70">Nov</span>
+</div>
+<div class="flex-1">
+<h5 class="font-label-md text-label-md font-bold text-on-surface">Q4 Global Townhall</h5>
+<p class="text-body-md font-body-md text-on-surface-variant line-clamp-1">Yearly Roadmap &amp; Strategy</p>
+<div class="flex items-center gap-xs mt-base text-[11px] text-tertiary">
+<span class="material-symbols-outlined text-[14px]" data-icon="groups">groups</span>
+                    Main Auditorium
+                  </div>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- Announcement Card -->
+<div class="p-lg rounded-xl bg-primary-container text-on-primary-container relative overflow-hidden mt-xl">
+<div class="relative z-10">
+<h4 class="font-title-lg text-title-lg font-bold mb-xs">Submit Your Feedback</h4>
+<p class="font-body-md text-body-md opacity-90 mb-md">We want to make our company events better. Fill out the survey.</p>
+<button class="bg-white text-primary px-md py-sm rounded-lg font-label-md text-label-md shadow-lg">Take Survey</button>
+</div>
+<span class="material-symbols-outlined absolute -right-4 -bottom-4 text-[120px] opacity-10 rotate-12" data-icon="forum">forum</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Attendance Stats Section (Mini Analytics) -->
+<section class="bg-surface-container-lowest p-xl rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-outline-variant">
+<div class="flex items-center gap-md mb-lg">
+<span class="material-symbols-outlined text-primary" data-icon="insights">insights</span>
+<h3 class="font-title-lg text-title-lg text-on-surface">Holiday Participation Insights</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-xl">
+<div class="space-y-base">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Optional Holidays Taken</span>
+<div class="flex items-baseline gap-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface">12%</span>
+<span class="text-green-600 text-label-md font-bold">↑ 2.4%</span>
+</div>
+<div class="w-full bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-primary w-[12%] h-full"></div>
+</div>
+</div>
+<div class="space-y-base">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Avg. Event Attendance</span>
+<div class="flex items-baseline gap-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface">88%</span>
+<span class="text-green-600 text-label-md font-bold">↑ 5.1%</span>
+</div>
+<div class="w-full bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-secondary w-[88%] h-full"></div>
+</div>
+</div>
+<div class="space-y-base">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Planned Leave Efficiency</span>
+<div class="flex items-baseline gap-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface">94%</span>
+<span class="text-green-600 text-label-md font-bold">Stable</span>
+</div>
+<div class="w-full bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-tertiary w-[94%] h-full"></div>
+</div>
+</div>
+<div class="space-y-base">
+<span class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Next 30 Days Off-Days</span>
+<div class="flex items-baseline gap-sm">
+<span class="font-headline-lg text-headline-lg text-on-surface">04</span>
+<span class="text-on-surface-variant text-label-md">Days Total</span>
+</div>
+<div class="w-full bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-primary-container w-[40%] h-full"></div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- FAB: Add Event (Contextual) -->
+<button class="fixed bottom-lg right-lg w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined text-[32px]" data-icon="event_available">event_available</span>
+</button>
+</body></html>

@@ -71,6 +71,7 @@ async function seed() {
   // Users
   const avatarColors = ['#4F46E5','#10B981','#F59E0B','#EF4444','#8B5CF6','#F97316'];
   const rawUsers = [
+    { name:'Root Admin',     email:'root@company.com',   password:'root@123',    role:'root_admin', department:'Management',     position:'Chief Executive Officer', avatar_color: '#1E40AF' },
     { name:'Admin HR',       email:'admin@company.com',  password:'admin123',    role:'admin',     department:'Human Resources', position:'HR Manager',        avatar_color: avatarColors[0] },
     { name:'Alice Johnson',  email:'alice@company.com',  password:'password123', role:'employee',  department:'Engineering',     position:'Senior Developer',   avatar_color: avatarColors[1] },
     { name:'Bob Martinez',   email:'bob@company.com',    password:'password123', role:'employee',  department:'Engineering',     position:'Frontend Developer', avatar_color: avatarColors[2] },
@@ -86,6 +87,7 @@ async function seed() {
   const { data: insertedUsers } = await supabase.from('users').insert(usersToInsert).select();
   const admin    = insertedUsers.find(u => u.role === 'admin');
   const [alice, bob, carol, david, eve] = insertedUsers.filter(u => u.role === 'employee');
+  // root_admin is seeded but not used in attendance/leave seed data
 
   // Attendance records — working days April 1–12, 2026 (skip weekends Apr 4-5, 11-12)
   const attendance = [
