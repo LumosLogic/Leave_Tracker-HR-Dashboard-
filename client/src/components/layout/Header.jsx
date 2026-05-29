@@ -1,10 +1,12 @@
 import React from 'react';
-import { Menu, ShieldCheck, Users, UserCircle } from 'lucide-react';
+import { Menu, ShieldCheck, Users, UserCircle, Bell, BellOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { usePushNotification } from '@/hooks/usePushNotification';
 
 export function Header({ title, subtitle, onMenuClick }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const { isRootAdmin, isAdmin, isEmployee } = useAuth();
+  const { user, isRootAdmin, isAdmin, isEmployee } = useAuth();
+  const { permission, subscribed, requestAndSubscribe, isSupported } = usePushNotification(user?.id);
 
   const roleLabel = isRootAdmin ? 'Root Admin' : isAdmin ? 'HR Admin' : 'Employee';
   const RoleIcon  = isRootAdmin ? ShieldCheck : isAdmin ? Users : UserCircle;
@@ -36,6 +38,21 @@ export function Header({ title, subtitle, onMenuClick }) {
         <RoleIcon size={11} />
         {roleLabel}
       </span>
+
+      {/* Push notification bell — pulses until user grants permission */}
+      {isSupported && (
+        <button
+          onClick={requestAndSubscribe}
+          title={permission === 'granted' ? 'Notifications enabled' : 'Click to enable push notifications'}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-colors flex-shrink-0 ${
+            permission === 'granted'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+              : 'border-amber-200 bg-amber-50 text-amber-500 animate-pulse'
+          }`}
+        >
+          <Bell size={15} />
+        </button>
+      )}
 
       <span className="hidden sm:flex text-[0.78rem] text-[#464555] font-semibold bg-white border border-[#c7c4d8] px-3.5 py-1.5 rounded-lg shadow-sm flex-shrink-0">
         {today}

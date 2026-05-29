@@ -646,7 +646,7 @@ function ManageHolidaysBtn({ onRefresh }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [holidays, setHolidays] = useState([]);
-  const [form, setForm] = useState({ name: '', date: '', type: 'public', description: '' });
+  const [form, setForm] = useState({ name: '', date: '', type: 'public', description: '', specific_msg: '' });
   const [confirmDel, setConfirmDel] = useState(null);
 
   async function load() { const h = await apiGet('/holidays').catch(() => []); setHolidays(h); setOpen(true); }
@@ -657,7 +657,7 @@ function ManageHolidaysBtn({ onRefresh }) {
       await apiPost('/holidays', form);
       toast('Holiday added!', 'success');
       const h = await apiGet('/holidays'); setHolidays(h);
-      setForm({ name: '', date: '', type: 'public', description: '' });
+      setForm({ name: '', date: '', type: 'public', description: '', specific_msg: '' });
       onRefresh?.();
     } catch (err) { toast(err.message, 'error'); }
   }
@@ -687,6 +687,7 @@ function ManageHolidaysBtn({ onRefresh }) {
                   <div><label className="form-label">Type</label><select className="form-control" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}><option value="public">Public</option><option value="optional">Optional</option><option value="restricted">Restricted</option></select></div>
                   <div><label className="form-label">Description</label><input className="form-control" placeholder="Optional" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
                 </div>
+                <div className="mb-3"><label className="form-label">Custom Notification Message <span className="text-[#777587] font-normal">(optional)</span></label><input className="form-control" placeholder="e.g. Office will remain closed. Enjoy the holiday!" value={form.specific_msg} onChange={e => setForm(f => ({ ...f, specific_msg: e.target.value }))} /></div>
                 <button className="btn btn-primary btn-sm" onClick={add}>Add Holiday</button>
               </div>
               <div className="border-t border-[#f0f3ff] pt-4">

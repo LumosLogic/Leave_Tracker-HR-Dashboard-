@@ -466,9 +466,9 @@ function EditLateEarlyModal({ record: r, onClose, onSuccess }) {
   const [confirmDel, setConfirmDel] = useState(false);
 
   async function save() {
-    if (form.late === 'yes' && !form.lateTime)  return toast('Enter arrival time', 'warning');
+    if (form.late === 'yes' && !form.lateTime)   return toast('Enter arrival time', 'warning');
     if (form.early === 'yes' && !form.earlyTime) return toast('Enter exit time', 'warning');
-    if (form.late === 'none' && form.early === 'none') return toast('Select at least one', 'warning');
+    // Both 'none' is valid when editing — it clears the late/early flags from the record
     try {
       await apiPut(`/attendance/late-early/${r.id}`, { late_come: form.late, late_come_time: form.late === 'yes' ? form.lateTime : null, early_exit: form.early, early_exit_time: form.early === 'yes' ? form.earlyTime : null });
       toast('Updated!', 'success'); onClose(); onSuccess();

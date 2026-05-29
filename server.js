@@ -6,8 +6,21 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const axios    = require('axios');
 const path     = require('path');
+const webpush  = require('web-push');
 const { supabase, seed } = require('./db');
 const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml } = require('./emailService');
+
+// ─── VAPID / Push Notification Setup ─────────────────────────────────────────
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  webpush.setVapidDetails(
+    'mailto:' + (process.env.SMTP_USER || 'admin@lumoslogic.com'),
+    VAPID_PUBLIC, VAPID_PRIVATE
+  );
+} else {
+  console.warn('[Push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — push notifications disabled');
+}
 const gcal = require('./googleCalendarService');
 
 const app        = express();
@@ -36,6 +49,29 @@ app.use((req, res, next) => {
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Send web push notification to a list of users (null = all users)
+async function sendPushToUsers(userIds, payload) {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return 0;
+  let query = supabase.from('push_subscriptions').select('user_id, endpoint, subscription');
+  if (userIds && userIds.length > 0) query = query.in('user_id', userIds);
+  const { data: subs } = await query;
+  if (!subs?.length) return 0;
+  const payloadStr = JSON.stringify(payload);
+  let sent = 0;
+  await Promise.allSettled(subs.map(async s => {
+    try {
+      await webpush.sendNotification(s.subscription, payloadStr);
+      sent++;
+    } catch (err) {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await supabase.from('push_subscriptions').delete()
+          .eq('endpoint', s.endpoint).catch(() => {});
+      }
+    }
+  }));
+  return sent;
+}
+
 // Returns YYYY-MM-DD in IST (Asia/Kolkata). Always use this instead of toISOString().split('T')[0]
 function localDateStr(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
@@ -997,6 +1033,72 @@ app.post('/api/clockify/sync', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Clockify sync failed: ' + (err.response?.data?.message || err.message) }); }
 });
 
+// ─── Push Notifications ───────────────────────────────────────────────────────
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    const { subscription, endpoint, userAgent } = req.body;
+    if (!subscription || !endpoint) return res.status(400).json({ error: 'Subscription and endpoint required' });
+    await supabase.from('push_subscriptions').upsert(
+      { user_id: req.user.id, endpoint, subscription, user_agent: userAgent || null },
+      { onConflict: 'user_id,endpoint' }
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/push/unsubscribe', auth, async (req, res) => {
+  try {
+    await supabase.from('push_subscriptions').delete().eq('user_id', req.user.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/notifications/send', auth, adminOnly, async (req, res) => {
+  try {
+    const { title, body, url, target_user_id } = req.body;
+    if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Title and body required' });
+    const userIds = target_user_id ? [parseInt(target_user_id)] : null;
+    const sent = await sendPushToUsers(userIds, { title: title.trim(), body: body.trim(), url: url || '/' });
+    await supabase.from('notifications_log').insert({
+      title: title.trim(), body: body.trim(), url: url || null,
+      target_user_id: target_user_id ? parseInt(target_user_id) : null,
+      sent_by: req.user.id, sent_count: sent || 0,
+    }).catch(() => {});
+    res.json({ success: true, sent: sent || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Root Admin: Send Email ───────────────────────────────────────────────────
+app.post('/api/root/send-email', auth, adminOnly, async (req, res) => {
+  try {
+    const { subject, message, target_user_id } = req.body;
+    if (!subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Subject and message required' });
+    let recipients;
+    if (target_user_id) {
+      const { data: u } = await supabase.from('users').select('email').eq('id', parseInt(target_user_id)).single();
+      if (!u) return res.status(404).json({ error: 'User not found' });
+      recipients = [u.email];
+    } else {
+      const { data: users } = await supabase.from('users').select('email').neq('role', 'root_admin');
+      recipients = (users || []).map(u => u.email).filter(Boolean);
+    }
+    const html = `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+      <div style="background:linear-gradient(135deg,#3525cd,#4f46e5);border-radius:12px;padding:24px;margin-bottom:20px;">
+        <h2 style="color:white;margin:0;font-size:20px;">📢 ${subject.trim()}</h2>
+        <p style="color:rgba(255,255,255,.8);margin:8px 0 0;font-size:13px;">From Lumos Logic HR System</p>
+      </div>
+      <div style="background:#f8fafc;border-radius:12px;padding:20px;border:1px solid #e2e8f0;">
+        <p style="color:#334155;line-height:1.7;margin:0;">${message.trim().replace(/\n/g, '<br/>')}</p>
+      </div>
+      <p style="color:#94a3b8;font-size:12px;margin-top:20px;text-align:center;">— Lumos Logic HR Management System</p>
+    </div>`;
+    for (const email of recipients) {
+      sendMail({ to: email, subject: subject.trim(), html });
+    }
+    res.json({ success: true, sent: recipients.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Culture (Birthdays / Holidays / Events) ──────────────────────────────────
 app.get('/api/culture', auth, async (req, res) => {
   try {
@@ -1058,9 +1160,9 @@ app.get('/api/holidays', auth, async (req, res) => {
 });
 app.post('/api/holidays', auth, adminOnly, async (req, res) => {
   try {
-    const { name, date, type, description } = req.body;
+    const { name, date, type, description, specific_msg } = req.body;
     if (!name || !date) return res.status(400).json({ error: 'Name and date required' });
-    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'' }).select().single();
+    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'', specific_msg: specific_msg||null }).select().single();
     if (error) throw new Error(error.message);
     const gcalId = await gcal.createHolidayEvent(data);
     if (gcalId) await supabase.from('holidays').update({ google_event_id: gcalId }).eq('id', data.id);
@@ -1069,9 +1171,9 @@ app.post('/api/holidays', auth, adminOnly, async (req, res) => {
 });
 app.put('/api/holidays/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { name, date, type, description } = req.body;
+    const { name, date, type, description, specific_msg } = req.body;
     const { data: existing } = await supabase.from('holidays').select('google_event_id').eq('id', req.params.id).maybeSingle();
-    const { data } = await supabase.from('holidays').update({ name, date, type, description }).eq('id', req.params.id).select().single();
+    const { data } = await supabase.from('holidays').update({ name, date, type, description, specific_msg: specific_msg||null }).eq('id', req.params.id).select().single();
     if (existing?.google_event_id) gcal.updateHolidayEvent(existing.google_event_id, data);
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1167,10 +1269,16 @@ app.get('/api/leave-balance', auth, async (req, res) => {
     let usedLeaveDays = 0;
     for (const l of approvedLeaves || []) {
       if (l.leave_time === 'wfh') continue;
-      const start = new Date(l.start_date + 'T12:00:00');
-      const end   = new Date(l.end_date   + 'T12:00:00');
-      const days  = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-      usedLeaveDays += l.leave_time === 'half' ? 0.5 : days;
+      if (l.leave_time === 'half') {
+        usedLeaveDays += 0.5;
+      } else {
+        const start = new Date(l.start_date + 'T12:00:00');
+        const end   = new Date(l.end_date   + 'T12:00:00');
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dow = d.getDay();
+          if (dow !== 0 && dow !== 6) usedLeaveDays++;
+        }
+      }
     }
 
     res.json({
@@ -1397,12 +1505,16 @@ async function runDailyNotifications() {
 
   // Birthday wishes to employees whose birthday is today
   for (const emp of employees || []) {
-    if (emp.date_of_birth && emp.date_of_birth.slice(5) === todayMD && emp.email) {
-      sendMail({
-        to: emp.email,
-        subject: `Happy Birthday, ${emp.name}! 🎂`,
-        html: birthdayWishHtml(emp),
-      });
+    if (emp.date_of_birth && emp.date_of_birth.slice(5) === todayMD) {
+      if (emp.email) {
+        sendMail({ to: emp.email, subject: `Happy Birthday, ${emp.name}! 🎂`, html: birthdayWishHtml(emp) });
+      }
+      // Push notification on their device
+      await sendPushToUsers([emp.id], {
+        title: `🎂 Happy Birthday, ${emp.name}!`,
+        body:  `Wishing you a wonderful birthday filled with joy and happiness! 🎉`,
+        url:   '/portal/home',
+      }).catch(() => {});
     }
   }
 
@@ -1427,34 +1539,39 @@ async function runDailyNotifications() {
     const recipients = [...new Set([...allEmails, ...hrEmails])];
     for (const holiday of tmrHolidays) {
       if (recipients.length) {
-        sendMail({
-          to: recipients,
-          subject: `Tomorrow is a Holiday — ${holiday.name}`,
-          html: holidayReminderHtml(holiday),
-        });
+        sendMail({ to: recipients, subject: `Tomorrow is a Holiday — ${holiday.name}`, html: holidayReminderHtml(holiday) });
       }
+      // Push notification to all employees
+      await sendPushToUsers(null, {
+        title: `🏖️ Tomorrow is a Holiday — ${holiday.name}`,
+        body:  holiday.specific_msg || holiday.description || `Enjoy the ${holiday.name} holiday tomorrow!`,
+        url:   '/portal/home',
+      }).catch(() => {});
     }
   }
 
   console.log(`[Cron] Daily notifications sent for ${today}`);
 }
 
-async function runClockifyAutoSync() {
-  try {
-    const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
-    if (!config?.api_key || !config?.workspace_id) {
-      console.log('[Clockify] Auto-sync skipped — not configured');
-      return;
+// Clockify syncs every 10 minutes between 8 AM – 10 PM IST
+function startClockifyIntervalSync() {
+  async function trySync() {
+    const hour = new Date().getHours(); // IST after TZ setting
+    if (hour < 8 || hour >= 22) return;
+    try {
+      const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+      if (!config?.api_key || !config?.workspace_id) return;
+      const targetDate = localDateStr();
+      const settings   = await getSettings();
+      const results    = await syncClockifyForDate(targetDate, config, settings);
+      await supabase.from('clockify_config').update({ last_synced: new Date().toISOString() }).eq('id', config.id);
+      if (results.length > 0) console.log(`[Clockify] Synced ${results.length} users for ${targetDate}`);
+    } catch (err) {
+      console.error('[Clockify] Interval sync failed:', err.message);
     }
-    // Sync today's complete data (runs at 10 PM IST after work hours end)
-    const targetDate = localDateStr();
-    const settings  = await getSettings();
-    const results   = await syncClockifyForDate(targetDate, config, settings);
-    await supabase.from('clockify_config').update({ last_synced: new Date().toISOString() }).eq('id', config.id);
-    console.log(`[Clockify] Auto-sync complete for ${targetDate}: ${results.length} users synced`);
-  } catch (err) {
-    console.error('[Clockify] Auto-sync failed:', err.message);
   }
+  trySync();
+  setInterval(trySync, 10 * 60 * 1000); // every 10 minutes
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
@@ -1464,8 +1581,8 @@ async function start() {
     app.listen(PORT, () => {
       console.log(`\n🚀 Lumens HR running at http://localhost:${PORT}\n`);
     });
-    scheduleDailyAt(8, 0, runDailyNotifications);   // 8 AM IST — birthday wishes & holiday reminders
-    scheduleDailyAt(22, 0, runClockifyAutoSync);    // 10 PM IST — sync today's Clockify data
+    scheduleDailyAt(8, 0, runDailyNotifications);  // 8 AM IST — birthday wishes & holiday reminders
+    startClockifyIntervalSync();                    // every 10 min, 8 AM – 10 PM IST
   } catch (err) {
     console.error('Failed to start:', err.message);
     process.exit(1);

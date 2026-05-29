@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck, UserCircle, Mail } from 'lucide-react';
+import { LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck, UserCircle, Bell } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
@@ -11,8 +11,9 @@ const NAV_ITEMS = [
   { to: '/root/calendar',   label: 'Calendar',   Icon: Calendar },
   { to: '/root/leaves',     label: 'Leaves',     Icon: FileText },
   { to: '/root/employees',  label: 'Employees',  Icon: Users },
-  { to: '/root/manage-hr',  label: 'Manage HR',  Icon: ShieldCheck },
-  { to: '/root/settings',   label: 'Settings',   Icon: Settings },
+  { to: '/root/manage-hr',  label: 'Manage HR',   Icon: ShieldCheck },
+  { to: '/root/broadcast',  label: 'Broadcast',   Icon: Bell },
+  { to: '/root/settings',   label: 'Settings',    Icon: Settings },
   { to: '/root/profile',    label: 'Profile',    Icon: UserCircle },
 ];
 

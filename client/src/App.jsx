@@ -14,6 +14,7 @@ import Employees    from '@/pages/Employees';
 import Settings     from '@/pages/Settings';
 import RootDashboard from '@/pages/RootDashboard';
 import ManageHR      from '@/pages/ManageHR';
+import Broadcast     from '@/pages/Broadcast';
 import EmployeeHome  from '@/pages/EmployeeHome';
 import MyLeaves      from '@/pages/MyLeaves';
 import MyAttendance  from '@/pages/MyAttendance';
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/root/employees"  element={<Employees />} />
         <Route path="/root/settings"   element={<Settings />} />
         <Route path="/root/manage-hr"  element={<ManageHR />} />
+        <Route path="/root/broadcast"  element={<Broadcast />} />
         <Route path="/root/profile"    element={<MyProfile />} />
       </Route>
 

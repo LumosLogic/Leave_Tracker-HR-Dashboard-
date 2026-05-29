@@ -249,8 +249,9 @@ function EmployeeProfile({ emp, onBack }) {
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved }) {
-  const isEdit = !!employee;
-  const toast  = useToast();
+  const isEdit      = !!employee;
+  const toast       = useToast();
+  const { isRootAdmin } = useAuth();
   const qc     = useQueryClient();
 
   const [form, setForm] = useState(() => isEdit ? {
@@ -342,6 +343,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved }) {
             <select className="form-control" value={form.role} onChange={e => set('role', e.target.value)}>
               <option value="employee">Employee</option>
               <option value="admin">HR Admin</option>
+              {isRootAdmin && <option value="root_admin">Root Admin</option>}
             </select>
           </div>
           <div>
