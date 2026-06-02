@@ -10,3 +10,5 @@ stitch_modern_hrms_saas_dashboard
 check-users.js
 create-root-admin.js
 README.md
+supabase_multiorg_migration.sql
+fly.toml

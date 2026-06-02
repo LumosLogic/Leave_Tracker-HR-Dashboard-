@@ -43,10 +43,10 @@ export default function RootDashboard() {
   const yearlyEmployees = [...(yearlyData?.employees || [])].sort((a, b) => b.usedDays - a.usedDays);
 
   const stats = [
-    { label: 'Total Employees', value: totalEmployees, icon: <Users size={20} />,        bg: 'bg-[#f0f3ff]', text: 'text-[#3525cd]' },
-    { label: 'HR Admins',       value: totalHR,        icon: <ShieldCheck size={20} />,  bg: 'bg-purple-50', text: 'text-purple-600' },
-    { label: 'Pending Leaves',  value: pendingLeaves,  icon: <ClipboardList size={20} />, bg: 'bg-amber-50',  text: 'text-amber-600' },
-    { label: 'Present Today',   value: presentToday,   icon: <UserCheck size={20} />,    bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    { label: 'Total Employees', value: totalEmployees, icon: <Users size={20} />,        bg: 'bg-[#f0f3ff]', text: 'text-[#3525cd]',     onClick: () => navigate('/root/employees') },
+    { label: 'HR Admins',       value: totalHR,        icon: <ShieldCheck size={20} />,  bg: 'bg-purple-50', text: 'text-purple-600',    onClick: () => navigate('/root/employees') },
+    { label: 'Pending Leaves',  value: pendingLeaves,  icon: <ClipboardList size={20} />, bg: 'bg-amber-50', text: 'text-amber-600',     onClick: () => navigate('/root/leaves') },
+    { label: 'Present Today',   value: presentToday,   icon: <UserCheck size={20} />,    bg: 'bg-emerald-50', text: 'text-emerald-600',  onClick: () => navigate('/root/employees') },
   ];
 
   return (
@@ -65,7 +65,11 @@ export default function RootDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(s => (
-          <div key={s.label} className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5 flex items-center gap-4">
+          <div
+            key={s.label}
+            onClick={s.onClick}
+            className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5 flex items-center gap-4 transition-all duration-200 ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5' : ''}`}
+          >
             <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.text}`}>
               {s.icon}
             </div>

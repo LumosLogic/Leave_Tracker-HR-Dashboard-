@@ -67,7 +67,11 @@ export default function Leaves() {
   const activeList = (() => {
     if (tab === 'late_early') return [];
     let src = tab === 'all' ? allLeaves : (tab === 'wfh' ? allLeaves : myLeaves);
-    if (tab === 'wfh')  return src.filter(l => l.leave_time === 'wfh');
+    if (tab === 'wfh') {
+      src = src.filter(l => l.leave_time === 'wfh');
+      if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
+      return src;
+    }
     src = src.filter(l => l.leave_time !== 'wfh');
     if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
     return src;

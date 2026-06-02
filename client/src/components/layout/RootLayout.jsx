@@ -1,24 +1,25 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck, UserCircle, Bell } from 'lucide-react';
+import { LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck, UserCircle, Bell, Building2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
-  { to: '/root/dashboard',  label: 'Dashboard',  Icon: LayoutDashboard },
-  { to: '/root/calendar',   label: 'Calendar',   Icon: Calendar },
-  { to: '/root/leaves',     label: 'Leaves',     Icon: FileText },
-  { to: '/root/employees',  label: 'Employees',  Icon: Users },
-  { to: '/root/manage-hr',  label: 'Manage HR',   Icon: ShieldCheck },
-  { to: '/root/broadcast',  label: 'Broadcast',   Icon: Bell },
-  { to: '/root/settings',   label: 'Settings',    Icon: Settings },
-  { to: '/root/profile',    label: 'Profile',    Icon: UserCircle },
+  { to: '/root/dashboard',    label: 'Dashboard',        Icon: LayoutDashboard },
+  { to: '/root/calendar',     label: 'Calendar',         Icon: Calendar },
+  { to: '/root/leaves',       label: 'Leaves',           Icon: FileText },
+  { to: '/root/employees',    label: 'Employees',        Icon: Users },
+  { to: '/root/manage-hr',    label: 'Manage HR',        Icon: ShieldCheck },
+  { to: '/root/broadcast',    label: 'Broadcast',        Icon: Bell },
+  { to: '/root/settings',     label: 'Settings',         Icon: Settings },
+  { to: '/root/org-settings', label: 'Org Settings',     Icon: Building2 },
+  { to: '/root/profile',      label: 'Profile',          Icon: UserCircle },
 ];
 
 function RootSidebar({ onClose }) {
-  const { user, logout } = useAuth();
+  const { user, logout, organization } = useAuth();
   const navigate = useNavigate();
 
   function handleLogout() { logout(); navigate('/login'); }
@@ -28,9 +29,9 @@ function RootSidebar({ onClose }) {
       {/* Brand */}
       <div className="px-4 py-4 border-b border-[#e7eefe]">
         <div className="flex items-center gap-3">
-          <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="w-9 h-9 flex-shrink-0" />
+          <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-9 h-9 flex-shrink-0" />
           <div>
-            <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight">Lumos Logic</h2>
+            <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight truncate">{organization?.name || 'LeaveTracker'}</h2>
             <p className="text-[0.65rem] text-[#777587] mt-0.5 tracking-wide">Root Admin Console</p>
           </div>
         </div>

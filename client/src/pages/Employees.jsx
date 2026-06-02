@@ -436,44 +436,46 @@ export default function Employees() {
           {employees.map(emp => (
             <div
               key={emp.id}
-              className={`card p-5 flex flex-col gap-4 ${emp.role !== 'admin' ? 'cursor-pointer hover:shadow-md' : ''}`}
+              className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex flex-col overflow-hidden transition-all duration-200 ${emp.role !== 'admin' ? 'cursor-pointer hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5' : ''}`}
               onClick={() => emp.role !== 'admin' && setProfileEmp(emp)}
             >
-              {/* Card header */}
-              <div className="flex items-center gap-3">
-                <Avatar name={emp.name} color={emp.avatar_color} size={56} />
-                <div className="min-w-0">
-                  <div className="font-bold text-[#151c27] text-sm truncate">{emp.name}</div>
-                  <div className="text-xs text-[#464555] truncate">{emp.position || ''}</div>
-                  <RoleBadge role={emp.role} className="mt-1" />
+              {/* Card header with avatar */}
+              <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5">
+                <Avatar name={emp.name} color={emp.avatar_color} size={52} className="ring-2 ring-white shadow-sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-black text-[#151c27] text-sm leading-tight truncate">{emp.name}</div>
+                  <div className="text-xs font-medium text-[#464555] truncate mt-0.5">{emp.position || '—'}</div>
+                  <RoleBadge role={emp.role} className="mt-1.5" />
                 </div>
               </div>
 
               {/* Details */}
-              <div className="space-y-1.5">
+              <div className="px-5 py-3.5 space-y-2 flex-1">
                 {emp.department && (
-                  <div className="flex items-center gap-2 text-xs text-[#464555]">
-                    <Building2 size={13} className="flex-shrink-0" />
-                    <span className="truncate">{emp.department}</span>
+                  <div className="flex items-center gap-2">
+                    <Building2 size={13} className="text-[#3525cd] flex-shrink-0" />
+                    <span className="text-xs font-semibold text-[#151c27] truncate">{emp.department}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-xs text-[#464555]">
-                  <Mail size={13} className="flex-shrink-0" />
-                  <span className="truncate">{emp.email}</span>
+                <div className="flex items-center gap-2">
+                  <Mail size={13} className="text-[#3525cd] flex-shrink-0" />
+                  <span className="text-xs text-[#464555] truncate">{emp.email}</span>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2 pt-1 border-t border-[#f0f3ff]" onClick={e => e.stopPropagation()}>
-                <button className="btn btn-outline btn-sm flex-1"
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-[#e7eefe] bg-[#f9f9ff]" onClick={e => e.stopPropagation()}>
+                <button
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold text-[#3525cd] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:border-[#3525cd]/50 transition-all"
                   onClick={() => setEditEmp(emp)}>
-                  <Pencil size={13} /> Edit
+                  <Pencil size={12} /> Edit
                 </button>
                 {emp.id !== user?.id && (
-                  <button className="btn btn-danger btn-sm btn-icon"
+                  <button
+                    className="flex items-center justify-center py-2 px-3 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-40"
                     onClick={() => handleDelete(emp)}
                     disabled={deleteMut.isPending}>
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
                   </button>
                 )}
               </div>

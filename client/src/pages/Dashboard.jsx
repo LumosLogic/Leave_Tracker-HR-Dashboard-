@@ -25,10 +25,13 @@ const VARIANT = {
   info:    { border: '#712ae2 #8a4cfc', bg: 'from-[#f0f3ff] to-[#e7eefe]', value: 'text-[#712ae2]',  label: 'text-[#712ae2]',  iconBg: 'bg-[#f0f3ff] text-[#712ae2]' },
 };
 
-function StatCard({ icon, value, label, variant = 'primary', hint }) {
+function StatCard({ icon, value, label, variant = 'primary', hint, onClick }) {
   const v = VARIANT[variant] || VARIANT.primary;
   return (
-    <div className={`rounded-xl p-5 flex flex-col gap-2.5 relative overflow-hidden bg-gradient-to-br border border-[#c7c4d8] hover:border-[#3525cd]/30 hover:translate-y-[-2px] hover:shadow-card-hover transition-all duration-200 shadow-card ${v.bg}`}>
+    <div
+      onClick={onClick}
+      className={`rounded-xl p-5 flex flex-col gap-2.5 relative overflow-hidden bg-gradient-to-br border border-[#c7c4d8] hover:border-[#3525cd]/30 hover:translate-y-[-2px] hover:shadow-card-hover transition-all duration-200 shadow-card ${v.bg} ${onClick ? 'cursor-pointer' : ''}`}
+    >
       <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-xl"
         style={{ background: `linear-gradient(90deg, ${v.border})` }} />
       <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${v.iconBg}`}>{icon}</div>
@@ -217,7 +220,7 @@ export default function Dashboard() {
   const [selectedEmp, setSelectedEmp] = useState(null);
 
   const qs = dashDate ? { date: dashDate } : {};
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', dashDate],
     queryFn: async () => {
       await apiPost('/attendance/cleanup-orphaned', {}).catch(() => {});
@@ -228,6 +231,7 @@ export default function Dashboard() {
       ]);
       return { d, culture, myStats };
     },
+    retry: 1,
   });
 
   const { data: analytics } = useQuery({
@@ -261,13 +265,20 @@ export default function Dashboard() {
   }
 
   if (isLoading) return <div className="loading"><span className="spinner" /> Loading…</div>;
+  if (isError) return (
+    <div className="card p-8 text-center">
+      <div className="text-rose-600 font-bold mb-2">Dashboard failed to load</div>
+      <div className="text-sm text-[#777587] mb-4">{error?.message || 'Server error — check console for details'}</div>
+      <button className="btn btn-primary btn-sm" onClick={() => refetch()}>Retry</button>
+    </div>
+  );
 
   const statCards = [
-    { label: 'Total Employees',   value: d?.totalEmployees, icon: <Users size={18} />,     variant: 'primary' },
-    { label: `Present ${suffix}`, value: d?.presentToday,   icon: <UserCheck size={18} />, variant: 'success', hint: 'Total minus on leave' },
-    { label: 'On Leave',          value: d?.onLeaveToday,   icon: <Umbrella size={18} />,  variant: 'warning' },
-    { label: `WFH ${suffix}`,     value: d?.wfhToday,       icon: <Home size={18} />,      variant: 'info' },
-    ...(isToday ? [{ label: 'On Clockify', value: d?.onClockify, icon: <Timer size={18} />, variant: 'success' }] : []),
+    { label: 'Total Employees',   value: d?.totalEmployees, icon: <Users size={18} />,     variant: 'primary', onClick: () => navigate('/employees') },
+    { label: `Present ${suffix}`, value: d?.presentToday,   icon: <UserCheck size={18} />, variant: 'success', hint: 'Total minus on leave', onClick: () => navigate('/employees') },
+    { label: 'On Leave',          value: d?.onLeaveToday,   icon: <Umbrella size={18} />,  variant: 'warning', onClick: () => navigate('/leaves') },
+    { label: `WFH ${suffix}`,     value: d?.wfhToday,       icon: <Home size={18} />,      variant: 'info',    onClick: () => { navigate('/leaves'); } },
+    ...(isToday ? [{ label: 'On Clockify', value: d?.onClockify, icon: <Timer size={18} />, variant: 'success', onClick: () => navigate('/employees') }] : []),
   ];
 
   return (
