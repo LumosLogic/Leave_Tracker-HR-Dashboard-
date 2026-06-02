@@ -27,10 +27,18 @@ export function AuthProvider({ children }) {
   const isHR        = user?.role === 'admin';
   const isEmployee  = user?.role === 'employee';
   // isAdmin = true for both HR admin and root admin (both can manage HR operations)
-  const isAdmin     = isHR || isRootAdmin;
+  const isAdmin = isHR || isRootAdmin;
+
+  // Organization context
+  const organization = user ? {
+    id:   user.organization_id   || 1,
+    name: user.organization_name || 'LumosLogic',
+    slug: user.organization_slug || 'lumoslogic',
+    logo: user.organization_logo || '',
+  } : null;
 
   return (
-    <AuthContext.Provider value={{ user, token, saveAuth, logout, isAdmin, isHR, isRootAdmin, isEmployee }}>
+    <AuthContext.Provider value={{ user, token, saveAuth, logout, isAdmin, isHR, isRootAdmin, isEmployee, organization }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f9f9ff;
+    color: #151c27;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(53,37,205,.15); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(53,37,205,.3); }
+}
+
+@layer components {
+  .spinner {
+    @apply w-6 h-6 rounded-full border-2 border-slate-700 border-t-[#3525cd];
+    animation: spin 0.8s cubic-bezier(.6,.2,.4,.8) infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+}

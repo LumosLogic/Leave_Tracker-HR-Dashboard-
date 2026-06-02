@@ -1,0 +1,42 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { PlatformAuthProvider, usePlatformAuth } from '@/context/PlatformAuthContext';
+import { PlatformLayout } from '@/components/layout/PlatformLayout';
+import PlatformLogin     from '@/pages/PlatformLogin';
+import PlatformDashboard from '@/pages/PlatformDashboard';
+import PlatformRequests  from '@/pages/PlatformRequests';
+import PlatformOrgs      from '@/pages/PlatformOrgs';
+import PlatformActivity  from '@/pages/PlatformActivity';
+
+function PlatformRoute({ children }) {
+  const { token } = usePlatformAuth();
+  return token ? children : <Navigate to="/login" replace />;
+}
+
+function AppRoutes() {
+  const { token } = usePlatformAuth();
+  return (
+    <Routes>
+      <Route path="/login" element={token ? <Navigate to="/dashboard" replace /> : <PlatformLogin />} />
+
+      <Route element={<PlatformRoute><PlatformLayout /></PlatformRoute>}>
+        <Route path="/dashboard" element={<PlatformDashboard />} />
+        <Route path="/requests"  element={<PlatformRequests />} />
+        <Route path="/orgs"      element={<PlatformOrgs />} />
+        <Route path="/activity"  element={<PlatformActivity />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to={token ? '/dashboard' : '/login'} replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <PlatformAuthProvider>
+        <AppRoutes />
+      </PlatformAuthProvider>
+    </BrowserRouter>
+  );
+}

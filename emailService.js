@@ -220,4 +220,64 @@ function holidayReminderHtml(holiday) {
   );
 }
 
-module.exports = { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml };
+// Org registration request received — notify platform admin
+function orgRequestReceivedHtml(req) {
+  return WRAP(
+    HEADER('New Organization Request', 'A company has requested to join LeaveTracker') +
+    BODY(`
+      <p style="margin:0 0 16px;">A new organization registration request has been submitted and is awaiting your review.</p>
+      <table style="width:100%;border-collapse:collapse;">
+        ${ROW('Company Name',  `<strong>${req.company_name}</strong>`)}
+        ${ROW('Contact Person', req.contact_name)}
+        ${ROW('Email',          req.email)}
+        ${req.phone   ? ROW('Phone',   req.phone)   : ''}
+        ${req.website ? ROW('Website', req.website) : ''}
+        ${req.message ? ROW('Message', `<em>${req.message}</em>`) : ''}
+        ${ROW('Submitted',     new Date(req.created_at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }))}
+      </table>
+      <div style="margin-top:20px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
+        Please log in to the Platform Admin Dashboard to approve or reject this request.
+      </div>
+      ${FOOTER}
+    `)
+  );
+}
+
+// Org approved — sent to the registrant with credentials
+function orgApprovedHtml(req, orgSlug, tempPassword) {
+  return WRAP(
+    HEADER('Welcome to LeaveTracker! 🎉', 'Your organization has been approved') +
+    BODY(`
+      <p style="margin:0 0 16px;">Dear <strong>${req.contact_name}</strong>,</p>
+      <p style="margin:0 0 16px;">Great news! Your organization <strong>${req.company_name}</strong> has been approved and is now active on LeaveTracker.</p>
+      <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
+        <p style="margin:0 0 10px;font-size:13px;color:#1e40af;font-weight:bold;">Your Login Credentials</p>
+        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Login URL:</span> &nbsp;<a href="https://leavetrackerbylumos.web.app/login" style="color:#3525cd;">leavetrackerbylumos.web.app/login</a></p>
+        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Organization Slug:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${orgSlug}</code></p>
+        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span> &nbsp;<strong>${req.email}</strong></p>
+        <p style="margin:0;font-size:14px;"><span style="color:#64748b;">Temporary Password:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${tempPassword}</code></p>
+      </div>
+      <div style="margin-top:16px;padding:12px 16px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px;color:#78350f;">
+        For security, you will be asked to change your password on first login.
+      </div>
+      <p style="margin-top:16px;font-size:13px;color:#64748b;">Share your organization slug <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-family:monospace;">${orgSlug}</code> with your employees when they log in.</p>
+      ${FOOTER}
+    `)
+  );
+}
+
+// Org rejected — sent to the registrant
+function orgRejectedHtml(req, notes) {
+  return WRAP(
+    HEADER('Organization Request Update', 'LeaveTracker Registration') +
+    BODY(`
+      <p style="margin:0 0 16px;">Dear <strong>${req.contact_name}</strong>,</p>
+      <p style="margin:0 0 16px;">Thank you for your interest in LeaveTracker. Unfortunately, we were unable to approve your organization registration for <strong>${req.company_name}</strong> at this time.</p>
+      ${notes ? `<div style="margin-bottom:16px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;"><strong>Reason:</strong> ${notes}</div>` : ''}
+      <p style="font-size:13px;color:#64748b;">If you believe this was an error or would like to re-apply, please contact us at <a href="mailto:platform@lumoslogic.com" style="color:#3525cd;">platform@lumoslogic.com</a>.</p>
+      ${FOOTER}
+    `)
+  );
+}
+
+module.exports = { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml };

@@ -1,6 +1,7 @@
 require('dotenv').config();
 // Set IST timezone before any Date usage so all local-time helpers return IST
 process.env.TZ = process.env.TZ || 'Asia/Kolkata';
+const SERVER_VERSION = '2.2.0-platform-admin-2026-06-02';
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
@@ -8,7 +9,7 @@ const axios    = require('axios');
 const path     = require('path');
 const webpush  = require('web-push');
 const { supabase, seed } = require('./db');
-const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml } = require('./emailService');
+const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml } = require('./emailService');
 
 // ─── VAPID / Push Notification Setup ─────────────────────────────────────────
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
@@ -34,7 +35,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 const ALLOWED_ORIGINS = [
   'https://leavetrackerbylumos.web.app',
   'https://leavetrackerbylumos.firebaseapp.com',
+  'https://leavetracker-platform-admin.web.app',
+  'https://leavetracker-platform-admin.firebaseapp.com',
   'http://localhost:5173',
+  'http://localhost:5174',
   'http://localhost:3000',
 ];
 app.use((req, res, next) => {
@@ -64,8 +68,7 @@ async function sendPushToUsers(userIds, payload) {
       sent++;
     } catch (err) {
       if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase.from('push_subscriptions').delete()
-          .eq('endpoint', s.endpoint).catch(() => {});
+        try { await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint); } catch { /* ignore */ }
       }
     }
   }));
@@ -122,9 +125,29 @@ function flatOne(record, joinKey = 'users') {
   delete copy[joinKey];
   return copy;
 }
-async function getSettings() {
-  const { data } = await supabase.from('work_schedule').select('*').limit(1).single();
-  return data;
+async function getSettings(orgId) {
+  let q = supabase.from('work_schedule').select('*').limit(1);
+  if (orgId) q = q.eq('organization_id', orgId);
+  try {
+    const { data } = await q.single();
+    if (data) return data;
+  } catch { /* not found — fall through to fallback */ }
+  try {
+    const { data: fallback } = await supabase.from('work_schedule').select('*').limit(1).single();
+    return fallback || null;
+  } catch { return null; }
+}
+
+// Helper: get org_id from request (defaults to 1 for backward compat)
+function orgId(req) { return req.user?.organization_id || 1; }
+
+// Helper: get clockify config from organizations table
+async function getClockifyConfig(oId) {
+  const { data } = await supabase.from('organizations')
+    .select('clockify_api_key, clockify_workspace_id, clockify_last_synced')
+    .eq('id', oId || 1).maybeSingle();
+  if (!data) return null;
+  return { api_key: data.clockify_api_key, workspace_id: data.clockify_workspace_id, last_synced: data.clockify_last_synced };
 }
 function toMinutes(t) {
   const [h, m] = (t || '00:00').split(':').map(Number);
@@ -136,13 +159,13 @@ function isWorkingDay(dateStr, settings) {
 }
 
 // ─── Dynamic notification recipients ─────────────────────────────────────────
-// Reads from DB table first; falls back to env vars if table is empty or missing
-async function getRecipients() {
+async function getRecipients(oId) {
   try {
-    const { data } = await supabase.from('notification_recipients')
-      .select('email').eq('active', true);
+    let q = supabase.from('notification_recipients').select('email').eq('active', true);
+    if (oId) q = q.eq('organization_id', oId);
+    const { data } = await q;
     if (data && data.length > 0) return data.map(r => r.email).filter(Boolean);
-  } catch { /* table not yet created — fall back */ }
+  } catch { /* fall back to env */ }
   return [
     process.env.HR_EMAIL,
     process.env.COMPANY_HEAD_1_EMAIL,
@@ -153,20 +176,356 @@ async function getRecipients() {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, org_slug } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const { data: user } = await supabase.from('users').select('*')
-      .eq('email', email.toLowerCase().trim()).maybeSingle();
+    let userQuery = supabase.from('users')
+      .select('*, organizations(id, name, slug, logo_url)')
+      .eq('email', email.toLowerCase().trim());
+
+    // If org_slug provided, scope the login to that specific organization
+    if (org_slug) {
+      const { data: org } = await supabase.from('organizations').select('id').eq('slug', org_slug.toLowerCase().trim()).maybeSingle();
+      if (!org) return res.status(401).json({ error: 'Organization not found' });
+      userQuery = userQuery.eq('organization_id', org.id);
+    }
+
+    const { data: user } = await userQuery.maybeSingle();
 
     if (!user || !bcrypt.compareSync(password, user.password))
       return res.status(401).json({ error: 'Invalid email or password' });
 
+    const org = user.organizations || {};
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name },
+      { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },
       JWT_SECRET, { expiresIn: '24h' }
     );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department, position: user.position, avatar_color: user.avatar_color, force_password_change: user.force_password_change || false } });
+    res.json({
+      token,
+      user: {
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        department: user.department, position: user.position, avatar_color: user.avatar_color,
+        force_password_change: user.force_password_change || false,
+        organization_id: user.organization_id || 1,
+        organization_name: org.name || 'LumosLogic',
+        organization_slug: org.slug || 'lumoslogic',
+        organization_logo: org.logo_url || '',
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Organization Registration (creates pending request, not live org) ────────
+app.post('/api/register-org', async (req, res) => {
+  try {
+    const { company_name, name, email, phone, website, message } = req.body;
+    if (!company_name || !name || !email)
+      return res.status(400).json({ error: 'Company name, your name, and email are required' });
+
+    const norm = email.toLowerCase().trim();
+    const slug = company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    // Reject duplicate pending/approved requests for same email or slug
+    const { data: dupEmail } = await supabase.from('org_registration_requests')
+      .select('id').eq('email', norm).in('status', ['pending', 'approved']).maybeSingle();
+    if (dupEmail) return res.status(400).json({ error: 'A request with this email is already pending or approved.' });
+
+    const { data: dupSlug } = await supabase.from('org_registration_requests')
+      .select('id').eq('company_name', company_name.trim()).in('status', ['pending', 'approved']).maybeSingle();
+    if (dupSlug) return res.status(400).json({ error: 'A request for this company name is already pending or approved.' });
+
+    const { data: existingOrg } = await supabase.from('organizations').select('id').eq('slug', slug).maybeSingle();
+    if (existingOrg) return res.status(400).json({ error: `An organization named "${company_name}" already exists.` });
+
+    const { data: existingUser } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
+    if (existingUser) return res.status(400).json({ error: 'An account with this email already exists.' });
+
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+
+    const { data: request, error: reqErr } = await supabase.from('org_registration_requests')
+      .insert({ company_name: company_name.trim(), contact_name: name.trim(), email: norm, phone: phone || null, website: website || null, message: message || null, ip_address: ip })
+      .select().single();
+    if (reqErr) throw new Error(reqErr.message);
+
+    // Log activity
+    await supabase.from('platform_activity').insert({
+      event_type: 'org_request_submitted',
+      description: `New registration request from ${name.trim()} (${company_name.trim()})`,
+      metadata: { request_id: request.id, email: norm, company: company_name.trim() },
+    });
+
+    // Notify platform admin via email (using LumosLogic SMTP)
+    const platformAdminEmail = process.env.PLATFORM_ADMIN_EMAIL || process.env.SMTP_USER;
+    if (platformAdminEmail) {
+      sendMail({ to: platformAdminEmail, subject: `[LeaveTracker] New Org Request: ${company_name.trim()}`, html: orgRequestReceivedHtml(request) });
+    }
+
+    res.json({ success: true, message: 'Your registration request has been submitted. Our team will review and email you within 24 hours.', request_id: request.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin Auth Middleware ──────────────────────────────────────────
+function platformAdminAuth(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'platform_admin') return res.status(403).json({ error: 'Platform admin access required' });
+    req.platformAdmin = decoded;
+    next();
+  } catch { return res.status(401).json({ error: 'Invalid token' }); }
+}
+
+// ─── Platform Admin: Login ────────────────────────────────────────────────────
+app.post('/api/platform/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+    const { data: admin } = await supabase.from('platform_admins')
+      .select('*').eq('email', email.toLowerCase().trim()).maybeSingle();
+    if (!admin || !bcrypt.compareSync(password, admin.password))
+      return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign(
+      { id: admin.id, email: admin.email, name: admin.name, role: 'platform_admin' },
+      JWT_SECRET, { expiresIn: '12h' }
+    );
+    res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Stats ────────────────────────────────────────────────────
+app.get('/api/platform/stats', platformAdminAuth, async (req, res) => {
+  try {
+    const [
+      { count: totalOrgs },
+      { count: pendingReqs },
+      { count: totalUsers },
+      { count: approvedOrgs },
+    ] = await Promise.all([
+      supabase.from('organizations').select('id', { count: 'exact', head: true }),
+      supabase.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('users').select('id', { count: 'exact', head: true }),
+      supabase.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+    ]);
+
+    const { data: recentOrgs } = await supabase.from('organizations')
+      .select('id, name, slug, status, plan, created_at').order('created_at', { ascending: false }).limit(5);
+
+    const { data: recentRequests } = await supabase.from('org_registration_requests')
+      .select('id, company_name, contact_name, email, status, created_at').order('created_at', { ascending: false }).limit(5);
+
+    res.json({ totalOrgs: totalOrgs || 0, pendingRequests: pendingReqs || 0, totalUsers: totalUsers || 0, approvedOrgs: approvedOrgs || 0, recentOrgs: recentOrgs || [], recentRequests: recentRequests || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: All Organizations ───────────────────────────────────────
+app.get('/api/platform/organizations', platformAdminAuth, async (req, res) => {
+  try {
+    const { data: orgs } = await supabase.from('organizations')
+      .select('id, name, slug, domain, status, plan, created_at').order('created_at', { ascending: false });
+
+    const orgsWithCounts = await Promise.all((orgs || []).map(async org => {
+      const { count: userCount } = await supabase.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', org.id);
+      return { ...org, userCount: userCount || 0 };
+    }));
+
+    res.json(orgsWithCounts);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Registration Requests ───────────────────────────────────
+app.get('/api/platform/requests', platformAdminAuth, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    let q = supabase.from('org_registration_requests').select('*').order('created_at', { ascending: false });
+    if (status !== 'all') q = q.eq('status', status);
+    const { data } = await q;
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Approve Request ─────────────────────────────────────────
+app.post('/api/platform/requests/:id/approve', platformAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+
+    const { data: request } = await supabase.from('org_registration_requests').select('*').eq('id', id).single();
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    if (request.status !== 'pending') return res.status(400).json({ error: `Request is already ${request.status}` });
+
+    const slug = request.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    // Create organization
+    const { data: org, error: orgErr } = await supabase.from('organizations')
+      .insert({ name: request.company_name, slug, status: 'active', plan: 'free' })
+      .select().single();
+    if (orgErr) throw new Error(orgErr.message);
+
+    // Generate temp password + create root_admin user
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
+    const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const hashed = bcrypt.hashSync(tempPassword, 10);
+
+    const { data: user, error: userErr } = await supabase.from('users')
+      .insert({
+        name: request.contact_name, email: request.email, password: hashed,
+        role: 'root_admin', organization_id: org.id,
+        department: 'Management', position: 'Owner',
+        avatar_color: '#3525cd', force_password_change: true,
+      })
+      .select('id, name, email, role').single();
+    if (userErr) {
+      await supabase.from('organizations').delete().eq('id', org.id);
+      throw new Error(userErr.message);
+    }
+
+    // Create default work schedule
+    await supabase.from('work_schedule').insert({
+      organization_id: org.id,
+      start_time: '09:00', end_time: '18:00',
+      late_threshold: '09:30', early_exit_threshold: '17:00',
+      half_day_hours: 4.5, work_days: '1,2,3,4,5',
+    });
+
+    // Update request status
+    await supabase.from('org_registration_requests').update({
+      status: 'approved', reviewed_at: new Date().toISOString(),
+      reviewer_notes: notes || null, organization_id: org.id,
+    }).eq('id', id);
+
+    // Log activity
+    await supabase.from('platform_activity').insert({
+      event_type: 'org_approved',
+      description: `Organization "${request.company_name}" approved by platform admin`,
+      metadata: { request_id: Number(id), org_id: org.id, email: request.email },
+    });
+
+    // Send approval email (LumosLogic SMTP)
+    sendMail({
+      to: request.email,
+      subject: `Welcome to LeaveTracker — Your organization "${request.company_name}" is approved!`,
+      html: orgApprovedHtml(request, slug, tempPassword),
+    });
+
+    res.json({ success: true, organization: { id: org.id, name: org.name, slug }, user: { id: user.id, email: user.email } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Reject Request ──────────────────────────────────────────
+app.post('/api/platform/requests/:id/reject', platformAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+
+    const { data: request } = await supabase.from('org_registration_requests').select('*').eq('id', id).single();
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    if (request.status !== 'pending') return res.status(400).json({ error: `Request is already ${request.status}` });
+
+    await supabase.from('org_registration_requests').update({
+      status: 'rejected', reviewed_at: new Date().toISOString(), reviewer_notes: notes || null,
+    }).eq('id', id);
+
+    await supabase.from('platform_activity').insert({
+      event_type: 'org_rejected',
+      description: `Organization request from "${request.company_name}" rejected`,
+      metadata: { request_id: Number(id), email: request.email, notes: notes || '' },
+    });
+
+    sendMail({
+      to: request.email,
+      subject: `LeaveTracker — Update on your registration request`,
+      html: orgRejectedHtml(request, notes),
+    });
+
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Activity Feed ───────────────────────────────────────────
+app.get('/api/platform/activity', platformAdminAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const { data } = await supabase.from('platform_activity')
+      .select('*').order('created_at', { ascending: false }).limit(limit);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Organization Members ─────────────────────────────────────
+app.get('/api/platform/organizations/:id/members', platformAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: org } = await supabase.from('organizations')
+      .select('id, name, slug, domain, status, plan, created_at, smtp_user, smtp_from, google_calendar_id, total_annual_leaves')
+      .eq('id', id).single();
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const { data: members } = await supabase.from('users')
+      .select('id, name, email, role, department, position, avatar_color, created_at')
+      .eq('organization_id', id)
+      .order('role', { ascending: true })
+      .order('name', { ascending: true });
+
+    const { count: leaveCount } = await supabase.from('leaves')
+      .select('id', { count: 'exact', head: true }).eq('organization_id', id);
+
+    const { count: attendanceCount } = await supabase.from('attendance')
+      .select('id', { count: 'exact', head: true }).eq('organization_id', id);
+
+    res.json({ org, members: members || [], stats: { leaveCount: leaveCount || 0, attendanceCount: attendanceCount || 0 } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Organization Settings (get / update) ─────────────────────────────────────
+app.get('/api/org/settings', auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('organizations')
+      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
+      .eq('id', orgId(req)).single();
+    if (!data) return res.status(404).json({ error: 'Organization not found' });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/org/settings', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'root_admin') return res.status(403).json({ error: 'Root admin access required' });
+    const {
+      name, domain, logo_url,
+      smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from,
+      google_client_id, google_client_secret, google_refresh_token, google_calendar_id,
+      clockify_api_key, clockify_workspace_id,
+      vapid_public_key, vapid_private_key,
+      total_annual_leaves,
+    } = req.body;
+
+    const update = {};
+    if (name)               update.name = name.trim();
+    if (domain !== undefined) update.domain = domain;
+    if (logo_url !== undefined) update.logo_url = logo_url;
+    if (smtp_host !== undefined) update.smtp_host = smtp_host;
+    if (smtp_port !== undefined) update.smtp_port = parseInt(smtp_port) || 587;
+    if (smtp_user !== undefined) update.smtp_user = smtp_user;
+    if (smtp_pass && smtp_pass.trim() !== '') update.smtp_pass = smtp_pass.trim();
+    if (smtp_from !== undefined) update.smtp_from = smtp_from;
+    if (google_client_id !== undefined) update.google_client_id = google_client_id;
+    if (google_client_secret && google_client_secret.trim() !== '') update.google_client_secret = google_client_secret.trim();
+    if (google_refresh_token && google_refresh_token.trim() !== '') update.google_refresh_token = google_refresh_token.trim();
+    if (google_calendar_id !== undefined) update.google_calendar_id = google_calendar_id;
+    if (clockify_api_key && clockify_api_key.trim() !== '') update.clockify_api_key = clockify_api_key.trim();
+    if (clockify_workspace_id !== undefined) update.clockify_workspace_id = clockify_workspace_id;
+    if (vapid_public_key !== undefined) update.vapid_public_key = vapid_public_key;
+    if (vapid_private_key && vapid_private_key.trim() !== '') update.vapid_private_key = vapid_private_key.trim();
+    if (total_annual_leaves) update.total_annual_leaves = parseInt(total_annual_leaves) || 18;
+
+    const { data, error } = await supabase.from('organizations')
+      .update(update).eq('id', orgId(req))
+      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status').single();
+    if (error) throw new Error(error.message);
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -212,29 +571,38 @@ app.put('/api/auth/profile', auth, async (req, res) => {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 app.get('/api/dashboard', auth, async (req, res) => {
+  let _step = 'init';
   try {
     const realToday = localDateStr();
     const today     = req.query.date || realToday;   // use date filter if provided
     const isToday   = today === realToday;
 
     // ── 1. Get all employees (never include admin) ───────────────────────────
+    _step = 'employees';
     const { data: allEmployees } = await supabase.from('users')
-      .select('id, name, avatar_color, department, clockify_user_id').eq('role', 'employee');
-    const totalEmployees = allEmployees.length;
-    const empIds         = allEmployees.map(e => e.id);
+      .select('id, name, avatar_color, department, clockify_user_id')
+      .eq('role', 'employee').eq('organization_id', orgId(req));
+    const totalEmployees = (allEmployees || []).length;
+    const empIds         = (allEmployees || []).map(e => e.id);
 
     // ── 2. Selected date attendance — employees only ─────────────────────────
-    const { data: todayRaw } = await supabase.from('attendance')
-      .select('*, users(name, avatar_color, department)')
-      .eq('date', today).in('user_id', empIds);
-    const todayRecords = flat(todayRaw);
+    _step = 'attendance';
+    let todayRecords = [];
+    if (empIds.length > 0) {
+      const { data: todayRaw } = await supabase.from('attendance')
+        .select('*, users(name, avatar_color, department)')
+        .eq('date', today).eq('organization_id', orgId(req))
+        .in('user_id', empIds);
+      todayRecords = flat(todayRaw);
+    }
 
     // ── 3. Clockify live — only meaningful for today ──────────────────────────
+    _step = 'clockify';
     const clockifyActiveIds = new Set();
     const clockifyStartTimes = {}; // empId → 'HH:MM' local time from Clockify timer start
     if (isToday) {
       try {
-        const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+        const config = await getClockifyConfig(orgId(req));
         if (config?.api_key && config.api_key !== '' && config?.workspace_id) {
           await Promise.all(allEmployees.filter(e => e.clockify_user_id).map(async emp => {
             try {
@@ -261,26 +629,30 @@ app.get('/api/dashboard', auth, async (req, res) => {
 
     // Persist Clockify check-ins to attendance DB so MyAttendance and all views stay in sync
     if (isToday && clockifyActiveIds.size > 0) {
-      const settings = await getSettings();
+      const settings = await getSettings(orgId(req));
       await Promise.all([...clockifyActiveIds].map(async id => {
         if (onLeaveIds.has(id)) return; // employee is on leave — skip
         const checkInTime = clockifyStartTimes[id] || null;
-        const is_late = checkInTime ? toMinutes(checkInTime) > toMinutes(settings.late_threshold) : false;
+        const is_late = checkInTime && settings ? toMinutes(checkInTime) > toMinutes(settings.late_threshold) : false;
         const existing = todayRecords.find(r => r.user_id === id);
         if (!existing) {
           // No attendance record yet — create one from Clockify start time
-          const { data: inserted } = await supabase.from('attendance')
-            .insert({ user_id: id, date: today, check_in: checkInTime, status: 'present', is_late })
-            .select().single().catch(() => ({ data: null }));
-          if (inserted) {
-            const emp = allEmployees.find(e => e.id === id);
-            todayRecords.push({ ...inserted, name: emp?.name, avatar_color: emp?.avatar_color, department: emp?.department });
-          }
+          try {
+            const { data: inserted } = await supabase.from('attendance')
+              .insert({ user_id: id, date: today, check_in: checkInTime, status: 'present', is_late, organization_id: orgId(req) })
+              .select().single();
+            if (inserted) {
+              const emp = (allEmployees || []).find(e => e.id === id);
+              todayRecords.push({ ...inserted, name: emp?.name, avatar_color: emp?.avatar_color, department: emp?.department });
+            }
+          } catch { /* insert failed — skip */ }
         } else if (!existing.check_in) {
           // Record exists but no manual check-in — set from Clockify (never overwrite manual check-ins)
-          await supabase.from('attendance')
-            .update({ check_in: checkInTime, status: 'present', is_late })
-            .eq('id', existing.id).catch(() => {});
+          try {
+            await supabase.from('attendance')
+              .update({ check_in: checkInTime, status: 'present', is_late })
+              .eq('id', existing.id);
+          } catch { /* update failed — skip */ }
           existing.check_in = checkInTime;
           existing.status   = 'present';
           existing.is_late  = is_late;
@@ -314,27 +686,33 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const recentActivity = [...activityMap.values()].slice(0, 15);
 
     // ── 6. Pending leaves ────────────────────────────────────────────────────
+    _step = 'leaves';
     const { count: pendingLeaves } = await supabase.from('leaves')
-      .select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      .select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', orgId(req));
 
     let pendingLeaveList;
     if (isAdminRole(req.user.role)) {
       const { data: plRaw } = await supabase.from('leaves')
-        .select('*, users(name, email, department, avatar_color)')
-        .eq('status', 'pending').order('created_at', { ascending: false }).limit(5);
+        .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .eq('status', 'pending').eq('organization_id', orgId(req))
+        .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     } else {
       const { data: plRaw } = await supabase.from('leaves')
-        .select('*, users(name)').eq('user_id', req.user.id)
+        .select('*, users!leaves_user_id_fkey(name)').eq('user_id', req.user.id).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     }
 
+    _step = 'myToday';
     const { data: myToday } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
     res.json({ totalEmployees, presentToday, onLeaveToday, onClockify, notOnClockify, lateToday, earlyExitToday, halfDayToday, wfhToday, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error(`[Dashboard] step="${_step}" error:`, err.message, err.stack);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Employees ────────────────────────────────────────────────────────────────
@@ -342,6 +720,7 @@ app.get('/api/employees', auth, async (req, res) => {
   try {
     const { data } = await supabase.from('users')
       .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at')
+      .eq('organization_id', orgId(req))
       .order('name');
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -356,11 +735,10 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
     }
     const hashed = bcrypt.hashSync(password, 10);
     const { data, error } = await supabase.from('users')
-      .insert({ name, email: email.toLowerCase(), password: hashed, role: role||'employee', department: department||'General', position: position||'Staff', avatar_color: avatar_color||'#4F46E5', date_of_birth: date_of_birth||null, force_password_change: true })
+      .insert({ name, email: email.toLowerCase(), password: hashed, role: role||'employee', department: department||'General', position: position||'Staff', avatar_color: avatar_color||'#4F46E5', date_of_birth: date_of_birth||null, force_password_change: true, organization_id: orgId(req) })
       .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
-    // Send welcome email with login credentials
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -374,7 +752,8 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
     }
     const update = { name, email, role, department, position, avatar_color, date_of_birth: date_of_birth||null };
     if (password) update.password = bcrypt.hashSync(password, 10);
-    const { data, error } = await supabase.from('users').update(update).eq('id', req.params.id)
+    const { data, error } = await supabase.from('users').update(update)
+      .eq('id', req.params.id).eq('organization_id', orgId(req))
       .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
     if (error) throw new Error(error.message);
     res.json(data);
@@ -384,7 +763,7 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
 app.delete('/api/employees/:id', auth, adminOnly, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
-    await supabase.from('users').delete().eq('id', req.params.id);
+    await supabase.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -396,7 +775,7 @@ app.get('/api/attendance', auth, async (req, res) => {
 
     let query = supabase.from('attendance')
       .select('*, users!inner(name, email, avatar_color, department, position)')
-      .eq('users.role', 'employee')
+      .eq('organization_id', orgId(req))
       .order('date', { ascending: true });
 
     if (!isAdminRole(req.user.role)) {
@@ -644,6 +1023,7 @@ app.get('/api/leaves', auth, async (req, res) => {
     const { userId, year, month } = req.query;
     let query = supabase.from('leaves')
       .select('*, users!leaves_user_id_fkey(name, email, avatar_color, department), approver:users!leaves_approved_by_fkey(name)')
+      .eq('organization_id', orgId(req))
       .order('created_at', { ascending: false });
 
     if (!isAdminRole(req.user.role)) {
@@ -688,7 +1068,8 @@ app.post('/api/leaves', auth, async (req, res) => {
         user_id: targetUserId, start_date, end_date,
         leave_type: leave_type||'casual', reason: reason||'',
         leave_time: leave_time||'full',
-        half_type:  leave_time === 'half' ? (half_type||'first_half') : null
+        half_type:  leave_time === 'half' ? (half_type||'first_half') : null,
+        organization_id: orgId(req),
       })
       .select('*, users!leaves_user_id_fkey(name, email, department)').single();
     if (error) throw new Error(error.message);
@@ -696,7 +1077,7 @@ app.post('/api/leaves', auth, async (req, res) => {
     // Notify HR + company heads when an employee submits a leave request
     if (req.user.role === 'employee') {
       const emp = data.users || {};
-      const recipients = await getRecipients();
+      const recipients = await getRecipients(orgId(req));
       if (recipients.length > 0) {
         sendMail({
           to: recipients,
@@ -745,15 +1126,15 @@ app.put('/api/leaves/:id/approve', auth, adminOnly, async (req, res) => {
     await supabase.from('leaves').update({ status: 'approved', approved_by: req.user.id, approved_at: new Date().toISOString() }).eq('id', req.params.id);
 
     // Mark attendance days as on_leave
-    const settings = await getSettings();
+    const settings = await getSettings(orgId(req));
     const start = new Date(leave.start_date + 'T12:00:00');
     const end   = new Date(leave.end_date   + 'T12:00:00');
     const upserts = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().split('T')[0];
-      if (isWorkingDay(ds, settings)) upserts.push({ user_id: leave.user_id, date: ds, status: leave.leave_time === 'half' ? 'half_day' : leave.leave_time === 'wfh' ? 'wfh' : 'on_leave' });
+      if (isWorkingDay(ds, settings)) upserts.push({ user_id: leave.user_id, date: ds, status: leave.leave_time === 'half' ? 'half_day' : leave.leave_time === 'wfh' ? 'wfh' : 'on_leave', organization_id: orgId(req) });
     }
-    if (upserts.length) await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date' });
+    if (upserts.length) await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date,organization_id' });
 
     const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
     // Email the employee
@@ -847,18 +1228,28 @@ app.delete('/api/leaves/:id', auth, async (req, res) => {
 // ─── Settings ─────────────────────────────────────────────────────────────────
 app.get('/api/settings', auth, async (req, res) => {
   try {
-    const { data: schedule } = await supabase.from('work_schedule').select('*').limit(1).single();
-    const { data: clockify } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
-    res.json({ schedule, clockify: { ...clockify, api_key: clockify?.api_key ? '***' : '' } });
+    const { data: schedule } = await supabase.from('work_schedule').select('*').eq('organization_id', orgId(req)).limit(1).single();
+    const clockify = await getClockifyConfig(orgId(req));
+    res.json({ schedule, clockify: { workspace_id: clockify?.workspace_id || '', api_key: clockify?.api_key ? '***' : '' } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/settings', auth, adminOnly, async (req, res) => {
   try {
     const { start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days } = req.body;
-    const { data } = await supabase.from('work_schedule')
-      .update({ start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days })
-      .eq('id', 1).select().single();
+    // Try to update existing; insert if none
+    const { data: existing } = await supabase.from('work_schedule').select('id').eq('organization_id', orgId(req)).limit(1).maybeSingle();
+    let data;
+    if (existing) {
+      const res2 = await supabase.from('work_schedule')
+        .update({ start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days })
+        .eq('id', existing.id).select().single();
+      data = res2.data;
+    } else {
+      const res2 = await supabase.from('work_schedule')
+        .insert({ start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days, organization_id: orgId(req) }).select().single();
+      data = res2.data;
+    }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -866,15 +1257,9 @@ app.put('/api/settings', auth, adminOnly, async (req, res) => {
 app.put('/api/settings/clockify', auth, adminOnly, async (req, res) => {
   try {
     const { api_key, workspace_id } = req.body;
-    const { data: existing } = await supabase.from('clockify_config').select('id, api_key').limit(1).maybeSingle();
-    // Only overwrite api_key when a real non-empty value is explicitly sent
-    const update = { workspace_id };
-    if (api_key && api_key.trim() !== '') update.api_key = api_key.trim();
-    if (existing) {
-      await supabase.from('clockify_config').update(update).eq('id', existing.id);
-    } else {
-      await supabase.from('clockify_config').insert({ api_key: api_key || '', workspace_id: workspace_id || '' });
-    }
+    const update = { clockify_workspace_id: workspace_id };
+    if (api_key && api_key.trim() !== '') update.clockify_api_key = api_key.trim();
+    await supabase.from('organizations').update(update).eq('id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -949,7 +1334,7 @@ async function syncClockifyForDate(targetDate, config, settings) {
 // ─── Clockify routes ──────────────────────────────────────────────────────────
 app.get('/api/clockify/workspaces', auth, adminOnly, async (req, res) => {
   try {
-    const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+    const config = await getClockifyConfig(orgId(req));
     if (!config?.api_key || config.api_key === '') return res.status(400).json({ error: 'Clockify API key not configured' });
     const response = await axios.get('https://api.clockify.me/api/v1/workspaces', { headers: { 'X-Api-Key': config.api_key } });
     res.json(response.data);
@@ -959,11 +1344,11 @@ app.get('/api/clockify/workspaces', auth, adminOnly, async (req, res) => {
 // Live timers — who is currently tracking right now in Clockify
 app.get('/api/clockify/live', auth, async (req, res) => {
   try {
-    const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+    const config = await getClockifyConfig(orgId(req));
     if (!config?.api_key || config.api_key === '') return res.json({ timers: {} });
 
     const { data: employees } = await supabase.from('users')
-      .select('id, clockify_user_id').eq('role', 'employee');
+      .select('id, clockify_user_id').eq('role', 'employee').eq('organization_id', orgId(req));
 
     const timers = {};
     await Promise.all((employees || []).map(async emp => {
@@ -988,7 +1373,7 @@ app.get('/api/clockify/live', auth, async (req, res) => {
 // Fetch total hours per employee for a specific past date directly from Clockify
 app.get('/api/clockify/day', auth, async (req, res) => {
   try {
-    const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+    const config = await getClockifyConfig(orgId(req));
     if (!config?.api_key || !config?.workspace_id) return res.json({ hours: {} });
 
     const date     = req.query.date || localDateStr();
@@ -996,7 +1381,7 @@ app.get('/api/clockify/day', auth, async (req, res) => {
     const endISO   = date + 'T23:59:59+05:30';
 
     const { data: employees } = await supabase.from('users')
-      .select('id, clockify_user_id').eq('role', 'employee');
+      .select('id, clockify_user_id').eq('role', 'employee').eq('organization_id', orgId(req));
 
     const hours = {};
     await Promise.all((employees || []).filter(e => e.clockify_user_id).map(async emp => {
@@ -1021,14 +1406,14 @@ app.get('/api/clockify/day', auth, async (req, res) => {
 
 app.post('/api/clockify/sync', auth, adminOnly, async (req, res) => {
   try {
-    const { data: config } = await supabase.from('clockify_config').select('*').limit(1).maybeSingle();
+    const config = await getClockifyConfig(orgId(req));
     if (!config?.api_key || !config?.workspace_id) return res.status(400).json({ error: 'Clockify API key and Workspace ID required' });
 
     const targetDate = req.body.date || new Date().toISOString().split('T')[0];
-    const settings   = await getSettings();
+    const settings   = await getSettings(orgId(req));
     const results    = await syncClockifyForDate(targetDate, config, settings);
 
-    await supabase.from('clockify_config').update({ last_synced: new Date().toISOString() }).eq('id', config.id);
+    await supabase.from('organizations').update({ clockify_last_synced: new Date().toISOString() }).eq('id', orgId(req));
     res.json({ success: true, synced: results.length, results });
   } catch (err) { res.status(500).json({ error: 'Clockify sync failed: ' + (err.response?.data?.message || err.message) }); }
 });
@@ -1039,8 +1424,8 @@ app.post('/api/push/subscribe', auth, async (req, res) => {
     const { subscription, endpoint, userAgent } = req.body;
     if (!subscription || !endpoint) return res.status(400).json({ error: 'Subscription and endpoint required' });
     await supabase.from('push_subscriptions').upsert(
-      { user_id: req.user.id, endpoint, subscription, user_agent: userAgent || null },
-      { onConflict: 'user_id,endpoint' }
+      { user_id: req.user.id, endpoint, subscription, user_agent: userAgent || null, organization_id: orgId(req) },
+      { onConflict: 'user_id' }
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1059,11 +1444,13 @@ app.post('/api/notifications/send', auth, adminOnly, async (req, res) => {
     if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Title and body required' });
     const userIds = target_user_id ? [parseInt(target_user_id)] : null;
     const sent = await sendPushToUsers(userIds, { title: title.trim(), body: body.trim(), url: url || '/' });
-    await supabase.from('notifications_log').insert({
-      title: title.trim(), body: body.trim(), url: url || null,
-      target_user_id: target_user_id ? parseInt(target_user_id) : null,
-      sent_by: req.user.id, sent_count: sent || 0,
-    }).catch(() => {});
+    try {
+      await supabase.from('notifications_log').insert({
+        title: title.trim(), body: body.trim(), url: url || null,
+        target_user_id: target_user_id ? parseInt(target_user_id) : null,
+        sent_by: req.user.id, sent_count: sent || 0,
+      });
+    } catch { /* log insert failure is non-fatal */ }
     res.json({ success: true, sent: sent || 0 });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1111,7 +1498,7 @@ app.get('/api/culture', auth, async (req, res) => {
 
     // Birthdays from employees
     const { data: users } = await supabase.from('users')
-      .select('id, name, avatar_color, department, date_of_birth').eq('role', 'employee');
+      .select('id, name, avatar_color, department, date_of_birth').eq('role', 'employee').eq('organization_id', orgId(req));
 
     const birthdaysToday    = (users || []).filter(u => u.date_of_birth && u.date_of_birth.slice(5) === todayMD);
     const upcomingBirthdays = [];
@@ -1127,8 +1514,8 @@ app.get('/api/culture', auth, async (req, res) => {
 
     // Holidays & Events in next 30 days
     const [{ data: holidays }, { data: events }] = await Promise.all([
-      supabase.from('holidays').select('*').gte('date', today).lte('date', f30Str).order('date').limit(10),
-      supabase.from('events').select('*').gte('date', today).lte('date', f30Str).order('date').limit(10),
+      supabase.from('holidays').select('*').eq('organization_id', orgId(req)).gte('date', today).lte('date', f30Str).order('date').limit(10),
+      supabase.from('events').select('*').eq('organization_id', orgId(req)).gte('date', today).lte('date', f30Str).order('date').limit(10),
     ]);
 
     res.json({ birthdaysToday: birthdaysToday || [], upcomingBirthdays, holidays: holidays || [], events: events || [] });
@@ -1142,8 +1529,8 @@ app.get('/api/my-stats', auth, async (req, res) => {
     const month = now.getMonth() + 1;
     const ym    = `${year}-${String(month).padStart(2, '0')}`;
     const [{ data: att }, { data: lvs }] = await Promise.all([
-      supabase.from('attendance').select('status, is_late').eq('user_id', req.user.id).like('date', `${ym}-%`),
-      supabase.from('leaves').select('id').eq('user_id', req.user.id).eq('status', 'approved')
+      supabase.from('attendance').select('status, is_late').eq('user_id', req.user.id).eq('organization_id', orgId(req)).like('date', `${ym}-%`),
+      supabase.from('leaves').select('id').eq('user_id', req.user.id).eq('organization_id', orgId(req)).eq('status', 'approved')
         .lte('start_date', `${ym}-31`).gte('end_date', `${ym}-01`),
     ]);
     const presentCount = (att || []).filter(r => ['present','half_day','wfh'].includes(r.status)).length;
@@ -1155,14 +1542,14 @@ app.get('/api/my-stats', auth, async (req, res) => {
 
 // ─── Holidays CRUD ────────────────────────────────────────────────────────────
 app.get('/api/holidays', auth, async (req, res) => {
-  const { data } = await supabase.from('holidays').select('*').order('date');
+  const { data } = await supabase.from('holidays').select('*').eq('organization_id', orgId(req)).order('date');
   res.json(data || []);
 });
 app.post('/api/holidays', auth, adminOnly, async (req, res) => {
   try {
     const { name, date, type, description, specific_msg } = req.body;
     if (!name || !date) return res.status(400).json({ error: 'Name and date required' });
-    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'', specific_msg: specific_msg||null }).select().single();
+    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'', specific_msg: specific_msg||null, organization_id: orgId(req) }).select().single();
     if (error) throw new Error(error.message);
     const gcalId = await gcal.createHolidayEvent(data);
     if (gcalId) await supabase.from('holidays').update({ google_event_id: gcalId }).eq('id', data.id);
@@ -1189,14 +1576,14 @@ app.delete('/api/holidays/:id', auth, adminOnly, async (req, res) => {
 
 // ─── Events CRUD ──────────────────────────────────────────────────────────────
 app.get('/api/events', auth, async (req, res) => {
-  const { data } = await supabase.from('events').select('*').order('date');
+  const { data } = await supabase.from('events').select('*').eq('organization_id', orgId(req)).order('date');
   res.json(data || []);
 });
 app.post('/api/events', auth, adminOnly, async (req, res) => {
   try {
     const { title, date, end_date, description } = req.body;
     if (!title || !date) return res.status(400).json({ error: 'Title and date required' });
-    const { data, error } = await supabase.from('events').insert({ title, date, end_date: end_date||null, description: description||'', created_by: req.user.id }).select().single();
+    const { data, error } = await supabase.from('events').insert({ title, date, end_date: end_date||null, description: description||'', created_by: req.user.id, organization_id: orgId(req) }).select().single();
     if (error) throw new Error(error.message);
     const gcalId = await gcal.createCompanyEvent(data);
     if (gcalId) await supabase.from('events').update({ google_event_id: gcalId }).eq('id', data.id);
@@ -1230,8 +1617,8 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const ym    = `${year}-${String(month).padStart(2, '0')}`;
 
     const [{ data: allLeaves }, { data: monthAtt }] = await Promise.all([
-      supabase.from('leaves').select('status, leave_type'),
-      supabase.from('attendance').select('status').like('date', `${ym}-%`),
+      supabase.from('leaves').select('status, leave_type').eq('organization_id', orgId(req)),
+      supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
     ]);
 
     const leaveByStatus = { approved: 0, pending: 0, rejected: 0, cancelled: 0 };
@@ -1257,13 +1644,14 @@ app.get('/api/leave-balance', auth, async (req, res) => {
 
     const { data: approvedLeaves } = await supabase.from('leaves')
       .select('start_date, end_date, leave_time, leave_type')
-      .eq('user_id', userId)
+      .eq('user_id', userId).eq('organization_id', orgId(req))
       .eq('status', 'approved')
       .gte('start_date', `${year}-01-01`)
       .lte('end_date',   `${year}-12-31`);
 
     const { count: totalHolidays } = await supabase.from('holidays')
       .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId(req))
       .like('date', `${year}-%`);
 
     let usedLeaveDays = 0;
@@ -1304,19 +1692,20 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
       { count: pendingLeaves },
       { count: presentToday },
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee'),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin'),
-      supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).in('status', ['present', 'half_day', 'wfh']),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', orgId(req)),
+      supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', orgId(req)),
+      supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('organization_id', orgId(req)).in('status', ['present', 'half_day', 'wfh']),
     ]);
 
     const { data: recentLeavesRaw } = await supabase.from('leaves')
       .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+      .eq('organization_id', orgId(req))
       .order('created_at', { ascending: false }).limit(8);
 
     const { data: hrAdmins } = await supabase.from('users')
       .select('id, name, email, department, position, avatar_color, created_at')
-      .eq('role', 'admin').order('name');
+      .eq('role', 'admin').eq('organization_id', orgId(req)).order('name');
 
     res.json({
       totalEmployees, totalHR, pendingLeaves, presentToday,
@@ -1330,16 +1719,18 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
 app.get('/api/root/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
-    const TOTAL_LEAVES = 18;
+    // Get total leaves from org settings (default 18)
+    const { data: orgRow } = await supabase.from('organizations').select('total_annual_leaves').eq('id', orgId(req)).single();
+    const TOTAL_LEAVES = orgRow?.total_annual_leaves || 18;
 
     const [{ data: employees }, { data: leaves }] = await Promise.all([
       supabase.from('users')
         .select('id, name, department, position, avatar_color')
-        .eq('role', 'employee')
+        .eq('role', 'employee').eq('organization_id', orgId(req))
         .order('name'),
       supabase.from('leaves')
         .select('user_id, start_date, end_date, leave_type, leave_time, status')
-        .eq('status', 'approved')
+        .eq('status', 'approved').eq('organization_id', orgId(req))
         .lte('start_date', `${year}-12-31`)
         .gte('end_date',   `${year}-01-01`),
     ]);
@@ -1347,9 +1738,12 @@ app.get('/api/root/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
     const yearStart = new Date(`${year}-01-01T12:00:00`);
     const yearEnd   = new Date(`${year}-12-31T12:00:00`);
 
+    const fmtIST = d => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+
     const result = (employees || []).map(emp => {
       const empLeaves = (leaves || []).filter(l => l.user_id === emp.id);
       let usedDays = 0;
+      const countedDays = new Set(); // prevent double-counting overlapping leaves
       const byType = {};
 
       for (const l of empLeaves) {
@@ -1359,11 +1753,21 @@ app.get('/api/root/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
         if (start > end) continue;
 
         if (l.leave_time === 'half') {
-          usedDays += 0.5;
+          const ds = fmtIST(start);
+          if (!countedDays.has(ds)) {
+            usedDays += 0.5;
+            countedDays.add(ds);
+          }
         } else {
           for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             const dow = d.getDay();
-            if (dow !== 0 && dow !== 6) usedDays++;
+            if (dow !== 0 && dow !== 6) {
+              const ds = fmtIST(d);
+              if (!countedDays.has(ds)) {
+                usedDays++;
+                countedDays.add(ds);
+              }
+            }
           }
         }
         byType[l.leave_type] = (byType[l.leave_type] || 0) + 1;
@@ -1387,7 +1791,7 @@ app.get('/api/root/hr', auth, rootAdminOnly, async (req, res) => {
   try {
     const { data } = await supabase.from('users')
       .select('id, name, email, department, position, avatar_color, created_at')
-      .eq('role', 'admin').order('name');
+      .eq('role', 'admin').eq('organization_id', orgId(req)).order('name');
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1399,7 +1803,7 @@ app.post('/api/root/hr', auth, rootAdminOnly, async (req, res) => {
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required' });
     const hashed = bcrypt.hashSync(password, 10);
     const { data, error } = await supabase.from('users')
-      .insert({ name, email: email.toLowerCase(), password: hashed, role: 'admin', department: department||'Human Resources', position: position||'HR Manager', avatar_color: avatar_color||'#3525cd', force_password_change: true })
+      .insert({ name, email: email.toLowerCase(), password: hashed, role: 'admin', department: department||'Human Resources', position: position||'HR Manager', avatar_color: avatar_color||'#3525cd', force_password_change: true, organization_id: orgId(req) })
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
@@ -1415,7 +1819,8 @@ app.put('/api/root/hr/:id', auth, rootAdminOnly, async (req, res) => {
     const update = { name, department, position, avatar_color };
     if (email) update.email = email.toLowerCase();
     if (password) update.password = bcrypt.hashSync(password, 10);
-    const { data, error } = await supabase.from('users').update(update).eq('id', req.params.id)
+    const { data, error } = await supabase.from('users').update(update)
+      .eq('id', req.params.id).eq('organization_id', orgId(req))
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error) throw new Error(error.message);
     res.json(data);
@@ -1426,7 +1831,7 @@ app.put('/api/root/hr/:id', auth, rootAdminOnly, async (req, res) => {
 app.delete('/api/root/hr/:id', auth, rootAdminOnly, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
-    await supabase.from('users').delete().eq('id', req.params.id).eq('role', 'admin');
+    await supabase.from('users').delete().eq('id', req.params.id).eq('role', 'admin').eq('organization_id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1435,7 +1840,7 @@ app.delete('/api/root/hr/:id', auth, rootAdminOnly, async (req, res) => {
 app.get('/api/root/notify-recipients', auth, rootAdminOnly, async (req, res) => {
   try {
     const { data } = await supabase.from('notification_recipients')
-      .select('*').order('created_at', { ascending: true });
+      .select('*').eq('organization_id', orgId(req)).order('created_at', { ascending: true });
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1445,7 +1850,7 @@ app.post('/api/root/notify-recipients', auth, rootAdminOnly, async (req, res) =>
     const { email, name } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const { data, error } = await supabase.from('notification_recipients')
-      .insert({ email: email.toLowerCase().trim(), name: name || '' })
+      .insert({ email: email.toLowerCase().trim(), name: name || '', organization_id: orgId(req) })
       .select().single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already in the list' });
     if (error) throw new Error(error.message);
@@ -1458,7 +1863,7 @@ app.put('/api/root/notify-recipients/:id', auth, rootAdminOnly, async (req, res)
     const { active, name } = req.body;
     const { data, error } = await supabase.from('notification_recipients')
       .update({ ...(active !== undefined && { active }), ...(name !== undefined && { name }) })
-      .eq('id', req.params.id).select().single();
+      .eq('id', req.params.id).eq('organization_id', orgId(req)).select().single();
     if (error) throw new Error(error.message);
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1466,7 +1871,7 @@ app.put('/api/root/notify-recipients/:id', auth, rootAdminOnly, async (req, res)
 
 app.delete('/api/root/notify-recipients/:id', auth, rootAdminOnly, async (req, res) => {
   try {
-    await supabase.from('notification_recipients').delete().eq('id', req.params.id);
+    await supabase.from('notification_recipients').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1579,7 +1984,7 @@ async function start() {
   try {
     await seed();
     app.listen(PORT, () => {
-      console.log(`\n🚀 Lumens HR running at http://localhost:${PORT}\n`);
+      console.log(`\n🚀 Lumens HR v${SERVER_VERSION} running at http://localhost:${PORT}\n`);
     });
     scheduleDailyAt(8, 0, runDailyNotifications);  // 8 AM IST — birthday wishes & holiday reminders
     startClockifyIntervalSync();                    // every 10 min, 8 AM – 10 PM IST

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock, Building2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { apiPost } from '@/lib/api';
 
@@ -9,6 +9,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
+  const [orgSlug,  setOrgSlug]  = useState('');
   const [showPw,   setShowPw]   = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
@@ -18,7 +19,9 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const { token, user } = await apiPost('/auth/login', { email, password });
+      const payload = { email, password };
+      if (orgSlug.trim()) payload.org_slug = orgSlug.trim().toLowerCase();
+      const { token, user } = await apiPost('/auth/login', payload);
       saveAuth(token, user);
       // Navigate directly to the correct portal — no redirect chain
       if (user.role === 'root_admin') navigate('/root/dashboard');
@@ -35,7 +38,7 @@ export default function Login() {
     <div className="h-screen grid md:grid-cols-2 bg-[#f9f9ff] overflow-hidden">
 
       {/* Left brand panel */}
-      <div className="hidden md:flex flex-col justify-center px-16 py-14 relative overflow-y-auto bg-[#3525cd]">
+      <div className="hidden md:flex flex-col justify-center px-12 py-8 relative overflow-hidden bg-[#3525cd]">
 
         {/* Subtle grid texture */}
         <div className="absolute inset-0 pointer-events-none"
@@ -44,23 +47,23 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#3525cd]/80 via-[#712ae2]/40 to-[#3525cd]/90 pointer-events-none" />
 
         <div className="relative z-10 text-white">
-          <div className="flex items-center gap-3 mb-14">
+          <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
               <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-7 h-7" />
             </div>
             <span className="text-white font-black text-lg tracking-tight">LeaveTracker</span>
           </div>
 
-          <h1 className="text-5xl font-black leading-tight tracking-[-0.04em] text-white mb-5">
+          <h1 className="text-4xl font-black leading-tight tracking-[-0.04em] text-white mb-4">
             Elevating Human<br />
             <span className="opacity-80">Resources with</span><br />
             <em className="not-italic text-white/90">Precision.</em>
           </h1>
-          <p className="text-white/75 text-base leading-relaxed max-w-sm mb-12">
+          <p className="text-white/75 text-sm leading-relaxed max-w-sm mb-7">
             Experience the next generation of attendance tracking, leave management, and employee engagement in one seamless platform.
           </p>
 
-          <div className="flex flex-col gap-4 mb-12">
+          <div className="flex flex-col gap-3 mb-7">
             {[
               { icon: <Zap size={18} />,           title: 'Real-time Attendance',    desc: 'Clock-in/out with live status across your entire org' },
               { icon: <ClipboardList size={18} />, title: 'Smart Leave Management', desc: 'Multi-type leave workflows with instant approvals' },
@@ -113,6 +116,18 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="form-label">Organization Slug <span className="text-[#777587] font-normal">(optional)</span></label>
+              <div className="relative">
+                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                <input
+                  type="text" className="form-control pl-9"
+                  placeholder="e.g. lumoslogic (leave blank if only 1 org)"
+                  value={orgSlug}
+                  onChange={e => setOrgSlug(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
               <label className="form-label">Email Address</label>
               <input
                 type="email" className="form-control" required autoComplete="email"
@@ -156,8 +171,15 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="text-center text-[0.72rem] text-[#777587] mt-7">
-            Lumos Logic — HR Management System &nbsp;·&nbsp; v2.0
+          <p className="text-center text-sm text-[#464555] mt-6">
+            New company?{' '}
+            <Link to="/register" className="text-[#3525cd] font-bold hover:underline">
+              Create your organization →
+            </Link>
+          </p>
+
+          <p className="text-center text-[0.72rem] text-[#777587] mt-3">
+            LeaveTracker — Multi-Tenant HR Management
           </p>
         </div>
       </div>

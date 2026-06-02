@@ -6,12 +6,15 @@ import { AppLayout }      from '@/components/layout/AppLayout';
 import { RootLayout }     from '@/components/layout/RootLayout';
 import { EmployeeLayout } from '@/components/layout/EmployeeLayout';
 import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
-import Login        from '@/pages/Login';
-import Dashboard    from '@/pages/Dashboard';
-import Calendar     from '@/pages/Calendar';
-import Leaves       from '@/pages/Leaves';
-import Employees    from '@/pages/Employees';
-import Settings     from '@/pages/Settings';
+import LandingPage   from '@/pages/LandingPage';
+import Login         from '@/pages/Login';
+import Register      from '@/pages/Register';
+import Dashboard     from '@/pages/Dashboard';
+import Calendar      from '@/pages/Calendar';
+import Leaves        from '@/pages/Leaves';
+import Employees     from '@/pages/Employees';
+import Settings      from '@/pages/Settings';
+import OrgSettings   from '@/pages/OrgSettings';
 import RootDashboard from '@/pages/RootDashboard';
 import ManageHR      from '@/pages/ManageHR';
 import Broadcast     from '@/pages/Broadcast';
@@ -27,12 +30,6 @@ function defaultPath(user) {
   return '/dashboard';
 }
 
-function PrivateRoute({ children }) {
-  const { token } = useAuth();
-  return token ? children : <Navigate to="/login" replace />;
-}
-
-// HR + root_admin can access HR-level pages
 function HRRoute({ children }) {
   const { token, isAdmin } = useAuth();
   if (!token)   return <Navigate to="/login" replace />;
@@ -40,7 +37,6 @@ function HRRoute({ children }) {
   return children;
 }
 
-// Only root_admin can access root-level pages
 function RootRoute({ children }) {
   const { token, isRootAdmin } = useAuth();
   if (!token)        return <Navigate to="/login" replace />;
@@ -48,7 +44,6 @@ function RootRoute({ children }) {
   return children;
 }
 
-// Only employees can access the employee portal
 function EmployeeRoute({ children }) {
   const { token, isEmployee } = useAuth();
   if (!token)      return <Navigate to="/login" replace />;
@@ -62,7 +57,9 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={token ? <Navigate to={home} replace /> : <Login />} />
+      <Route path="/" element={token ? <Navigate to={home} replace /> : <LandingPage />} />
+      <Route path="/login"    element={token ? <Navigate to={home} replace /> : <Login />} />
+      <Route path="/register" element={token ? <Navigate to={home} replace /> : <Register />} />
 
       {/* ── HR Admin area (admin + root_admin) ── */}
       <Route element={<HRRoute><AppLayout /></HRRoute>}>
@@ -76,14 +73,15 @@ function AppRoutes() {
 
       {/* ── Root Admin area (root_admin only) ── */}
       <Route element={<RootRoute><RootLayout /></RootRoute>}>
-        <Route path="/root/dashboard"  element={<RootDashboard />} />
-        <Route path="/root/calendar"   element={<Calendar />} />
-        <Route path="/root/leaves"     element={<Leaves />} />
-        <Route path="/root/employees"  element={<Employees />} />
-        <Route path="/root/settings"   element={<Settings />} />
-        <Route path="/root/manage-hr"  element={<ManageHR />} />
-        <Route path="/root/broadcast"  element={<Broadcast />} />
-        <Route path="/root/profile"    element={<MyProfile />} />
+        <Route path="/root/dashboard"    element={<RootDashboard />} />
+        <Route path="/root/calendar"     element={<Calendar />} />
+        <Route path="/root/leaves"       element={<Leaves />} />
+        <Route path="/root/employees"    element={<Employees />} />
+        <Route path="/root/settings"     element={<Settings />} />
+        <Route path="/root/manage-hr"    element={<ManageHR />} />
+        <Route path="/root/broadcast"    element={<Broadcast />} />
+        <Route path="/root/profile"      element={<MyProfile />} />
+        <Route path="/root/org-settings" element={<OrgSettings />} />
       </Route>
 
       {/* ── Employee portal (employee only) ── */}
@@ -94,8 +92,7 @@ function AppRoutes() {
         <Route path="/portal/profile"    element={<MyProfile />} />
       </Route>
 
-      <Route index element={<Navigate to={home} replace />} />
-      <Route path="*" element={<Navigate to={home} replace />} />
+      <Route path="*" element={<Navigate to={token ? home : '/'} replace />} />
     </Routes>
   );
 }
