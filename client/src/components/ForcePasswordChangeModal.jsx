@@ -5,13 +5,14 @@ import { useAuth } from '@/context/AuthContext';
 
 export function ForcePasswordChangeModal() {
   const { user, saveAuth, token } = useAuth();
-  const [curPw,   setCurPw]   = useState('');
-  const [newPw,   setNewPw]   = useState('');
-  const [confPw,  setConfPw]  = useState('');
-  const [showCur, setShowCur] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [curPw,    setCurPw]    = useState('');
+  const [newPw,    setNewPw]    = useState('');
+  const [confPw,   setConfPw]   = useState('');
+  const [showCur,  setShowCur]  = useState(false);
+  const [showNew,  setShowNew]  = useState(false);
+  const [showConf, setShowConf] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
 
   if (!user?.force_password_change) return null;
 
@@ -90,14 +91,23 @@ export function ForcePasswordChangeModal() {
 
           <div>
             <label className="form-label">Confirm New Password</label>
-            <input
-              type="password"
-              className="form-control"
-              value={confPw}
-              onChange={e => setConfPw(e.target.value)}
-              required
-              placeholder="Repeat new password"
-            />
+            <div className="relative">
+              <input
+                type={showConf ? 'text' : 'password'}
+                className="form-control pr-10"
+                value={confPw}
+                onChange={e => setConfPw(e.target.value)}
+                required
+                placeholder="Repeat new password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConf(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]"
+              >
+                {showConf ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {error && (

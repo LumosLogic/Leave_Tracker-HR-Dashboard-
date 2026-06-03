@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -16,6 +16,167 @@ import {
 
 const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
+// ── Clockify Day Timeline ──────────────────────────────────────────────────────
+function AttendanceDayTimeline({ empId, date, totalHours }) {
+  const [open,    setOpen]    = useState(false);
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const loaded = useRef(false);
+
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    if (!loaded.current) {
+      setLoading(true);
+      try {
+        const { entries: e } = await apiGet('/clockify/user-entries', { userId: empId, date });
+        setEntries(e || []);
+        loaded.current = true;
+      } catch { setEntries([]); }
+      finally { setLoading(false); }
+    }
+    setOpen(true);
+  }
+
+  // Build timeline: alternate work sessions and breaks
+  const timeline = [];
+  entries.forEach((e, i) => {
+    timeline.push({ type: 'work', start: e.start, end: e.end, durationMin: e.durationMin, desc: e.description });
+    if (i < entries.length - 1 && e.end) {
+      const [eh, em] = e.end.split(':').map(Number);
+      const [nh, nm] = entries[i + 1].start.split(':').map(Number);
+      const breakMin = (nh * 60 + nm) - (eh * 60 + em);
+      if (breakMin > 0) timeline.push({ type: 'break', durationMin: breakMin, start: e.end, end: entries[i + 1].start });
+    }
+  });
+
+  const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60 > 0 ? `${m % 60}m` : ''}`.trim() : `${m}m`;
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={toggle}
+        className="flex items-center gap-1.5 text-[0.72rem] font-bold text-[#3525cd] hover:text-[#4f46e5] transition-colors"
+      >
+        {loading
+          ? <><Loader2 size={12} className="animate-spin" /> Loading timeline…</>
+          : open
+            ? <><ChevronUp size={12} /> Hide Timeline</>
+            : <><ChevronDown size={12} /> <Timer size={12} /> View Clockify Timeline</>
+        }
+      </button>
+
+      {open && (
+        <div className="mt-3 rounded-xl border border-[#c7c4d8] overflow-hidden bg-white">
+          {entries.length === 0 ? (
+            <div className="px-4 py-4 text-xs text-[#777587] text-center italic">
+              No Clockify entries found — employee may have used manual check-in/out.
+            </div>
+          ) : (
+            <>
+              {/* Timeline rows */}
+              <div className="p-4 space-y-0">
+                {timeline.map((item, i) => (
+                  item.type === 'work' ? (
+                    <div key={i} className="flex gap-3">
+                      {/* Timeline spine */}
+                      <div className="flex flex-col items-center w-6 flex-shrink-0">
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center flex-shrink-0">
+                          <Play size={9} className="text-emerald-600 ml-0.5" />
+                        </div>
+                        {i < timeline.length - 1 && (
+                          <div className="w-0.5 flex-1 bg-[#e7eefe] my-0.5 min-h-[28px]" />
+                        )}
+                      </div>
+                      {/* Content */}
+                      <div className="pb-3 flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-sm font-black text-[#151c27]">{item.start}</span>
+                          {item.end && (
+                            <span className="text-xs text-[#777587]">→ {item.end}</span>
+                          )}
+                          {!item.end && (
+                            <span className="text-[0.65rem] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 animate-pulse">
+                              Live
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {item.durationMin > 0 && (
+                            <span className="text-[0.7rem] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                              {fmtMin(item.durationMin)} worked
+                            </span>
+                          )}
+                          {item.desc && (
+                            <span className="text-[0.68rem] text-[#777587] truncate">{item.desc}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={i} className="flex gap-3">
+                      {/* Spine for break */}
+                      <div className="flex flex-col items-center w-6 flex-shrink-0">
+                        <div className="w-0.5 flex-1 bg-[#e7eefe] my-0" style={{ minHeight: 8 }} />
+                        <div className="w-6 h-6 rounded-full bg-amber-50 border-2 border-amber-300 flex items-center justify-center flex-shrink-0">
+                          <Coffee size={9} className="text-amber-600" />
+                        </div>
+                        <div className="w-0.5 flex-1 bg-[#e7eefe] my-0" style={{ minHeight: 8 }} />
+                      </div>
+                      {/* Break content */}
+                      <div className="py-1 flex items-center flex-1 min-w-0">
+                        <span className="text-[0.7rem] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                          <Coffee size={9} /> Break: {fmtMin(item.durationMin)}
+                          {item.start && item.end && (
+                            <span className="font-normal text-amber-500 ml-0.5">({item.start} – {item.end})</span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                ))}
+
+                {/* Final stop dot */}
+                {entries.length > 0 && entries[entries.length - 1].end && (
+                  <div className="flex gap-3">
+                    <div className="flex flex-col items-center w-6 flex-shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-rose-100 border-2 border-rose-400 flex items-center justify-center flex-shrink-0">
+                        <Square size={8} className="text-rose-600" />
+                      </div>
+                    </div>
+                    <div className="flex items-center pb-1">
+                      <span className="text-sm font-black text-[#151c27]">{entries[entries.length - 1].end}</span>
+                      <span className="text-xs text-[#777587] ml-2">End of day</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary footer */}
+              <div className="border-t border-[#f0f3ff] px-4 py-3 flex items-center justify-between bg-[#f9f9ff]">
+                <div className="flex items-center gap-3 text-[0.72rem] text-[#777587]">
+                  <span className="flex items-center gap-1"><Play size={10} className="text-emerald-500" /> {entries.length} session{entries.length !== 1 ? 's' : ''}</span>
+                  {timeline.filter(t => t.type === 'break').length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Coffee size={10} className="text-amber-500" />
+                      {fmtMin(timeline.filter(t => t.type === 'break').reduce((s, b) => s + b.durationMin, 0))} break
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Timer size={13} className="text-[#3525cd]" />
+                  <span className="text-sm font-black text-[#3525cd]">
+                    {totalHours ? `${totalHours}h total` : fmtMin(entries.reduce((s, e) => s + (e.durationMin || 0), 0))}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Employee Profile ──────────────────────────────────────────────────────────
 function EmployeeProfile({ emp, onBack }) {
   const now = new Date();
@@ -24,6 +185,7 @@ function EmployeeProfile({ emp, onBack }) {
   const [month,       setMonth]       = useState(now.getMonth() + 1);
   const [customStart, setCustomStart] = useState('');
   const [customEnd,   setCustomEnd]   = useState('');
+  const [recordsTab,  setRecordsTab]  = useState('attendance');
 
   const today      = now.toISOString().split('T')[0];
   const monthValue = `${year}-${String(month).padStart(2, '0')}`;
@@ -190,57 +352,129 @@ function EmployeeProfile({ emp, onBack }) {
             ))}
           </div>
 
-          {/* Records */}
-          <div className="text-sm font-bold text-[#464555] uppercase tracking-wide mb-3">
-            Leave Records — {periodLabel}
+          {/* Tab switcher */}
+          <div className="flex gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-1 rounded-xl mb-4">
+            {[
+              { key: 'attendance', label: 'Attendance & Hours', icon: <Timer size={13} /> },
+              { key: 'leaves',     label: 'Leaves & Absences',  icon: <Umbrella size={13} /> },
+            ].map(t => (
+              <button key={t.key} onClick={() => setRecordsTab(t.key)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                  recordsTab === t.key ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
+                }`}>
+                {t.icon} {t.label}
+              </button>
+            ))}
           </div>
-          <div className="flex flex-col gap-3">
-            {leaves.length === 0 && absentCount === 0 ? (
+
+          {/* ── Attendance & Hours Tab ── */}
+          {recordsTab === 'attendance' && (() => {
+            const presentRecords = attendance
+              .filter(r => ['present', 'wfh', 'half_day'].includes(r.status))
+              .sort((a, b) => b.date.localeCompare(a.date));
+
+            return presentRecords.length === 0 ? (
               <div className="empty-state">
-                <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
-                <p>No leave records for {periodLabel}</p>
+                <CalendarDays size={36} className="mx-auto mb-2 opacity-30" />
+                <p>No attendance records for {periodLabel}</p>
               </div>
             ) : (
-              <>
-                {leaves.map(l => (
-                  <div key={l.id} className="card p-4 flex items-start gap-3">
-                    <Avatar name={emp.name} color={emp.avatar_color} size={32} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
-                        <LeaveTypeBadge type={l.leave_type} />
-                        {l.leave_time === 'half' ? (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
-                            {l.half_type === 'second_half' ? '🌙 Second Half' : '☀️ First Half'}
-                          </span>
-                        ) : l.leave_time === 'wfh' ? (
-                          <StatusBadge status="wfh" />
-                        ) : (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>
-                        )}
-                        <StatusBadge status={l.status} />
+              <div className="flex flex-col gap-3">
+                {presentRecords.map(r => {
+                  const totalHours = r.clockify_hours > 0 ? r.clockify_hours : r.work_hours;
+                  const dow = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                  const dayNum = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  return (
+                    <div key={r.id} className="card p-4">
+                      {/* Day header row */}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-3">
+                          {/* Date chip */}
+                          <div className="text-center bg-[#f0f3ff] rounded-lg px-2.5 py-1.5 flex-shrink-0">
+                            <div className="text-[0.6rem] font-bold text-[#777587] uppercase tracking-widest">{dow}</div>
+                            <div className="text-sm font-black text-[#3525cd] leading-tight">{dayNum}</div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <StatusBadge status={r.status} />
+                              {totalHours > 0 && (
+                                <span className="flex items-center gap-1 text-xs font-black text-[#3525cd]">
+                                  <Timer size={12} /> {totalHours}h
+                                </span>
+                              )}
+                              {r.clockify_hours > 0 && (
+                                <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">
+                                  Clockify
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-[#464555]">{fmtDateRange(l.start_date, l.end_date)}</div>
-                      {l.reason && <div className="text-xs text-[#777587] italic mt-1">"{l.reason}"</div>}
-                      {l.approver_name && <div className="text-xs text-[#777587] mt-1">By: {l.approver_name}</div>}
+
+                      {/* Expandable Clockify timeline */}
+                      <AttendanceDayTimeline
+                        empId={emp.id}
+                        date={r.date}
+                        totalHours={totalHours}
+                      />
                     </div>
-                  </div>
-                ))}
-                {absentRecords.map(r => (
-                  <div key={r.id} className="card p-4 flex items-start gap-3">
-                    <Avatar name={emp.name} color={emp.avatar_color} size={32} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
-                        <StatusBadge status="absent" />
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* ── Leaves & Absences Tab ── */}
+          {recordsTab === 'leaves' && (
+            <div className="flex flex-col gap-3">
+              {leaves.length === 0 && absentCount === 0 ? (
+                <div className="empty-state">
+                  <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
+                  <p>No leave records for {periodLabel}</p>
+                </div>
+              ) : (
+                <>
+                  {leaves.map(l => (
+                    <div key={l.id} className="card p-4 flex items-start gap-3">
+                      <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                          <LeaveTypeBadge type={l.leave_type} />
+                          {l.leave_time === 'half' ? (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
+                              {l.half_type === 'second_half' ? '🌙 Second Half' : '☀️ First Half'}
+                            </span>
+                          ) : l.leave_time === 'wfh' ? (
+                            <StatusBadge status="wfh" />
+                          ) : (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>
+                          )}
+                          <StatusBadge status={l.status} />
+                        </div>
+                        <div className="text-xs text-[#464555]">{fmtDateRange(l.start_date, l.end_date)}</div>
+                        {l.reason && <div className="text-xs text-[#777587] italic mt-1">"{l.reason}"</div>}
+                        {l.approver_name && <div className="text-xs text-[#777587] mt-1">By: {l.approver_name}</div>}
                       </div>
-                      <div className="text-xs text-[#464555]">{fmtDate(r.date)}</div>
                     </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
+                  ))}
+                  {absentRecords.map(r => (
+                    <div key={r.id} className="card p-4 flex items-start gap-3">
+                      <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                          <StatusBadge status="absent" />
+                        </div>
+                        <div className="text-xs text-[#464555]">{fmtDate(r.date)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -253,6 +487,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved }) {
   const toast       = useToast();
   const { isRootAdmin } = useAuth();
   const qc     = useQueryClient();
+  const [showPw, setShowPw] = useState(false);
 
   const [form, setForm] = useState(() => isEdit ? {
     name:          employee.name,
@@ -318,10 +553,16 @@ function EmployeeFormModal({ open, onClose, employee, onSaved }) {
           <label className="form-label">
             {isEdit ? 'New Password (leave blank to keep current)' : 'Password'}
           </label>
-          <input className="form-control" type="password"
-            placeholder={isEdit ? 'Leave blank to keep' : 'Min 6 characters'}
-            value={form.password} onChange={e => set('password', e.target.value)}
-            required={!isEdit} />
+          <div className="relative">
+            <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
+              placeholder={isEdit ? 'Leave blank to keep' : 'Min 6 characters'}
+              value={form.password} onChange={e => set('password', e.target.value)}
+              required={!isEdit} />
+            <button type="button" onClick={() => setShowPw(s => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
+              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -417,7 +658,7 @@ export default function Employees() {
       <div className="page-header mb-6">
         <div>
           <div className="page-title">Team Members</div>
-          <div className="page-subtitle">{employees.length} total members</div>
+          <div className="page-subtitle">{employees.length} employee{employees.length !== 1 ? 's' : ''}</div>
         </div>
         <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
           <Plus size={16} /> Add Employee
@@ -436,8 +677,8 @@ export default function Employees() {
           {employees.map(emp => (
             <div
               key={emp.id}
-              className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex flex-col overflow-hidden transition-all duration-200 ${emp.role !== 'admin' ? 'cursor-pointer hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5' : ''}`}
-              onClick={() => emp.role !== 'admin' && setProfileEmp(emp)}
+              className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex flex-col overflow-hidden transition-all duration-200 cursor-pointer hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5"
+              onClick={() => setProfileEmp(emp)}
             >
               {/* Card header with avatar */}
               <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5">

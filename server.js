@@ -721,6 +721,7 @@ app.get('/api/employees', auth, async (req, res) => {
     const { data } = await supabase.from('users')
       .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at')
       .eq('organization_id', orgId(req))
+      .eq('role', 'employee')
       .order('name');
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1018,6 +1019,71 @@ app.delete('/api/attendance/late-early/:id', auth, adminOnly, async (req, res) =
 });
 
 // ─── Leaves ───────────────────────────────────────────────────────────────────
+
+// Check for date conflicts and return leave balance for the current user
+app.get('/api/leaves/date-check', auth, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate required' });
+
+    // Check for existing pending/approved leaves on the selected dates for this user
+    const { data: conflicts } = await supabase.from('leaves')
+      .select('id, leave_type, status, start_date, end_date')
+      .eq('user_id', req.user.id)
+      .eq('organization_id', orgId(req))
+      .in('status', ['pending', 'approved'])
+      .lte('start_date', endDate)
+      .gte('end_date', startDate);
+
+    // Check for Clockify attendance on those dates
+    const { data: attendanceRecs } = await supabase.from('attendance')
+      .select('date, clockify_hours, work_hours')
+      .eq('user_id', req.user.id)
+      .eq('organization_id', orgId(req))
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .gt('work_hours', 0);
+
+    // Get leave balance per type (approved leaves this year)
+    const year = new Date().getFullYear();
+    const { data: approved } = await supabase.from('leaves')
+      .select('leave_type, start_date, end_date, leave_time')
+      .eq('user_id', req.user.id)
+      .eq('organization_id', orgId(req))
+      .eq('status', 'approved')
+      .gte('start_date', `${year}-01-01`)
+      .lte('end_date', `${year}-12-31`);
+
+    // Count used days per type
+    const usedByType = {};
+    for (const l of approved || []) {
+      if (!usedByType[l.leave_type]) usedByType[l.leave_type] = 0;
+      if (l.leave_time === 'half') {
+        usedByType[l.leave_type] += 0.5;
+      } else if (l.leave_time !== 'wfh') {
+        const s = new Date(l.start_date + 'T12:00:00');
+        const e = new Date(l.end_date   + 'T12:00:00');
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          const dow = d.getDay();
+          if (dow !== 0 && dow !== 6) usedByType[l.leave_type] += 1;
+        }
+      }
+    }
+
+    // Get org leave quota
+    const { data: orgRow } = await supabase.from('organizations')
+      .select('total_annual_leaves').eq('id', orgId(req)).maybeSingle();
+    const totalAnnual = orgRow?.total_annual_leaves || 18;
+
+    res.json({
+      conflicts: conflicts || [],
+      hasAttendance: (attendanceRecs || []).length > 0,
+      usedByType,
+      totalAnnual,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/leaves', auth, async (req, res) => {
   try {
     const { userId, year, month } = req.query;
@@ -1399,6 +1465,92 @@ app.get('/api/clockify/day', auth, async (req, res) => {
         if (totalSeconds > 0) hours[emp.id] = Math.round((totalSeconds / 3600) * 100) / 100;
       } catch { /* individual failure ok */ }
     }));
+
+    res.json({ hours });
+  } catch (err) { res.json({ hours: {} }); }
+});
+
+// Timeline: full list of Clockify time entries for a specific user + date (admin/HR only)
+app.get('/api/clockify/user-entries', auth, adminOnly, async (req, res) => {
+  try {
+    const config = await getClockifyConfig(orgId(req));
+    if (!config?.api_key || !config?.workspace_id) return res.json({ entries: [] });
+
+    const { userId, date } = req.query;
+    if (!userId || !date) return res.status(400).json({ error: 'userId and date required' });
+
+    const { data: userRow } = await supabase.from('users')
+      .select('clockify_user_id').eq('id', parseInt(userId)).eq('organization_id', orgId(req)).maybeSingle();
+    if (!userRow?.clockify_user_id) return res.json({ entries: [] });
+
+    const startISO = date + 'T00:00:00+05:30';
+    const endISO   = date + 'T23:59:59+05:30';
+
+    const resp = await axios.get(
+      `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
+      { headers: { 'X-Api-Key': config.api_key }, params: { start: startISO, end: endISO, 'page-size': 50 } }
+    );
+
+    const raw = resp.data || [];
+    const entries = raw
+      .filter(e => e.timeInterval?.start)
+      .sort((a, b) => new Date(a.timeInterval.start) - new Date(b.timeInterval.start))
+      .map(e => {
+        const start = new Date(e.timeInterval.start);
+        const end   = e.timeInterval.end ? new Date(e.timeInterval.end) : null;
+        const fmt   = d => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        const durMatch = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        const durSec = durMatch ? (parseInt(durMatch[1]||0)*3600 + parseInt(durMatch[2]||0)*60 + parseInt(durMatch[3]||0)) : 0;
+        return {
+          id:          e.id,
+          description: e.description || '',
+          start:       fmt(start),
+          end:         end ? fmt(end) : null,
+          durationMin: Math.round(durSec / 60),
+        };
+      });
+
+    res.json({ entries });
+  } catch (err) { res.json({ entries: [] }); }
+});
+
+// Employee self-service: get their own Clockify total hours per day for a month
+// Uses the org's API key + the employee's clockify_user_id — no adminOnly required
+app.get('/api/my-clockify-hours', auth, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    if (!year || !month) return res.status(400).json({ error: 'year and month required' });
+
+    // Get org Clockify config
+    const config = await getClockifyConfig(orgId(req));
+    if (!config?.api_key || !config?.workspace_id) return res.json({ hours: {} });
+
+    // Get this user's clockify_user_id
+    const { data: userRow } = await supabase.from('users')
+      .select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+    if (!userRow?.clockify_user_id) return res.json({ hours: {} });
+
+    const ym     = `${year}-${String(month).padStart(2, '0')}`;
+    const startISO = `${ym}-01T00:00:00+05:30`;
+    const lastDay  = new Date(parseInt(year), parseInt(month), 0).getDate();
+    const endISO   = `${ym}-${String(lastDay).padStart(2, '0')}T23:59:59+05:30`;
+
+    const resp = await axios.get(
+      `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
+      { headers: { 'X-Api-Key': config.api_key }, params: { start: startISO, end: endISO, 'page-size': 500 } }
+    );
+
+    const entries = resp.data || [];
+    const hours   = {}; // date string → total hours
+
+    for (const e of entries) {
+      if (!e.timeInterval?.start) continue;
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(e.timeInterval.start));
+      const m = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!m) continue;
+      const sec = (parseInt(m[1]||0)*3600) + (parseInt(m[2]||0)*60) + parseInt(m[3]||0);
+      hours[dateStr] = Math.round(((hours[dateStr] || 0) + sec / 3600) * 100) / 100;
+    }
 
     res.json({ hours });
   } catch (err) { res.json({ hours: {} }); }

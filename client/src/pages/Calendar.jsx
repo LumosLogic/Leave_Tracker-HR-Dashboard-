@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, AlarmClock, Clock, Home, Umbrella, UserCheck, XCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Home, Umbrella, UserCheck, XCircle, Timer, Play, Pause, Square, ChevronDown, ChevronUp } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -45,11 +45,31 @@ export default function Calendar() {
     },
   });
 
-  const grouped = attendance.reduce((acc, r) => {
-    if (!acc[r.date]) acc[r.date] = [];
-    acc[r.date].push(r);
-    return acc;
-  }, {});
+  // Build attendance map + overlay approved leaves so calendar cells always show leave status
+  const grouped = {};
+  attendance.forEach(r => {
+    if (!grouped[r.date]) grouped[r.date] = [];
+    grouped[r.date].push(r);
+  });
+
+  // Overlay approved leaves: employees on leave appear in calendar even with no attendance record
+  leaves.filter(l => l.status === 'approved').forEach(l => {
+    const start = new Date(l.start_date + 'T12:00:00');
+    const end   = new Date(l.end_date   + 'T12:00:00');
+    const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
+                      : l.leave_time === 'half' ? 'half_day'
+                      : 'on_leave';
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const ds = toISODate(d);
+      if (!grouped[ds]) grouped[ds] = [];
+      const existingIdx = grouped[ds].findIndex(r => r.user_id === l.user_id);
+      if (existingIdx === -1) {
+        grouped[ds].push({ user_id: l.user_id, date: ds, status: leaveStatus, _synthetic: true });
+      } else if (!['on_leave', 'wfh', 'half_day'].includes(grouped[ds][existingIdx].status)) {
+        grouped[ds][existingIdx] = { ...grouped[ds][existingIdx], status: leaveStatus };
+      }
+    }
+  });
 
   // Build a map: userId → [leave records] for quick lookup of leave type
   const leavesByUser = leaves.reduce((acc, l) => {
@@ -108,7 +128,7 @@ export default function Calendar() {
           ))}
         </div>
         <div className="hidden lg:flex items-center gap-3.5 ml-auto flex-wrap">
-          {[['#10B981','Present'],['#EF4444','Absent'],['#F59E0B','On Leave'],['#4f46e5','Half Day'],['#3525cd','WFH'],['#F97316','Late'],['#712ae2','Early Exit']].map(([c, l]) => (
+          {[['#10B981','Present'],['#EF4444','Absent'],['#F59E0B','On Leave'],['#4f46e5','Half Day'],['#3525cd','WFH']].map(([c, l]) => (
             <div key={l} className="flex items-center gap-1.5 text-xs text-[#777587] font-semibold">
               <span className="w-2 h-2 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} /> {l}
             </div>
@@ -179,10 +199,10 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick 
               onClick={() => onDayClick(ds)}
               className={cn(
                 'bg-white min-h-[110px] p-2 cursor-pointer flex flex-col gap-1 transition-colors duration-100',
-                isOther  && 'bg-[#f0f3ff]/60',
-                isTodayD && 'bg-[#f0f3ff]',
-                isWkend  && !isTodayD && 'bg-[#f0f3ff]/40',
-                'hover:bg-[#f0f3ff]/80'
+                isOther  && 'bg-[#f0f3ff]',
+                isTodayD && 'bg-[#eef0ff]',
+                isWkend  && !isTodayD && 'bg-slate-50',
+                'hover:bg-[#f0f3ff]'
               )}
             >
               {/* Date number */}
@@ -215,8 +235,6 @@ function AdminCellContent({ ds, records, total }) {
   const absent   = records.filter(r => r.status === 'absent').length;
   const half     = records.filter(r => r.status === 'half_day').length;
   const wfh      = records.filter(r => r.status === 'wfh').length;
-  const late     = records.filter(r => r.is_late).length;
-  const early    = records.filter(r => r.is_early_exit).length;
 
   return (
     <div className="flex flex-wrap gap-0.5 mt-0.5">
@@ -225,8 +243,6 @@ function AdminCellContent({ ds, records, total }) {
       {absent   > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-rose-100    text-rose-700">{absent}A</span>}
       {half     > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-cyan-100    text-cyan-700">{half}H</span>}
       {wfh      > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-blue-100    text-blue-700">{wfh}W</span>}
-      {late     > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-orange-100  text-orange-700 flex items-center gap-0.5"><AlarmClock size={8} />{late}</span>}
-      {early    > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-purple-100  text-purple-700">{early}E</span>}
     </div>
   );
 }
@@ -234,6 +250,7 @@ function AdminCellContent({ ds, records, total }) {
 function EmpCellContent({ records, userId }) {
   const my = records.find(r => r.user_id === userId);
   if (!my) return null;
+  const totalHours = my.clockify_hours ?? my.work_hours;
   return (
     <div className="flex flex-col gap-0.5">
       <span className={cn('text-[0.64rem] font-black px-1.5 py-0.5 rounded capitalize',
@@ -241,9 +258,7 @@ function EmpCellContent({ records, userId }) {
       )}>
         {statusLabel(my.status)}
       </span>
-      {my.is_late       && <span className="text-[0.6rem] px-1 py-0.5 rounded bg-orange-100 text-orange-700">Late</span>}
-      {my.is_early_exit && <span className="text-[0.6rem] px-1 py-0.5 rounded bg-purple-100 text-purple-700">Early</span>}
-      {my.work_hours    && <span className="text-[0.58rem] text-[#777587]">{fmtHours(my.work_hours)}</span>}
+      {totalHours > 0 && <span className="text-[0.58rem] text-[#777587]">{fmtHours(totalHours)}</span>}
     </div>
   );
 }
@@ -291,10 +306,9 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
                       {r.status === 'wfh' && (
                         <div className="text-[0.58rem] text-[#3525cd] font-medium">WFH</div>
                       )}
-                      {r.check_in && r.status === 'present' && (
-                        <div className="text-[0.58rem] text-[#777587]">{r.check_in}</div>
+                      {((r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)) > 0 && r.status === 'present' && (
+                        <div className="text-[0.58rem] text-[#777587]">{fmtHours((r.clockify_hours > 0 ? r.clockify_hours : r.work_hours))}</div>
                       )}
-                      {r.is_late && <div className="text-[0.55rem] text-orange-600">Late</div>}
                     </div>
                   </div>
                 );
@@ -309,6 +323,71 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Clockify Timeline Row ─────────────────────────────────────────────────────
+function ClockifyTimeline({ userId, dateStr }) {
+  const [open,    setOpen]    = useState(false);
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  async function load() {
+    if (open) { setOpen(false); return; }
+    setLoading(true);
+    try {
+      const { entries: e } = await apiGet('/clockify/user-entries', { userId, date: dateStr });
+      setEntries(e || []);
+    } catch { setEntries([]); }
+    finally { setLoading(false); setOpen(true); }
+  }
+
+  const ICONS = [<Play size={11} />, <Pause size={11} />, <Play size={11} />, <Square size={11} />];
+
+  return (
+    <div className="mt-1.5 w-full">
+      <button
+        onClick={load}
+        className="flex items-center gap-1 text-[0.68rem] font-bold text-[#3525cd] hover:text-[#4f46e5] transition-colors"
+      >
+        <Timer size={11} />
+        {loading ? 'Loading…' : open ? <><ChevronUp size={11} /> Hide Timeline</> : <><ChevronDown size={11} /> View Clockify Timeline</>}
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded-lg border border-[#c7c4d8] overflow-hidden bg-[#f9f9ff]">
+          {entries.length === 0 ? (
+            <p className="text-[0.68rem] text-[#777587] px-3 py-2 text-center italic">No Clockify entries found for this date</p>
+          ) : (
+            <div className="divide-y divide-[#f0f3ff]">
+              {entries.map((e, i) => (
+                <div key={e.id} className="flex items-center gap-2 px-3 py-2">
+                  <span className="text-[#3525cd] flex-shrink-0">{ICONS[Math.min(i, ICONS.length - 1)]}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[0.68rem] font-bold text-[#151c27]">{e.start}</span>
+                    {e.end && <span className="text-[0.65rem] text-[#777587]"> → {e.end}</span>}
+                    {e.description && <span className="text-[0.63rem] text-[#777587] ml-1.5 truncate">· {e.description}</span>}
+                  </div>
+                  {e.durationMin > 0 && (
+                    <span className="text-[0.65rem] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                      {e.durationMin >= 60 ? `${Math.floor(e.durationMin/60)}h ${e.durationMin%60}m` : `${e.durationMin}m`}
+                    </span>
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-3 py-2 bg-[#f0f3ff]">
+                <span className="text-[0.68rem] font-bold text-[#464555]">Total Work</span>
+                <span className="text-[0.7rem] font-black text-[#3525cd]">
+                  {(() => {
+                    const total = entries.reduce((s, e) => s + (e.durationMin || 0), 0);
+                    return total >= 60 ? `${Math.floor(total/60)}h ${total%60}m` : `${total}m`;
+                  })()}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -340,11 +419,11 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
     ? displayEmployees
     : displayEmployees.filter(emp => {
         const rec = records.find(r => r.user_id === emp.id);
-        if (activeTab === 'present')  return rec && rec.status === 'present';
-        if (activeTab === 'on_leave') return rec && rec.status === 'on_leave';
+        if (activeTab === 'present')  return rec && rec.status === 'present' && !rec._synthetic;
+        if (activeTab === 'on_leave') return rec && (rec.status === 'on_leave' || rec.status === 'half_day');
         if (activeTab === 'wfh')      return rec && rec.status === 'wfh';
         if (activeTab === 'absent')   return rec && rec.status === 'absent';
-        if (activeTab === 'none')     return !rec;
+        if (activeTab === 'none')     return !rec || rec._synthetic;
         return true;
       });
 
@@ -408,11 +487,12 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                 return (
                   <div key={emp.id}
                     className={cn('flex items-center gap-3.5 p-3.5 border rounded-xl transition-all duration-150',
-                      rec?.status === 'present' ? 'border-emerald-200 bg-emerald-50/30 hover:border-emerald-300' :
-                      rec?.status === 'on_leave' ? 'border-amber-200 bg-amber-50/30 hover:border-amber-300' :
-                      rec?.status === 'wfh' ? 'border-[#c7c4d8] bg-[#f0f3ff]/40 hover:border-[#3525cd]/30' :
-                      rec?.status === 'absent' ? 'border-rose-200 bg-rose-50/20 hover:border-rose-300' :
-                      'border-[#e7eefe] hover:border-[#3525cd]/30 hover:bg-[#f0f3ff]/40'
+                      rec?.status === 'present' ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-400' :
+                      rec?.status === 'on_leave' ? 'border-amber-300 bg-amber-50 hover:border-amber-400' :
+                      rec?.status === 'wfh' ? 'border-[#c7c4d8] bg-[#f0f3ff] hover:border-[#3525cd]' :
+                      rec?.status === 'absent' ? 'border-rose-300 bg-rose-50 hover:border-rose-400' :
+                      rec?.status === 'half_day' ? 'border-cyan-300 bg-cyan-50 hover:border-cyan-400' :
+                      'border-[#e7eefe] hover:border-[#3525cd] hover:bg-[#f0f3ff]'
                     )}>
                     <Avatar name={emp.name} color={emp.avatar_color} size={38} />
                     <div className="flex-1 min-w-0">
@@ -431,16 +511,23 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                       </div>
                       <div className="text-xs text-[#777587]">{emp.department}{emp.position ? ` · ${emp.position}` : ''}</div>
                       {rec && (
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <StatusBadge status={rec.status} />
-                          {rec.is_late       && <StatusBadge status="late" />}
-                          {rec.is_early_exit && <StatusBadge status="early_exit" />}
-                          {rec.check_in  && (
-                            <span className="inline-flex items-center gap-1 text-xs text-[#777587]">
-                              <Clock size={11} /> {rec.check_in}{rec.check_out ? ` – ${rec.check_out}` : ''}
-                            </span>
+                        <div className="mt-1 w-full">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <StatusBadge status={rec.status} />
+                            {leave && (rec.status === 'on_leave' || rec.status === 'wfh' || rec.status === 'half_day') && (
+                              <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 capitalize">
+                                {leave.leave_type} leave
+                              </span>
+                            )}
+                            {(rec.clockify_hours ?? rec.work_hours) > 0 && !rec._synthetic && (
+                              <span className="text-xs font-bold text-[#3525cd] flex items-center gap-1">
+                                <Timer size={11} /> {fmtHours(rec.clockify_hours ?? rec.work_hours)}
+                              </span>
+                            )}
+                          </div>
+                          {isAdmin && rec.status === 'present' && !rec._synthetic && (
+                            <ClockifyTimeline userId={rec.user_id} dateStr={dateStr} />
                           )}
-                          {rec.work_hours > 0 && <span className="text-xs font-bold text-[#3525cd]">{fmtHours(rec.work_hours)}</span>}
                         </div>
                       )}
                       {!rec && <span className="text-xs text-[#777587] italic">No record yet</span>}

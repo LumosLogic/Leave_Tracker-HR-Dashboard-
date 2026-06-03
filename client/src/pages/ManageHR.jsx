@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, ShieldCheck, Mail, Building2, Check, Inbox } from 'lucide-react';
+import { Plus, Pencil, Trash2, ShieldCheck, Mail, Building2, Check, Inbox, Eye, EyeOff } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
@@ -74,7 +74,7 @@ function HRFormModal({ open, onClose, editing }) {
             <div className="relative">
               <input className="form-control pr-10" type={showPw ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min. 6 characters" />
               <button type="button" onClick={() => setShowPw(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
-                {showPw ? '👁' : '🙈'}
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>

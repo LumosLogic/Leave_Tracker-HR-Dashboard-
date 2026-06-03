@@ -45,11 +45,6 @@
   .card {
     @apply bg-white rounded-xl border border-[#c7c4d8] shadow-card relative overflow-hidden;
   }
-  .card::before {
-    content: '';
-    @apply absolute inset-0 pointer-events-none rounded-xl;
-    background: linear-gradient(135deg, rgba(255,255,255,.6) 0%, transparent 55%);
-  }
 
   /* ── Status badges ── */
   .badge {
@@ -128,7 +123,7 @@
   .tbl th { @apply text-left text-[0.68rem] font-bold text-[#464555] uppercase tracking-widest py-3 px-4 bg-[#f0f3ff] border-b border-[#c7c4d8]; }
   .tbl td { @apply py-3 px-4 border-b border-[#f0f3ff] text-sm transition-colors; }
   .tbl tr:last-child td { @apply border-b-0; }
-  .tbl tr:hover td { @apply bg-[#f0f3ff]/50; }
+  .tbl tr:hover td { @apply bg-[#f0f3ff]; }
 
   /* ── Page header ── */
   .page-header { @apply flex items-center justify-between mb-6 flex-wrap gap-3; }

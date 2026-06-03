@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, FileText, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2 } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, Info, Loader2 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
 
 const LEAVE_TYPES = [
-  { value:'annual',    label:'Annual Leave' },
-  { value:'sick',      label:'Sick Leave' },
-  { value:'casual',    label:'Casual Leave' },
-  { value:'emergency', label:'Emergency Leave' },
-  { value:'other',     label:'Other' },
+  { value: 'annual',    label: 'Annual Leave',    quota: 'annual'     },
+  { value: 'casual',    label: 'Casual Leave',    quota: 'casual'     },
+  { value: 'sick',      label: 'Sick Leave',      quota: 'sick'       },
+  { value: 'emergency', label: 'Emergency Leave', quota: null         },
+  { value: 'other',     label: 'Other / Unpaid',  quota: null         },
 ];
 
 const STATUS_STYLES = {
@@ -20,21 +20,267 @@ const STATUS_STYLES = {
 };
 
 const TYPE_COLORS = {
-  annual:'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]',
-  sick:'bg-rose-50 text-rose-700 border-rose-200',
-  casual:'bg-emerald-50 text-emerald-700 border-emerald-200',
-  emergency:'bg-amber-50 text-amber-700 border-amber-200',
-  other:'bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]',
+  annual:    'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]',
+  sick:      'bg-rose-50 text-rose-700 border-rose-200',
+  casual:    'bg-emerald-50 text-emerald-700 border-emerald-200',
+  emergency: 'bg-amber-50 text-amber-700 border-amber-200',
+  other:     'bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]',
 };
 
-const INIT_FORM = { leave_type:'casual', start_date:'', end_date:'', reason:'', leave_time:'full', half_type:'first_half' };
+const INIT_FORM = { leave_type: 'casual', start_date: '', end_date: '', reason: '', leave_time: 'full', half_type: 'first_half' };
 
+// ── Slide-out Apply Panel ─────────────────────────────────────────────────────
+function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting }) {
+  const [form,     setForm]    = useState(INIT_FORM);
+  const [checking, setChecking] = useState(false);
+  const [check,    setCheck]   = useState(null);   // { conflicts, hasAttendance, usedByType, totalAnnual }
+  const checkTimer = useRef(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Auto-fill end_date when start_date is chosen
+  function handleStartDate(val) {
+    set('start_date', val);
+    if (!form.end_date || form.end_date < val) set('end_date', val);
+  }
+
+  // Trigger conflict/balance check whenever dates change
+  useEffect(() => {
+    if (!form.start_date || !form.end_date) { setCheck(null); return; }
+    clearTimeout(checkTimer.current);
+    setChecking(true);
+    checkTimer.current = setTimeout(async () => {
+      try {
+        const data = await apiGet('/leaves/date-check', { startDate: form.start_date, endDate: form.end_date });
+        setCheck(data);
+      } catch { setCheck(null); }
+      finally { setChecking(false); }
+    }, 400);
+    return () => clearTimeout(checkTimer.current);
+  }, [form.start_date, form.end_date]);
+
+  // Reset on close
+  useEffect(() => { if (!open) { setForm(INIT_FORM); setCheck(null); } }, [open]);
+
+  // Compute balance for the selected leave type
+  function getBalance(typeVal) {
+    if (!check) return null;
+    const typeInfo = LEAVE_TYPES.find(t => t.value === typeVal);
+    if (!typeInfo?.quota) return null;   // unlimited / no quota
+    const used = check.usedByType?.[typeVal] || 0;
+    const total = typeVal === 'annual' ? (check.totalAnnual || 18) : 12; // casual/sick default
+    return { used, total, remaining: Math.max(0, total - used) };
+  }
+
+  const hasConflict   = (check?.conflicts?.length ?? 0) > 0;
+  const hasAttendance = check?.hasAttendance;
+  const balance       = check ? getBalance(form.leave_type) : null;
+  const noBalance     = balance !== null && balance.remaining <= 0;
+
+  const canSubmit = form.start_date && form.end_date && !submitting;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-[900] transition-opacity duration-300 ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        style={{ background: 'rgba(4,6,14,.5)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div
+        className={`fixed top-0 right-0 h-full z-[901] w-full max-w-[420px] bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out`}
+        style={{ transform: open ? 'translateX(0)' : 'translateX(100%)' }}
+      >
+        {/* Top accent */}
+        <div className="h-[3px]" style={{ background: 'linear-gradient(90deg, #3525cd, #4f46e5, #712ae2)' }} />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+          <div>
+            <h2 className="font-black text-[#151c27] text-lg">Request Leave</h2>
+            <p className="text-xs text-[#777587] mt-0.5">HR will be notified by email on submission</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-[#777587] hover:text-[#151c27] hover:bg-[#f0f3ff] transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {/* ── Date Selection ── */}
+          <div>
+            <label className="form-label">From Date</label>
+            <input
+              type="date"
+              className="form-control"
+              value={form.start_date}
+              onChange={e => handleStartDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="form-label">To Date</label>
+            <input
+              type="date"
+              className="form-control"
+              value={form.end_date}
+              min={form.start_date}
+              onChange={e => set('end_date', e.target.value)}
+            />
+          </div>
+
+          {/* ── Conflict / Attendance Alerts ── */}
+          {form.start_date && form.end_date && (
+            <>
+              {checking && (
+                <div className="flex items-center gap-2 text-xs text-[#777587] bg-[#f0f3ff] rounded-xl px-4 py-3">
+                  <Loader2 size={13} className="animate-spin" /> Checking for conflicts…
+                </div>
+              )}
+
+              {!checking && hasConflict && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700">
+                    <AlertTriangle size={13} /> Leave already pending / approved for the selected dates
+                  </div>
+                  {check.conflicts.map(c => (
+                    <div key={c.id} className="text-[0.7rem] text-rose-600 flex items-center gap-1.5 pl-4">
+                      <span className="capitalize">{c.leave_type}</span> leave is <strong>{c.status}</strong>
+                      <span className="text-rose-400">({c.start_date}{c.end_date !== c.start_date ? ` → ${c.end_date}` : ''})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!checking && hasAttendance && !hasConflict && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+                  <Info size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-[0.72rem] text-amber-700">Attendance logs are present on selected dates. Your request will still be reviewed by HR.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Leave Type ── */}
+          <div>
+            <label className="form-label">Leave Type</label>
+            <div className="space-y-2">
+              {LEAVE_TYPES.map(t => {
+                const bal = check ? getBalance(t.value) : null;
+                const typeConflict = hasConflict;
+                const isSelected   = form.leave_type === t.value;
+                const nobal        = bal !== null && bal.remaining <= 0;
+
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => set('leave_type', t.value)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 text-left transition-all duration-150 ${
+                      isSelected
+                        ? 'border-[#3525cd] bg-[#f0f3ff]'
+                        : 'border-[#e7eefe] bg-white hover:border-[#c7c4d8] hover:bg-[#f9f9ff]'
+                    }`}
+                  >
+                    <div>
+                      <div className={`text-sm font-bold ${isSelected ? 'text-[#3525cd]' : 'text-[#151c27]'}`}>{t.label}</div>
+                      {check && (
+                        <div className="text-[0.67rem] mt-0.5">
+                          {typeConflict && isSelected && (
+                            <span className="text-rose-600">A leave request is already pending / approved for the selected dates.</span>
+                          )}
+                          {!typeConflict && bal !== null && (
+                            nobal
+                              ? <span className="text-rose-500">Not enough balance — {bal.remaining} day(s) remaining</span>
+                              : <span className="text-emerald-600">{bal.remaining} of {bal.total} day(s) remaining</span>
+                          )}
+                          {!typeConflict && bal === null && (
+                            <span className="text-[#777587]">Unlimited / no quota</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <div className="w-4 h-4 rounded-full bg-[#3525cd] flex items-center justify-center flex-shrink-0">
+                        <CheckCircle2 size={10} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Duration ── */}
+          <div>
+            <label className="form-label">Duration</label>
+            <select className="form-control" value={form.leave_time} onChange={e => set('leave_time', e.target.value)}>
+              <option value="full">Full Day(s)</option>
+              <option value="half">Half Day</option>
+              <option value="wfh">Work from Home</option>
+            </select>
+          </div>
+
+          {form.leave_time === 'half' && (
+            <div>
+              <label className="form-label">Which Half</label>
+              <select className="form-control" value={form.half_type} onChange={e => set('half_type', e.target.value)}>
+                <option value="first_half">First Half (Morning)</option>
+                <option value="second_half">Second Half (Afternoon)</option>
+              </select>
+            </div>
+          )}
+
+          {/* ── Reason ── */}
+          <div>
+            <label className="form-label">Reason <span className="text-[#777587] font-normal">(optional)</span></label>
+            <textarea
+              className="form-control resize-none"
+              rows={3}
+              value={form.reason}
+              onChange={e => set('reason', e.target.value)}
+              placeholder="Briefly describe the reason for your leave…"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-[#f0f3ff] space-y-2">
+          {noBalance && (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              <AlertTriangle size={12} className="inline mr-1" />
+              Insufficient leave balance for the selected type. HR may still review at their discretion.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn btn-outline flex-1">Cancel</button>
+            <button
+              onClick={() => onSubmit(form)}
+              disabled={!canSubmit}
+              className="btn btn-primary flex-1"
+            >
+              {submitting
+                ? <span className="flex items-center gap-1.5 justify-center"><span className="spinner w-3.5 h-3.5" /> Submitting…</span>
+                : 'Submit Request'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Main MyLeaves Page ────────────────────────────────────────────────────────
 export default function MyLeaves() {
   const qc = useQueryClient();
   const toast = useToast();
   const [applyOpen, setApplyOpen] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
-  const [form, setForm] = useState(INIT_FORM);
 
   const { data: leaves = [], isLoading } = useQuery({
     queryKey: ['my-leaves'],
@@ -42,12 +288,11 @@ export default function MyLeaves() {
   });
 
   const apply = useMutation({
-    mutationFn: () => apiPost('/leaves', form),
+    mutationFn: (form) => apiPost('/leaves', form),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['my-leaves'] });
       qc.invalidateQueries({ queryKey: ['my-leaves-recent'] });
       toast('Leave request submitted. HR will be notified by email.', 'success');
-      setForm(INIT_FORM);
       setApplyOpen(false);
     },
     onError: (e) => toast(e.message, 'error'),
@@ -64,8 +309,6 @@ export default function MyLeaves() {
     onError: (e) => toast(e.message, 'error'),
   });
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
   const counts = { pending: 0, approved: 0, rejected: 0 };
   leaves.forEach(l => { if (counts[l.status] !== undefined) counts[l.status]++; });
 
@@ -77,9 +320,11 @@ export default function MyLeaves() {
           <h1 className="text-2xl font-black text-[#151c27] tracking-tight">My Leaves</h1>
           <p className="text-[#777587] text-sm mt-0.5">Apply for leave and track your requests.</p>
         </div>
-        <button onClick={() => setApplyOpen(true)}
+        <button
+          onClick={() => setApplyOpen(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all"
-          style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+          style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}
+        >
           <Plus size={15} /> Apply for Leave
         </button>
       </div>
@@ -87,9 +332,9 @@ export default function MyLeaves() {
       {/* Summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label:'Pending',  count: counts.pending,  style: STATUS_STYLES.pending  },
-          { label:'Approved', count: counts.approved, style: STATUS_STYLES.approved },
-          { label:'Rejected', count: counts.rejected, style: STATUS_STYLES.rejected },
+          { label: 'Pending',  count: counts.pending,  style: STATUS_STYLES.pending  },
+          { label: 'Approved', count: counts.approved, style: STATUS_STYLES.approved },
+          { label: 'Rejected', count: counts.rejected, style: STATUS_STYLES.rejected },
         ].map(({ label, count, style }) => (
           <div key={label} className={`${style.bg} ${style.border} border rounded-2xl p-4 text-center`}>
             <p className={`text-2xl font-black ${style.text}`}>{count}</p>
@@ -112,7 +357,7 @@ export default function MyLeaves() {
           {leaves.map(l => {
             const s = STATUS_STYLES[l.status] || STATUS_STYLES.pending;
             return (
-              <div key={l.id} className="bg-white rounded-xl border border-[#c7c4d8] p-4 shadow-card hover:shadow-card-hover transition-all">
+              <div key={l.id} className={`bg-white rounded-xl border border-[#c7c4d8] p-4 shadow-card hover:shadow-card-hover transition-all ${l.status === 'pending' ? 'border-l-4 border-l-amber-400' : l.status === 'approved' ? 'border-l-4 border-l-emerald-400' : l.status === 'rejected' ? 'border-l-4 border-l-rose-400' : ''}`}>
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -153,68 +398,15 @@ export default function MyLeaves() {
         </div>
       )}
 
-      {/* Apply Modal */}
-      <Modal open={applyOpen} onClose={() => setApplyOpen(false)} title="Apply for Leave"
-        footer={
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setApplyOpen(false)} className="btn btn-outline btn-sm">Cancel</button>
-            <button onClick={() => apply.mutate()} disabled={apply.isPending || !form.start_date || !form.end_date} className="btn btn-primary btn-sm">
-              {apply.isPending ? <span className="flex items-center gap-1.5"><span className="spinner w-3.5 h-3.5" /> Submitting…</span> : 'Submit Request'}
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div className="p-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl text-xs text-[#3525cd] flex items-start gap-2">
-            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-            HR and company management will be notified by email once you submit.
-          </div>
+      {/* Leave Apply Slide-out */}
+      <LeaveApplyPanel
+        open={applyOpen}
+        onClose={() => setApplyOpen(false)}
+        onSubmit={(form) => apply.mutate(form)}
+        loading={apply.isPending}
+      />
 
-          <div>
-            <label className="form-label">Leave Type</label>
-            <select className="form-control" value={form.leave_type} onChange={e => set('leave_type', e.target.value)}>
-              {LEAVE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="form-label">Duration</label>
-            <select className="form-control" value={form.leave_time} onChange={e => set('leave_time', e.target.value)}>
-              <option value="full">Full Day(s)</option>
-              <option value="half">Half Day</option>
-              <option value="wfh">Work from Home</option>
-            </select>
-          </div>
-
-          {form.leave_time === 'half' && (
-            <div>
-              <label className="form-label">Which Half</label>
-              <select className="form-control" value={form.half_type} onChange={e => set('half_type', e.target.value)}>
-                <option value="first_half">First Half</option>
-                <option value="second_half">Second Half</option>
-              </select>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="form-label">From Date</label>
-              <input type="date" className="form-control" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
-            </div>
-            <div>
-              <label className="form-label">To Date</label>
-              <input type="date" className="form-control" value={form.end_date} min={form.start_date} onChange={e => set('end_date', e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <label className="form-label">Reason <span className="text-[#777587]">(optional)</span></label>
-            <textarea className="form-control resize-none" rows={3} value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Briefly describe the reason for your leave…" />
-          </div>
-        </div>
-      </Modal>
-
-      {/* Cancel confirm */}
+      {/* Cancel confirm modal */}
       <Modal open={!!delTarget} onClose={() => setDelTarget(null)} title="Cancel Leave Request"
         footer={
           <div className="flex gap-2 justify-end">

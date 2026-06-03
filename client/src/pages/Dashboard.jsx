@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, FileText, CheckCircle2, Users, UserCheck,
-  Umbrella, Home, Timer, AlarmClock, Activity, BarChart2,
+  Umbrella, Home, Timer, Activity, BarChart2,
   ClipboardList, Inbox, Cake, CalendarDays, CalendarCheck,
   PartyPopper, Trash2, X, RefreshCw, Building2, Mail,
   LogIn, LogOut, Briefcase, ExternalLink, Pencil,
@@ -73,7 +73,7 @@ function CheckinWidget({ onRefresh }) {
     try {
       const { record: r, message } = await apiPost('/attendance/checkin', {});
       setRecord(r);
-      toast(message || 'Checked in!', r.is_late ? 'warning' : 'success');
+      toast(message || 'Checked in!', 'success');
       onRefresh?.();
     } catch (err) { toast(err.message, 'error'); }
   }
@@ -93,7 +93,7 @@ function CheckinWidget({ onRefresh }) {
   if (!record.check_out) {
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        <StatusBadge status={record.is_late ? 'late' : 'present'} />
+        <StatusBadge status="present" />
         <span className="text-sm font-bold text-[#151c27] flex items-center gap-1"><Timer size={14} /> {elapsed}</span>
         <button className="btn btn-danger btn-sm" onClick={checkOut}>Check Out</button>
       </div>
@@ -102,7 +102,6 @@ function CheckinWidget({ onRefresh }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <StatusBadge status={record.status || 'present'} />
-      {record.is_late && <StatusBadge status="late" />}
       <span className="text-sm font-bold text-[#3525cd] flex items-center gap-1"><Timer size={14} /> {fmtHours(record.work_hours)}</span>
     </div>
   );
@@ -154,8 +153,6 @@ function EmployeeQuickView({ record: r, onClose, onViewProfile }) {
           {/* Status */}
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={r.status} />
-            {r.is_late       && <StatusBadge status="late" />}
-            {r.is_early_exit && <StatusBadge status="early_exit" />}
             {r.clockify_live && (
               <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
                 style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
@@ -182,12 +179,12 @@ function EmployeeQuickView({ record: r, onClose, onViewProfile }) {
                 <span className="text-sm font-bold text-[#151c27]">{fmtTime(r.check_out)}</span>
               </div>
             )}
-            {r.work_hours != null && (
+            {(r.clockify_hours > 0 || r.work_hours > 0) && (
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-[#464555]">
-                  <Timer size={13} className="text-[#4f46e5]" /> Work Hours
+                  <Timer size={13} className="text-[#4f46e5]" /> Total Work Hours
                 </div>
-                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.work_hours)}</span>
+                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}</span>
               </div>
             )}
             {!r.check_in && (
@@ -326,10 +323,9 @@ export default function Dashboard() {
             My Stats This Month
             <span className="w-4 h-0.5 inline-block rounded" style={{ background: 'linear-gradient(90deg, #712ae2, #3525cd)' }} />
           </div>
-          <div className="grid grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-2 gap-3.5">
             <StatCard icon={<UserCheck size={18} />} value={myStats.presentCount} label="Days Present" variant="success" />
             <StatCard icon={<Umbrella size={18} />}  value={myStats.leavesCount}  label="Leaves Taken" variant="warning" />
-            <StatCard icon={<AlarmClock size={18} />} value={myStats.lateCount}   label="Late Entries"  variant="danger" />
           </div>
         </div>
       )}
@@ -359,7 +355,7 @@ export default function Dashboard() {
             ) : (d?.recentActivity || []).map(r => (
               <div
                 key={r.id || r.name}
-                className="flex items-center gap-3.5 py-2.5 border-b border-[#f0f3ff] last:border-b-0 hover:bg-[#f0f3ff]/80 rounded-lg px-2 cursor-pointer transition-all duration-150"
+                className="flex items-center gap-3.5 py-2.5 border-b border-[#f0f3ff] last:border-b-0 hover:bg-[#f0f3ff] rounded-lg px-2 cursor-pointer transition-all duration-150"
                 onClick={() => setSelectedEmp(r)}
                 title="Click to view details"
               >
@@ -369,8 +365,6 @@ export default function Dashboard() {
                   <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                     <span className="text-xs text-[#777587]">{r.department}</span>
                     <StatusBadge status={r.status} />
-                    {r.is_late       && <StatusBadge status="late" />}
-                    {r.is_early_exit && <StatusBadge status="early_exit" />}
                     {r.clockify_live && (
                       <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
                         style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>

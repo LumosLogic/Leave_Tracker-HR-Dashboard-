@@ -185,10 +185,16 @@ function TabBtn({ active, onClick, children }) {
 }
 
 // ── Leave Card ────────────────────────────────────────────────────────────────
+const STATUS_CARD = {
+  pending:  { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
+  approved: { border: 'border-l-4 border-l-emerald-400', bg: '' },
+  rejected: { border: 'border-l-4 border-l-rose-400',    bg: '' },
+};
+
 function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onCancel, onEdit, onDelete }) {
+  const sc = STATUS_CARD[l.status] || {};
   return (
-    <div className="card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd]/30 hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150">
-      <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'linear-gradient(180deg, #3525cd, #712ae2)' }} />
+    <div className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''}`}>
       <Avatar name={l.name} color={l.avatar_color} size={36} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

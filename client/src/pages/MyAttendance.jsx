@@ -37,6 +37,15 @@ export default function MyAttendance() {
     queryFn:  () => apiGet(`/leaves?year=${year}&month=${month}`),
   });
 
+  // Fetch real-time Clockify hours directly for this employee
+  // This gives the accurate SUM of all sessions (start→stop→start→stop) with breaks excluded
+  const { data: clockifyData } = useQuery({
+    queryKey: ['my-clockify-hours', year, month],
+    queryFn:  () => apiGet('/my-clockify-hours', { year, month }),
+    staleTime: 5 * 60 * 1000, // 5 min cache
+  });
+  const clockifyHoursMap = clockifyData?.hours || {}; // { 'YYYY-MM-DD': X.XX }
+
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
     else setMonth(m => m - 1);
@@ -64,13 +73,11 @@ export default function MyAttendance() {
       const [dy, dm] = ds.split('-').map(Number);
       if (dy !== year || dm !== month) continue;
       const existing = recMap[ds];
-      // Replace only if no record exists or if the record says 'absent' (leave wasn't synced)
-      if (!existing || existing.status === 'absent') {
-        const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
-                          : l.leave_time === 'half' ? 'half_day'
-                          : 'on_leave';
-        recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: true };
-      }
+      // Approved leaves always override attendance status for those dates
+      const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
+                        : l.leave_time === 'half' ? 'half_day'
+                        : 'on_leave';
+      recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: !existing };
     }
   });
 
@@ -80,10 +87,9 @@ export default function MyAttendance() {
   const todayStr   = toDSString(new Date());
 
   // Summary counts from merged map
-  const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0, late: 0 };
+  const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
   Object.values(recMap).forEach(r => {
     if (summary[r.status] !== undefined) summary[r.status]++;
-    if (r.is_late) summary.late++;
   });
 
   // Merged records array for the table (original only, no synthetics)
@@ -117,8 +123,8 @@ export default function MyAttendance() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
-        {Object.entries({ present: 'Present', half_day: 'Half Day', on_leave: 'On Leave', wfh: 'WFH', absent: 'Absent', late: 'Late' }).map(([key, label]) => {
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        {Object.entries({ present: 'Present', half_day: 'Half Day', on_leave: 'On Leave', wfh: 'WFH', absent: 'Absent' }).map(([key, label]) => {
           const cfg = STATUS_CONFIG[key] || { bg:'bg-[#f0f3ff]', text:'text-[#464555]', border:'border-[#c7c4d8]' };
           return (
             <div key={key} className={`${cfg.bg} ${cfg.border} border rounded-xl p-3 text-center`}>
@@ -168,7 +174,6 @@ export default function MyAttendance() {
                 {rec && cfg && (
                   <div className="flex gap-0.5 flex-wrap">
                     <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} flex-shrink-0`} title={cfg.label} />
-                    {rec.is_late && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Late" />}
                   </div>
                 )}
               </div>
@@ -184,9 +189,6 @@ export default function MyAttendance() {
             <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />{cfg.label}
           </div>
         ))}
-        <div className="flex items-center gap-1.5 text-xs text-[#464455]">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />Late
-        </div>
       </div>
 
       {/* Table — show merged records */}
@@ -202,7 +204,7 @@ export default function MyAttendance() {
             <table className="w-full text-sm">
               <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
                 <tr>
-                  {['Date','Status','Check In','Check Out','Hours','Flags'].map(h => (
+                  {['Date', 'Status', 'Total Working Hours'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -210,22 +212,33 @@ export default function MyAttendance() {
               <tbody className="divide-y divide-[#f0f3ff]">
                 {tableRecords.map(r => {
                   const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
+                  // Priority: live Clockify fetch > synced clockify_hours > work_hours (span, includes break)
+                  const liveHours   = clockifyHoursMap[r.date];
+                  const totalHours  = liveHours > 0
+                    ? liveHours                                          // real-time from Clockify API ✅
+                    : r.clockify_hours > 0
+                      ? r.clockify_hours                                 // synced by admin ✅
+                      : r.work_hours || null;                            // manual check-in span fallback
+                  const isLive = liveHours > 0;
                   return (
-                    <tr key={r.id} className="hover:bg-[#f0f3ff]/50 transition-colors">
+                    <tr key={r.id} className="hover:bg-[#f0f3ff] transition-colors">
                       <td className="px-4 py-3 font-medium text-[#151c27]">{r.date}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
                           {cfg.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[#464555]">{r.check_in  || '—'}</td>
-                      <td className="px-4 py-3 text-[#464555]">{r.check_out || '—'}</td>
-                      <td className="px-4 py-3 text-[#464555]">{r.work_hours ? `${r.work_hours}h` : '—'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          {r.is_late       && <span className="text-[0.65rem] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold">Late</span>}
-                          {r.is_early_exit && <span className="text-[0.65rem] bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full font-bold">Early</span>}
-                        </div>
+                        {totalHours ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-semibold text-[#151c27]">{totalHours}h</span>
+                            {isLive && (
+                              <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Clockify
+                              </span>
+                            )}
+                          </span>
+                        ) : '—'}
                       </td>
                     </tr>
                   );
