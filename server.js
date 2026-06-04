@@ -2028,11 +2028,6 @@ app.delete('/api/root/notify-recipients/:id', auth, rootAdminOnly, async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Frontend fallback ────────────────────────────────────────────────────────
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // ─── Daily Cron Scheduler ─────────────────────────────────────────────────────
 function scheduleDailyAt(hour, minute, fn) {
   function msUntil() {
@@ -2165,6 +2160,11 @@ app.use('/api/shifts',         auth, shiftsRouter);
 app.use('/api/performance',    auth, performanceRouter);
 app.use('/api/onboarding',     auth, onboardingRouter);
 app.use('/api/exit',           auth, exitRouter);
+
+// ─── Frontend fallback (must be AFTER all API routes) ────────────────────────
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
