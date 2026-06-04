@@ -229,12 +229,25 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick 
 }
 
 function AdminCellContent({ ds, records, total }) {
-  if (ds > todayStr() || total === 0) return null;
+  if (total === 0) return null;
+  const isFuture = ds > todayStr();
   const present  = records.filter(r => r.status === 'present').length;
   const onLeave  = records.filter(r => r.status === 'on_leave').length;
   const absent   = records.filter(r => r.status === 'absent').length;
   const half     = records.filter(r => r.status === 'half_day').length;
   const wfh      = records.filter(r => r.status === 'wfh').length;
+
+  // For future dates only show approved leave indicators
+  if (isFuture) {
+    if (onLeave + half + wfh === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-0.5 mt-0.5">
+        {onLeave > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-amber-100 text-amber-700">{onLeave}L</span>}
+        {half    > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-cyan-100  text-cyan-700">{half}H</span>}
+        {wfh     > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-blue-100  text-blue-700">{wfh}W</span>}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-wrap gap-0.5 mt-0.5">
@@ -414,16 +427,19 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
   const wfhCount = records.filter(r => r.status === 'wfh').length;
   const halfDay  = records.filter(r => r.status === 'half_day').length;
 
+  const isFutureDay = dateStr > todayStr();
   const displayEmployees = isAdmin ? employees : employees.filter(e => e.id === user?.id);
   const filteredEmps = activeTab === 'all'
-    ? displayEmployees
+    ? (isFutureDay
+        ? displayEmployees.filter(emp => records.some(r => r.user_id === emp.id && ['on_leave','half_day','wfh'].includes(r.status)))
+        : displayEmployees)
     : displayEmployees.filter(emp => {
         const rec = records.find(r => r.user_id === emp.id);
         if (activeTab === 'present')  return rec && rec.status === 'present' && !rec._synthetic;
         if (activeTab === 'on_leave') return rec && (rec.status === 'on_leave' || rec.status === 'half_day');
         if (activeTab === 'wfh')      return rec && rec.status === 'wfh';
         if (activeTab === 'absent')   return rec && rec.status === 'absent';
-        if (activeTab === 'none')     return !rec || rec._synthetic;
+        if (activeTab === 'none')     return !rec;
         return true;
       });
 
@@ -470,7 +486,10 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
             {/* Filter tabs (admin only) */}
             {isAdmin && (
               <div className="flex gap-1 mb-3 flex-wrap">
-                {[['all','All'],['present','Present'],['on_leave','On Leave'],['wfh','WFH'],['absent','Absent'],['none','No Record']].map(([k,l]) => (
+                {(isFutureDay
+                  ? [['all','On Leave'],['on_leave','Leave'],['wfh','WFH']]
+                  : [['all','All'],['present','Present'],['on_leave','On Leave'],['wfh','WFH'],['absent','Absent'],['none','No Record']]
+                ).map(([k,l]) => (
                   <button key={k} onClick={() => setActiveTab(k)}
                     className={cn('text-[0.7rem] font-bold px-2.5 py-1 rounded-lg transition-colors',
                       activeTab === k ? 'bg-[#3525cd] text-white' : 'bg-[#f0f3ff] text-[#464555] hover:bg-[#e7eefe]'

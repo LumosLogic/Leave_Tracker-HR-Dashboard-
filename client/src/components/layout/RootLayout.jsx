@@ -1,21 +1,50 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck, UserCircle, Bell, Building2 } from 'lucide-react';
+import {
+  LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
+  UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
+  DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
 
-const NAV_ITEMS = [
-  { to: '/root/dashboard',    label: 'Dashboard',        Icon: LayoutDashboard },
-  { to: '/root/calendar',     label: 'Calendar',         Icon: Calendar },
-  { to: '/root/leaves',       label: 'Leaves',           Icon: FileText },
-  { to: '/root/employees',    label: 'Employees',        Icon: Users },
-  { to: '/root/manage-hr',    label: 'Manage HR',        Icon: ShieldCheck },
-  { to: '/root/broadcast',    label: 'Broadcast',        Icon: Bell },
-  { to: '/root/settings',     label: 'Settings',         Icon: Settings },
-  { to: '/root/org-settings', label: 'Org Settings',     Icon: Building2 },
-  { to: '/root/profile',      label: 'Profile',          Icon: UserCircle },
+const NAV_SECTIONS = [
+  { title: 'Overview', items: [
+    { to: '/root/dashboard',      label: 'Dashboard',      Icon: LayoutDashboard },
+    { to: '/root/calendar',       label: 'Calendar',       Icon: Calendar },
+    { to: '/root/leaves',         label: 'Leaves',         Icon: FileText },
+    { to: '/root/employees',      label: 'Employees',      Icon: Users },
+    { to: '/root/regularization', label: 'Regularization', Icon: ClipboardList },
+    { to: '/root/announcements',  label: 'Announcements',  Icon: Megaphone },
+  ]},
+  { title: 'HR Management', items: [
+    { to: '/root/departments',    label: 'Departments',    Icon: Building2 },
+    { to: '/root/holidays',       label: 'Holidays',       Icon: CalendarDays },
+    { to: '/root/leave-policies', label: 'Leave Policies', Icon: Shield },
+    { to: '/root/shifts',         label: 'Shifts & Roster',Icon: Clock },
+    { to: '/root/onboarding',     label: 'Onboarding',     Icon: UserCheck },
+    { to: '/root/exit-management',label: 'Exit Mgmt',      Icon: LogOut },
+  ]},
+  { title: 'Finance', items: [
+    { to: '/root/payroll',        label: 'Payroll',        Icon: DollarSign },
+    { to: '/root/expenses',       label: 'Expenses',       Icon: Receipt },
+    { to: '/root/assets',         label: 'Assets',         Icon: Monitor },
+    { to: '/root/reports',        label: 'Reports',        Icon: BarChart3 },
+  ]},
+  { title: 'People', items: [
+    { to: '/root/performance',    label: 'Performance',    Icon: Target },
+    { to: '/root/documents',      label: 'Documents',      Icon: FolderOpen },
+  ]},
+  { title: 'Admin', items: [
+    { to: '/root/manage-hr',      label: 'Manage HR',      Icon: ShieldCheck },
+    { to: '/root/broadcast',      label: 'Broadcast',      Icon: Bell },
+    { to: '/root/settings',       label: 'Settings',       Icon: Settings },
+    { to: '/root/org-settings',   label: 'Org Settings',   Icon: Building2 },
+    { to: '/root/notifications',  label: 'Notifications',  Icon: Bell },
+    { to: '/root/profile',        label: 'Profile',        Icon: UserCircle },
+  ]},
 ];
 
 function RootSidebar({ onClose }) {
@@ -38,27 +67,30 @@ function RootSidebar({ onClose }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 overflow-y-auto">
-        <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-3">Navigation</p>
-        <div className="flex flex-col gap-0.5">
-          {NAV_ITEMS.map(({ to, label, Icon }) => (
-            <NavLink key={to} to={to} onClick={onClose}
-              className={({ isActive }) => cn(
-                'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150 relative',
-                isActive
-                  ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
-                  : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={18} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
+      <nav className="flex-1 p-3 overflow-y-auto space-y-1">
+        {NAV_SECTIONS.map(sec => (
+          <div key={sec.title} className="mb-2">
+            <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
+            <div className="flex flex-col gap-0.5">
+              {sec.items.map(({ to, label, Icon }) => (
+                <NavLink key={to} to={to} onClick={onClose}
+                  className={({ isActive }) => cn(
+                    'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+                    isActive
+                      ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+                      : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                  )}>
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
+                      {label}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* User */}

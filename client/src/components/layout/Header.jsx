@@ -1,12 +1,24 @@
 import React from 'react';
 import { Menu, ShieldCheck, Users, UserCircle, Bell, BellOff } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { usePushNotification } from '@/hooks/usePushNotification';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 export function Header({ title, subtitle, onMenuClick }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const { user, isRootAdmin, isAdmin, isEmployee } = useAuth();
   const { permission, subscribed, requestAndSubscribe, isSupported } = usePushNotification(user?.id);
+
+  const { data: countData } = useQuery({
+    queryKey: ['notif-count'],
+    queryFn: () => apiGet('/notifications/unread-count'),
+    refetchInterval: 30000,
+    enabled: !!user,
+  });
+  const unreadCount = countData?.count || 0;
+  const notifPath   = isEmployee ? '/portal/notifications' : isRootAdmin ? '/root/notifications' : '/notifications';
 
   const roleLabel = isRootAdmin ? 'Root Admin' : isAdmin ? 'HR Admin' : 'Employee';
   const RoleIcon  = isRootAdmin ? ShieldCheck : isAdmin ? Users : UserCircle;
@@ -39,18 +51,30 @@ export function Header({ title, subtitle, onMenuClick }) {
         {roleLabel}
       </span>
 
+      {/* In-app notification bell */}
+      <Link to={notifPath} className="relative flex-shrink-0">
+        <div className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] hover:border-[#3525cd]/40 transition-colors text-[#464555] hover:text-[#3525cd]">
+          <Bell size={16} />
+        </div>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-[#3525cd] text-white text-[0.55rem] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </Link>
+
       {/* Push notification bell — pulses until user grants permission */}
       {isSupported && (
         <button
           onClick={requestAndSubscribe}
-          title={permission === 'granted' ? 'Notifications enabled' : 'Click to enable push notifications'}
+          title={permission === 'granted' ? 'Push notifications enabled' : 'Click to enable push notifications'}
           className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-colors flex-shrink-0 ${
             permission === 'granted'
               ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
               : 'border-amber-200 bg-amber-50 text-amber-500 animate-pulse'
           }`}
         >
-          <Bell size={15} />
+          <BellOff size={15} />
         </button>
       )}
 

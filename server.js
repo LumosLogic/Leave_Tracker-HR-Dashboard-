@@ -2131,6 +2131,41 @@ function startClockifyIntervalSync() {
   setInterval(trySync, 10 * 60 * 1000); // every 10 minutes
 }
 
+// ─── HRMS Extended Routes ─────────────────────────────────────────────────────
+const departmentsRouter   = require('./routes/departments');
+const designationsRouter  = require('./routes/designations');
+const holidaysRouter      = require('./routes/holidays');
+const leavePoliciesRouter = require('./routes/leavePolicies');
+const regularizationRouter= require('./routes/regularization');
+const notificationsRouter = require('./routes/notifications');
+const reportsRouter       = require('./routes/reports');
+const documentsRouter     = require('./routes/documents');
+const payrollRouter       = require('./routes/payroll');
+const assetsRouter        = require('./routes/assets');
+const expensesRouter      = require('./routes/expenses');
+const announcementsRouter = require('./routes/announcements');
+const shiftsRouter        = require('./routes/shifts');
+const performanceRouter   = require('./routes/performance');
+const onboardingRouter    = require('./routes/onboarding');
+const exitRouter          = require('./routes/exitManagement');
+
+app.use('/api/departments',    auth, departmentsRouter);
+app.use('/api/designations',   auth, designationsRouter);
+app.use('/api/holidays',       auth, holidaysRouter);
+app.use('/api/leave-policies', auth, leavePoliciesRouter);
+app.use('/api/regularization', auth, regularizationRouter);
+app.use('/api/notifications',  auth, notificationsRouter);
+app.use('/api/reports',        auth, adminOnly, reportsRouter);
+app.use('/api/documents',      auth, documentsRouter);
+app.use('/api/payroll',        auth, payrollRouter);
+app.use('/api/assets',         auth, assetsRouter);
+app.use('/api/expenses',       auth, expensesRouter);
+app.use('/api/announcements',  auth, announcementsRouter);
+app.use('/api/shifts',         auth, shiftsRouter);
+app.use('/api/performance',    auth, performanceRouter);
+app.use('/api/onboarding',     auth, onboardingRouter);
+app.use('/api/exit',           auth, exitRouter);
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
   try {

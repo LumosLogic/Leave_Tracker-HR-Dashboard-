@@ -1,20 +1,51 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, FileText, Clock, UserCircle, LogOut, Menu } from 'lucide-react';
+import {
+  Home, FileText, Clock, UserCircle, LogOut, Menu, CalendarDays,
+  FolderOpen, Receipt, DollarSign, Target, ClipboardList, UserCheck,
+  LogOut as Exit, Bell, Megaphone,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 import { initials, cn } from '@/lib/utils';
 
-const navItems = [
-  { to: '/portal/home',       label: 'My Dashboard',  Icon: Home },
-  { to: '/portal/leaves',     label: 'My Leaves',     Icon: FileText },
-  { to: '/portal/attendance', label: 'My Attendance', Icon: Clock },
-  { to: '/portal/profile',    label: 'My Profile',    Icon: UserCircle },
+const NAV_SECTIONS = [
+  { title: 'My Workspace', items: [
+    { to: '/portal/home',          label: 'My Dashboard',   Icon: Home },
+    { to: '/portal/leaves',        label: 'My Leaves',      Icon: FileText },
+    { to: '/portal/attendance',    label: 'My Attendance',  Icon: Clock },
+    { to: '/portal/team-calendar', label: 'Team Calendar',  Icon: CalendarDays },
+  ]},
+  { title: 'Self Service', items: [
+    { to: '/portal/regularization',label: 'Regularization', Icon: ClipboardList },
+    { to: '/portal/expenses',      label: 'My Expenses',    Icon: Receipt },
+    { to: '/portal/payslips',      label: 'My Payslips',    Icon: DollarSign },
+    { to: '/portal/documents',     label: 'My Documents',   Icon: FolderOpen },
+  ]},
+  { title: 'Growth', items: [
+    { to: '/portal/performance',   label: 'Performance',    Icon: Target },
+    { to: '/portal/onboarding',    label: 'Onboarding',     Icon: UserCheck },
+    { to: '/portal/exit',          label: 'Exit / Resign',  Icon: Exit },
+  ]},
+  { title: 'Company', items: [
+    { to: '/portal/announcements', label: 'Announcements',  Icon: Megaphone },
+    { to: '/portal/notifications', label: 'Notifications',  Icon: Bell, badge: true },
+    { to: '/portal/profile',       label: 'My Profile',     Icon: UserCircle },
+  ]},
 ];
 
 function EmployeeSidebar({ onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const { data: countData } = useQuery({
+    queryKey: ['notif-count'],
+    queryFn: () => apiGet('/notifications/unread-count'),
+    refetchInterval: 30000,
+  });
+  const unread = countData?.count || 0;
 
   function handleLogout() { logout(); navigate('/login'); }
 
@@ -30,27 +61,31 @@ function EmployeeSidebar({ onClose }) {
         </div>
       </div>
 
-      <nav className="flex-1 p-3 overflow-y-auto">
-        <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-3">My Workspace</p>
-        <div className="flex flex-col gap-0.5">
-          {navItems.map(({ to, label, Icon }) => (
-            <NavLink key={to} to={to} onClick={onClose}
-              className={({ isActive }) => cn(
-                'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150 relative',
-                isActive
-                  ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
-                  : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
-              )}
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={18} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
+      <nav className="flex-1 p-3 overflow-y-auto space-y-1">
+        {NAV_SECTIONS.map(sec => (
+          <div key={sec.title} className="mb-2">
+            <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
+            <div className="flex flex-col gap-0.5">
+              {sec.items.map(({ to, label, Icon, badge }) => (
+                <NavLink key={to} to={to} onClick={onClose}
+                  className={({ isActive }) => cn(
+                    'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+                    isActive
+                      ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+                      : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                  )}>
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
+                      {label}
+                      {badge && unread > 0 && <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">{unread > 99 ? '99+' : unread}</span>}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="p-3 border-t border-[#e7eefe]">
