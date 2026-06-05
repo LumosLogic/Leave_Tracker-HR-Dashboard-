@@ -1,9 +1,22 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Bell, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
+
+// Map notification type → portal route to navigate to on click
+const TYPE_LINK = {
+  payroll:        '/portal/payslips',
+  expense:        '/portal/expenses',
+  regularization: '/portal/regularization',
+  performance:    '/portal/performance',
+  onboarding:     '/portal/onboarding',
+  exit:           '/portal/exit',
+  announcement:   '/portal/announcements',
+  asset:          '/portal/home',
+};
 
 const TYPE_CFG = {
   regularization: { icon: <ClipboardList size={14} />, bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   strip: '#F59E0B', label: 'Regularization' },
@@ -31,9 +44,10 @@ function timeAgo(dateStr) {
 
 export default function NotificationCenter() {
   const { isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
-  const toast = useToast();
-  const qc    = useQueryClient();
+  const wrap     = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const toast    = useToast();
+  const qc       = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: _notifData, isLoading } = useQuery({ queryKey: ['notifications'], queryFn: () => apiGet('/notifications') });
   const notifications = Array.isArray(_notifData) ? _notifData : [];
@@ -109,7 +123,11 @@ export default function NotificationCenter() {
                   return (
                     <div key={n.id}
                       className={`card overflow-hidden cursor-pointer hover:shadow-card-hover transition-all duration-200 ${!n.is_read ? 'border-[#3525cd]/20' : ''}`}
-                      onClick={() => { if (!n.is_read) readMut.mutate(n.id); }}>
+                      onClick={() => {
+                        if (!n.is_read) readMut.mutate(n.id);
+                        const link = TYPE_LINK[n.type];
+                        if (link) navigate(link);
+                      }}>
                       {!n.is_read && <div className="h-0.5 w-full" style={{ background: cfg.strip }} />}
                       <div className="p-4 flex items-start gap-3">
                         {/* Unread dot */}

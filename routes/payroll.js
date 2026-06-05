@@ -57,7 +57,7 @@ router.get('/payslips', async (req, res) => {
     const { userId, year } = req.query;
     const targetId = isAdmin(req.user.role) && userId ? userId : req.user.id;
     let q = supabase.from('payslips')
-      .select('*, users(name, department, position, employee_id)')
+      .select('*, users!user_id(name, department, position)')
       .eq('organization_id', oId)
       .eq('user_id', targetId)
       .order('year', { ascending: false })
@@ -76,7 +76,7 @@ router.get('/payslips/all', async (req, res) => {
     const oId = req.user.organization_id;
     const { month, year } = req.query;
     let q = supabase.from('payslips')
-      .select('*, users(name, department, position, employee_id, avatar_color)')
+      .select('*, users!user_id(name, department, position, avatar_color)')
       .eq('organization_id', oId)
       .order('created_at', { ascending: false });
     if (month) q = q.eq('month', month);
@@ -95,33 +95,52 @@ router.post('/payslips/generate', async (req, res) => {
     const { user_id, month, year, other_deductions, notes } = req.body;
     if (!user_id || !month || !year) return res.status(400).json({ error: 'user_id, month, year required' });
 
-    // Fetch salary structure
-    const { data: structures } = await supabase.from('payroll_structures')
+    // Fetch salary structure — most recent one effective on or before this pay period
+    // Secondary sort by id DESC so latest-created wins when two structures share the same date
+    let { data: structures } = await supabase.from('payroll_structures')
       .select('*').eq('user_id', user_id).eq('organization_id', oId)
       .lte('effective_from', `${year}-${String(month).padStart(2,'0')}-01`)
-      .order('effective_from', { ascending: false }).limit(1);
+      .order('effective_from', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1);
+    // Fallback: if no structure matches the date filter, use the most recently created one
+    if (!structures?.length) {
+      const { data: fallback } = await supabase.from('payroll_structures')
+        .select('*').eq('user_id', user_id).eq('organization_id', oId)
+        .order('effective_from', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(1);
+      structures = fallback;
+    }
     const structure = structures?.[0];
     if (!structure) return res.status(400).json({ error: 'No salary structure found for this employee' });
 
-    // Fetch attendance for LOP calculation
+    // FIX: use actual last day of the month (not hardcoded 31 — breaks February)
+    const lastDay = new Date(Number(year), Number(month), 0).getDate();
     const { data: att } = await supabase.from('attendance')
       .select('status, date').eq('user_id', user_id).eq('organization_id', oId)
       .gte('date', `${year}-${String(month).padStart(2,'0')}-01`)
-      .lte('date', `${year}-${String(month).padStart(2,'0')}-31`);
+      .lte('date', `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`);
 
+    // Count working days in the month based on org work schedule
     const { data: ws } = await supabase.from('work_schedule').select('work_days').eq('organization_id', oId).limit(1).maybeSingle();
     const workDays = (ws?.work_days || '1,2,3,4,5').split(',').map(Number);
     let totalWorkingDays = 0;
-    const d = new Date(year, month - 1, 1);
-    while (d.getMonth() === month - 1) {
+    const d = new Date(Number(year), Number(month) - 1, 1);
+    while (d.getMonth() === Number(month) - 1) {
       if (workDays.includes(d.getDay())) totalWorkingDays++;
       d.setDate(d.getDate() + 1);
     }
 
-    const presentDays  = (att || []).filter(a => ['present','wfh','half_day'].includes(a.status)).length;
-    const absentDays   = (att || []).filter(a => a.status === 'absent').length;
-    const leaveDays    = (att || []).filter(a => a.status === 'on_leave').length;
-    const lopDays      = Math.max(0, absentDays);
+    // FIX: half_day counts as 0.5 present and 0.5 LOP — not a full present day
+    const fullPresent  = (att || []).filter(a => ['present', 'wfh'].includes(a.status)).length;
+    const halfDayCount = (att || []).filter(a => a.status === 'half_day').length;
+    const absentCount  = (att || []).filter(a => a.status === 'absent').length;
+    const leaveCount   = (att || []).filter(a => a.status === 'on_leave').length;
+    const presentDays  = fullPresent + halfDayCount * 0.5;
+    // FIX: approved leaves (on_leave) are NOT LOP; absents and half-days are
+    const lopDays      = absentCount + halfDayCount * 0.5;
+
     const grossSalary  = (structure.basic || 0) + (structure.hra || 0) + (structure.da || 0) + (structure.transport_allowance || 0) + (structure.medical_allowance || 0) + (structure.other_allowances || 0);
     const perDaySalary = totalWorkingDays > 0 ? grossSalary / totalWorkingDays : 0;
     const lopAmount    = lopDays * perDaySalary;
@@ -132,15 +151,23 @@ router.post('/payslips/generate', async (req, res) => {
       user_id, month: String(month).padStart(2,'0'), year: Number(year),
       pay_period: `${String(month).padStart(2,'0')}/${year}`,
       basic: structure.basic, hra: structure.hra, da: structure.da,
-      transport_allowance: structure.transport_allowance, medical_allowance: structure.medical_allowance,
-      other_allowances: structure.other_allowances, gross_salary: parseFloat(grossSalary.toFixed(2)),
-      pf_employee: structure.pf_employee, esi_employee: structure.esi_employee,
+      transport_allowance: structure.transport_allowance,
+      medical_allowance: structure.medical_allowance,
+      other_allowances: structure.other_allowances,
+      gross_salary: parseFloat(grossSalary.toFixed(2)),
+      pf_employee: structure.pf_employee,
+      pf_employer: structure.pf_employer || 0,
+      esi_employee: structure.esi_employee,
+      esi_employer: structure.esi_employer || 0,
       professional_tax: structure.professional_tax, tds: structure.tds,
       other_deductions: Number(other_deductions || 0),
       total_deductions: parseFloat(totalDed.toFixed(2)),
       lop_days: lopDays, lop_amount: parseFloat(lopAmount.toFixed(2)),
       net_salary: parseFloat(netSalary.toFixed(2)),
-      working_days: totalWorkingDays, present_days: presentDays,
+      working_days: totalWorkingDays,
+      present_days: presentDays,
+      absent_days: absentCount,
+      leave_days: leaveCount,
       notes: notes || '', status: 'generated',
       organization_id: oId, generated_by: req.user.id,
     }, { onConflict: 'user_id,month,year' }).select().single();
