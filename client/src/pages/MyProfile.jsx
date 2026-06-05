@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { UserCircle, Lock, Save, Eye, EyeOff, Check, Building2, Briefcase, Mail } from 'lucide-react';
-import { apiPut } from '@/lib/api';
+import { apiPut, apiGet } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { initials } from '@/lib/utils';
@@ -24,6 +24,18 @@ export default function MyProfile() {
   const [confPw, setConfPw] = useState('');
   const [showCur, setShowCur] = useState(false);
   const [showNew, setShowNew] = useState(false);
+
+  // Fetch multi-department info for employees
+  const { data: myDepts = [] } = useQuery({
+    queryKey: ['my-departments', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const all = await apiGet('/employees');
+      const me  = all.find(e => e.id === user.id);
+      return me?.departments || [];
+    },
+    enabled: !!user?.id,
+  });
 
   const saveProfile = useMutation({
     mutationFn: () => apiPut('/auth/profile', { name, avatar_color: color, email }),
@@ -67,18 +79,35 @@ export default function MyProfile() {
             <input className="form-control" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
             <p className="text-[0.7rem] text-[#777587] mt-1">Changing your email will update your login credentials.</p>
           </div>
-          {[
-            { icon: <Building2 size={15} />, label:'Department', value: user?.department },
-            { icon: <Briefcase size={15} />, label:'Position',   value: user?.position },
-          ].map(({ icon, label, value }) => (
-            <div key={label} className="flex items-center gap-3 py-2.5 border-t border-[#f0f3ff]">
-              <div className="w-8 h-8 bg-[#f0f3ff] rounded-lg flex items-center justify-center text-[#464555] flex-shrink-0">{icon}</div>
-              <div>
-                <p className="text-xs text-[#777587]">{label}</p>
-                <p className="text-sm font-semibold text-[#151c27]">{value || '—'}</p>
-              </div>
+          <div className="flex items-start gap-3 py-2.5 border-t border-[#f0f3ff]">
+            <div className="w-8 h-8 bg-[#f0f3ff] rounded-lg flex items-center justify-center text-[#464555] flex-shrink-0 mt-0.5">
+              <Building2 size={15} />
             </div>
-          ))}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-[#777587]">Department{myDepts.length > 1 ? 's' : ''}</p>
+              {myDepts.length > 0 ? (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {myDepts.map(d => (
+                    <span key={d.id} className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+                      {d.name}{d.role && d.role !== 'Member' ? ` · ${d.role}` : ''}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-[#151c27]">{user?.department || '—'}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 py-2.5 border-t border-[#f0f3ff]">
+            <div className="w-8 h-8 bg-[#f0f3ff] rounded-lg flex items-center justify-center text-[#464555] flex-shrink-0">
+              <Briefcase size={15} />
+            </div>
+            <div>
+              <p className="text-xs text-[#777587]">Position</p>
+              <p className="text-sm font-semibold text-[#151c27]">{user?.position || '—'}</p>
+            </div>
+          </div>
         </div>
       </div>
 

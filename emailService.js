@@ -24,7 +24,7 @@ async function sendMail({ to, subject, html }) {
   try {
     await transport.sendMail({
       from: `"HR Tracker" <${process.env.SMTP_USER}>`,
-      to: Array.isArray(to) ? to.filter(Boolean).join(', ') : to,
+      to: Array.isArray(to) ? [...new Set(to.filter(Boolean))].join(', ') : to,
       subject,
       html,
     });

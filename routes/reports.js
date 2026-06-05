@@ -38,9 +38,7 @@ router.get('/attendance', async (req, res) => {
       status:     r.status,
       check_in:   r.check_in || '',
       check_out:  r.check_out || '',
-      work_hours: r.work_hours || 0,
-      is_late:    r.is_late ? 'Yes' : 'No',
-      early_exit: r.is_early_exit ? 'Yes' : 'No',
+      work_hours: r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0),
     }));
 
     if (format === 'csv') {
@@ -52,8 +50,6 @@ router.get('/attendance', async (req, res) => {
         { key: 'check_in', label: 'Check In' },
         { key: 'check_out', label: 'Check Out' },
         { key: 'work_hours', label: 'Work Hours' },
-        { key: 'is_late', label: 'Late' },
-        { key: 'early_exit', label: 'Early Exit' },
       ]);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="attendance_report_${year||'all'}_${month||'all'}.csv"`);
@@ -114,11 +110,16 @@ router.get('/leaves', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/reports/headcount — summary stats
+// GET /api/reports/headcount — summary stats (role-scoped)
 router.get('/headcount', async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data: users } = await supabase.from('users').select('id, role, employment_status, department, date_of_joining, created_at').eq('organization_id', oId);
+    // root_admin sees HR admins + employees; HR admin sees employees only
+    const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
+    const { data: users } = await supabase.from('users')
+      .select('id, role, employment_status, department, date_of_joining, created_at')
+      .eq('organization_id', oId)
+      .in('role', roleFilter);
     const total   = users?.length || 0;
     const active  = users?.filter(u => u.employment_status === 'active' || !u.employment_status).length || 0;
     const byDept  = {};

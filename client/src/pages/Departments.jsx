@@ -68,6 +68,9 @@ export default function Departments() {
   const depts     = Array.isArray(_dData) ? _dData : [];
   const employees = Array.isArray(_eData) ? _eData : [];
 
+  // Total members across all depts (from junction table counts)
+  const totalAssigned = depts.reduce((s, d) => s + (d.member_count || 0), 0);
+
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/departments/${id}`),
     onSuccess: () => { toast('Department deleted', 'warning'); qc.invalidateQueries({ queryKey: ['departments'] }); },
@@ -93,7 +96,7 @@ export default function Departments() {
           { label: 'Total Departments', value: depts.length, color: 'from-[#f0f3ff] to-[#e7eefe]', top: '#3525cd', text: 'text-[#3525cd]' },
           { label: 'With Department Head', value: depts.filter(d => d.head_user_id || d.users).length, color: 'from-emerald-50 to-emerald-100', top: '#10B981', text: 'text-emerald-700' },
           { label: 'Total Employees', value: employees.length, color: 'from-amber-50 to-amber-100', top: '#F59E0B', text: 'text-amber-700' },
-          { label: 'Unassigned Employees', value: employees.filter(e => !e.department_id).length, color: 'from-[#f0f3ff] to-[#e7eefe]', top: '#712ae2', text: 'text-[#712ae2]' },
+          { label: 'Assigned Members', value: totalAssigned, color: 'from-[#f0f3ff] to-[#e7eefe]', top: '#712ae2', text: 'text-[#712ae2]' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl p-5 bg-gradient-to-br ${s.color} border border-[#c7c4d8] shadow-card relative overflow-hidden`}>
             <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-xl" style={{ background: s.top }} />
@@ -115,9 +118,12 @@ export default function Departments() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {depts.map((d, i) => {
-            const color     = DEPT_COLORS[i % DEPT_COLORS.length];
-            const headUser  = d.users;
-            const empCount  = employees.filter(e => e.department === d.name).length;
+            const color    = DEPT_COLORS[i % DEPT_COLORS.length];
+            const headUser = d.users;
+            // Use member_count from junction table (API), fallback to string-match for backward compat
+            const empCount = d.member_count > 0
+              ? d.member_count
+              : employees.filter(e => e.department === d.name).length;
             return (
               <div key={d.id} className="card hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
                 {/* Colored top strip */}

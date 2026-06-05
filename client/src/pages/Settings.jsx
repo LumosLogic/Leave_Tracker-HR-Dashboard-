@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -398,6 +398,72 @@ function NotificationRecipientsCard() {
   );
 }
 
+// ── Root Admins Card (Root Admin only) ───────────────────────────────────────
+function RootAdminsCard() {
+  const { data: rootAdmins = [], isLoading } = useQuery({
+    queryKey: ['root-admins'],
+    queryFn:  () => apiGet('/root/root-admins'),
+  });
+
+  return (
+    <div className="card p-6 lg:col-span-2">
+      <div className="flex items-center gap-2 mb-2">
+        <ShieldCheck size={18} className="text-[#3525cd]" />
+        <span className="font-bold text-[#151c27]">Root Administrators</span>
+        <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+          {rootAdmins.length} total
+        </span>
+      </div>
+      <p className="text-xs text-[#777587] mb-5">
+        All root admin accounts for this organization. Root admins have full access to all settings and data.
+        To add or remove root admins, use the <strong>Employees</strong> page and set the role to Root Admin.
+      </p>
+
+      {isLoading ? (
+        <div className="flex justify-center py-4"><span className="spinner w-5 h-5" /></div>
+      ) : rootAdmins.length === 0 ? (
+        <div className="text-center py-6 text-sm text-[#777587] bg-[#f0f3ff] rounded-xl border border-dashed border-[#c7c4d8]">
+          No root admins found.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {rootAdmins.map(admin => (
+            <div key={admin.id} className="flex items-center gap-3 p-3 rounded-xl border border-[#c7c4d8] bg-white hover:bg-[#f9f9ff] transition-colors">
+              <Avatar name={admin.name} color={admin.avatar_color} size={40} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm text-[#151c27] truncate">{admin.name}</span>
+                  <span className="text-[0.6rem] font-black px-1.5 py-0.5 rounded-full bg-[#3525cd]/10 text-[#3525cd] border border-[#3525cd]/20 uppercase tracking-wide">
+                    Root Admin
+                  </span>
+                </div>
+                <p className="text-xs text-[#777587] truncate mt-0.5">{admin.email}</p>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  {admin.department && (
+                    <span className="flex items-center gap-1 text-[0.68rem] text-[#464555]">
+                      <Building2 size={10} className="text-[#3525cd]" /> {admin.department}
+                    </span>
+                  )}
+                  {admin.position && (
+                    <span className="flex items-center gap-1 text-[0.68rem] text-[#464555]">
+                      <Briefcase size={10} className="text-[#3525cd]" /> {admin.position}
+                    </span>
+                  )}
+                  {admin.created_at && (
+                    <span className="flex items-center gap-1 text-[0.68rem] text-[#777587]">
+                      <CalendarDays size={10} /> Joined {new Date(admin.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Settings Page ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user, isAdmin, isRootAdmin } = useAuth();
@@ -428,6 +494,7 @@ export default function Settings() {
         <ClockifyCard     clockify={clockify} isAdmin={isAdmin} onSaved={refetch} />
         <StatusLegendCard />
         <MyProfileCard user={user} />
+        {isRootAdmin && <RootAdminsCard />}
         {isRootAdmin && <NotificationRecipientsCard />}
       </div>
     </div>

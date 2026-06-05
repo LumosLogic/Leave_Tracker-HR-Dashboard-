@@ -38,19 +38,24 @@ export default function NotificationCenter() {
   const { data: _notifData, isLoading } = useQuery({ queryKey: ['notifications'], queryFn: () => apiGet('/notifications') });
   const notifications = Array.isArray(_notifData) ? _notifData : [];
 
+  function invalidateNotifs() {
+    qc.invalidateQueries({ queryKey: ['notifications'] });
+    qc.invalidateQueries({ queryKey: ['notif-count'] });
+  }
+
   const readMut = useMutation({
     mutationFn: id => apiPut(`/notifications/${id}/read`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', 'notif-count'] }),
+    onSuccess: invalidateNotifs,
   });
 
   const readAllMut = useMutation({
     mutationFn: () => apiPut('/notifications/mark-all-read'),
-    onSuccess: () => { toast('All marked as read', 'success'); qc.invalidateQueries({ queryKey: ['notifications', 'notif-count'] }); },
+    onSuccess: () => { toast('All marked as read', 'success'); invalidateNotifs(); },
   });
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/notifications/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', 'notif-count'] }),
+    onSuccess: invalidateNotifs,
   });
 
   const unread = notifications.filter(n => !n.is_read).length;

@@ -482,28 +482,45 @@ function EmployeeProfile({ emp, onBack }) {
 }
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
-function EmployeeFormModal({ open, onClose, employee, onSaved }) {
+function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [] }) {
   const isEdit      = !!employee;
   const toast       = useToast();
   const { isRootAdmin } = useAuth();
   const qc     = useQueryClient();
   const [showPw, setShowPw] = useState(false);
 
+  // department_ids: list of selected department IDs (multi-select)
+  const initDeptIds = isEdit && employee.departments?.length
+    ? employee.departments.map(d => d.id)
+    : [];
+
   const [form, setForm] = useState(() => isEdit ? {
-    name:          employee.name,
-    email:         employee.email,
-    password:      '',
-    department:    employee.department || '',
-    position:      employee.position   || '',
-    role:          employee.role,
-    avatar_color:  employee.avatar_color || '#3525cd',
-    date_of_birth: employee.date_of_birth || '',
+    name:           employee.name,
+    email:          employee.email,
+    password:       '',
+    department:     employee.department || '',
+    position:       employee.position   || '',
+    role:           employee.role,
+    avatar_color:   employee.avatar_color || '#3525cd',
+    date_of_birth:  employee.date_of_birth || '',
+    department_ids: initDeptIds,
   } : {
     name: '', email: '', password: '', department: '', position: '',
-    role: 'employee', avatar_color: '#3525cd', date_of_birth: '',
+    role: 'employee', avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function toggleDept(deptId) {
+    setForm(f => {
+      const ids = f.department_ids.includes(deptId)
+        ? f.department_ids.filter(id => id !== deptId)
+        : [...f.department_ids, deptId];
+      // Keep department string in sync with first selected dept name (for backward compat)
+      const firstName = departments.find(d => d.id === ids[0])?.name || '';
+      return { ...f, department_ids: ids, department: firstName };
+    });
+  }
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -512,6 +529,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved }) {
         if (!body.password) delete body.password;
         return apiPut(`/employees/${employee.id}`, body);
       }
+      // On create, just use the primary department string (junction records added on PUT after creation)
       return apiPost('/employees', form);
     },
     onSuccess: () => {
@@ -565,17 +583,41 @@ function EmployeeFormModal({ open, onClose, employee, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="form-label">Department</label>
-            <input className="form-control" placeholder="Engineering" value={form.department}
-              onChange={e => set('department', e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Position</label>
-            <input className="form-control" placeholder="Developer" value={form.position}
-              onChange={e => set('position', e.target.value)} />
-          </div>
+        <div>
+          <label className="form-label">
+            Departments
+            <span className="text-xs font-normal text-[#777587] ml-1">(select one or more)</span>
+          </label>
+          {departments.length === 0 ? (
+            <div className="form-control text-[#777587] text-xs py-2">
+              No departments found — create departments first from the Departments page.
+            </div>
+          ) : (
+            <div className="border border-[#c7c4d8] rounded-lg p-2 max-h-36 overflow-y-auto bg-white space-y-1">
+              {departments.map(d => (
+                <label key={d.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[#f0f3ff] cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    className="accent-[#3525cd] w-3.5 h-3.5"
+                    checked={form.department_ids.includes(d.id)}
+                    onChange={() => toggleDept(d.id)}
+                  />
+                  <span className="text-sm text-[#151c27] font-medium">{d.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {form.department_ids.length > 0 && (
+            <p className="text-[0.7rem] text-[#777587] mt-1">
+              Primary department: <strong className="text-[#3525cd]">{form.department || '—'}</strong>
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="form-label">Position</label>
+          <input className="form-control" placeholder="Developer" value={form.position}
+            onChange={e => set('position', e.target.value)} />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -635,6 +677,12 @@ export default function Employees() {
     queryFn:  () => apiGet('/employees'),
   });
 
+  const { data: _dData = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn:  () => apiGet('/departments'),
+  });
+  const departments = Array.isArray(_dData) ? _dData : [];
+
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/employees/${id}`),
     onSuccess: (_, id) => {
@@ -658,7 +706,7 @@ export default function Employees() {
       <div className="page-header mb-6">
         <div>
           <div className="page-title">Team Members</div>
-          <div className="page-subtitle">{employees.length} employee{employees.length !== 1 ? 's' : ''}</div>
+          <div className="page-subtitle">{employees.length} member{employees.length !== 1 ? 's' : ''}</div>
         </div>
         <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
           <Plus size={16} /> Add Employee
@@ -692,10 +740,19 @@ export default function Employees() {
 
               {/* Details */}
               <div className="px-5 py-3.5 space-y-2 flex-1">
-                {emp.department && (
-                  <div className="flex items-center gap-2">
-                    <Building2 size={13} className="text-[#3525cd] flex-shrink-0" />
-                    <span className="text-xs font-semibold text-[#151c27] truncate">{emp.department}</span>
+                {(emp.departments?.length > 0 || emp.department) && (
+                  <div className="flex items-start gap-2">
+                    <Building2 size={13} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
+                    <div className="flex flex-wrap gap-1 min-w-0">
+                      {emp.departments?.length > 0
+                        ? emp.departments.map(d => (
+                            <span key={d.id} className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-md bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+                              {d.name}
+                            </span>
+                          ))
+                        : <span className="text-xs font-semibold text-[#151c27] truncate">{emp.department}</span>
+                      }
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
@@ -726,10 +783,10 @@ export default function Employees() {
       )}
 
       {addOpen && (
-        <EmployeeFormModal open={addOpen} onClose={() => setAddOpen(false)} />
+        <EmployeeFormModal open={addOpen} onClose={() => setAddOpen(false)} departments={departments} />
       )}
       {editEmp && (
-        <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} />
+        <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} departments={departments} />
       )}
       <ConfirmModal
         open={!!confirmDel}

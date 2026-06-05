@@ -12,7 +12,21 @@ router.get('/', async (req, res) => {
       .eq('organization_id', oId)
       .order('name');
     if (error) throw error;
-    res.json(data || []);
+
+    // Attach member counts from user_departments junction table
+    const deptIds = (data || []).map(d => d.id);
+    let memberCounts = {};
+    if (deptIds.length > 0) {
+      const { data: ud } = await supabase.from('user_departments')
+        .select('department_id')
+        .in('department_id', deptIds)
+        .eq('organization_id', oId);
+      (ud || []).forEach(r => {
+        memberCounts[r.department_id] = (memberCounts[r.department_id] || 0) + 1;
+      });
+    }
+
+    res.json((data || []).map(d => ({ ...d, member_count: memberCounts[d.id] || 0 })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

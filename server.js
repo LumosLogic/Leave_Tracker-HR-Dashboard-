@@ -718,12 +718,28 @@ app.get('/api/dashboard', auth, async (req, res) => {
 // ─── Employees ────────────────────────────────────────────────────────────────
 app.get('/api/employees', auth, async (req, res) => {
   try {
-    const { data } = await supabase.from('users')
+    // root_admin sees all non-root users (HR admins + employees); others see only employees
+    const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
+    const { data: users } = await supabase.from('users')
       .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at')
       .eq('organization_id', orgId(req))
-      .eq('role', 'employee')
+      .in('role', roleFilter)
       .order('name');
-    res.json(data || []);
+
+    // Attach multi-department assignments
+    const ids = (users || []).map(u => u.id);
+    let deptMap = {};
+    if (ids.length > 0) {
+      const { data: ud } = await supabase.from('user_departments')
+        .select('user_id, department_id, role_in_dept, departments(id, name)')
+        .in('user_id', ids);
+      (ud || []).forEach(r => {
+        if (!deptMap[r.user_id]) deptMap[r.user_id] = [];
+        deptMap[r.user_id].push({ id: r.department_id, name: r.departments?.name || '', role: r.role_in_dept });
+      });
+    }
+
+    res.json((users || []).map(u => ({ ...u, departments: deptMap[u.id] || [] })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -747,7 +763,7 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
 
 app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { name, email, role, department, position, avatar_color, password, date_of_birth } = req.body;
+    const { name, email, role, department, position, avatar_color, password, date_of_birth, department_ids } = req.body;
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
     }
@@ -757,6 +773,17 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
       .eq('id', req.params.id).eq('organization_id', orgId(req))
       .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
     if (error) throw new Error(error.message);
+
+    // Sync multi-department assignments if provided
+    if (Array.isArray(department_ids)) {
+      await supabase.from('user_departments').delete().eq('user_id', req.params.id);
+      if (department_ids.length > 0) {
+        await supabase.from('user_departments').insert(
+          department_ids.map(dId => ({ user_id: parseInt(req.params.id), department_id: dId, role_in_dept: 'Member', organization_id: orgId(req) }))
+        );
+      }
+    }
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1188,6 +1215,7 @@ app.put('/api/leaves/:id/approve', auth, adminOnly, async (req, res) => {
   try {
     const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
     if (le) return res.status(404).json({ error: 'Leave not found' });
+    if (leave.status === 'approved') return res.json(leave); // already approved — skip duplicate email
 
     await supabase.from('leaves').update({ status: 'approved', approved_by: req.user.id, approved_at: new Date().toISOString() }).eq('id', req.params.id);
 
@@ -1217,6 +1245,8 @@ app.put('/api/leaves/:id/approve', auth, adminOnly, async (req, res) => {
 app.put('/api/leaves/:id/reject', auth, adminOnly, async (req, res) => {
   try {
     const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
+    if (!leave) return res.status(404).json({ error: 'Leave not found' });
+    if (leave.status === 'rejected') return res.json(leave); // already rejected — skip duplicate email
     await supabase.from('leaves').update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date().toISOString(), google_event_id: null }).eq('id', req.params.id);
     // Remove from Google Calendar if it was synced
     if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
@@ -1985,6 +2015,16 @@ app.delete('/api/root/hr/:id', auth, rootAdminOnly, async (req, res) => {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
     await supabase.from('users').delete().eq('id', req.params.id).eq('role', 'admin').eq('organization_id', orgId(req));
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// List root admins of this org
+app.get('/api/root/root-admins', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const { data } = await supabase.from('users')
+      .select('id, name, email, department, position, avatar_color, created_at')
+      .eq('role', 'root_admin').eq('organization_id', orgId(req)).order('name');
+    res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
