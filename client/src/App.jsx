@@ -10,6 +10,8 @@ import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal'
 import LandingPage      from '@/pages/LandingPage';
 import Login            from '@/pages/Login';
 import Register         from '@/pages/Register';
+import ForgotPassword   from '@/pages/ForgotPassword';
+import ResetPassword    from '@/pages/ResetPassword';
 
 // ── HR Admin / Root Admin pages ──
 import Dashboard        from '@/pages/Dashboard';
@@ -79,8 +81,10 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={token ? <Navigate to={home} replace /> : <LandingPage />} />
-      <Route path="/login"    element={token ? <Navigate to={home} replace /> : <Login />} />
-      <Route path="/register" element={token ? <Navigate to={home} replace /> : <Register />} />
+      <Route path="/login"            element={token ? <Navigate to={home} replace /> : <Login />} />
+      <Route path="/register"         element={token ? <Navigate to={home} replace /> : <Register />} />
+      <Route path="/forgot-password"  element={<ForgotPassword />} />
+      <Route path="/reset-password"   element={<ResetPassword />} />
 
       {/* ── HR Admin area (admin + root_admin) ── */}
       <Route element={<HRRoute><AppLayout /></HRRoute>}>

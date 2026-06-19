@@ -280,4 +280,27 @@ function orgRejectedHtml(req, notes) {
   );
 }
 
-module.exports = { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml };
+// Password reset email
+function passwordResetHtml(user, resetLink) {
+  return WRAP(
+    HEADER('Reset Your Password', 'HR Tracker — Password Reset Request') +
+    BODY(`
+      <p style="margin:0 0 16px;">Hello <strong>${user.name || 'User'}</strong>,</p>
+      <p style="margin:0 0 16px;">We received a request to reset your HR Tracker account password. Click the button below to set a new password. This link will expire in <strong>1 hour</strong>.</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${resetLink}"
+           style="display:inline-block;background:#3525cd;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px;font-family:Arial,sans-serif;">
+          Reset My Password
+        </a>
+      </div>
+      <p style="margin:0 0 8px;font-size:13px;color:#64748b;">If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="margin:0 0 16px;font-size:12px;word-break:break-all;"><a href="${resetLink}" style="color:#3525cd;">${resetLink}</a></p>
+      <div style="margin-top:20px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;">
+        <strong>Security notice:</strong> If you did not request a password reset, please ignore this email. Your password will not be changed.
+      </div>
+      ${FOOTER}
+    `)
+  );
+}
+
+module.exports = { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };

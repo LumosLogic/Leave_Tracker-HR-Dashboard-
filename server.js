@@ -5,11 +5,12 @@ const SERVER_VERSION = '2.2.0-platform-admin-2026-06-02';
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
+const crypto   = require('crypto');
 const axios    = require('axios');
 const path     = require('path');
 const webpush  = require('web-push');
 const { supabase, seed } = require('./db');
-const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml } = require('./emailService');
+const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml } = require('./emailService');
 
 // ─── VAPID / Push Notification Setup ─────────────────────────────────────────
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
@@ -545,6 +546,70 @@ app.put('/api/auth/change-password', auth, async (req, res) => {
       return res.status(400).json({ error: 'Current password is incorrect' });
     const { error: pwErr } = await supabase.from('users').update({ password: bcrypt.hashSync(newPassword, 10), force_password_change: false }).eq('id', req.user.id);
     if (pwErr) throw new Error(pwErr.message);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email, org_slug } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    let query = supabase.from('users').select('id, name, email').eq('email', email.toLowerCase().trim());
+    if (org_slug) {
+      const { data: org } = await supabase.from('organizations').select('id').eq('slug', org_slug.toLowerCase().trim()).maybeSingle();
+      if (org) query = query.eq('organization_id', org.id);
+    }
+    const { data: user } = await query.maybeSingle();
+
+    // Always respond with success to prevent email enumeration
+    if (!user) return res.json({ success: true });
+
+    const token   = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    await supabase.from('users').update({
+      password_reset_token:   token,
+      password_reset_expires: expires,
+    }).eq('id', user.id);
+
+    const baseUrl   = process.env.FRONTEND_URL || 'https://leavetrackerbylumos.web.app';
+    const resetLink = `${baseUrl}/reset-password?token=${token}`;
+
+    sendMail({
+      to:      user.email,
+      subject: 'HR Tracker — Reset Your Password',
+      html:    passwordResetHtml(user, resetLink),
+    });
+
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+    const { data: user } = await supabase.from('users')
+      .select('id, password_reset_token, password_reset_expires')
+      .eq('password_reset_token', token)
+      .maybeSingle();
+
+    if (!user) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+    if (new Date(user.password_reset_expires) < new Date())
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+
+    await supabase.from('users').update({
+      password:               bcrypt.hashSync(password, 10),
+      password_reset_token:   null,
+      password_reset_expires: null,
+      force_password_change:  false,
+    }).eq('id', user.id);
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

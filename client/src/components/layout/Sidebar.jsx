@@ -116,13 +116,13 @@ export function Sidebar({ onClose, prefix = '' }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        <NavSection title="Overview"  items={CORE_ITEMS}    onClose={onClose} isAdmin={isAdmin} prefix={prefix} />
-        {isAdmin && <NavSection title="HR Management" items={HR_ITEMS}   onClose={onClose} isAdmin={isAdmin} prefix={prefix} />}
-        {isAdmin && <NavSection title="Finance"       items={FINANCE_ITEMS} onClose={onClose} isAdmin={isAdmin} prefix={prefix} />}
-        <NavSection title="People"    items={PEOPLE_ITEMS}  onClose={onClose} isAdmin={isAdmin} prefix={prefix} />
+        <div id="tour-nav-overview"><NavSection title="Overview"  items={CORE_ITEMS}    onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>
+        {isAdmin && <div id="tour-nav-hr"><NavSection title="HR Management" items={HR_ITEMS}   onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>}
+        {isAdmin && <div id="tour-nav-finance"><NavSection title="Finance"       items={FINANCE_ITEMS} onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>}
+        <div id="tour-nav-people"><NavSection title="People"    items={PEOPLE_ITEMS}  onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>
 
         {/* Bottom items with notification badge */}
-        <div className="mb-3">
+        <div id="tour-nav-account" className="mb-3">
           <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">Account</p>
           <div className="flex flex-col gap-0.5">
             {bottomWithBadge.map(({ to, label, Icon, badge }) => {
@@ -150,7 +150,7 @@ export function Sidebar({ onClose, prefix = '' }) {
       </nav>
 
       {/* User */}
-      <div className="p-3 border-t border-[#e7eefe]">
+      <div id="tour-user-card" className="p-3 border-t border-[#e7eefe]">
         <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[#f0f3ff] transition-colors cursor-default border border-transparent hover:border-[#c7c4d8]">
           <div className="w-9 h-9 rounded-full flex items-center justify-center text-[0.78rem] font-black text-white flex-shrink-0 border-2 border-white shadow-md"
             style={{ background: user?.avatar_color || '#3525cd' }}>

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useTour } from '@/hooks/useTour';
+import { employeeTourSteps } from '@/lib/tours';
 import {
   Home, FileText, Clock, UserCircle, LogOut, Menu, CalendarDays,
   FolderOpen, Receipt, DollarSign, Target, ClipboardList, UserCheck,
@@ -62,8 +64,8 @@ function EmployeeSidebar({ onClose }) {
       </div>
 
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        {NAV_SECTIONS.map(sec => (
-          <div key={sec.title} className="mb-2">
+        {NAV_SECTIONS.map((sec, idx) => (
+          <div key={sec.title} id={`tour-emp-${['workspace','selfservice','growth','company'][idx] || idx}`} className="mb-2">
             <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
             <div className="flex flex-col gap-0.5">
               {sec.items.map(({ to, label, Icon, badge }) => (
@@ -88,7 +90,7 @@ function EmployeeSidebar({ onClose }) {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-[#e7eefe]">
+      <div id="tour-emp-user-card" className="p-3 border-t border-[#e7eefe]">
         <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-default">
           <div className="w-9 h-9 rounded-full flex items-center justify-center text-[0.78rem] font-black text-white flex-shrink-0 border-2 border-white shadow-sm"
             style={{ background: user?.avatar_color || '#3525cd' }}>
@@ -110,6 +112,8 @@ function EmployeeSidebar({ onClose }) {
 
 export function EmployeeLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user } = useAuth();
+  useTour(employeeTourSteps, user?.id ? `lt_tour_emp_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">

@@ -9,6 +9,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
+import { useTour } from '@/hooks/useTour';
+import { adminTourSteps } from '@/lib/tours';
 
 const NAV_SECTIONS = [
   { title: 'Overview', items: [
@@ -68,8 +70,8 @@ function RootSidebar({ onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        {NAV_SECTIONS.map(sec => (
-          <div key={sec.title} className="mb-2">
+        {NAV_SECTIONS.map((sec, idx) => (
+          <div key={sec.title} id={`tour-nav-${['overview','hr','finance','people','account'][idx] || idx}`} className="mb-2">
             <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
             <div className="flex flex-col gap-0.5">
               {sec.items.map(({ to, label, Icon }) => (
@@ -94,7 +96,7 @@ function RootSidebar({ onClose }) {
       </nav>
 
       {/* User */}
-      <div className="p-3 border-t border-[#e7eefe]">
+      <div id="tour-user-card" className="p-3 border-t border-[#e7eefe]">
         <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[#f0f3ff] transition-colors cursor-default border border-transparent hover:border-[#c7c4d8]">
           <div className="w-9 h-9 rounded-full flex items-center justify-center text-[0.78rem] font-black text-white flex-shrink-0 border-2 border-white shadow-md"
             style={{ background: user?.avatar_color || '#3525cd' }}>
@@ -117,6 +119,8 @@ function RootSidebar({ onClose }) {
 export function RootLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { title, subtitle } = usePageMeta();
+  const { user } = useAuth();
+  useTour(adminTourSteps, user?.id ? `lt_tour_admin_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">
@@ -136,7 +140,7 @@ export function RootLayout() {
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header title={title} subtitle={subtitle} onMenuClick={() => setSidebarOpen(o => !o)} />
-        <main className="flex-1 overflow-y-auto p-7">
+        <main id="tour-main-content" className="flex-1 overflow-y-auto p-7">
           <Outlet />
         </main>
       </div>

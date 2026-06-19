@@ -3,10 +3,15 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
+import { useAuth } from '@/context/AuthContext';
+import { useTour } from '@/hooks/useTour';
+import { adminTourSteps } from '@/lib/tours';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { title, subtitle } = usePageMeta();
+  const { user } = useAuth();
+  useTour(adminTourSteps, user?.id ? `lt_tour_admin_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">
@@ -33,7 +38,7 @@ export function AppLayout() {
           subtitle={subtitle}
           onMenuClick={() => setSidebarOpen(o => !o)}
         />
-        <main className="flex-1 overflow-y-auto p-7">
+        <main id="tour-main-content" className="flex-1 overflow-y-auto p-7">
           <Outlet />
         </main>
       </div>

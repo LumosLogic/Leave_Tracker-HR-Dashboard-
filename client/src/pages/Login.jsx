@@ -136,7 +136,12 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="form-label">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Password</label>
+                <Link to="/forgot-password" className="text-xs text-[#3525cd] font-semibold hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'} className="form-control pr-12" required
