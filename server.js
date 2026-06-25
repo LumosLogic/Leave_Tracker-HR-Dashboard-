@@ -110,6 +110,53 @@ function rootAdminOnly(req, res, next) {
 }
 // True for HR admin or root admin — used for data-scope checks
 function isAdminRole(role) { return role === 'admin' || role === 'root_admin'; }
+
+// ─── Feature Flag System ───────────────────────────────────────────────────────
+// Maps URL path prefixes → feature keys. Missing row in DB = enabled (all ON by default).
+const FEATURE_ROUTE_MAP = {
+  '/payroll':               'payroll',
+  '/expenses':              'expenses',
+  '/assets':                'assets',
+  '/reports':               'reports',
+  '/performance':           'performance',
+  '/documents':             'documents',
+  '/onboarding':            'onboarding',
+  '/exit-management':       'exit_management',
+  '/announcements':         'announcements',
+  '/attendance/late-early': 'regularization',
+  '/shifts':                'shifts',
+  '/roster':                'shifts',
+  '/leave-policies':        'leave_policies',
+  '/clockify':              'clockify',
+  '/push':                  'push_notifications',
+};
+
+async function isFeatureEnabled(organizationId, featureKey) {
+  if (!organizationId || !featureKey) return true;
+  try {
+    const { data } = await supabase.from('organization_features')
+      .select('enabled').eq('organization_id', organizationId).eq('feature_key', featureKey).maybeSingle();
+    return data ? data.enabled : true; // missing row = enabled by default
+  } catch { return true; }
+}
+
+// Global feature gate — runs before every /api route that matches FEATURE_ROUTE_MAP
+app.use('/api', async (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  const matched = Object.entries(FEATURE_ROUTE_MAP).find(([prefix]) => req.path.startsWith(prefix));
+  if (!matched) return next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return next();
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (decoded.organization_id) {
+      const enabled = await isFeatureEnabled(decoded.organization_id, matched[1]);
+      if (!enabled) return res.status(403).json({ error: 'Feature not available for your organization.', feature: matched[1] });
+    }
+  } catch { /* invalid token — let auth middleware handle */ }
+  next();
+});
+
 // Flatten Supabase join: { ...record, users: { name, ... } } → { ...record, name, ... }
 function flat(records, joinKey = 'users') {
   return (records || []).map(r => {
@@ -199,7 +246,7 @@ app.post('/api/auth/login', async (req, res) => {
     const org = user.organizations || {};
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },
-      JWT_SECRET, { expiresIn: '24h' }
+      JWT_SECRET, { expiresIn: '7d' }
     );
     res.json({
       token,
@@ -290,7 +337,7 @@ app.post('/api/platform/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: admin.id, email: admin.email, name: admin.name, role: 'platform_admin' },
-      JWT_SECRET, { expiresIn: '12h' }
+      JWT_SECRET, { expiresIn: '7d' }
     );
     res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email } });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -480,6 +527,49 @@ app.get('/api/platform/organizations/:id/members', platformAdminAuth, async (req
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Platform: Feature Flag Management ────────────────────────────────────────
+const ALL_FEATURE_KEYS = [
+  'announcements','regularization','leave_policies','shifts','onboarding',
+  'exit_management','payroll','expenses','assets','reports',
+  'performance','documents','clockify','google_calendar','push_notifications',
+];
+
+// Get feature flags for an org (all keys with their enabled state)
+app.get('/api/platform/organizations/:id/features', platformAdminAuth, async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.id);
+    const { data } = await supabase.from('organization_features')
+      .select('feature_key, enabled').eq('organization_id', orgId);
+    const map = {};
+    for (const row of data || []) map[row.feature_key] = row.enabled;
+    // Fill missing keys with default true
+    const flags = {};
+    for (const key of ALL_FEATURE_KEYS) flags[key] = key in map ? map[key] : true;
+    res.json(flags);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update feature flags for an org (body: { feature_key: boolean, ... })
+app.put('/api/platform/organizations/:id/features', platformAdminAuth, async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.id);
+    const updates = req.body; // { payroll: true, expenses: false, ... }
+    const upserts = Object.entries(updates)
+      .filter(([key]) => ALL_FEATURE_KEYS.includes(key))
+      .map(([feature_key, enabled]) => ({
+        organization_id: orgId,
+        feature_key,
+        enabled: Boolean(enabled),
+        updated_at: new Date().toISOString(),
+      }));
+    if (upserts.length) {
+      await supabase.from('organization_features')
+        .upsert(upserts, { onConflict: 'organization_id,feature_key' });
+    }
+    res.json({ success: true, updated: upserts.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Organization Settings (get / update) ─────────────────────────────────────
 app.get('/api/org/settings', auth, async (req, res) => {
   try {
@@ -645,7 +735,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
     // ── 1. Get all employees (never include admin) ───────────────────────────
     _step = 'employees';
     const { data: allEmployees } = await supabase.from('users')
-      .select('id, name, avatar_color, department, clockify_user_id')
+      .select('id, name, avatar_color, department, clockify_user_id, created_at')
       .eq('role', 'employee').eq('organization_id', orgId(req));
     const totalEmployees = (allEmployees || []).length;
     const empIds         = (allEmployees || []).map(e => e.id);
@@ -725,14 +815,18 @@ app.get('/api/dashboard', auth, async (req, res) => {
       }));
     }
 
-    const onLeaveToday  = onLeaveIds.size;
-    const presentToday  = Math.max(0, totalEmployees - onLeaveToday);
-    const onClockify    = isToday ? [...clockifyActiveIds].filter(id => !onLeaveIds.has(id)).length : null;
-    const notOnClockify = isToday ? Math.max(0, presentToday - onClockify) : null;
+    const onLeaveToday   = onLeaveIds.size;
+    const presentToday   = Math.max(0, totalEmployees - onLeaveToday);
+    const onClockify     = isToday ? [...clockifyActiveIds].filter(id => !onLeaveIds.has(id)).length : null;
+    const notOnClockify  = isToday ? Math.max(0, presentToday - onClockify) : null;
     const lateToday      = todayRecords.filter(r => r.is_late).length;
     const earlyExitToday = todayRecords.filter(r => r.is_early_exit).length;
     const halfDayToday   = todayRecords.filter(r => r.status === 'half_day').length;
     const wfhToday       = todayRecords.filter(r => r.status === 'wfh').length;
+    const checkedInToday = todayRecords.filter(r => r.check_in).length;
+    const _now = new Date();
+    const _ms  = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-01`;
+    const newThisMonth   = (allEmployees || []).filter(e => e.created_at >= _ms).length;
 
     // ── 5. Activity for selected date ─────────────────────────────────────────
     const activityMap = new Map();
@@ -773,7 +867,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const { data: myToday } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
-    res.json({ totalEmployees, presentToday, onLeaveToday, onClockify, notOnClockify, lateToday, earlyExitToday, halfDayToday, wfhToday, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday });
+    res.json({ totalEmployees, presentToday, onLeaveToday, onClockify, notOnClockify, lateToday, earlyExitToday, halfDayToday, wfhToday, checkedInToday, newThisMonth, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday });
   } catch (err) {
     console.error(`[Dashboard] step="${_step}" error:`, err.message, err.stack);
     res.status(500).json({ error: err.message });
@@ -1176,6 +1270,37 @@ app.get('/api/leaves/date-check', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Team calendar — all approved leaves visible to every authenticated user in the org
+app.get('/api/team-leaves', auth, async (req, res) => {
+  try {
+    const { startDate, endDate, year, month } = req.query;
+    let query = supabase.from('leaves')
+      .select('id, user_id, start_date, end_date, leave_type, leave_time, users!leaves_user_id_fkey(name, avatar_color, department)')
+      .eq('organization_id', orgId(req))
+      .eq('status', 'approved')
+      .order('start_date', { ascending: true });
+
+    if (startDate && endDate) {
+      query = query.lte('start_date', endDate).gte('end_date', startDate);
+    } else if (year && month) {
+      const ym = `${year}-${String(month).padStart(2, '0')}`;
+      query = query.lte('start_date', `${ym}-31`).gte('end_date', `${ym}-01`);
+    } else if (year) {
+      query = query.lte('start_date', `${year}-12-31`).gte('end_date', `${year}-01-01`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const result = (data || []).map(l => ({
+      id: l.id, user_id: l.user_id, start_date: l.start_date, end_date: l.end_date,
+      leave_type: l.leave_type, leave_time: l.leave_time,
+      name: l.users?.name, avatar_color: l.users?.avatar_color, department: l.users?.department,
+    }));
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/leaves', auth, async (req, res) => {
   try {
     const { userId, year, month } = req.query;
@@ -1387,6 +1512,19 @@ app.delete('/api/leaves/:id', auth, async (req, res) => {
 });
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// ─── Org Feature Flags (for client app) ──────────────────────────────────────
+// Returns a key→boolean map of all features for the caller's organization.
+// Missing features default to true (enabled).
+app.get('/api/org/features', auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('organization_features')
+      .select('feature_key, enabled').eq('organization_id', orgId(req));
+    const flags = {};
+    for (const row of data || []) flags[row.feature_key] = row.enabled;
+    res.json(flags);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/settings', auth, async (req, res) => {
   try {
     const { data: schedule } = await supabase.from('work_schedule').select('*').eq('organization_id', orgId(req)).limit(1).single();
@@ -1777,11 +1915,12 @@ app.get('/api/my-stats', auth, async (req, res) => {
     const ym    = `${year}-${String(month).padStart(2, '0')}`;
     const [{ data: att }, { data: lvs }] = await Promise.all([
       supabase.from('attendance').select('status, is_late').eq('user_id', req.user.id).eq('organization_id', orgId(req)).like('date', `${ym}-%`),
-      supabase.from('leaves').select('id').eq('user_id', req.user.id).eq('organization_id', orgId(req)).eq('status', 'approved')
+      supabase.from('leaves').select('id, leave_time').eq('user_id', req.user.id).eq('organization_id', orgId(req)).eq('status', 'approved')
         .lte('start_date', `${ym}-31`).gte('end_date', `${ym}-01`),
     ]);
     const presentCount = (att || []).filter(r => ['present','half_day','wfh'].includes(r.status)).length;
-    const leavesCount  = (lvs || []).length;
+    // WFH is not a leave — exclude it from leave count
+    const leavesCount  = (lvs || []).filter(l => l.leave_time !== 'wfh').length;
     const lateCount    = (att || []).filter(r => r.is_late).length;
     res.json({ presentCount, leavesCount, lateCount, month, year });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1862,10 +2001,15 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const year  = now.getFullYear();
     const month = now.getMonth() + 1;
     const ym    = `${year}-${String(month).padStart(2, '0')}`;
+    const today7 = now.toISOString().split('T')[0];
+    const d7ago  = new Date(now); d7ago.setDate(d7ago.getDate() - 6);
+    const from7  = d7ago.toISOString().split('T')[0];
 
-    const [{ data: allLeaves }, { data: monthAtt }] = await Promise.all([
+    const [{ data: allLeaves }, { data: monthAtt }, { data: last7Att }, { count: totalEmps }] = await Promise.all([
       supabase.from('leaves').select('status, leave_type').eq('organization_id', orgId(req)),
       supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
+      supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
     ]);
 
     const leaveByStatus = { approved: 0, pending: 0, rejected: 0, cancelled: 0 };
@@ -1877,7 +2021,26 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const attByStatus = { present: 0, on_leave: 0, absent: 0, wfh: 0, half_day: 0 };
     (monthAtt || []).forEach(r => { if (attByStatus[r.status] !== undefined) attByStatus[r.status]++; });
 
-    res.json({ leaveByStatus, leaveByType, attByStatus, month, year });
+    // Weekly trend (last 7 days)
+    const trendMap = {};
+    for (const r of last7Att || []) {
+      if (!trendMap[r.date]) trendMap[r.date] = { present: 0, total: 0 };
+      trendMap[r.date].total++;
+      if (['present', 'wfh', 'half_day'].includes(r.status)) trendMap[r.date].present++;
+    }
+    const weeklyTrend = [];
+    for (let i = 6; i >= 0; i--) {
+      const d  = new Date(now); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const e  = trendMap[ds] || { present: 0, total: totalEmps || 0 };
+      weeklyTrend.push({
+        date: ds,
+        label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        pct: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0,
+      });
+    }
+
+    res.json({ leaveByStatus, leaveByType, attByStatus, month, year, weeklyTrend });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1933,6 +2096,8 @@ app.get('/api/leave-balance', auth, async (req, res) => {
 app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
+    const year  = new Date().getFullYear();
+
     const [
       { count: totalEmployees },
       { count: totalHR },
@@ -1945,19 +2110,217 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
       supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('organization_id', orgId(req)).in('status', ['present', 'half_day', 'wfh']),
     ]);
 
-    const { data: recentLeavesRaw } = await supabase.from('leaves')
-      .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-      .eq('organization_id', orgId(req))
-      .order('created_at', { ascending: false }).limit(8);
+    const [
+      { data: recentLeavesRaw },
+      { data: pendingLeavesRaw },
+      { data: todayAttendance },
+      { data: yearLeaves },
+    ] = await Promise.all([
+      supabase.from('leaves')
+        .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .eq('organization_id', orgId(req))
+        .order('created_at', { ascending: false }).limit(8),
+      supabase.from('leaves')
+        .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .eq('organization_id', orgId(req)).eq('status', 'pending')
+        .order('created_at', { ascending: false }).limit(15),
+      supabase.from('attendance')
+        .select('status')
+        .eq('date', today).eq('organization_id', orgId(req)),
+      supabase.from('leaves')
+        .select('leave_type')
+        .eq('organization_id', orgId(req)).eq('status', 'approved')
+        .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
+    ]);
 
-    const { data: hrAdmins } = await supabase.from('users')
-      .select('id, name, email, department, position, avatar_color, created_at')
-      .eq('role', 'admin').eq('organization_id', orgId(req)).order('name');
+    // Attendance breakdown by status
+    const attendanceBreakdown = {};
+    for (const r of todayAttendance || []) {
+      attendanceBreakdown[r.status] = (attendanceBreakdown[r.status] || 0) + 1;
+    }
+
+    // Leave count by type (approved this year)
+    const leavesByType = {};
+    for (const r of yearLeaves || []) {
+      leavesByType[r.leave_type] = (leavesByType[r.leave_type] || 0) + 1;
+    }
 
     res.json({
       totalEmployees, totalHR, pendingLeaves, presentToday,
-      recentLeaves: flat(recentLeavesRaw),
-      hrAdmins: hrAdmins || [],
+      recentLeaves:      flat(recentLeavesRaw),
+      pendingLeavesData: flat(pendingLeavesRaw),
+      attendanceBreakdown,
+      leavesByType,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Comprehensive dashboard endpoint (new redesigned dashboard)
+app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const now   = new Date();
+    const today = now.toISOString().split('T')[0];
+    const year  = now.getFullYear();
+    const oid   = orgId(req);
+
+    const d30 = new Date(now); d30.setDate(d30.getDate() - 29);
+    const fromDate = d30.toISOString().split('T')[0];
+    const d30ahead = new Date(now); d30ahead.setDate(d30ahead.getDate() + 30);
+    const toDate = d30ahead.toISOString().split('T')[0];
+
+    const [
+      { count: totalEmployees },
+      { count: totalHR },
+      { count: pendingLeaves },
+      { data: recentLeavesRaw },
+      { data: pendingLeavesRaw },
+      { data: todayAttendance },
+      { data: yearLeaves },
+      { data: last30Att },
+      { data: allEmployees },
+      { data: upcomingHolidays },
+      { data: upcomingEventsRaw },
+      { count: pendingReg },
+      { count: pendingExp },
+    ] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', oid),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
+      supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', oid),
+      supabase.from('leaves')
+        .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
+      supabase.from('leaves')
+        .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .eq('organization_id', oid).eq('status', 'pending').order('created_at', { ascending: false }).limit(15),
+      supabase.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
+      supabase.from('leaves').select('leave_type').eq('organization_id', oid).eq('status', 'approved')
+        .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
+      supabase.from('attendance').select('date, user_id, status').eq('organization_id', oid)
+        .gte('date', fromDate).lte('date', today),
+      supabase.from('users')
+        .select('id, name, department, position, avatar_color, created_at, role, date_of_birth')
+        .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
+      supabase.from('holidays').select('id, name, date, type').eq('organization_id', oid)
+        .gte('date', today).lte('date', toDate).order('date', { ascending: true }).limit(5),
+      supabase.from('events').select('id, title, date').eq('organization_id', oid)
+        .gte('date', today).lte('date', toDate).order('date', { ascending: true }).limit(5),
+      supabase.from('attendance_regularization').select('*', { count: 'exact', head: true })
+        .eq('status', 'pending').eq('organization_id', oid),
+      supabase.from('expenses').select('*', { count: 'exact', head: true })
+        .eq('status', 'pending').eq('organization_id', oid),
+    ]);
+
+    // Attendance breakdown today
+    const attendanceBreakdown = {};
+    for (const r of todayAttendance || []) {
+      attendanceBreakdown[r.status] = (attendanceBreakdown[r.status] || 0) + 1;
+    }
+    const presentToday = (attendanceBreakdown.present || 0) + (attendanceBreakdown.wfh || 0) + (attendanceBreakdown.half_day || 0);
+
+    // Leave count by type (approved this year)
+    const leavesByType = {};
+    for (const r of yearLeaves || []) {
+      leavesByType[r.leave_type] = (leavesByType[r.leave_type] || 0) + 1;
+    }
+
+    // Attendance trend (last 30 days)
+    const trendByDate = {};
+    for (const r of last30Att || []) {
+      if (!trendByDate[r.date]) trendByDate[r.date] = { present: 0, total: 0 };
+      trendByDate[r.date].total++;
+      if (['present', 'wfh', 'half_day'].includes(r.status)) trendByDate[r.date].present++;
+    }
+    const attendanceTrend = [];
+    for (let i = 29; i >= 0; i--) {
+      const d  = new Date(now); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const e  = trendByDate[ds] || { present: 0, total: 0 };
+      attendanceTrend.push({ date: ds, pct: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0, present: e.present, total: e.total });
+    }
+
+    // Department health
+    const deptMap = {};
+    for (const emp of allEmployees || []) {
+      const dn = emp.department || 'General';
+      if (!deptMap[dn]) deptMap[dn] = { name: dn, empIds: [] };
+      deptMap[dn].empIds.push(emp.id);
+    }
+    const presentSet = new Set((todayAttendance || []).filter(a => ['present','wfh','half_day'].includes(a.status)).map(a => a.user_id));
+    const onLeaveSet = new Set((todayAttendance || []).filter(a => a.status === 'on_leave').map(a => a.user_id));
+    const departmentHealth = Object.values(deptMap).map(d => {
+      const tot = d.empIds.length;
+      const pre = d.empIds.filter(id => presentSet.has(id)).length;
+      const lv  = d.empIds.filter(id => onLeaveSet.has(id)).length;
+      const pct = tot > 0 ? Math.round((pre / tot) * 100) : 0;
+      return { name: d.name, total: tot, present: pre, onLeave: lv, attendancePct: pct,
+        productivity: pct >= 90 ? 'High' : pct >= 70 ? 'Medium' : 'Low' };
+    }).sort((a, b) => b.total - a.total).slice(0, 6);
+
+    // Headcount growth (cumulative by month this year)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    let base = (allEmployees || []).filter(e => new Date(e.created_at).getFullYear() < year).length;
+    const headcountGrowth = months.map((month, i) => {
+      const joined = (allEmployees || []).filter(e => {
+        const d = new Date(e.created_at);
+        return d.getFullYear() === year && d.getMonth() === i;
+      }).length;
+      base += joined;
+      return { month, joined, total: base };
+    });
+
+    // Live activity feed (check-ins + recent leaves)
+    const empById = {};
+    for (const e of allEmployees || []) empById[e.id] = e;
+    const liveActivity = [];
+    for (const a of (todayAttendance || []).filter(x => x.check_in).slice(0, 5)) {
+      const emp = empById[a.user_id];
+      if (emp) liveActivity.push({ type: 'checkin', name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
+        time: `${today}T${a.check_in}`,
+        detail: a.status === 'wfh' ? 'started working from home' : a.status === 'half_day' ? 'marked half day' : 'checked in' });
+    }
+    for (const l of flat(recentLeavesRaw || []).slice(0, 6)) {
+      liveActivity.push({ type: 'leave', name: l.name, department: l.department, avatar_color: l.avatar_color,
+        time: l.created_at, detail: `applied for ${l.leave_type} leave`, status: l.status });
+    }
+    const recentJoiners = (allEmployees || []).filter(e => e.role === 'employee')
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 3);
+    for (const emp of recentJoiners) {
+      liveActivity.push({ type: 'joined', name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
+        time: emp.created_at, detail: 'joined the organization' });
+    }
+    liveActivity.sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    // Action center items
+    const actionCenter = [];
+    if (pendingLeaves > 0) actionCenter.push({ type: 'leaves', label: `${pendingLeaves} leave approval${pendingLeaves !== 1 ? 's' : ''} pending`, priority: pendingLeaves > 5 ? 'High' : 'Medium', link: '/root/leaves' });
+    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/attendance' });
+    if (pendingExp > 0)   actionCenter.push({ type: 'expenses', label: `${pendingExp} expense${pendingExp !== 1 ? 's' : ''} awaiting approval`, priority: 'Medium', link: '/root/expenses' });
+    if (actionCenter.length === 0) actionCenter.push({ type: 'all_clear', label: 'All tasks up to date', priority: 'Low' });
+
+    // Upcoming events (merge holidays + events)
+    const upcomingEvents = [
+      ...(upcomingHolidays || []).map(h => ({ id: `h-${h.id}`, title: h.name, date: h.date, type: 'holiday' })),
+      ...(upcomingEventsRaw || []).map(e => ({ id: `e-${e.id}`, title: e.title, date: e.date, type: 'event' })),
+    ].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 5);
+
+    // Birthdays today
+    const todayMD  = today.slice(5);
+    const birthdays = (allEmployees || []).filter(e => e.date_of_birth && e.date_of_birth.slice(5) === todayMD)
+      .map(e => ({ id: e.id, name: e.name, avatar_color: e.avatar_color, department: e.department }));
+
+    // Recent joiners (top 5 for section)
+    const recentJoiners5 = (allEmployees || []).filter(e => e.role === 'employee')
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5)
+      .map(({ id, name, department, position, avatar_color, created_at }) => ({ id, name, department, position, avatar_color, created_at }));
+
+    res.json({
+      totalEmployees, totalHR, pendingLeaves, presentToday,
+      recentLeaves:      flat(recentLeavesRaw),
+      pendingLeavesData: flat(pendingLeavesRaw),
+      attendanceBreakdown, leavesByType,
+      attendanceTrend, departmentHealth, headcountGrowth,
+      liveActivity, actionCenter, upcomingEvents,
+      recentJoiners: recentJoiners5, birthdays,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, FolderOpen, File, Trash2, Download, AlertCircle, FileText, Image, Archive } from 'lucide-react';
+import { Upload, FolderOpen, File, Trash2, Download, AlertCircle, FileText, Image, Archive, X, ExternalLink, Eye, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiDelete } from '@/lib/api';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { Avatar } from '@/components/ui/Avatar';
 import { fmtDate } from '@/lib/utils';
 
 const CATEGORIES = [
@@ -26,15 +27,66 @@ function fmtBytes(b) {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function fileIcon(type = '') {
-  if (type.includes('image')) return <Image size={18} className="text-emerald-500" />;
-  if (type.includes('pdf'))   return <FileText size={18} className="text-rose-500" />;
-  return <Archive size={18} className="text-[#3525cd]" />;
+function fileIcon(type = '', size = 18) {
+  if (type.includes('image')) return <Image size={size} className="text-emerald-500" />;
+  if (type.includes('pdf'))   return <FileText size={size} className="text-rose-500" />;
+  return <Archive size={size} className="text-[#3525cd]" />;
 }
 
+function canPreview(type = '') {
+  return type.includes('image') || type.includes('pdf');
+}
+
+// ── Inline Preview Modal ───────────────────────────────────────────────────────
+function PreviewModal({ doc, onClose }) {
+  if (!doc) return null;
+  const isImage = doc.file_type?.includes('image');
+  const isPdf   = doc.file_type?.includes('pdf');
+
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.85)', backdropFilter: 'blur(12px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[#f0f3ff] flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] flex items-center justify-center">
+            {fileIcon(doc.file_type)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-[#151c27] text-sm truncate">{doc.name}</p>
+            <p className="text-xs text-[#777587]">{fmtBytes(doc.file_size)} · {doc.file_type}</p>
+          </div>
+          <a href={doc.file_url} download target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors flex-shrink-0">
+            <Download size={12} /> Download
+          </a>
+          <button onClick={onClose}
+            className="p-2 rounded-lg text-[#777587] hover:text-[#151c27] hover:bg-[#f0f3ff] transition-colors flex-shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Preview body */}
+        <div className="flex-1 overflow-auto bg-[#f9f9ff] flex items-center justify-center p-4">
+          {isImage && (
+            <img src={doc.file_url} alt={doc.name}
+              className="max-w-full max-h-full object-contain rounded-xl shadow-lg" />
+          )}
+          {isPdf && (
+            <iframe src={doc.file_url} title={doc.name}
+              className="w-full rounded-xl border border-[#c7c4d8]"
+              style={{ height: 'calc(90vh - 140px)', minHeight: '400px' }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Documents() {
   const { isAdmin, isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
   const toast = useToast();
   const qc    = useQueryClient();
   const fileRef = useRef();
@@ -44,8 +96,13 @@ export default function Documents() {
   const [pendingFile, setPendingFile] = useState(null);
   const [upForm,      setUpForm]      = useState({ name: '', category: 'other', expiry_date: '' });
   const [activeTab,   setActiveTab]   = useState('all');
+  const [preview,     setPreview]     = useState(null);
+  const [empFilter,   setEmpFilter]   = useState('all'); // admin: filter by employee
 
-  const { data: _docsData, isLoading } = useQuery({ queryKey: ['documents'], queryFn: () => apiGet('/documents') });
+  const { data: _docsData, isLoading } = useQuery({
+    queryKey: ['documents', empFilter],
+    queryFn: () => apiGet('/documents', empFilter !== 'all' ? { userId: empFilter } : {}),
+  });
   const docs = Array.isArray(_docsData) ? _docsData : [];
 
   const delMut = useMutation({
@@ -75,30 +132,42 @@ export default function Documents() {
     finally { setUploading(false); }
   }
 
-  const today      = new Date().toISOString().split('T')[0];
-  const soon       = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
-  const expiring   = docs.filter(d => d.expiry_date && d.expiry_date >= today && d.expiry_date <= soon);
-  const expired    = docs.filter(d => d.expiry_date && d.expiry_date < today);
+  const today    = new Date().toISOString().split('T')[0];
+  const soon     = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+  const expiring = docs.filter(d => d.expiry_date && d.expiry_date >= today && d.expiry_date <= soon);
+  const expired  = docs.filter(d => d.expiry_date && d.expiry_date < today);
+  const filtered = activeTab === 'all' ? docs : docs.filter(d => d.category === activeTab);
+  const usedCats = [...new Set(docs.map(d => d.category))];
 
-  const filtered   = activeTab === 'all' ? docs : docs.filter(d => d.category === activeTab);
-  const usedCats   = [...new Set(docs.map(d => d.category))];
+  // For admin: unique employees whose docs we're seeing
+  const uniqueEmployees = isAdmin
+    ? [...new Map(docs.map(d => [d.user_id, { id: d.user_id, name: d.owner?.name, avatar_color: d.owner?.avatar_color, department: d.owner?.department }])).values()].filter(e => e.name)
+    : [];
 
   return (
-    <div className={wrap}>
+    <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">My Documents</h1>
+          <h1 className="page-title">{isEmployee ? 'My Documents' : 'Employee Documents'}</h1>
           <p className="page-subtitle">{docs.length} document{docs.length !== 1 ? 's' : ''} · securely stored</p>
         </div>
-        <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-          <Upload size={15} />Upload Document
-        </button>
+        {isEmployee && (
+          <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+            <Upload size={15} /> Upload Document
+          </button>
+        )}
       </div>
 
       <input type="file" ref={fileRef} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-        onChange={e => { if (e.target.files[0]) { const f = e.target.files[0]; setPendingFile(f); setUpForm(v => ({ ...v, name: f.name.replace(/\.[^.]+$/, '') })); } }} />
+        onChange={e => {
+          if (e.target.files[0]) {
+            const f = e.target.files[0];
+            setPendingFile(f);
+            setUpForm(v => ({ ...v, name: f.name.replace(/\.[^.]+$/, '') }));
+          }
+        }} />
 
-      {/* Upload panel */}
+      {/* Upload panel (employee only) */}
       {pendingFile && (
         <div className="card p-5 mb-6 border-[#3525cd]/20 bg-[#f0f3ff]/30">
           <div className="flex items-center gap-3 mb-4">
@@ -134,6 +203,26 @@ export default function Documents() {
         </div>
       )}
 
+      {/* Admin: Employee filter */}
+      {isAdmin && uniqueEmployees.length > 0 && (
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <Users size={15} className="text-[#777587] flex-shrink-0" />
+          <span className="text-xs font-bold text-[#464555]">Filter by employee:</span>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => setEmpFilter('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${empFilter === 'all' ? 'bg-[#3525cd] text-white border-[#3525cd]' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'}`}>
+              All employees
+            </button>
+            {uniqueEmployees.map(emp => (
+              <button key={emp.id} onClick={() => setEmpFilter(String(emp.id))}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${empFilter === String(emp.id) ? 'bg-[#3525cd] text-white border-[#3525cd]' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'}`}>
+                {emp.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Expiry alerts */}
       {expired.length > 0 && (
         <div className="card p-4 mb-4 border-rose-200 bg-rose-50 flex items-start gap-3">
@@ -159,9 +248,17 @@ export default function Documents() {
       ) : docs.length === 0 ? (
         <div className="empty-state">
           <FolderOpen size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
-          <p className="font-semibold text-[#464555] mb-1">No documents uploaded yet</p>
-          <p className="text-sm">Upload your ID, contracts, certificates and other documents</p>
-          <button className="btn btn-primary mt-4" onClick={() => fileRef.current?.click()}><Upload size={14} />Upload First Document</button>
+          <p className="font-semibold text-[#464555] mb-1">
+            {isEmployee ? 'No documents uploaded yet' : 'No employee documents found'}
+          </p>
+          <p className="text-sm">
+            {isEmployee ? 'Upload your ID, contracts, certificates and other documents' : 'Employees can upload their documents from the Employee Portal'}
+          </p>
+          {isEmployee && (
+            <button className="btn btn-primary mt-4" onClick={() => fileRef.current?.click()}>
+              <Upload size={14} />Upload First Document
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -187,9 +284,22 @@ export default function Documents() {
               const cat     = CAT_MAP[doc.category] || CAT_MAP.other;
               const isExpd  = doc.expiry_date && doc.expiry_date < today;
               const isExpng = doc.expiry_date && doc.expiry_date >= today && doc.expiry_date <= soon;
+              const previewable = canPreview(doc.file_type);
+
               return (
                 <div key={doc.id} className={`card overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 ${isExpd ? 'border-rose-200' : isExpng ? 'border-amber-200' : ''}`}>
                   <div className="p-5">
+                    {/* Admin: show employee who owns this doc */}
+                    {isAdmin && doc.owner?.name && (
+                      <div className="flex items-center gap-2 mb-3 pb-3 border-b border-[#f0f3ff]">
+                        <Avatar name={doc.owner.name} color={doc.owner.avatar_color} size={24} />
+                        <span className="text-xs font-semibold text-[#464555] truncate">{doc.owner.name}</span>
+                        {doc.owner.department && (
+                          <span className="text-[0.65rem] text-[#777587] ml-auto flex-shrink-0">{doc.owner.department}</span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-start gap-3 mb-4">
                       <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
                         {fileIcon(doc.file_type)}
@@ -213,14 +323,29 @@ export default function Documents() {
                     )}
 
                     <div className="flex items-center gap-2 pt-4 border-t border-[#f0f3ff]">
-                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors">
-                        <Download size={12} />View / Download
+                      {previewable ? (
+                        <button
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors"
+                          onClick={() => setPreview(doc)}>
+                          <Eye size={12} /> View
+                        </button>
+                      ) : (
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors">
+                          <ExternalLink size={12} /> Open
+                        </a>
+                      )}
+                      <a href={doc.file_url} download target="_blank" rel="noopener noreferrer"
+                        className="p-2 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"
+                        title="Download">
+                        <Download size={14} />
                       </a>
-                      <button className="p-2 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                        onClick={() => setConfirmDel({ id: doc.id, name: doc.name })}>
-                        <Trash2 size={14} />
-                      </button>
+                      {(isAdmin || isEmployee) && (
+                        <button className="p-2 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                          onClick={() => setConfirmDel({ id: doc.id, name: doc.name })}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -229,6 +354,9 @@ export default function Documents() {
           </div>
         </>
       )}
+
+      {/* Inline preview modal */}
+      {preview && <PreviewModal doc={preview} onClose={() => setPreview(null)} />}
 
       <ConfirmModal open={!!confirmDel} title="Delete Document"
         message={`Permanently delete "${confirmDel?.name}"? This cannot be undone.`}

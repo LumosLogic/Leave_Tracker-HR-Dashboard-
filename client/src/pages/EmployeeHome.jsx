@@ -36,7 +36,7 @@ export default function EmployeeHome() {
   const upcomingEvents   = (culture?.events || []).slice(0, 4);
 
   return (
-    <div className="p-5 md:p-8 max-w-5xl mx-auto">
+    <div>
       {/* Hero */}
       <div className="rounded-2xl p-5 md:p-6 mb-6 relative overflow-hidden shadow-card"
         style={{ background: 'linear-gradient(135deg, #3525cd 0%, #4f46e5 60%, #712ae2 100%)' }}>

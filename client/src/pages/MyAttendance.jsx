@@ -6,11 +6,11 @@ import { apiGet } from '@/lib/api';
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const STATUS_CONFIG = {
-  present:  { label:'Present',  bg:'bg-emerald-50',  text:'text-emerald-700', border:'border-emerald-200', dot:'bg-emerald-500',  cellBg:'bg-emerald-50',  cellBorder:'border-emerald-200' },
-  half_day: { label:'Half Day', bg:'bg-amber-50',    text:'text-amber-700',   border:'border-amber-200',   dot:'bg-amber-500',    cellBg:'bg-amber-50',    cellBorder:'border-amber-200' },
-  on_leave: { label:'On Leave', bg:'bg-[#f0f3ff]',   text:'text-[#3525cd]',   border:'border-[#c7c4d8]',   dot:'bg-[#3525cd]',    cellBg:'bg-indigo-50',   cellBorder:'border-indigo-200' },
-  wfh:      { label:'WFH',      bg:'bg-purple-50',   text:'text-purple-700',  border:'border-purple-200',  dot:'bg-purple-500',   cellBg:'bg-purple-50',   cellBorder:'border-purple-200' },
-  absent:   { label:'Absent',   bg:'bg-rose-50',     text:'text-rose-700',    border:'border-rose-200',    dot:'bg-rose-500',     cellBg:'bg-rose-50',     cellBorder:'border-rose-200' },
+  present:  { label:'Present',  bg:'bg-emerald-50',  text:'text-emerald-700',  border:'border-emerald-200', dot:'bg-emerald-500', cellBg:'bg-emerald-50',  showTag: false },
+  half_day: { label:'Half Day', bg:'bg-amber-50',    text:'text-amber-700',    border:'border-amber-200',   dot:'bg-amber-500',   cellBg:'bg-amber-50',    showTag: true,  tag: 'Half' },
+  on_leave: { label:'On Leave', bg:'bg-[#f0f3ff]',   text:'text-[#3525cd]',    border:'border-[#c7c4d8]',   dot:'bg-[#3525cd]',   cellBg:'bg-indigo-50',   showTag: true,  tag: 'Leave' },
+  wfh:      { label:'WFH',      bg:'bg-cyan-50',     text:'text-cyan-700',     border:'border-cyan-200',    dot:'bg-cyan-500',    cellBg:'bg-cyan-50',     showTag: true,  tag: 'WFH' },
+  absent:   { label:'Absent',   bg:'bg-rose-50',     text:'text-rose-700',     border:'border-rose-200',    dot:'bg-rose-500',    cellBg:'bg-rose-50',     showTag: false },
 };
 
 // Build YYYY-MM-DD date string from a Date object without timezone shifts
@@ -100,7 +100,7 @@ export default function MyAttendance() {
   });
 
   return (
-    <div className="p-5 md:p-8 max-w-4xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -172,9 +172,13 @@ export default function MyAttendance() {
                   }
                 `}>{day}</span>
                 {rec && cfg && (
-                  <div className="flex gap-0.5 flex-wrap">
+                  cfg.showTag ? (
+                    <span className={`text-[0.55rem] font-black px-1 py-0.5 rounded leading-none ${cfg.bg} ${cfg.text} self-start`}>
+                      {cfg.tag}
+                    </span>
+                  ) : (
                     <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} flex-shrink-0`} title={cfg.label} />
-                  </div>
+                  )
                 )}
               </div>
             );

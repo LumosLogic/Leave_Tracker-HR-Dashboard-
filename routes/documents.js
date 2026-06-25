@@ -20,11 +20,21 @@ router.get('/', async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId } = req.query;
-    const targetId = isAdmin(req.user.role) && userId ? userId : req.user.id;
-    const { data, error } = await supabase.from('employee_documents')
-      .select('*, uploaded_by_user:users!employee_documents_uploaded_by_fkey(name)')
-      .eq('user_id', targetId).eq('organization_id', oId)
+
+    let query = supabase.from('employee_documents')
+      .select('*, uploaded_by_user:users!employee_documents_uploaded_by_fkey(name), owner:users!employee_documents_user_id_fkey(name, avatar_color, department)')
+      .eq('organization_id', oId)
       .order('created_at', { ascending: false });
+
+    if (isAdmin(req.user.role)) {
+      // Admin/Root: filter by specific employee if requested, else return all org docs
+      if (userId) query = query.eq('user_id', userId);
+    } else {
+      // Employees see only their own documents
+      query = query.eq('user_id', req.user.id);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -3,6 +3,8 @@ import { Outlet } from 'react-router-dom';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTour } from '@/hooks/useTour';
 import { employeeTourSteps } from '@/lib/tours';
+import { usePageMeta } from '@/hooks/usePageMeta';
+import { Header } from '@/components/layout/Header';
 import {
   Home, FileText, Clock, UserCircle, LogOut, Menu, CalendarDays,
   FolderOpen, Receipt, DollarSign, Target, ClipboardList, UserCheck,
@@ -113,30 +115,31 @@ function EmployeeSidebar({ onClose }) {
 export function EmployeeLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
-  useTour(employeeTourSteps, user?.id ? `lt_tour_emp_${user.id}` : null);
+  const { title, subtitle } = usePageMeta();
+  useTour(employeeTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_emp_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">
+      {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-[#151c27]/40 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-[#151c27]/40 z-[499] md:hidden"
+          onClick={() => setSidebarOpen(false)} />
       )}
 
-      <div className={cn(
-        'fixed inset-y-0 left-0 z-30 md:relative md:flex flex-shrink-0',
-        sidebarOpen ? 'flex' : 'hidden md:flex'
-      )}>
+      {/* Sidebar */}
+      <div className={`fixed md:relative z-[500] md:z-auto h-full transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <EmployeeSidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
+      {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <div className="md:hidden flex items-center h-14 px-4 bg-white border-b border-[#c7c4d8]">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 text-[#464555]">
-            <Menu size={20} />
-          </button>
-          <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="ml-2 w-7 h-7" />
-          <span className="ml-2 text-sm font-bold text-[#151c27]">Lumos Logic <span className="text-[#777587] font-normal">— Employee</span></span>
-        </div>
-        <main className="flex-1 overflow-y-auto">
+        <Header
+          title={title}
+          subtitle={subtitle}
+          onMenuClick={() => setSidebarOpen(o => !o)}
+        />
+        <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>

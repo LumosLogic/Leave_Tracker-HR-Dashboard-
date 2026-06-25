@@ -15,6 +15,12 @@ async function paFetch(method, endpoint, body = null) {
   if (body) opts.body = JSON.stringify(body);
   const res  = await fetch(`${API_BASE}/api/platform${endpoint}`, opts);
   const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('pa-auth:expired'));
+    throw new Error('Session expired. Please log in again.');
+  }
+
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }

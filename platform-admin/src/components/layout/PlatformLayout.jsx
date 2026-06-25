@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, Building2, Activity, LogOut, ShieldCheck, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Building2, Activity, LogOut, ShieldCheck, Menu, X, Zap } from 'lucide-react';
 import { usePlatformAuth } from '@/context/PlatformAuthContext';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard',     Icon: LayoutDashboard },
-  { to: '/requests',  label: 'Org Requests',  Icon: ClipboardList },
-  { to: '/orgs',      label: 'Organizations', Icon: Building2 },
-  { to: '/activity',  label: 'Activity Log',  Icon: Activity },
+  { to: '/dashboard', label: 'Dashboard',       Icon: LayoutDashboard },
+  { to: '/requests',  label: 'Org Requests',    Icon: ClipboardList },
+  { to: '/orgs',      label: 'Organizations',   Icon: Building2 },
+  { to: '/features',  label: 'Feature Control', Icon: Zap },
+  { to: '/activity',  label: 'Activity Log',    Icon: Activity },
 ];
 
 function cn(...classes) { return classes.filter(Boolean).join(' '); }

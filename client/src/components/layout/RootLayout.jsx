@@ -120,7 +120,7 @@ export function RootLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { title, subtitle } = usePageMeta();
   const { user } = useAuth();
-  useTour(adminTourSteps, user?.id ? `lt_tour_admin_${user.id}` : null);
+  useTour(adminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_admin_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">

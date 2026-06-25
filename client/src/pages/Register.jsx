@@ -163,7 +163,7 @@ export default function Register() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="form-label">Phone</label>
+                <label className="form-label">Phone <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
                 <div className="relative">
                   <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
                   <input type="tel" className="form-control pl-9"
@@ -172,7 +172,7 @@ export default function Register() {
                 </div>
               </div>
               <div>
-                <label className="form-label">Website</label>
+                <label className="form-label">Website <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
                 <div className="relative">
                   <Globe size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
                   <input type="url" className="form-control pl-9"

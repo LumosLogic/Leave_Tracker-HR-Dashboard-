@@ -241,21 +241,21 @@ function AdminCellContent({ ds, records, total }) {
   if (isFuture) {
     if (onLeave + half + wfh === 0) return null;
     return (
-      <div className="flex flex-wrap gap-0.5 mt-0.5">
-        {onLeave > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-amber-100 text-amber-700">{onLeave}L</span>}
-        {half    > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-cyan-100  text-cyan-700">{half}H</span>}
-        {wfh     > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-blue-100  text-blue-700">{wfh}W</span>}
+      <div className="flex flex-col gap-0.5 mt-0.5">
+        {onLeave > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{onLeave} Leave</span>}
+        {half    > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-cyan-100  text-cyan-700">{half} Half Day</span>}
+        {wfh     > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-blue-100  text-blue-700">{wfh} WFH</span>}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap gap-0.5 mt-0.5">
-      {present  > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">{present}P</span>}
-      {onLeave  > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-amber-100   text-amber-700">{onLeave}L</span>}
-      {absent   > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-rose-100    text-rose-700">{absent}A</span>}
-      {half     > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-cyan-100    text-cyan-700">{half}H</span>}
-      {wfh      > 0 && <span className="text-[0.58rem] font-black px-1 py-0.5 rounded bg-blue-100    text-blue-700">{wfh}W</span>}
+    <div className="flex flex-col gap-0.5 mt-0.5">
+      {present  > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{present} Present</span>}
+      {onLeave  > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-amber-100   text-amber-700">{onLeave} Leave</span>}
+      {absent   > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-rose-100    text-rose-700">{absent} Absent</span>}
+      {half     > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-cyan-100    text-cyan-700">{half} Half Day</span>}
+      {wfh      > 0 && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-blue-100    text-blue-700">{wfh} WFH</span>}
     </div>
   );
 }

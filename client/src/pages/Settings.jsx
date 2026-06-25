@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays } from 'lucide-react';
+import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays, Bell, BellOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { RoleBadge } from '@/components/ui/Badge';
 import { todayStr, initials } from '@/lib/utils';
+import { usePushNotification } from '@/hooks/usePushNotification';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -398,6 +399,48 @@ function NotificationRecipientsCard() {
   );
 }
 
+// ── Push Notifications Card ───────────────────────────────────────────────────
+function PushNotificationsCard({ userId }) {
+  const { permission, subscribed, requestAndSubscribe, unsubscribe, isSupported } = usePushNotification(userId);
+
+  if (!isSupported) return null;
+
+  const isEnabled = permission === 'granted' && subscribed;
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center gap-2 mb-2">
+        <Bell size={18} className="text-[#3525cd]" />
+        <span className="font-bold text-[#151c27]">Push Notifications</span>
+        <span className={`ml-auto text-[0.65rem] font-black px-2 py-0.5 rounded-full border ${
+          isEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+          {isEnabled ? 'Enabled' : 'Disabled'}
+        </span>
+      </div>
+      <p className="text-xs text-[#777587] mb-4">
+        Receive browser push notifications for leave approvals, rejections, and important HR alerts even when you're not on the dashboard.
+      </p>
+      <button
+        onClick={isEnabled ? unsubscribe : requestAndSubscribe}
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold border transition-all ${
+          isEnabled
+            ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+            : 'bg-[#3525cd] text-white border-transparent hover:bg-[#4f46e5]'
+        }`}
+      >
+        {isEnabled ? <BellOff size={15} /> : <Bell size={15} />}
+        {isEnabled ? 'Disable Push Notifications' : 'Enable Push Notifications'}
+      </button>
+      {permission === 'denied' && (
+        <p className="text-xs text-rose-500 mt-2">
+          Notifications are blocked by your browser. Please update your browser settings to allow notifications for this site.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Root Admins Card (Root Admin only) ───────────────────────────────────────
 function RootAdminsCard() {
   const { data: rootAdmins = [], isLoading } = useQuery({
@@ -492,6 +535,7 @@ export default function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <WorkScheduleCard schedule={schedule} isAdmin={isAdmin} onSaved={refetch} />
         <ClockifyCard     clockify={clockify} isAdmin={isAdmin} onSaved={refetch} />
+        <PushNotificationsCard userId={user?.id} />
         <StatusLegendCard />
         <MyProfileCard user={user} />
         {isRootAdmin && <RootAdminsCard />}

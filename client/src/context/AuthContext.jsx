@@ -1,13 +1,32 @@
 // @refresh reset
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 export const AuthContext = createContext(null);
 
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch { return true; }
+}
+
+function loadStoredAuth() {
+  const token = localStorage.getItem('lt_token');
+  if (!token || isTokenExpired(token)) {
+    localStorage.removeItem('lt_token');
+    localStorage.removeItem('lt_user');
+    return { token: null, user: null };
+  }
+  try {
+    return { token, user: JSON.parse(localStorage.getItem('lt_user')) };
+  } catch { return { token, user: null }; }
+}
+
 export function AuthProvider({ children }) {
-  const [user,  setUser]  = useState(() => {
-    try { return JSON.parse(localStorage.getItem('lt_user')); } catch { return null; }
-  });
-  const [token, setToken] = useState(() => localStorage.getItem('lt_token'));
+  const initial = loadStoredAuth();
+  const [user,  setUser]  = useState(initial.user);
+  const [token, setToken] = useState(initial.token);
 
   const saveAuth = useCallback((newToken, newUser) => {
     setToken(newToken);
@@ -22,6 +41,13 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('lt_token');
     localStorage.removeItem('lt_user');
   }, []);
+
+  // Auto-logout when any API call returns 401 (token expired mid-session)
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener('auth:expired', handler);
+    return () => window.removeEventListener('auth:expired', handler);
+  }, [logout]);
 
   const isRootAdmin = user?.role === 'root_admin';
   const isHR        = user?.role === 'admin';

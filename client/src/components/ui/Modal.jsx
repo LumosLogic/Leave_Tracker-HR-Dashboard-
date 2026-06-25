@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function Modal({ open, onClose, title, children, footer, size = 'md', className }) {
+export function Modal({ open, onClose, title, children, footer, size = 'md', className, disableOutsideClick = false }) {
   useEffect(() => {
     if (!open) return;
     const handler = e => { if (e.key === 'Escape') onClose(); };
@@ -18,7 +18,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', cla
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center p-5"
       style={{ background: 'rgba(21,28,39,.6)', backdropFilter: 'blur(14px) saturate(180%)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={!disableOutsideClick ? (e => { if (e.target === e.currentTarget) onClose(); }) : undefined}
     >
       <div
         className={cn(

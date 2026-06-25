@@ -313,7 +313,7 @@ export default function MyLeaves() {
   leaves.forEach(l => { if (counts[l.status] !== undefined) counts[l.status]++; });
 
   return (
-    <div className="p-5 md:p-8 max-w-4xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

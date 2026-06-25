@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
@@ -7,6 +7,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { FeatureFlagContext } from '@/context/FeatureFlagContext';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { initials, cn } from '@/lib/utils';
@@ -14,33 +15,33 @@ import { initials, cn } from '@/lib/utils';
 // ── Section definitions ──────────────────────────────────────────────────────
 
 const CORE_ITEMS = [
-  { to: '/dashboard',       label: 'Dashboard',      Icon: LayoutDashboard },
-  { to: '/calendar',        label: 'Calendar',       Icon: Calendar },
-  { to: '/leaves',          label: 'Leaves',         Icon: FileText },
-  { to: '/employees',       label: 'Employees',      Icon: Users, adminOnly: true },
-  { to: '/regularization',  label: 'Regularization', Icon: ClipboardList },
-  { to: '/announcements',   label: 'Announcements',  Icon: Megaphone },
+  { to: '/dashboard',      label: 'Dashboard',      Icon: LayoutDashboard },
+  { to: '/calendar',       label: 'Calendar',       Icon: Calendar },
+  { to: '/leaves',         label: 'Leaves',         Icon: FileText },
+  { to: '/employees',      label: 'Employees',      Icon: Users, adminOnly: true },
+  { to: '/regularization', label: 'Regularization', Icon: ClipboardList, featureKey: 'regularization' },
+  { to: '/announcements',  label: 'Announcements',  Icon: Megaphone,     featureKey: 'announcements' },
 ];
 
 const HR_ITEMS = [
-  { to: '/departments',     label: 'Departments',    Icon: Building2 },
-  { to: '/holidays',        label: 'Holidays',       Icon: CalendarDays },
-  { to: '/leave-policies',  label: 'Leave Policies', Icon: Shield },
-  { to: '/shifts',          label: 'Shifts & Roster',Icon: Clock },
-  { to: '/onboarding',      label: 'Onboarding',     Icon: UserCheck },
-  { to: '/exit-management', label: 'Exit Mgmt',      Icon: Exit },
+  { to: '/departments',    label: 'Departments',    Icon: Building2 },
+  { to: '/holidays',       label: 'Holidays',       Icon: CalendarDays },
+  { to: '/leave-policies', label: 'Leave Policies', Icon: Shield,      featureKey: 'leave_policies' },
+  { to: '/shifts',         label: 'Shifts & Roster',Icon: Clock,       featureKey: 'shifts' },
+  { to: '/onboarding',     label: 'Onboarding',     Icon: UserCheck,   featureKey: 'onboarding' },
+  { to: '/exit-management',label: 'Exit Mgmt',      Icon: Exit,        featureKey: 'exit_management' },
 ];
 
 const FINANCE_ITEMS = [
-  { to: '/payroll',   label: 'Payroll',   Icon: DollarSign },
-  { to: '/expenses',  label: 'Expenses',  Icon: Receipt },
-  { to: '/assets',    label: 'Assets',    Icon: Monitor },
-  { to: '/reports',   label: 'Reports',   Icon: BarChart3 },
+  { to: '/payroll',  label: 'Payroll',  Icon: DollarSign, featureKey: 'payroll' },
+  { to: '/expenses', label: 'Expenses', Icon: Receipt,    featureKey: 'expenses' },
+  { to: '/assets',   label: 'Assets',   Icon: Monitor,    featureKey: 'assets' },
+  { to: '/reports',  label: 'Reports',  Icon: BarChart3,  featureKey: 'reports' },
 ];
 
 const PEOPLE_ITEMS = [
-  { to: '/performance', label: 'Performance', Icon: Target },
-  { to: '/documents',   label: 'Documents',   Icon: FolderOpen },
+  { to: '/performance', label: 'Performance', Icon: Target,     featureKey: 'performance' },
+  { to: '/documents',   label: 'Documents',   Icon: FolderOpen, featureKey: 'documents' },
 ];
 
 const BOTTOM_ITEMS = [
@@ -50,7 +51,15 @@ const BOTTOM_ITEMS = [
 ];
 
 function NavSection({ title, items, onClose, isAdmin, prefix = '' }) {
-  const filtered = items.filter(i => !i.adminOnly || isAdmin);
+  const featureFlags = useContext(FeatureFlagContext);
+  const filtered = items.filter(i => {
+    if (i.adminOnly && !isAdmin) return false;
+    if (i.featureKey) {
+      const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
+      if (!enabled) return false;
+    }
+    return true;
+  });
   if (!filtered.length) return null;
   return (
     <div className="mb-3">

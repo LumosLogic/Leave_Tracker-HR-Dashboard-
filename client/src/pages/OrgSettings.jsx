@@ -34,10 +34,13 @@ function Section({ icon, title, subtitle, children, defaultOpen = false }) {
   );
 }
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, inlineHint, children }) {
   return (
     <div>
-      <label className="form-label">{label}</label>
+      <div className="flex items-center gap-2 mb-1.5">
+        <label className="form-label !mb-0">{label}</label>
+        {inlineHint && <span className="text-[0.7rem] text-[#777587] font-normal normal-case tracking-normal">{inlineHint}</span>}
+      </div>
       {hint && <p className="text-xs text-[#777587] mb-1.5">{hint}</p>}
       {children}
     </div>
@@ -148,7 +151,7 @@ export default function OrgSettings() {
           <Field label="Company Name">
             <input className="form-control" value={form.name || ''} onChange={e => set('name', e.target.value)} placeholder="Acme Corp" />
           </Field>
-          <Field label="Company Domain" hint="Used for email auto-detection">
+          <Field label="Company Domain" inlineHint="Used for email auto-detection">
             <input className="form-control" value={form.domain || ''} onChange={e => set('domain', e.target.value)} placeholder="acmecorp.com" />
           </Field>
         </div>

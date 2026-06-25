@@ -2,10 +2,12 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
+import { FeatureFlagProvider, useFeature } from '@/context/FeatureFlagContext';
 import { AppLayout }      from '@/components/layout/AppLayout';
 import { RootLayout }     from '@/components/layout/RootLayout';
 import { EmployeeLayout } from '@/components/layout/EmployeeLayout';
 import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
+import { Lock } from 'lucide-react';
 
 import LandingPage      from '@/pages/LandingPage';
 import Login            from '@/pages/Login';
@@ -45,6 +47,25 @@ import EmployeeHome     from '@/pages/EmployeeHome';
 import MyLeaves         from '@/pages/MyLeaves';
 import MyAttendance     from '@/pages/MyAttendance';
 import TeamCalendar     from '@/pages/TeamCalendar';
+
+// Shows a locked screen when a feature is disabled for the org
+function FeatureRoute({ featureKey, children }) {
+  const enabled = useFeature(featureKey);
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center px-6">
+        <div className="w-16 h-16 rounded-2xl bg-[#f0f3ff] border border-[#c7c4d8] flex items-center justify-center mx-auto mb-4">
+          <Lock size={28} className="text-[#3525cd]/40" />
+        </div>
+        <h2 className="text-xl font-black text-[#151c27] mb-2">Feature Not Available</h2>
+        <p className="text-sm text-[#777587] max-w-sm">
+          This module is not enabled for your organization. Contact your platform administrator to enable it.
+        </p>
+      </div>
+    );
+  }
+  return children;
+}
 
 function defaultPath(user) {
   if (!user) return '/login';
@@ -94,18 +115,18 @@ function AppRoutes() {
         <Route path="/employees"        element={<Employees />} />
         <Route path="/departments"      element={<Departments />} />
         <Route path="/holidays"         element={<HolidaysPage />} />
-        <Route path="/leave-policies"   element={<LeavePolicies />} />
-        <Route path="/regularization"   element={<Regularization />} />
-        <Route path="/reports"          element={<Reports />} />
-        <Route path="/documents"        element={<Documents />} />
-        <Route path="/payroll"          element={<Payroll />} />
-        <Route path="/assets"           element={<Assets />} />
-        <Route path="/expenses"         element={<ExpensesPage />} />
-        <Route path="/announcements"    element={<AnnouncementsPage />} />
-        <Route path="/shifts"           element={<Shifts />} />
-        <Route path="/performance"      element={<Performance />} />
-        <Route path="/onboarding"       element={<Onboarding />} />
-        <Route path="/exit-management"  element={<ExitManagement />} />
+        <Route path="/leave-policies"   element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
+        <Route path="/regularization"   element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
+        <Route path="/reports"          element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
+        <Route path="/documents"        element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
+        <Route path="/payroll"          element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/assets"           element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
+        <Route path="/expenses"         element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
+        <Route path="/announcements"    element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
+        <Route path="/shifts"           element={<FeatureRoute featureKey="shifts"><Shifts /></FeatureRoute>} />
+        <Route path="/performance"      element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
+        <Route path="/onboarding"       element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
+        <Route path="/exit-management"  element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
         <Route path="/notifications"    element={<NotificationCenter />} />
         <Route path="/settings"         element={<Settings />} />
         <Route path="/profile"          element={<MyProfile />} />
@@ -119,18 +140,18 @@ function AppRoutes() {
         <Route path="/root/employees"       element={<Employees />} />
         <Route path="/root/departments"     element={<Departments />} />
         <Route path="/root/holidays"        element={<HolidaysPage />} />
-        <Route path="/root/leave-policies"  element={<LeavePolicies />} />
-        <Route path="/root/regularization"  element={<Regularization />} />
-        <Route path="/root/reports"         element={<Reports />} />
-        <Route path="/root/documents"       element={<Documents />} />
-        <Route path="/root/payroll"         element={<Payroll />} />
-        <Route path="/root/assets"          element={<Assets />} />
-        <Route path="/root/expenses"        element={<ExpensesPage />} />
-        <Route path="/root/announcements"   element={<AnnouncementsPage />} />
-        <Route path="/root/shifts"          element={<Shifts />} />
-        <Route path="/root/performance"     element={<Performance />} />
-        <Route path="/root/onboarding"      element={<Onboarding />} />
-        <Route path="/root/exit-management" element={<ExitManagement />} />
+        <Route path="/root/leave-policies"  element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
+        <Route path="/root/regularization"  element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
+        <Route path="/root/reports"         element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
+        <Route path="/root/documents"       element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
+        <Route path="/root/payroll"         element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/root/assets"          element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
+        <Route path="/root/expenses"        element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
+        <Route path="/root/announcements"   element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
+        <Route path="/root/shifts"          element={<FeatureRoute featureKey="shifts"><Shifts /></FeatureRoute>} />
+        <Route path="/root/performance"     element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
+        <Route path="/root/onboarding"      element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
+        <Route path="/root/exit-management" element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
         <Route path="/root/notifications"   element={<NotificationCenter />} />
         <Route path="/root/settings"        element={<Settings />} />
         <Route path="/root/manage-hr"       element={<ManageHR />} />
@@ -141,20 +162,20 @@ function AppRoutes() {
 
       {/* ── Employee portal (employee only) ── */}
       <Route element={<EmployeeRoute><EmployeeLayout /></EmployeeRoute>}>
-        <Route path="/portal/home"             element={<EmployeeHome />} />
-        <Route path="/portal/leaves"           element={<MyLeaves />} />
-        <Route path="/portal/attendance"       element={<MyAttendance />} />
-        <Route path="/portal/team-calendar"    element={<TeamCalendar />} />
-        <Route path="/portal/documents"        element={<Documents />} />
-        <Route path="/portal/expenses"         element={<ExpensesPage />} />
-        <Route path="/portal/payslips"         element={<Payroll />} />
-        <Route path="/portal/performance"      element={<Performance />} />
-        <Route path="/portal/onboarding"       element={<Onboarding />} />
-        <Route path="/portal/exit"             element={<ExitManagement />} />
-        <Route path="/portal/regularization"   element={<Regularization />} />
-        <Route path="/portal/notifications"    element={<NotificationCenter />} />
-        <Route path="/portal/announcements"    element={<AnnouncementsPage />} />
-        <Route path="/portal/profile"          element={<MyProfile />} />
+        <Route path="/portal/home"           element={<EmployeeHome />} />
+        <Route path="/portal/leaves"         element={<MyLeaves />} />
+        <Route path="/portal/attendance"     element={<MyAttendance />} />
+        <Route path="/portal/team-calendar"  element={<TeamCalendar />} />
+        <Route path="/portal/documents"      element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
+        <Route path="/portal/expenses"       element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
+        <Route path="/portal/payslips"       element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/portal/performance"    element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
+        <Route path="/portal/onboarding"     element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
+        <Route path="/portal/exit"           element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
+        <Route path="/portal/regularization" element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
+        <Route path="/portal/notifications"  element={<NotificationCenter />} />
+        <Route path="/portal/announcements"  element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
+        <Route path="/portal/profile"        element={<MyProfile />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? home : '/'} replace />} />
@@ -167,8 +188,10 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
-          <ForcePasswordChangeModal />
+          <FeatureFlagProvider>
+            <AppRoutes />
+            <ForcePasswordChangeModal />
+          </FeatureFlagProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

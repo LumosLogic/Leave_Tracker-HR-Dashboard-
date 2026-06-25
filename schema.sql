@@ -97,3 +97,15 @@ CREATE TABLE IF NOT EXISTS events (
 
 ALTER TABLE holidays DISABLE ROW LEVEL SECURITY;
 ALTER TABLE events   DISABLE ROW LEVEL SECURITY;
+
+-- Per-organization feature flags (managed by Platform Admin)
+-- Missing row for a feature = enabled by default
+CREATE TABLE IF NOT EXISTS organization_features (
+  id              BIGSERIAL PRIMARY KEY,
+  organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  feature_key     TEXT NOT NULL,
+  enabled         BOOLEAN NOT NULL DEFAULT true,
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (organization_id, feature_key)
+);
+ALTER TABLE organization_features DISABLE ROW LEVEL SECURITY;

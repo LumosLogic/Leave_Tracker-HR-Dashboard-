@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -482,7 +483,7 @@ function EmployeeProfile({ emp, onBack }) {
 }
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
-function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [] }) {
+function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee' }) {
   const isEdit      = !!employee;
   const toast       = useToast();
   const { isRootAdmin } = useAuth();
@@ -506,7 +507,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [] 
     department_ids: initDeptIds,
   } : {
     name: '', email: '', password: '', department: '', position: '',
-    role: 'employee', avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
+    role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -542,7 +543,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [] 
   });
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Employee' : 'Add Employee'} size="lg"
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Employee' : 'Add Employee'} size="lg" disableOutsideClick
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
@@ -666,16 +667,36 @@ export default function Employees() {
   const { user } = useAuth();
   const toast    = useToast();
   const qc       = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [profileEmp,  setProfileEmp]  = useState(null);
-  const [addOpen,     setAddOpen]     = useState(false);
-  const [editEmp,     setEditEmp]     = useState(null);
-  const [confirmDel,  setConfirmDel]  = useState(null); // { id, name }
+  const roleFilter     = searchParams.get('role');   // 'employee' | 'admin' | null
+  const actionParam    = searchParams.get('action'); // 'addHR' | null
 
-  const { data: employees = [], isLoading } = useQuery({
+  const [profileEmp,     setProfileEmp]     = useState(null);
+  const [addOpen,        setAddOpen]        = useState(false);
+  const [addDefaultRole, setAddDefaultRole] = useState('employee');
+  const [editEmp,        setEditEmp]        = useState(null);
+  const [confirmDel,     setConfirmDel]     = useState(null); // { id, name }
+
+  // Auto-open Add modal when navigated here with ?action=addHR
+  useEffect(() => {
+    if (actionParam === 'addHR') {
+      setAddDefaultRole('admin');
+      setAddOpen(true);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('action'); return n; }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionParam]);
+
+  const { data: allEmployees = [], isLoading } = useQuery({
     queryKey: ['employees'],
     queryFn:  () => apiGet('/employees'),
   });
+
+  // Filter by role when a role query param is present
+  const employees = roleFilter
+    ? allEmployees.filter(e => e.role === roleFilter)
+    : allEmployees;
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -705,10 +726,26 @@ export default function Employees() {
     <div>
       <div className="page-header mb-6">
         <div>
-          <div className="page-title">Team Members</div>
-          <div className="page-subtitle">{employees.length} member{employees.length !== 1 ? 's' : ''}</div>
+          <div className="page-title flex items-center gap-2">
+            Team Members
+            {roleFilter && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8] normal-case tracking-normal">
+                {roleFilter === 'admin' ? 'HR Admins only' : 'Employees only'}
+              </span>
+            )}
+          </div>
+          <div className="page-subtitle flex items-center gap-2">
+            {employees.length} member{employees.length !== 1 ? 's' : ''}
+            {roleFilter && (
+              <button
+                onClick={() => setSearchParams({}, { replace: true })}
+                className="text-xs text-[#3525cd] hover:underline font-semibold">
+                Clear filter
+              </button>
+            )}
+          </div>
         </div>
-        <button className="btn btn-primary" onClick={() => setAddOpen(true)}>
+        <button className="btn btn-primary" onClick={() => { setAddDefaultRole('employee'); setAddOpen(true); }}>
           <Plus size={16} /> Add Employee
         </button>
       </div>
@@ -783,7 +820,7 @@ export default function Employees() {
       )}
 
       {addOpen && (
-        <EmployeeFormModal open={addOpen} onClose={() => setAddOpen(false)} departments={departments} />
+        <EmployeeFormModal open={addOpen} onClose={() => { setAddOpen(false); setAddDefaultRole('employee'); }} departments={departments} defaultRole={addDefaultRole} />
       )}
       {editEmp && (
         <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} departments={departments} />

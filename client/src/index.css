@@ -139,3 +139,114 @@
   /* ── Loading ── */
   .loading { @apply flex items-center justify-center p-20 text-[#464555] gap-3 text-sm font-semibold; }
 }
+
+/* ── Driver.js Tour Theme ── */
+.lt-tour-popover {
+  background: #ffffff !important;
+  border: 1px solid #c7c4d8 !important;
+  border-radius: 16px !important;
+  padding: 0 !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.15), 0 4px 20px rgba(53,37,205,.12) !important;
+  max-width: 320px !important;
+  overflow: hidden !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.lt-tour-popover::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, #3525cd, #4f46e5, #712ae2, #8a4cfc);
+  border-radius: 16px 16px 0 0;
+}
+.lt-tour-popover .driver-popover-title {
+  font-size: 0.92rem !important;
+  font-weight: 900 !important;
+  color: #151c27 !important;
+  letter-spacing: -0.02em !important;
+  padding: 16px 42px 4px 20px !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.lt-tour-popover .driver-popover-description {
+  font-size: 0.79rem !important;
+  color: #464555 !important;
+  line-height: 1.6 !important;
+  padding: 0 20px 16px !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.lt-tour-popover .driver-popover-footer {
+  padding: 10px 16px !important;
+  border-top: 1px solid #f0f3ff !important;
+  background: #f9f9ff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+.lt-tour-popover .driver-popover-progress-text {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  color: #777587 !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.lt-tour-popover .driver-popover-next-btn,
+.lt-tour-popover .driver-popover-done-btn {
+  background: #3525cd !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 6px 14px !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  font-family: 'Inter', sans-serif !important;
+  cursor: pointer !important;
+  transition: background 0.15s !important;
+  text-shadow: none !important;
+}
+.lt-tour-popover .driver-popover-next-btn:hover,
+.lt-tour-popover .driver-popover-done-btn:hover {
+  background: #4f46e5 !important;
+}
+.lt-tour-popover .driver-popover-prev-btn {
+  background: #ffffff !important;
+  color: #464555 !important;
+  border: 1px solid #c7c4d8 !important;
+  border-radius: 8px !important;
+  padding: 6px 14px !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  font-family: 'Inter', sans-serif !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+  text-shadow: none !important;
+}
+.lt-tour-popover .driver-popover-prev-btn:hover {
+  background: #f0f3ff !important;
+  border-color: #3525cd !important;
+  color: #3525cd !important;
+}
+.lt-tour-popover .driver-popover-close-btn {
+  background: transparent !important;
+  color: #777587 !important;
+  border: none !important;
+  cursor: pointer !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  transition: color 0.15s !important;
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  width: 26px !important;
+  height: 26px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+}
+.lt-tour-popover .driver-popover-close-btn:hover {
+  color: #151c27 !important;
+  background: #f0f3ff !important;
+}
+.lt-tour-popover .driver-popover-arrow-side-left   { border-right-color:  #ffffff !important; }
+.lt-tour-popover .driver-popover-arrow-side-right  { border-left-color:   #ffffff !important; }
+.lt-tour-popover .driver-popover-arrow-side-top    { border-bottom-color: #ffffff !important; }
+.lt-tour-popover .driver-popover-arrow-side-bottom { border-top-color:    #ffffff !important; }

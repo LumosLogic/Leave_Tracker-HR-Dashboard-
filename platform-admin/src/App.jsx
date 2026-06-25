@@ -7,6 +7,7 @@ import PlatformDashboard from '@/pages/PlatformDashboard';
 import PlatformRequests  from '@/pages/PlatformRequests';
 import PlatformOrgs      from '@/pages/PlatformOrgs';
 import PlatformActivity  from '@/pages/PlatformActivity';
+import PlatformFeatures  from '@/pages/PlatformFeatures';
 
 function PlatformRoute({ children }) {
   const { token } = usePlatformAuth();
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="/requests"  element={<PlatformRequests />} />
         <Route path="/orgs"      element={<PlatformOrgs />} />
         <Route path="/activity"  element={<PlatformActivity />} />
+        <Route path="/features"  element={<PlatformFeatures />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? '/dashboard' : '/login'} replace />} />

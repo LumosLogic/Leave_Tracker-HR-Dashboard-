@@ -2,9 +2,10 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
+import { usePushNotification } from '@/hooks/usePushNotification';
 
 // Map notification type → portal route to navigate to on click
 const TYPE_LINK = {
@@ -43,8 +44,10 @@ function timeAgo(dateStr) {
 }
 
 export default function NotificationCenter() {
-  const { isEmployee } = useAuth();
-  const wrap     = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const { isEmployee, user } = useAuth();
+  const wrap = '';
+  const { permission, subscribed, requestAndSubscribe, unsubscribe, isSupported } = usePushNotification(user?.id);
+  const pushEnabled = permission === 'granted' && subscribed;
   const toast    = useToast();
   const qc       = useQueryClient();
   const navigate = useNavigate();
@@ -94,11 +97,28 @@ export default function NotificationCenter() {
             {unread > 0 ? <span className="font-bold text-[#3525cd]">{unread} unread</span> : 'All caught up'} · {notifications.length} total
           </p>
         </div>
-        {unread > 0 && (
-          <button className="btn btn-outline" onClick={() => readAllMut.mutate()} disabled={readAllMut.isPending}>
-            {readAllMut.isPending ? <><span className="spinner w-4 h-4" />Marking…</> : <><CheckCheck size={15} />Mark All Read</>}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Push notification toggle — shown for employees on this page */}
+          {isEmployee && isSupported && (
+            <button
+              onClick={pushEnabled ? unsubscribe : requestAndSubscribe}
+              title={pushEnabled ? 'Disable push notifications' : 'Enable push notifications'}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+                pushEnabled
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              {pushEnabled ? <Bell size={13} /> : <BellOff size={13} />}
+              {pushEnabled ? 'Push On' : 'Push Off'}
+            </button>
+          )}
+          {unread > 0 && (
+            <button className="btn btn-outline" onClick={() => readAllMut.mutate()} disabled={readAllMut.isPending}>
+              {readAllMut.isPending ? <><span className="spinner w-4 h-4" />Marking…</> : <><CheckCheck size={15} />Mark All Read</>}
+            </button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -122,22 +142,24 @@ export default function NotificationCenter() {
                   const cfg = TYPE_CFG[n.type] || TYPE_CFG.info;
                   return (
                     <div key={n.id}
-                      className={`card overflow-hidden cursor-pointer hover:shadow-card-hover transition-all duration-200 ${!n.is_read ? 'border-[#3525cd]/20' : ''}`}
-                      onClick={() => {
-                        if (!n.is_read) readMut.mutate(n.id);
-                        const link = TYPE_LINK[n.type];
-                        if (link) navigate(link);
-                      }}>
+                      className={`card overflow-hidden transition-all duration-200 ${!n.is_read ? 'border-[#3525cd]/20' : ''}`}>
                       {!n.is_read && <div className="h-0.5 w-full" style={{ background: cfg.strip }} />}
                       <div className="p-4 flex items-start gap-3">
-                        {/* Unread dot */}
+                        {/* Type icon */}
                         <div className="flex-shrink-0 flex flex-col items-center gap-1 pt-0.5">
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${cfg.bg}`}>
                             <span className={cfg.text}>{cfg.icon}</span>
                           </div>
                           {!n.is_read && <div className="w-1.5 h-1.5 rounded-full bg-[#3525cd]" />}
                         </div>
-                        <div className="flex-1 min-w-0">
+                        {/* Content — clickable navigates to linked page */}
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => {
+                            if (!n.is_read) readMut.mutate(n.id);
+                            const link = TYPE_LINK[n.type];
+                            if (link) navigate(link);
+                          }}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`font-bold text-sm ${!n.is_read ? 'text-[#151c27]' : 'text-[#464555]'}`}>{n.title}</span>
@@ -147,11 +169,23 @@ export default function NotificationCenter() {
                           </div>
                           <p className="text-xs text-[#777587] mt-1 leading-relaxed">{n.message}</p>
                         </div>
-                        <button
-                          className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 flex-shrink-0 transition-colors"
-                          onClick={e => { e.stopPropagation(); delMut.mutate(n.id); }}>
-                          <Trash2 size={13} />
-                        </button>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {!n.is_read && (
+                            <button
+                              title="Mark as read"
+                              className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"
+                              onClick={e => { e.stopPropagation(); readMut.mutate(n.id); }}>
+                              <CheckCheck size={13} />
+                            </button>
+                          )}
+                          <button
+                            title="Delete"
+                            className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                            onClick={e => { e.stopPropagation(); delMut.mutate(n.id); }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
