@@ -1897,10 +1897,10 @@ app.get('/api/culture', auth, async (req, res) => {
         .forEach(u => upcomingBirthdays.push({ ...u, birthday_date: ds, days_until: i }));
     }
 
-    // Holidays & Events in next 30 days
+    // Next upcoming holidays (no hard upper limit — show whatever is next)
     const [{ data: holidays }, { data: events }] = await Promise.all([
-      supabase.from('holidays').select('*').eq('organization_id', orgId(req)).gte('date', today).lte('date', f30Str).order('date').limit(10),
-      supabase.from('events').select('*').eq('organization_id', orgId(req)).gte('date', today).lte('date', f30Str).order('date').limit(10),
+      supabase.from('holidays').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
+      supabase.from('events').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
     ]);
 
     res.json({ birthdaysToday: birthdaysToday || [], upcomingBirthdays, holidays: holidays || [], events: events || [] });
@@ -2005,11 +2005,17 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const d7ago  = new Date(now); d7ago.setDate(d7ago.getDate() - 6);
     const from7  = d7ago.toISOString().split('T')[0];
 
-    const [{ data: allLeaves }, { data: monthAtt }, { data: last7Att }, { count: totalEmps }] = await Promise.all([
+    const d30ago = new Date(now); d30ago.setDate(d30ago.getDate() - 29);
+    const from30 = d30ago.toISOString().split('T')[0];
+
+    const [{ data: allLeaves }, { data: monthAtt }, { data: last7Att }, { count: totalEmps }, { data: allEmps }, { data: last30Att }, { data: leavePolicies }] = await Promise.all([
       supabase.from('leaves').select('status, leave_type').eq('organization_id', orgId(req)),
       supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
+      supabase.from('users').select('department, role').eq('organization_id', orgId(req)).in('role', ['employee', 'admin']),
+      supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from30).lte('date', today7),
+      supabase.from('leave_policies').select('leave_type, annual_quota, label').eq('organization_id', orgId(req)).eq('active', true),
     ]);
 
     const leaveByStatus = { approved: 0, pending: 0, rejected: 0, cancelled: 0 };
@@ -2040,7 +2046,66 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
       });
     }
 
-    res.json({ leaveByStatus, leaveByType, attByStatus, month, year, weeklyTrend });
+    // 30-day attendance trend
+    const trendMap30 = {};
+    for (const r of last30Att || []) {
+      if (!trendMap30[r.date]) trendMap30[r.date] = { present: 0, total: 0 };
+      trendMap30[r.date].total++;
+      if (['present', 'wfh', 'half_day'].includes(r.status)) trendMap30[r.date].present++;
+    }
+    const monthlyTrend = [];
+    for (let i = 29; i >= 0; i--) {
+      const d  = new Date(now); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const e  = trendMap30[ds] || { present: 0, total: totalEmps || 0 };
+      monthlyTrend.push({
+        date: ds,
+        label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        pct: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0,
+      });
+    }
+
+    // Average attendance (last 7 days)
+    const avgPct7 = weeklyTrend.length > 0 ? Math.round(weeklyTrend.reduce((s, t) => s + t.pct, 0) / weeklyTrend.length) : 0;
+    const prev7Start = new Date(now); prev7Start.setDate(prev7Start.getDate() - 13);
+    const prev7Trend = monthlyTrend.slice(0, 7);
+    const avgPctPrev = prev7Trend.length > 0 ? Math.round(prev7Trend.reduce((s, t) => s + t.pct, 0) / prev7Trend.length) : 0;
+    const attendanceChange = avgPct7 - avgPctPrev;
+
+    // Department distribution
+    const deptCount = {};
+    for (const e of allEmps || []) {
+      const dn = e.department || 'General';
+      deptCount[dn] = (deptCount[dn] || 0) + 1;
+    }
+    const totalEmpCount = (allEmps || []).length;
+    const deptDistribution = Object.entries(deptCount)
+      .map(([name, count]) => ({ name, count, pct: totalEmpCount > 0 ? Math.round((count / totalEmpCount) * 100) : 0 }))
+      .sort((a, b) => b.count - a.count).slice(0, 8);
+
+    // Role distribution (Full Time = employee, HR Admin = admin)
+    const roleCount = { employee: 0, admin: 0 };
+    for (const e of allEmps || []) {
+      if (e.role === 'employee') roleCount.employee++;
+      else if (e.role === 'admin') roleCount.admin++;
+    }
+    const roleDistribution = [
+      { name: 'Full Time', count: roleCount.employee, pct: totalEmpCount > 0 ? Math.round((roleCount.employee / totalEmpCount) * 100) : 0 },
+      { name: 'HR Admin',  count: roleCount.admin,    pct: totalEmpCount > 0 ? Math.round((roleCount.admin    / totalEmpCount) * 100) : 0 },
+    ];
+
+    // Leave balance overview (org-wide approved leaves this year vs policy quota)
+    const LEAVE_COLORS = { casual: '#10b981', sick: '#ef4444', annual: '#3525cd', emergency: '#f59e0b', wfh: '#6366f1', maternity: '#ec4899', paternity: '#8b5cf6', comp_off: '#94a3b8' };
+    const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave', quota: 20 }, sick: { label: 'Sick Leave', quota: 15 }, annual: { label: 'Annual Leave', quota: 18 }, emergency: { label: 'Emergency Leave', quota: 5 }, wfh: { label: 'WFH', quota: 10 } };
+    const approvedByType = {};
+    (allLeaves || []).filter(l => l.status === 'approved').forEach(l => { approvedByType[l.leave_type] = (approvedByType[l.leave_type] || 0) + 1; });
+    const policyMap = {};
+    (leavePolicies || []).forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
+    const leaveBalanceByType = Object.entries({ ...LEAVE_DEFAULTS, ...policyMap }).slice(0, 5).map(([type, info]) => ({
+      type, label: info.label, used: approvedByType[type] || 0, total: info.quota || 20, color: LEAVE_COLORS[type] || '#94a3b8',
+    }));
+
+    res.json({ leaveByStatus, leaveByType, attByStatus, month, year, weeklyTrend, monthlyTrend, avgPct7, attendanceChange, deptDistribution, roleDistribution, leaveBalanceByType, totalDepts: deptDistribution.length, totalEmpCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2201,9 +2266,9 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
         .select('id, name, department, position, avatar_color, created_at, role, date_of_birth')
         .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
       supabase.from('holidays').select('id, name, date, type').eq('organization_id', oid)
-        .gte('date', today).lte('date', toDate).order('date', { ascending: true }).limit(5),
+        .gte('date', today).order('date', { ascending: true }).limit(5),
       supabase.from('events').select('id, title, date').eq('organization_id', oid)
-        .gte('date', today).lte('date', toDate).order('date', { ascending: true }).limit(5),
+        .gte('date', today).order('date', { ascending: true }).limit(5),
       supabase.from('attendance_regularization').select('*', { count: 'exact', head: true })
         .eq('status', 'pending').eq('organization_id', oid),
       supabase.from('expenses').select('*', { count: 'exact', head: true })

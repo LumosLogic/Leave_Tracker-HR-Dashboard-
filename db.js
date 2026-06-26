@@ -21,16 +21,18 @@ async function seed() {
     const { count: hCount } = await supabase.from('holidays').select('*', { count: 'exact', head: true });
     if (hCount === 0) {
       await supabase.from('holidays').insert([
-        { name: "New Year's Day",    date: '2026-01-01', type: 'public',   description: 'New Year celebration' },
-        { name: 'Republic Day',      date: '2026-01-26', type: 'public',   description: 'National holiday' },
-        { name: 'Holi',              date: '2026-03-03', type: 'public',   description: 'Festival of colors' },
-        { name: 'Good Friday',       date: '2026-04-03', type: 'public',   description: 'Christian holiday' },
-        { name: 'Eid ul-Fitr',       date: '2026-04-12', type: 'public',   description: 'Festival of breaking fast' },
-        { name: 'Independence Day',  date: '2026-08-15', type: 'public',   description: 'National holiday' },
-        { name: 'Ganesh Chaturthi', date: '2026-08-30', type: 'public',   description: 'Hindu festival' },
-        { name: 'Gandhi Jayanti',    date: '2026-10-02', type: 'public',   description: 'National holiday' },
-        { name: 'Diwali',            date: '2026-10-28', type: 'public',   description: 'Festival of lights' },
-        { name: 'Christmas Day',     date: '2026-12-25', type: 'public',   description: 'Christmas celebration' },
+        { name: "New Year's Day",   date: '2026-01-01', type: 'public',   description: 'New Year celebration',        organization_id: 1 },
+        { name: 'Republic Day',     date: '2026-01-26', type: 'public',   description: 'National holiday',            organization_id: 1 },
+        { name: 'Holi',             date: '2026-03-03', type: 'public',   description: 'Festival of colors',          organization_id: 1 },
+        { name: 'Good Friday',      date: '2026-04-03', type: 'public',   description: 'Christian holiday',           organization_id: 1 },
+        { name: 'Eid ul-Fitr',      date: '2026-04-12', type: 'public',   description: 'Festival of breaking fast',   organization_id: 1 },
+        { name: 'Guru Purnima',     date: '2026-07-10', type: 'public',   description: 'Hindu festival',              organization_id: 1 },
+        { name: 'Muharram',         date: '2026-07-17', type: 'public',   description: 'Islamic new year',            organization_id: 1 },
+        { name: 'Independence Day', date: '2026-08-15', type: 'public',   description: 'National holiday',            organization_id: 1 },
+        { name: 'Ganesh Chaturthi', date: '2026-08-30', type: 'public',   description: 'Hindu festival',              organization_id: 1 },
+        { name: 'Gandhi Jayanti',   date: '2026-10-02', type: 'public',   description: 'National holiday',            organization_id: 1 },
+        { name: 'Diwali',           date: '2026-10-28', type: 'public',   description: 'Festival of lights',          organization_id: 1 },
+        { name: 'Christmas Day',    date: '2026-12-25', type: 'public',   description: 'Christmas celebration',       organization_id: 1 },
       ]);
       console.log('✓ Holidays seeded');
     }
@@ -41,10 +43,9 @@ async function seed() {
     const { count: eCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
     if (eCount === 0) {
       await supabase.from('events').insert([
-        { title: 'Team Building Day',     date: '2026-05-20', description: 'Outdoor team activities at Central Park' },
-        { title: 'Q2 All Hands Meeting',  date: '2026-06-01', description: 'Quarterly company-wide meeting — attendance mandatory' },
-        { title: 'Company Anniversary',   date: '2026-06-15', description: 'Celebrating 5 years of excellence!' },
-        { title: 'Annual Appraisal Week', date: '2026-07-01', end_date: '2026-07-05', description: 'Performance review discussions with managers' },
+        { title: 'Annual Appraisal Week', date: '2026-07-01', end_date: '2026-07-05', description: 'Performance review discussions with managers', organization_id: 1 },
+        { title: 'Q3 All Hands Meeting',  date: '2026-08-01', description: 'Quarterly company-wide meeting — attendance mandatory', organization_id: 1 },
+        { title: 'Company Anniversary',   date: '2026-09-15', description: 'Celebrating excellence!', organization_id: 1 },
       ]);
       console.log('✓ Events seeded');
     }

@@ -5,13 +5,14 @@ import {
   ArcElement, CategoryScale, LinearScale, PointElement, LineElement,
   BarElement, Tooltip, Legend, Filler,
 } from 'chart.js';
-import { Doughnut, Line, Bar } from 'react-chartjs-2';
+import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Users, UserCheck, Umbrella, Home, Clock, ClipboardList,
-  Cake, CalendarDays, Megaphone, Activity, BarChart2,
-  Timer, X, LogIn, LogOut, ExternalLink, Building2, Mail,
+  CalendarDays, Megaphone, Activity, BarChart2,
+  Timer, X, LogIn, LogOut, ExternalLink,
   UserPlus, FileText, CheckCircle2, Pencil, RefreshCw, Inbox,
-  Trash2, CalendarCheck, PartyPopper, ChevronRight,
+  Trash2, CalendarCheck, ChevronRight, TrendingUp, TrendingDown,
+  Cake, Building2, Mail, Zap, AlertCircle, Gift, ShieldCheck, PartyPopper,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -27,7 +28,6 @@ ChartJS.register(
   BarElement, Tooltip, Legend, Filler,
 );
 
-// ── Shared chart tooltip style ────────────────────────────────────────────────
 const tooltipStyle = {
   backgroundColor: 'rgba(255,255,255,0.97)',
   titleColor: '#151c27', bodyColor: '#464555',
@@ -38,21 +38,18 @@ const tooltipStyle = {
   boxWidth: 10, boxHeight: 10, boxPadding: 4,
 };
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
 function getWeekNumber(d = new Date()) {
   const date = new Date(d); date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + 4 - (date.getDay() || 7));
   const y = new Date(date.getFullYear(), 0, 1);
   return Math.ceil((((date - y) / 86400000) + 1) / 7);
 }
-
 function getSeason(month) {
   if (month >= 3 && month <= 5) return 'Spring Season';
   if (month >= 6 && month <= 8) return 'Summer Season';
   if (month >= 9 && month <= 11) return 'Autumn Season';
   return 'Winter Season';
 }
-
 function relTime(iso) {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -64,6 +61,10 @@ function relTime(iso) {
   if (h < 48) return 'Yesterday';
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
+const hoverCursor = (event, elements) => {
+  const t = event.native?.target;
+  if (t) t.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+};
 
 // ── Check-in Widget ────────────────────────────────────────────────────────────
 function CheckinWidget({ onRefresh }) {
@@ -81,10 +82,10 @@ function CheckinWidget({ onRefresh }) {
     if (!record?.check_in || record?.check_out) return;
     const tick = () => {
       const [h, m] = record.check_in.split(':').map(Number);
-      const start  = new Date(); start.setHours(h, m, 0, 0);
-      const diff   = Date.now() - start.getTime();
-      const total  = Math.floor(diff / 60000);
-      const hrs    = Math.floor(total / 60); const min = total % 60;
+      const start = new Date(); start.setHours(h, m, 0, 0);
+      const diff = Date.now() - start.getTime();
+      const total = Math.floor(diff / 60000);
+      const hrs = Math.floor(total / 60); const min = total % 60;
       setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
     };
     tick();
@@ -105,31 +106,63 @@ function CheckinWidget({ onRefresh }) {
     } catch (err) { toast(err.message, 'error'); }
   }
 
-  if (!record || !record.check_in) {
-    return (
-      <button onClick={checkIn}
-        className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
-        <Clock size={14} /> Check In
-      </button>
-    );
-  }
-  if (!record.check_out) {
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-bold text-white/80 bg-white/15 px-2.5 py-1.5 rounded-lg border border-white/20">
-          ⏱ {elapsed}
-        </span>
-        <button onClick={checkOut}
-          className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
-          <LogOut size={14} /> Check Out
-        </button>
-      </div>
-    );
-  }
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
   return (
-    <div className="flex items-center gap-2 bg-white/15 border border-white/20 px-3 py-2 rounded-xl">
-      <CheckCircle2 size={14} className="text-emerald-400" />
-      <span className="text-sm font-bold text-white">{fmtHours(record.work_hours)}</span>
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-[#e7eefe] flex items-center gap-2">
+        <CalendarDays size={13} className="text-[#777587]" />
+        <span className="text-xs font-semibold text-[#777587]">{dateStr}</span>
+      </div>
+      <div className="p-4">
+        {!record || !record.check_in ? (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
+                <CheckCircle2 size={16} className="text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#151c27]">Check In</p>
+                <p className="text-xs text-[#777587]">You haven't checked in today</p>
+              </div>
+            </div>
+            <button onClick={checkIn}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+              <CheckCircle2 size={14} /> Check In Now
+            </button>
+            <p className="text-center text-[0.65rem] text-[#9ca3af] mt-2 flex items-center justify-center gap-1">
+              <Building2 size={10} /> Head Office
+            </p>
+          </>
+        ) : !record.check_out ? (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
+                <CheckCircle2 size={16} className="text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-emerald-600">Checked In</p>
+                <p className="text-xs text-[#777587]">Since {fmtTime(record.check_in)} · {elapsed}</p>
+              </div>
+            </div>
+            <button onClick={checkOut}
+              className="w-full flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogOut size={14} /> Check Out
+            </button>
+          </>
+        ) : (
+          <div className="flex items-center gap-3 py-1">
+            <div className="w-8 h-8 rounded-full bg-[#f0f3ff] flex items-center justify-center">
+              <CheckCircle2 size={16} className="text-[#3525cd]" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#151c27]">Work Done</p>
+              <p className="text-xs text-[#777587]">{fmtHours(record.work_hours)} worked today</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -155,16 +188,8 @@ function EmployeeQuickView({ record: r, onClose }) {
         </div>
         <div className="p-5 space-y-3">
           <div className="flex flex-col gap-2">
-            {r.department && (
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Building2 size={14} className="text-[#777587]" /> {r.department}
-              </div>
-            )}
-            {r.email && (
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Mail size={14} className="text-[#777587]" /> {r.email}
-              </div>
-            )}
+            {r.department && <div className="flex items-center gap-2 text-sm text-slate-600"><Building2 size={14} className="text-[#777587]" /> {r.department}</div>}
+            {r.email && <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-[#777587]" /> {r.email}</div>}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={r.status} />
@@ -334,6 +359,282 @@ function ManageHolidaysBtn({ onRefresh }) {
   );
 }
 
+// ── Attendance Trend Chart ─────────────────────────────────────────────────────
+const TREND_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#3525cd', '#ef4444'];
+const DEPT_CHART_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#94a3b8'];
+
+function AttendanceTrendChart({ analytics, navigate }) {
+  const [period, setPeriod] = useState('7d');
+  const trend = period === '7d' ? (analytics?.weeklyTrend || []) : (analytics?.monthlyTrend || []);
+  const avg = analytics?.avgPct7 ?? 0;
+  const change = analytics?.attendanceChange ?? 0;
+
+  const chartData = {
+    labels: trend.map(t => t.label),
+    datasets: [{
+      label: 'Attendance %',
+      data: trend.map(t => t.pct),
+      fill: true,
+      backgroundColor: 'rgba(53, 37, 205, 0.06)',
+      borderColor: '#4f46e5',
+      borderWidth: 2.5,
+      pointRadius: 4,
+      pointBackgroundColor: '#4f46e5',
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2,
+      pointHoverRadius: 6,
+      tension: 0.4,
+    }],
+  };
+  const chartOptions = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { ...tooltipStyle, callbacks: { label: ctx => ` ${ctx.parsed.y}% attendance` } },
+    },
+    scales: {
+      x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#9ca3af', maxTicksLimit: period === '7d' ? 7 : 10 } },
+      y: { min: 0, max: 100, grid: { color: '#f0f0f8' }, border: { display: false }, ticks: { callback: v => `${v}%`, font: { size: 9 }, color: '#9ca3af', maxTicksLimit: 5 } },
+    },
+    onClick: () => navigate('/attendance'),
+    onHover: (e) => { const t = e.native?.target; if (t) t.style.cursor = 'pointer'; },
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+        <h2 className="text-sm font-black text-[#151c27]">Attendance Trend</h2>
+        <select value={period} onChange={e => setPeriod(e.target.value)}
+          className="text-xs border border-[#c7c4d8] rounded-lg px-2 py-1 text-[#464555] font-semibold bg-white outline-none cursor-pointer">
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+        </select>
+      </div>
+      <div className="flex-1 px-5 pt-4 pb-2" style={{ minHeight: 180 }}>
+        {trend.length === 0
+          ? <div className="h-full flex items-center justify-center text-sm text-[#9ca3af]">No data</div>
+          : <Line data={chartData} options={chartOptions} />}
+      </div>
+      <div className="px-5 pb-4 pt-2 flex items-center justify-between border-t border-[#f0f3ff] mt-2">
+        <div>
+          <p className="text-[0.65rem] text-[#9ca3af]">Average Attendance</p>
+          <p className="text-xl font-black text-[#151c27]">{avg}%</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[0.65rem] text-[#9ca3af]">Change</p>
+          <p className={`text-sm font-bold flex items-center gap-1 justify-end ${change >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+            {change >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+            {change >= 0 ? '+' : ''}{change}% vs last 7 days
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Organization Overview Charts ───────────────────────────────────────────────
+function OrgOverviewSection({ analytics, navigate }) {
+  const { deptDistribution = [], roleDistribution = [], totalDepts = 0, totalEmpCount = 0 } = analytics || {};
+
+  const deptChartData = {
+    labels: deptDistribution.map(d => d.name),
+    datasets: [{
+      data: deptDistribution.map(d => d.count),
+      backgroundColor: DEPT_CHART_COLORS.slice(0, deptDistribution.length),
+      borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3, hoverBorderColor: '#fff', hoverOffset: 5,
+    }],
+  };
+  const doughnutOpts = {
+    cutout: '68%', maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { ...tooltipStyle } },
+    onHover: hoverCursor,
+  };
+
+  const roleColors = ['#4f46e5', '#10b981', '#f59e0b', '#94a3b8'];
+  const roleChartData = {
+    labels: roleDistribution.map(r => r.name),
+    datasets: [{
+      data: roleDistribution.map(r => r.count),
+      backgroundColor: roleColors.slice(0, roleDistribution.length),
+      borderWidth: 3, borderColor: '#fff', hoverOffset: 5,
+    }],
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#e7eefe]">
+        <h2 className="text-sm font-black text-[#151c27]">Organization Overview</h2>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-[#e7eefe]">
+        {/* Department Distribution */}
+        <div className="p-5">
+          <h3 className="text-xs font-bold text-[#777587] mb-4">Department Distribution</h3>
+          <div className="flex items-center gap-4">
+            <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
+              {deptDistribution.length > 0
+                ? <Doughnut data={deptChartData} options={doughnutOpts} />
+                : <div className="w-full h-full rounded-full border-4 border-[#f0f3ff]" />}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-base font-black text-[#151c27]">{totalDepts}</span>
+                <span className="text-[0.55rem] text-[#777587]">Depts</span>
+              </div>
+            </div>
+            <div className="flex-1 space-y-1.5 min-w-0">
+              {deptDistribution.slice(0, 5).map((d, i) => (
+                <div key={d.name} className="flex items-center gap-2 text-xs">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: DEPT_CHART_COLORS[i] }} />
+                  <span className="text-[#464555] truncate font-medium flex-1">{d.name}</span>
+                  <span className="text-[#9ca3af] shrink-0">{d.count} ({d.pct}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-[#f0f3ff] flex justify-between text-xs">
+            <span className="text-[#777587]">Total Departments</span>
+            <span className="font-black text-[#151c27]">{totalDepts}</span>
+          </div>
+        </div>
+
+        {/* Role Distribution */}
+        <div className="p-5">
+          <h3 className="text-xs font-bold text-[#777587] mb-4">Employment Type</h3>
+          <div className="flex items-center gap-4">
+            <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
+              {roleDistribution.length > 0 && roleDistribution.some(r => r.count > 0)
+                ? <Doughnut data={roleChartData} options={doughnutOpts} />
+                : <div className="w-full h-full rounded-full border-4 border-[#f0f3ff]" />}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-base font-black text-[#151c27]">{totalEmpCount}</span>
+                <span className="text-[0.55rem] text-[#777587]">Total</span>
+              </div>
+            </div>
+            <div className="flex-1 space-y-1.5 min-w-0">
+              {roleDistribution.map((r, i) => (
+                <div key={r.name} className="flex items-center gap-2 text-xs">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: roleColors[i] }} />
+                  <span className="text-[#464555] truncate font-medium flex-1">{r.name}</span>
+                  <span className="text-[#9ca3af] shrink-0">{r.count} ({r.pct}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-[#f0f3ff] flex justify-between text-xs">
+            <span className="text-[#777587]">Total Employees</span>
+            <span className="font-black text-[#151c27]">{totalEmpCount}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Leave Balance Overview ─────────────────────────────────────────────────────
+function LeaveBalanceSection({ analytics, navigate }) {
+  const { leaveBalanceByType = [] } = analytics || {};
+
+  const LEAVE_ICONS = {
+    casual: '📅', sick: '🤒', annual: '🏖️', emergency: '🚨', wfh: '🏠', maternity: '👶', paternity: '👨‍👧', comp_off: '🔄',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+        <h2 className="text-sm font-black text-[#151c27]">Leave Balance Overview</h2>
+        <button onClick={() => navigate('/reports')}
+          className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+          View report
+        </button>
+      </div>
+      <div className="p-4 space-y-3">
+        {leaveBalanceByType.length === 0 ? (
+          <div className="py-6 text-center text-sm text-[#9ca3af]">No leave data</div>
+        ) : leaveBalanceByType.map(lb => {
+          const pct = lb.total > 0 ? Math.min(100, Math.round((lb.used / lb.total) * 100)) : 0;
+          return (
+            <div key={lb.type} className="space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{LEAVE_ICONS[lb.type] || '📋'}</span>
+                  <span className="text-xs font-bold text-[#151c27]">{lb.label}</span>
+                </div>
+                <span className="text-xs font-bold text-[#464555]">{lb.used} / {lb.total}</span>
+              </div>
+              <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, background: lb.color }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── HR Insights Row ────────────────────────────────────────────────────────────
+function HRInsightsRow({ d, culture, navigate }) {
+  const lateToday = d?.lateToday ?? 0;
+  const birthdayCount = (culture?.birthdaysToday?.length ?? 0) + (culture?.upcomingBirthdays?.length ?? 0);
+  const probationEnding = 0; // no probation field yet
+
+  const insights = [
+    {
+      icon: lateToday === 0 ? <ShieldCheck size={16} className="text-emerald-600" /> : <AlertCircle size={16} className="text-amber-500" />,
+      bg: lateToday === 0 ? 'bg-emerald-50' : 'bg-amber-50',
+      title: lateToday === 0 ? 'No attendance issues today' : `${lateToday} late arrival${lateToday > 1 ? 's' : ''} today`,
+      subtitle: lateToday === 0 ? 'Great job! Everything looks good.' : 'Review attendance records.',
+      onClick: () => navigate('/attendance'),
+    },
+    {
+      icon: <Gift size={16} className="text-pink-500" />,
+      bg: 'bg-pink-50',
+      title: birthdayCount > 0 ? `${birthdayCount} birthday${birthdayCount > 1 ? 's' : ''} coming up` : 'No upcoming birthdays',
+      subtitle: birthdayCount > 0 ? 'Send wishes to your team' : 'Next 7 days are clear.',
+      onClick: () => {},
+    },
+    {
+      icon: <FileText size={16} className="text-blue-500" />,
+      bg: 'bg-blue-50',
+      title: 'Document management',
+      subtitle: 'Review employee documents.',
+      onClick: () => navigate('/employees'),
+    },
+    {
+      icon: <Users size={16} className="text-purple-500" />,
+      bg: 'bg-purple-50',
+      title: 'Team overview',
+      subtitle: 'View all employees and status.',
+      onClick: () => navigate('/employees'),
+    },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+        <h2 className="text-sm font-black text-[#151c27]">HR Insights</h2>
+        <button onClick={() => navigate('/reports')}
+          className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+          View all insights →
+        </button>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#e7eefe]">
+        {insights.map((ins, i) => (
+          <button key={i} onClick={ins.onClick}
+            className="flex items-start gap-3 px-5 py-4 text-left hover:bg-[#fafaff] transition-colors">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ins.bg}`}>
+              {ins.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-[#151c27] leading-tight">{ins.title}</p>
+              <p className="text-[0.62rem] text-[#777587] mt-0.5">{ins.subtitle}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
@@ -367,7 +668,6 @@ export default function Dashboard() {
   const { data: announcements } = useQuery({
     queryKey: ['announcements-dash'],
     queryFn: () => apiGet('/announcements').catch(() => []),
-    enabled: isAdmin,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -378,7 +678,7 @@ export default function Dashboard() {
   const season  = getSeason(now.getMonth());
   const displayDate = d?.today
     ? new Date(d.today + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-    : '';
+    : now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
   async function handleApprove(id) {
     try { await apiPut(`/leaves/${id}/approve`, {}); toast('Leave approved', 'success'); refetch(); }
@@ -398,7 +698,6 @@ export default function Dashboard() {
     </div>
   );
 
-  // KPI data
   const total   = d?.totalEmployees ?? 0;
   const present = d?.presentToday   ?? 0;
   const onLeave = d?.onLeaveToday   ?? 0;
@@ -410,201 +709,308 @@ export default function Dashboard() {
   const pct = v => total > 0 ? `${Math.round((v / total) * 100)}% of total` : '—';
 
   const kpiCards = [
-    { label: 'Total Employees',    value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,     iconBg: 'bg-[#f0f3ff] text-[#3525cd]',   onClick: () => navigate('/employees') },
-    { label: 'Present Today',      value: present, hint: pct(present),  hintGreen: false, icon: <UserCheck size={16} />, iconBg: 'bg-emerald-50 text-emerald-600',  onClick: () => navigate('/attendance') },
-    { label: 'On Leave',           value: onLeave, hint: pct(onLeave),  hintGreen: false, icon: <Umbrella size={16} />,  iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves') },
-    { label: 'WFH Today',          value: wfh,     hint: pct(wfh),      hintGreen: false, icon: <Home size={16} />,      iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate('/leaves') },
-    { label: 'Checked In',         value: checked, hint: pct(checked),  hintGreen: false, icon: <Clock size={16} />,     iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate('/attendance') },
-    { label: 'Pending Approvals',  value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
+    { label: 'Total Employees',   value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,      iconBg: 'bg-[#f0f3ff] text-[#3525cd]',    onClick: () => navigate('/employees') },
+    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate('/attendance') },
+    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves') },
+    { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate('/leaves') },
+    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate('/attendance') },
+    { label: 'Pending Approvals', value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
       icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves') },
   ];
 
   const { birthdaysToday = [], upcomingBirthdays = [], holidays = [] } = culture || {};
-  const allBirthdays = [...birthdaysToday, ...upcomingBirthdays];
-  const latestAnnouncement = (announcements || [])[0];
 
   return (
-    <div className="space-y-5">
+    <div className="flex gap-5 items-start">
 
-      {/* ── HERO ────────────────────────────────────────────────────────────── */}
-      <div className="rounded-2xl relative overflow-hidden shadow-md"
-        style={{ background: 'linear-gradient(135deg, #1e1b5e 0%, #3525cd 40%, #6d28d9 75%, #9333ea 100%)' }}>
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,.12) 0%, transparent 50%)' }} />
+      {/* ── MAIN CONTENT ────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 space-y-5">
 
-        <div className="relative px-7 pt-6 pb-5">
-          <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+        {/* HERO */}
+        <div className="rounded-2xl relative overflow-hidden shadow-md"
+          style={{ background: 'linear-gradient(135deg, #1e1b5e 0%, #3525cd 40%, #6d28d9 75%, #9333ea 100%)' }}>
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,.12) 0%, transparent 50%)' }} />
+          <div className="relative px-7 pt-6 pb-5">
             <div className="flex-1">
               <h1 className="text-2xl font-black text-white tracking-tight">
                 {getGreeting()}, {user?.name?.split(' ')[0]}! 👋
               </h1>
               <p className="text-white/70 text-sm mt-1">Here's what's happening in your organization today.</p>
-              <div className="flex flex-wrap gap-3 mt-4">
-                {!dashDate && <CheckinWidget onRefresh={refetch} />}
-                <input type="date" className="px-3 py-2.5 text-sm rounded-xl font-semibold text-white cursor-pointer"
-                  style={{ border: '1.5px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(10px)', colorScheme: 'dark' }}
-                  value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
-                {dashDate && (
+              {dashDate && (
+                <div className="flex gap-2 mt-3">
                   <button className="flex items-center gap-1.5 text-white text-sm font-bold px-3 py-2 rounded-xl"
                     style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)' }}
                     onClick={() => setDashDate('')}>
-                    <RefreshCw size={13} /> Today
+                    <RefreshCw size={13} /> Back to Today
                   </button>
-                )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 mt-5 pt-4 border-t border-white/10 flex-wrap">
+              <span className="flex items-center gap-1.5 text-white/70 text-xs font-semibold">
+                <CalendarDays size={12} /> {displayDate}
+              </span>
+              <span className="text-white/30">|</span>
+              <span className="text-white/70 text-xs font-semibold">📅 Week {weekNum}</span>
+              <span className="text-white/30">|</span>
+              <span className="text-white/70 text-xs font-semibold">✨ {season}</span>
+              <input type="date" className="ml-auto px-3 py-1.5 text-xs rounded-lg font-semibold text-white cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(10px)', colorScheme: 'dark' }}
+                value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* 6 KPI CARDS */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {kpiCards.map((card, i) => (
+            <div key={i} onClick={card.onClick}
+              className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 ${card.onClick ? 'cursor-pointer' : ''}`}>
+              <div className="flex items-start justify-between mb-2">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>{card.icon}</div>
+                {card.alert && <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse flex-shrink-0" />}
               </div>
+              <p className="text-xl font-black text-[#151c27] leading-tight">{card.value}</p>
+              <p className="text-[0.68rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
+              {card.hint && (
+                <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-rose-500' : card.hintGreen ? 'text-emerald-600' : 'text-[#9ca3af]'}`}>
+                  {card.hint}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* LIVE ATTENDANCE + TREND CHART + LEAVE REQUESTS */}
+        <div className="grid lg:grid-cols-[1fr_280px_260px] gap-4">
+
+          {/* Live Attendance */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+              <div>
+                <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                  {isToday ? <Activity size={14} className="text-[#3525cd]" /> : <BarChart2 size={14} className="text-[#3525cd]" />}
+                  {isToday ? 'Live Attendance' : 'Attendance'}
+                </h2>
+                <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
+                  {isToday ? `Today · ${displayDate}` : displayDate}
+                </p>
+              </div>
+              <button onClick={() => navigate('/attendance')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+                View all
+              </button>
+            </div>
+            <div className="flex-1 divide-y divide-[#f9f9ff] overflow-y-auto" style={{ maxHeight: 320 }}>
+              {(d?.recentActivity || []).length === 0 ? (
+                <div className="py-12 text-center">
+                  <Inbox size={32} className="mx-auto mb-2 text-[#c7c4d8]" />
+                  <p className="text-sm text-[#777587]">No activity recorded today</p>
+                </div>
+              ) : (d?.recentActivity || []).map(r => (
+                <div key={r.id || r.name} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[#fafaff] cursor-pointer transition-colors"
+                  onClick={() => setSelectedEmp(r)}>
+                  <Avatar name={r.name} color={r.avatar_color} size={30} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-[#151c27]">{r.name}</div>
+                    <div className="text-[0.6rem] text-[#9ca3af]">{r.department}</div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <StatusBadge status={r.status} />
+                    {r.clockify_live && (
+                      <span className="text-[0.6rem] font-bold px-1 py-0.5 rounded text-white flex items-center gap-0.5"
+                        style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+                        <Timer size={8} /> CW
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    {r.check_in && <div className="text-[0.65rem] font-bold text-[#151c27]">{fmtTime(r.check_in)}</div>}
+                    {r.check_in && <div className="text-[0.58rem] text-[#9ca3af]">{r.is_late ? 'Late' : 'On time'}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t border-[#e7eefe]">
+              <button onClick={() => navigate('/attendance')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
+                View full attendance <ChevronRight size={13} />
+              </button>
             </div>
           </div>
 
-          {/* Date / Week / Season bar */}
-          <div className="flex items-center gap-4 mt-5 pt-4 border-t border-white/10 flex-wrap">
-            <span className="flex items-center gap-1.5 text-white/70 text-xs font-semibold">
-              <CalendarDays size={12} /> {displayDate || new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-            </span>
-            <span className="text-white/30">|</span>
-            <span className="text-white/70 text-xs font-semibold">📅 Week {weekNum}</span>
-            <span className="text-white/30">|</span>
-            <span className="text-white/70 text-xs font-semibold">✨ {season}</span>
-          </div>
-        </div>
-      </div>
+          {/* Attendance Trend */}
+          {isAdmin && analytics
+            ? <AttendanceTrendChart analytics={analytics} navigate={navigate} />
+            : <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex items-center justify-center text-sm text-[#9ca3af]">
+                Attendance trend available for admins
+              </div>
+          }
 
-      {/* ── 6 KPI CARDS ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {kpiCards.map((card, i) => (
-          <div key={i} onClick={card.onClick}
-            className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 ${card.onClick ? 'cursor-pointer' : ''}`}>
-            <div className="flex items-start justify-between mb-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>{card.icon}</div>
-              {card.alert && <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse flex-shrink-0" />}
+          {/* Leave Requests */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+              <div>
+                <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                  <ClipboardList size={14} className="text-amber-500" />
+                  {isAdmin ? 'Leave Requests' : 'My Leaves'}
+                </h2>
+                {isAdmin && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Pending approvals</p>}
+              </div>
+              <button onClick={() => navigate('/leaves')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+                View all
+              </button>
             </div>
-            <p className="text-xl font-black text-[#151c27] leading-tight">{card.value}</p>
-            <p className="text-[0.68rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
-            {card.hint && (
-              <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-rose-500' : card.hintGreen ? 'text-emerald-600' : 'text-[#9ca3af]'}`}>
-                {card.hint}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* ── BIRTHDAYS + HOLIDAYS + ANNOUNCEMENTS ─────────────────────────────── */}
-      <div className="grid lg:grid-cols-3 gap-4">
-
-        {/* Birthdays */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-              <Cake size={14} className="text-[#3525cd]" /> Birthdays
-            </h2>
-            {isAdmin && <ManageBirthdaysBtn onRefresh={refetch} />}
-          </div>
-          <div className="p-5">
-            {allBirthdays.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-4 gap-2 text-center">
-                <Cake size={28} className="text-[#c7c4d8]" />
-                <p className="text-xs text-[#777587]">No birthdays in the next 7 days</p>
-              </div>
-            ) : (
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-2.5 flex-shrink-0">
-                  {allBirthdays.slice(0, 4).map((u, i) => (
-                    <div key={u.id} style={{ zIndex: 4 - i }}>
-                      <Avatar name={u.name} color={u.avatar_color} size={36} className="ring-2 ring-white" />
-                    </div>
-                  ))}
-                  {allBirthdays.length > 4 && (
-                    <div className="w-9 h-9 rounded-full bg-[#f0f3ff] border-2 border-white flex items-center justify-center text-[0.65rem] font-black text-[#3525cd] z-0">
-                      +{allBirthdays.length - 4}
-                    </div>
-                  )}
+            <div className="flex-1 divide-y divide-[#f0f3ff] overflow-y-auto" style={{ maxHeight: 320 }}>
+              {(d?.pendingLeaveList || []).length === 0 ? (
+                <div className="py-10 text-center px-4">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-2">
+                    <CheckCircle2 size={18} className="text-emerald-500" />
+                  </div>
+                  <p className="text-xs font-semibold text-[#151c27]">No pending requests</p>
+                  <p className="text-[0.62rem] text-[#777587] mt-1">All leave requests have been reviewed.</p>
                 </div>
-                <div>
-                  {birthdaysToday.length > 0 && (
-                    <p className="text-sm font-bold text-[#151c27]">🎂 {birthdaysToday.length} birthday{birthdaysToday.length > 1 ? 's' : ''} today!</p>
-                  )}
-                  <p className="text-xs text-[#777587]">
-                    {allBirthdays.length} birthday{allBirthdays.length > 1 ? 's' : ''} in next 7 days
-                  </p>
-                  {allBirthdays.slice(0, 2).map(u => (
-                    <p key={u.id} className="text-[0.65rem] text-[#9ca3af] truncate">{u.name}{u.days_until != null ? ` · in ${u.days_until}d` : ' · today'}</p>
-                  ))}
+              ) : (d?.pendingLeaveList || []).map(l => (
+                <div key={l.id} className="flex items-start gap-2 px-4 py-3">
+                  <Avatar name={l.name} color={l.avatar_color} size={28} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-[#151c27]">{l.name}</div>
+                    <div className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDateRange(l.start_date, l.end_date)}</div>
+                    <div className="flex items-center gap-1 mt-1">
+                      <LeaveTypeBadge type={l.leave_type} />
+                    </div>
+                    {isAdmin && l.status === 'pending' && (
+                      <div className="flex gap-1 mt-1.5">
+                        <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+                          onClick={() => handleApprove(l.id)}>
+                          <CheckCircle2 size={9} /> Approve
+                        </button>
+                        <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all"
+                          onClick={() => handleReject(l.id)}>
+                          <X size={9} /> Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* ORG OVERVIEW + LEAVE BALANCE + QUICK ACTIONS */}
+        {isAdmin && analytics && (
+          <div className="grid lg:grid-cols-[1fr_1fr_260px] gap-4">
+            <OrgOverviewSection analytics={analytics} navigate={navigate} />
+            <LeaveBalanceSection analytics={analytics} navigate={navigate} />
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#e7eefe]">
+                <h2 className="text-sm font-black text-[#151c27]">Quick Actions</h2>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Add Employee',    icon: <UserPlus size={14} />,     color: 'text-[#3525cd] bg-[#f0f3ff]',    onClick: () => navigate('/employees') },
+                  { label: 'Apply Leave',     icon: <Umbrella size={14} />,     color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
+                  { label: 'Mark Attendance', icon: <UserCheck size={14} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/attendance') },
+                  { label: 'Regularization',  icon: <Pencil size={14} />,       color: 'text-orange-600 bg-orange-50',   onClick: () => navigate('/regularization') },
+                  { label: 'Announcement',    icon: <Megaphone size={14} />,    color: 'text-purple-600 bg-purple-50',   onClick: () => navigate('/announcements') },
+                  { label: 'View Reports',    icon: <BarChart2 size={14} />,    color: 'text-sky-600 bg-sky-50',         onClick: () => navigate('/reports') },
+                  { label: 'Assign Shift',    icon: <Clock size={14} />,        color: 'text-indigo-600 bg-indigo-50',   onClick: () => navigate('/shifts') },
+                  { label: 'Manage Holidays', icon: <CalendarDays size={14} />, color: 'text-rose-600 bg-rose-50',       onClick: () => navigate('/holidays') },
+                ].map((action, i) => (
+                  <button key={i} onClick={action.onClick}
+                    className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border border-[#e7eefe] hover:border-[#3525cd]/30 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-150 text-center bg-white">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${action.color}`}>{action.icon}</div>
+                    <span className="text-[0.6rem] font-bold text-[#464555] leading-tight">{action.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HR INSIGHTS */}
+        <HRInsightsRow d={d} culture={culture} navigate={navigate} />
+
+      </div>
+
+      {/* ── RIGHT SIDEBAR ────────────────────────────────────────────────────── */}
+      <div className="hidden xl:flex xl:flex-col w-[288px] shrink-0 gap-4">
+
+        {/* Check In Widget */}
+        <CheckinWidget onRefresh={refetch} />
 
         {/* Upcoming Holidays */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-              <CalendarDays size={14} className="text-[#3525cd]" /> Upcoming Holidays
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
+            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
+              <CalendarDays size={13} className="text-[#3525cd]" /> Upcoming Holidays
             </h2>
-            {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
+            <div className="flex items-center gap-1">
+              {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
+              <button onClick={() => navigate('/holidays')} className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-1.5 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">View all</button>
+            </div>
           </div>
           <div className="divide-y divide-[#f9f9ff]">
             {holidays.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-6 gap-2 text-center">
-                <CalendarDays size={24} className="text-[#c7c4d8]" />
+              <div className="py-6 text-center">
+                <CalendarDays size={20} className="text-[#c7c4d8] mx-auto mb-1" />
                 <p className="text-xs text-[#777587]">No holidays in next 30 days</p>
               </div>
-            ) : (
-              <>
-                {holidays.slice(0, 2).map(h => (
-                  <div key={h.id} className="flex items-center justify-between px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                        <CalendarDays size={13} className="text-amber-500" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-[#151c27]">{h.name}</p>
-                        <p className="text-[0.62rem] text-[#9ca3af]">{fmtDate(h.date)}</p>
-                      </div>
-                    </div>
-                    <span className="text-[0.62rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 capitalize flex-shrink-0">{h.type}</span>
+            ) : holidays.slice(0, 4).map(h => (
+              <div key={h.id} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 text-sm">
+                    🗓️
                   </div>
-                ))}
-                {holidays.length > 2 && (
-                  <div className="px-5 py-2.5 cursor-pointer hover:bg-[#f9f9ff] transition-colors" onClick={() => navigate('/holidays')}>
-                    <p className="text-xs font-bold text-[#3525cd]">+{holidays.length - 2} more →</p>
+                  <div>
+                    <p className="text-xs font-bold text-[#151c27]">{h.name}</p>
+                    <p className="text-[0.6rem] text-[#9ca3af]">{fmtDate(h.date)}</p>
                   </div>
-                )}
-              </>
+                </div>
+                <span className="text-[0.58rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 capitalize shrink-0">{h.type}</span>
+              </div>
+            ))}
+            {holidays.length > 4 && (
+              <div className="px-4 py-2.5 cursor-pointer hover:bg-[#f9f9ff] transition-colors" onClick={() => navigate('/holidays')}>
+                <p className="text-xs font-bold text-[#3525cd]">See holiday calendar →</p>
+              </div>
             )}
           </div>
         </div>
 
         {/* Announcements */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-              <Megaphone size={14} className="text-[#3525cd]" /> Announcements
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
+            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
+              <Megaphone size={13} className="text-[#3525cd]" /> Announcements
             </h2>
             <button onClick={() => navigate('/announcements')}
-              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-1.5 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               View all
             </button>
           </div>
-          <div className="p-5">
-            {!latestAnnouncement ? (
-              <div className="flex flex-col items-center justify-center py-4 gap-2 text-center">
-                <Megaphone size={24} className="text-[#c7c4d8]" />
+          <div className="p-4">
+            {!(announcements || []).length ? (
+              <div className="py-4 text-center">
+                <Megaphone size={20} className="text-[#c7c4d8] mx-auto mb-1" />
                 <p className="text-xs text-[#777587]">No announcements yet</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {(announcements || []).slice(0, 2).map(a => (
-                  <div key={a.id} className="flex items-start gap-3 cursor-pointer hover:bg-[#f9f9ff] -mx-2 px-2 py-2 rounded-lg transition-colors"
+                {(announcements || []).slice(0, 3).map(a => (
+                  <div key={a.id} className="flex items-start gap-2.5 cursor-pointer hover:bg-[#f9f9ff] -mx-1 px-1 py-1.5 rounded-lg transition-colors"
                     onClick={() => navigate('/announcements')}>
-                    <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Megaphone size={13} className="text-[#3525cd]" />
+                    <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center shrink-0 mt-0.5">
+                      <Megaphone size={11} className="text-[#3525cd]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-[#151c27] truncate">{a.title}</p>
-                      <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">
-                        By {a.created_by_name || 'Admin'} · {relTime(a.created_at)}
-                      </p>
+                      <p className="text-xs font-bold text-[#151c27] truncate">{a.title}</p>
+                      <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">By {a.created_by_name || 'Admin'} · {relTime(a.created_at)}</p>
                     </div>
                   </div>
                 ))}
@@ -612,364 +1018,41 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Birthdays widget */}
+        {((birthdaysToday.length + upcomingBirthdays.length) > 0) && (
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
+              <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
+                <Cake size={13} className="text-pink-500" /> Birthdays
+              </h2>
+              {isAdmin && <ManageBirthdaysBtn onRefresh={refetch} />}
+            </div>
+            <div className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex -space-x-2 shrink-0">
+                  {[...birthdaysToday, ...upcomingBirthdays].slice(0, 3).map((u, i) => (
+                    <div key={u.id} style={{ zIndex: 3 - i }}>
+                      <Avatar name={u.name} color={u.avatar_color} size={30} className="ring-2 ring-white" />
+                    </div>
+                  ))}
+                </div>
+                <div className="min-w-0">
+                  {birthdaysToday.length > 0 && (
+                    <p className="text-xs font-bold text-[#151c27]">🎂 {birthdaysToday.length} birthday{birthdaysToday.length > 1 ? 's' : ''} today!</p>
+                  )}
+                  <p className="text-[0.6rem] text-[#777587]">
+                    {[...birthdaysToday, ...upcomingBirthdays].length} upcoming in 7 days
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── LIVE ATTENDANCE + LEAVE REQUESTS + QUICK ACTIONS ─────────────────── */}
-      <div className="grid lg:grid-cols-[1fr_300px_260px] gap-4">
-
-        {/* Live Attendance */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-            <div>
-              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                {isToday ? <Activity size={14} className="text-[#3525cd]" /> : <BarChart2 size={14} className="text-[#3525cd]" />}
-                {isToday ? 'Live Attendance' : 'Attendance'}
-              </h2>
-              <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
-                {isToday ? `Today · ${displayDate}` : displayDate}
-              </p>
-            </div>
-            <button onClick={() => navigate('/calendar')}
-              className="flex items-center gap-1.5 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] px-3 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-              <CalendarDays size={12} /> View Calendar
-            </button>
-          </div>
-
-          <div className="divide-y divide-[#f9f9ff]">
-            {(d?.recentActivity || []).length === 0 ? (
-              <div className="py-12 text-center">
-                <Inbox size={32} className="mx-auto mb-2 text-[#c7c4d8]" />
-                <p className="text-sm text-[#777587]">No activity recorded today</p>
-              </div>
-            ) : (d?.recentActivity || []).map(r => (
-              <div key={r.id || r.name} className="flex items-center gap-3.5 px-5 py-3 hover:bg-[#fafaff] cursor-pointer transition-colors"
-                onClick={() => setSelectedEmp(r)}>
-                <Avatar name={r.name} color={r.avatar_color} size={34} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-[#151c27]">{r.name}</div>
-                  <div className="text-[0.65rem] text-[#9ca3af]">{r.department}</div>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <StatusBadge status={r.status} />
-                  {r.clockify_live && (
-                    <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
-                      style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                      <Timer size={9} /> Clockify
-                    </span>
-                  )}
-                </div>
-                <div className="text-right flex-shrink-0 min-w-[70px]">
-                  {r.check_in && (
-                    <div className="text-xs font-bold text-[#151c27] flex items-center gap-1 justify-end">
-                      <Clock size={10} /> {fmtTime(r.check_in)}
-                    </div>
-                  )}
-                  {r.check_in && (
-                    <div className="text-[0.6rem] text-[#9ca3af]">{r.is_late ? 'Late' : 'On time'}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="px-5 py-3 border-t border-[#e7eefe]">
-            <button onClick={() => navigate('/attendance')}
-              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
-              View all attendance <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* Leave Requests */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-            <div>
-              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                <ClipboardList size={14} className="text-amber-500" />
-                {isAdmin ? 'Leave Requests' : 'My Leaves'}
-              </h2>
-              {isAdmin && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Pending approvals</p>}
-            </div>
-            <button onClick={() => navigate('/leaves')}
-              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-              View all
-            </button>
-          </div>
-
-          <div className="divide-y divide-[#f0f3ff]">
-            {(d?.pendingLeaveList || []).length === 0 ? (
-              <div className="py-12 text-center px-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 size={22} className="text-emerald-500" />
-                </div>
-                <p className="text-sm font-semibold text-[#151c27]">No pending requests</p>
-                <p className="text-xs text-[#777587] mt-1">All leave requests have been reviewed.</p>
-              </div>
-            ) : (d?.pendingLeaveList || []).map(l => (
-              <div key={l.id} className="flex items-start gap-2.5 px-4 py-3">
-                <Avatar name={l.name} color={l.avatar_color} size={30} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-[#151c27]">{l.name}</div>
-                  <div className="text-[0.62rem] text-[#9ca3af] mt-0.5">{fmtDateRange(l.start_date, l.end_date)}</div>
-                  <div className="flex items-center gap-1 mt-1 flex-wrap">
-                    <LeaveTypeBadge type={l.leave_type} />
-                  </div>
-                  {isAdmin && l.status === 'pending' && (
-                    <div className="flex gap-1.5 mt-2">
-                      <button className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
-                        onClick={() => handleApprove(l.id)}>
-                        <CheckCircle2 size={10} /> Approve
-                      </button>
-                      <button className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all"
-                        onClick={() => handleReject(l.id)}>
-                        <X size={10} /> Reject
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#e7eefe]">
-            <h2 className="text-sm font-black text-[#151c27]">Quick Actions</h2>
-          </div>
-          <div className="p-4 grid grid-cols-2 gap-2.5">
-            {[
-              { label: 'Add Employee',        icon: <UserPlus size={15} />,      color: 'text-[#3525cd] bg-[#f0f3ff]',   onClick: () => navigate('/employees') },
-              { label: 'Apply Leave',         icon: <Umbrella size={15} />,      color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
-              { label: 'Mark Attendance',     icon: <UserCheck size={15} />,     color: 'text-amber-600 bg-amber-50',    onClick: () => navigate('/attendance') },
-              { label: 'Regularization',      icon: <Pencil size={15} />,        color: 'text-orange-600 bg-orange-50',  onClick: () => navigate('/regularization') },
-              { label: 'Announcement',        icon: <Megaphone size={15} />,     color: 'text-purple-600 bg-purple-50',  onClick: () => navigate('/announcements') },
-              { label: 'View Reports',        icon: <BarChart2 size={15} />,     color: 'text-sky-600 bg-sky-50',        onClick: () => navigate('/reports') },
-              { label: 'Assign Shift',        icon: <Clock size={15} />,         color: 'text-indigo-600 bg-indigo-50',  onClick: () => navigate('/shifts') },
-              { label: 'Holidays',            icon: <CalendarDays size={15} />,  color: 'text-rose-600 bg-rose-50',      onClick: () => navigate('/holidays') },
-            ].map((action, i) => (
-              <button key={i} onClick={action.onClick}
-                className="flex flex-col items-center gap-2 p-3 rounded-xl border border-[#e7eefe] hover:border-[#3525cd]/30 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-150 text-center bg-white">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${action.color}`}>{action.icon}</div>
-                <span className="text-[0.62rem] font-bold text-[#464555] leading-tight">{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── ANALYTICS (admin only) ────────────────────────────────────────────── */}
-      {isAdmin && analytics && <AnalyticsSection analytics={analytics} navigate={navigate} />}
-
-      {/* Employee quick-view modal */}
+      {/* Employee Quick View Modal */}
       {selectedEmp && <EmployeeQuickView record={selectedEmp} onClose={() => setSelectedEmp(null)} />}
-    </div>
-  );
-}
-
-// ── Analytics Section ─────────────────────────────────────────────────────────
-const MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-const hoverCursor = (event, elements) => {
-  const t = event.native?.target;
-  if (t) t.style.cursor = elements.length > 0 ? 'pointer' : 'default';
-};
-
-function AnalyticsSection({ analytics, navigate }) {
-  const { leaveByStatus = {}, leaveByType = {}, attByStatus = {}, month, year, weeklyTrend = [] } = analytics;
-
-  // Leave Status doughnut
-  const statusData = [
-    { label: 'Approved',  key: 'approved',  color: '#10b981' },
-    { label: 'Pending',   key: 'pending',   color: '#f59e0b' },
-    { label: 'Rejected',  key: 'rejected',  color: '#ef4444' },
-    { label: 'Cancelled', key: 'cancelled', color: '#94a3b8' },
-  ].map(s => ({ ...s, value: leaveByStatus[s.key] || 0 }));
-  const totalLeaves = statusData.reduce((a, b) => a + b.value, 0);
-
-  const leaveStatusChart = {
-    labels: statusData.map(s => s.label),
-    datasets: [{ data: statusData.map(s => s.value), backgroundColor: statusData.map(s => s.color), borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3, hoverBorderColor: '#fff', hoverOffset: 5 }],
-  };
-  const leaveStatusOptions = {
-    cutout: '72%', maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { ...tooltipStyle, callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${totalLeaves > 0 ? Math.round((ctx.parsed / totalLeaves) * 100) : 0}%)` } } },
-    onClick: (_, els) => { if (els.length > 0) navigate(`/leaves?status=${statusData[els[0].index]?.key}`); },
-    onHover: hoverCursor,
-  };
-
-  // Leave By Type doughnut
-  const TYPE_COLORS = { casual: '#10b981', sick: '#ef4444', annual: '#3525cd', emergency: '#f59e0b', wfh: '#6366f1', other: '#8b5cf6' };
-  const typeSegs = Object.entries(leaveByType).map(([key, value]) => ({ key, value, color: TYPE_COLORS[key] || '#94a3b8', label: key.charAt(0).toUpperCase() + key.slice(1) }));
-  const totalTypes = typeSegs.reduce((a, b) => a + b.value, 0);
-
-  const leaveTypeChart = {
-    labels: typeSegs.map(s => s.label),
-    datasets: [{ data: typeSegs.map(s => s.value), backgroundColor: typeSegs.map(s => s.color), borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3, hoverBorderColor: '#fff', hoverOffset: 5 }],
-  };
-  const leaveTypeOptions = {
-    cutout: '72%', maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { ...tooltipStyle, callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} (${totalTypes > 0 ? Math.round((ctx.parsed / totalTypes) * 100) : 0}%)` } } },
-    onClick: (_, els) => { if (els.length > 0) navigate(`/leaves?type=${typeSegs[els[0].index]?.key}`); },
-    onHover: hoverCursor,
-  };
-
-  // Attendance this month horizontal bar
-  const attRows = [
-    { label: 'Present',  key: 'present',  color: '#10b981' },
-    { label: 'On Leave', key: 'on_leave', color: '#f59e0b' },
-    { label: 'WFH',      key: 'wfh',      color: '#6366f1' },
-    { label: 'Half Day', key: 'half_day', color: '#4f46e5' },
-    { label: 'Absent',   key: 'absent',   color: '#ef4444' },
-  ].map(r => ({ ...r, value: attByStatus[r.key] || 0 }));
-  const totalDays = attRows.reduce((a, b) => a + b.value, 0);
-
-  const attChart = {
-    labels: attRows.map(r => r.label),
-    datasets: [{ label: 'Days', data: attRows.map(r => r.value), backgroundColor: attRows.map(r => r.color), borderRadius: 4, borderSkipped: false }],
-  };
-  const attOptions = {
-    indexAxis: 'y', maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { ...tooltipStyle, callbacks: { label: ctx => ` ${ctx.parsed.x} days (${totalDays > 0 ? Math.round((ctx.parsed.x / totalDays) * 100) : 0}%)` } } },
-    scales: {
-      x: { grid: { color: '#f0f0f8' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af' } },
-      y: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#464555' } },
-    },
-    onClick: (_, els) => { if (els.length > 0) navigate(`/attendance?status=${attRows[els[0].index]?.key}`); },
-    onHover: hoverCursor,
-  };
-
-  // Weekly Attendance Trend line
-  const trendChart = {
-    labels: weeklyTrend.map(t => t.label),
-    datasets: [{
-      label: 'Attendance %',
-      data: weeklyTrend.map(t => t.pct),
-      fill: true,
-      backgroundColor: 'rgba(53, 37, 205, 0.06)',
-      borderColor: '#10b981',
-      borderWidth: 2.5,
-      pointRadius: 4,
-      pointBackgroundColor: '#10b981',
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2,
-      pointHoverRadius: 6,
-      tension: 0.4,
-    }],
-  };
-  const trendOptions = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { ...tooltipStyle, callbacks: { label: ctx => ` ${ctx.parsed.y}% attendance` } },
-    },
-    scales: {
-      x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af' } },
-      y: { min: 0, max: 100, grid: { color: '#f0f0f8' }, border: { display: false }, ticks: { callback: v => `${v}%`, font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 5 } },
-    },
-    onClick: () => navigate('/attendance'),
-    onHover: (e) => { const t = e.native?.target; if (t) t.style.cursor = 'pointer'; },
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-        <h2 className="text-sm font-black text-[#151c27]">Analytics Overview</h2>
-        <span className="text-[0.68rem] text-[#9ca3af] font-semibold">Last 7 days</span>
-      </div>
-
-      <div className="grid lg:grid-cols-4 gap-0 divide-x divide-[#e7eefe]">
-
-        {/* Leave Status */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] uppercase tracking-wide mb-4">Leave Status</h3>
-          <div className="relative mx-auto" style={{ height: 160, maxWidth: 160 }}>
-            <Doughnut data={leaveStatusChart} options={leaveStatusOptions} />
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-xl font-black text-[#151c27]">{totalLeaves}</span>
-              <span className="text-[0.58rem] text-[#777587] uppercase">Total</span>
-            </div>
-          </div>
-          <div className="mt-4 space-y-1.5">
-            {statusData.map(s => (
-              <button key={s.key} onClick={() => navigate(`/leaves?status=${s.key}`)}
-                className="w-full flex items-center justify-between text-xs hover:bg-[#f9f9ff] px-1 py-0.5 rounded transition-colors">
-                <span className="flex items-center gap-1.5 font-medium text-[#464555]">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} /> {s.label}
-                </span>
-                <span className="font-bold text-[#151c27]">{s.value} <span className="text-[#9ca3af] font-normal">({totalLeaves > 0 ? Math.round((s.value / totalLeaves) * 100) : 0}%)</span></span>
-              </button>
-            ))}
-            <div className="flex justify-between text-xs pt-2 border-t border-[#f0f3ff]">
-              <span className="text-[#777587]">Total Leaves</span>
-              <span className="font-black text-[#151c27]">{totalLeaves}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Leave By Type */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] uppercase tracking-wide mb-4">Leave By Type</h3>
-          {typeSegs.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-sm text-[#9ca3af]">No data</div>
-          ) : (
-            <>
-              <div className="relative mx-auto" style={{ height: 160, maxWidth: 160 }}>
-                <Doughnut data={leaveTypeChart} options={leaveTypeOptions} />
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xl font-black text-[#151c27]">{totalTypes}</span>
-                  <span className="text-[0.58rem] text-[#777587] uppercase">Total</span>
-                </div>
-              </div>
-              <div className="mt-4 space-y-1.5">
-                {typeSegs.map(s => (
-                  <button key={s.key} onClick={() => navigate(`/leaves?type=${s.key}`)}
-                    className="w-full flex items-center justify-between text-xs hover:bg-[#f9f9ff] px-1 py-0.5 rounded transition-colors">
-                    <span className="flex items-center gap-1.5 font-medium text-[#464555]">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} /> {s.label}
-                    </span>
-                    <span className="font-bold text-[#151c27]">{s.value} <span className="text-[#9ca3af] font-normal">({totalTypes > 0 ? Math.round((s.value / totalTypes) * 100) : 0}%)</span></span>
-                  </button>
-                ))}
-                <div className="flex justify-between text-xs pt-2 border-t border-[#f0f3ff]">
-                  <span className="text-[#777587]">Total Leaves</span>
-                  <span className="font-black text-[#151c27]">{totalTypes}</span>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Attendance This Month */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] uppercase tracking-wide mb-1">Attendance</h3>
-          <p className="text-[0.65rem] text-[#9ca3af] mb-4">{MONTH_NAMES[month]} {year} · Click to filter</p>
-          {totalDays === 0 ? (
-            <div className="h-40 flex items-center justify-center text-sm text-[#9ca3af]">No data yet</div>
-          ) : (
-            <div style={{ height: 180 }}>
-              <Bar data={attChart} options={attOptions} />
-            </div>
-          )}
-          <div className="mt-3 pt-3 border-t border-[#f0f3ff] flex justify-between text-xs">
-            <span className="text-[#777587]">Total Days</span>
-            <span className="font-black text-[#151c27]">{totalDays}</span>
-          </div>
-        </div>
-
-        {/* Weekly Attendance Trend */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] uppercase tracking-wide mb-1">Weekly Attendance Trend</h3>
-          <p className="text-[0.65rem] text-[#9ca3af] mb-4">Last 7 days · Click to view attendance</p>
-          {weeklyTrend.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-sm text-[#9ca3af]">No data</div>
-          ) : (
-            <div style={{ height: 180 }}>
-              <Line data={trendChart} options={trendOptions} />
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

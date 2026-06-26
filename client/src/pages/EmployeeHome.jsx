@@ -27,6 +27,8 @@ export default function EmployeeHome() {
   const { data: culture } = useQuery({
     queryKey: ['culture'],
     queryFn:  () => apiGet('/culture'),
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
 
   const recentLeaves     = myLeaves.slice(0, 4);
