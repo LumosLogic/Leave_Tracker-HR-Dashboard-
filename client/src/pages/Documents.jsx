@@ -228,11 +228,8 @@ export default function Documents() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{isEmployee ? 'My Documents' : 'Employee Documents'}</h1>
-          <p className="page-subtitle">{docs.length} document{docs.length !== 1 ? 's' : ''} · securely stored</p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm text-[#777587] font-medium">{docs.length} document{docs.length !== 1 ? 's' : ''} · securely stored</p>
         {isEmployee && docs.length > 0 && (
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
             <Upload size={15} /> Upload Document

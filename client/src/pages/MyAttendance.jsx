@@ -116,14 +116,8 @@ export default function MyAttendance() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-black text-[#151c27] tracking-tight">My Attendance</h1>
-          <p className="text-[#777587] text-sm mt-0.5">Your personal attendance history.</p>
-        </div>
-
-        {/* Month nav */}
+      {/* Month nav */}
+      <div className="flex justify-end mb-6">
         <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-xl p-1 shadow-sm">
           <button onClick={prevMonth} className="p-2 text-[#464555] hover:text-[#151c27] hover:bg-[#f0f3ff] rounded-lg transition-colors">
             <ChevronLeft size={16} />

@@ -90,13 +90,10 @@ export default function NotificationCenter() {
 
   return (
     <div className={wrap}>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Notifications</h1>
-          <p className="page-subtitle">
-            {unread > 0 ? <span className="font-bold text-[#3525cd]">{unread} unread</span> : 'All caught up'} · {notifications.length} total
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm font-medium text-[#777587]">
+          {unread > 0 ? <span className="font-bold text-[#3525cd]">{unread} unread</span> : 'All caught up'} · {notifications.length} total
+        </p>
         <div className="flex items-center gap-2">
           {/* Push notification toggle — shown for employees on this page */}
           {isEmployee && isSupported && (

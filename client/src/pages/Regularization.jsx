@@ -112,7 +112,7 @@ function ApplyModal({ open, onClose }) {
 
 export default function Regularization() {
   const { isAdmin, isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const wrap = '';
   const [applyOpen, setApplyOpen] = useState(false);
   const [reviewReq, setReviewReq] = useState(null);
   const [filter,    setFilter]    = useState('all');

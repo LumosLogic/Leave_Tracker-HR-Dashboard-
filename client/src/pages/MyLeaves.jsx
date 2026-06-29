@@ -328,12 +328,8 @@ export default function MyLeaves() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-black text-[#151c27] tracking-tight">My Leaves</h1>
-          <p className="text-[#777587] text-sm mt-0.5">Apply for leave and track your requests.</p>
-        </div>
+      {/* Action bar */}
+      <div className="flex justify-end mb-6">
         <button
           onClick={() => setApplyOpen(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all"

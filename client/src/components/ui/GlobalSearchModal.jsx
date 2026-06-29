@@ -2,21 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Users, Umbrella, FileText, Megaphone, ArrowRight, X } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 export function GlobalSearchModal({ open, onClose }) {
-  const [query, setQuery] = useState('');
+  const { isEmployee, isRootAdmin } = useAuth();
+  const [query,   setQuery]   = useState('');
   const [results, setResults] = useState({ employees: [], leaves: [], documents: [], announcements: [] });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // ESC to close
   useEffect(() => {
-    function handleKeyDown(e) {
-      if (e.key === 'Escape') onClose();
-    }
-    if (open) window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    if (open) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Clear results when modal closes or query is empty
   useEffect(() => {
     if (!query.trim() || !open) {
       setResults({ employees: [], leaves: [], documents: [], announcements: [] });
@@ -27,46 +29,98 @@ export function GlobalSearchModal({ open, onClose }) {
       setLoading(true);
       try {
         const q = query.toLowerCase();
-        const [emps, lvs, docs, anns] = await Promise.all([
-          apiGet('/employees').catch(() => []),
-          apiGet('/leaves').catch(() => []),
-          apiGet('/documents').catch(() => []),
-          apiGet('/announcements').catch(() => [])
-        ]);
 
-        setResults({
-          employees: (emps || []).filter(e => e.name?.toLowerCase().includes(q) || e.email?.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q)).slice(0, 4),
-          leaves: (lvs || []).filter(l => l.employee_name?.toLowerCase().includes(q) || l.leave_type?.toLowerCase().includes(q) || l.reason?.toLowerCase().includes(q)).slice(0, 4),
-          documents: (docs || []).filter(d => d.title?.toLowerCase().includes(q) || d.category?.toLowerCase().includes(q)).slice(0, 4),
-          announcements: (anns || []).filter(a => a.title?.toLowerCase().includes(q) || a.content?.toLowerCase().includes(q)).slice(0, 4),
-        });
+        if (isEmployee) {
+          // Employee: search only own data
+          const [lvs, docs, anns] = await Promise.all([
+            apiGet('/leaves').catch(() => []),
+            apiGet('/documents').catch(() => []),
+            apiGet('/announcements').catch(() => []),
+          ]);
+          setResults({
+            employees: [],
+            leaves: (lvs || []).filter(l =>
+              l.leave_type?.toLowerCase().includes(q) ||
+              l.reason?.toLowerCase().includes(q) ||
+              l.status?.toLowerCase().includes(q)
+            ).slice(0, 4),
+            documents: (docs || []).filter(d =>
+              d.name?.toLowerCase().includes(q) ||
+              d.category?.toLowerCase().includes(q)
+            ).slice(0, 4),
+            announcements: (anns || []).filter(a =>
+              a.title?.toLowerCase().includes(q) ||
+              a.content?.toLowerCase().includes(q)
+            ).slice(0, 4),
+          });
+        } else {
+          // HR Admin / Root Admin: search all org data
+          const [emps, lvs, docs, anns] = await Promise.all([
+            apiGet('/employees').catch(() => []),
+            apiGet('/leaves').catch(() => []),
+            apiGet('/documents').catch(() => []),
+            apiGet('/announcements').catch(() => []),
+          ]);
+          setResults({
+            employees: (emps || []).filter(e =>
+              e.name?.toLowerCase().includes(q) ||
+              e.email?.toLowerCase().includes(q) ||
+              e.department?.toLowerCase().includes(q)
+            ).slice(0, 4),
+            leaves: (lvs || []).filter(l =>
+              l.employee_name?.toLowerCase().includes(q) ||
+              l.name?.toLowerCase().includes(q) ||
+              l.leave_type?.toLowerCase().includes(q) ||
+              l.reason?.toLowerCase().includes(q)
+            ).slice(0, 4),
+            documents: (docs || []).filter(d =>
+              d.name?.toLowerCase().includes(q) ||
+              d.title?.toLowerCase().includes(q) ||
+              d.category?.toLowerCase().includes(q)
+            ).slice(0, 4),
+            announcements: (anns || []).filter(a =>
+              a.title?.toLowerCase().includes(q) ||
+              a.content?.toLowerCase().includes(q)
+            ).slice(0, 4),
+          });
+        }
       } finally {
         setLoading(false);
       }
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [query, open]);
+  }, [query, open, isEmployee]);
 
   if (!open) return null;
 
-  const handleSelect = (path) => {
+  // Navigate based on role
+  const paths = isEmployee
+    ? { employees: '/portal/home', leaves: '/portal/leaves', documents: '/portal/documents', announcements: '/portal/announcements' }
+    : { employees: '/employees',  leaves: '/leaves',         documents: '/documents',         announcements: '/announcements' };
+
+  const handleSelect = (section) => {
     onClose();
-    navigate(path);
+    navigate(paths[section]);
   };
 
-  const hasResults = results.employees.length > 0 || results.leaves.length > 0 || results.documents.length > 0 || results.announcements.length > 0;
+  const hasResults = results.employees.length > 0 || results.leaves.length > 0 ||
+                     results.documents.length > 0  || results.announcements.length > 0;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-20 px-4">
       <div className="fixed inset-0 bg-[#04060e]/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div className="relative bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-[#c7c4d8] overflow-hidden flex flex-col z-10 animate-in fade-in zoom-in-95 duration-150">
+
+        {/* Search input */}
         <div className="flex items-center px-4 py-3.5 border-b border-[#e7eefe] gap-3">
           <Search size={18} className="text-[#3525cd] shrink-0" />
           <input
             autoFocus
             className="flex-1 bg-transparent border-none text-base font-medium text-[#151c27] placeholder-[#777587] focus:outline-none"
-            placeholder="Search employees, leaves, documents, announcements... (ESC to close)"
+            placeholder={isEmployee
+              ? 'Search your leaves, documents, announcements…'
+              : 'Search employees, leaves, documents, announcements…'}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -76,19 +130,34 @@ export function GlobalSearchModal({ open, onClose }) {
           </button>
         </div>
 
+        {/* Role hint */}
+        {!query.trim() && (
+          <div className="px-4 py-2 bg-[#fafaff] border-b border-[#f0f3ff] flex items-center gap-2">
+            <span className={`text-[0.6rem] font-black px-2 py-0.5 rounded-full border uppercase tracking-wider ${
+              isEmployee ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]'
+            }`}>
+              {isEmployee ? 'Employee' : isRootAdmin ? 'Root Admin' : 'HR Admin'}
+            </span>
+            <span className="text-[0.68rem] text-[#777587]">
+              {isEmployee ? 'Searching your personal workspace' : 'Searching all organization data'}
+            </span>
+          </div>
+        )}
+
         <div className="max-h-96 overflow-y-auto p-4 divide-y divide-[#f0f3ff]">
           {!query.trim() && (
             <div className="py-8 text-center text-xs text-[#777587]">
-              Type to search across organization resources. Press <kbd className="px-1.5 py-0.5 rounded bg-[#f0f3ff] border border-[#c7c4d8] font-mono text-[0.65rem]">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-[#f0f3ff] border border-[#c7c4d8] font-mono text-[0.65rem]">K</kbd> anytime.
+              Type to search. Press <kbd className="px-1.5 py-0.5 rounded bg-[#f0f3ff] border border-[#c7c4d8] font-mono text-[0.65rem]">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-[#f0f3ff] border border-[#c7c4d8] font-mono text-[0.65rem]">K</kbd> anytime.
             </div>
           )}
 
           {query.trim() && !loading && !hasResults && (
             <div className="py-8 text-center text-xs text-[#777587]">
-              No matching records found for "{query}".
+              No matching records found for <strong>"{query}"</strong>.
             </div>
           )}
 
+          {/* Employees — admin/root only */}
           {results.employees.length > 0 && (
             <div className="py-2.5">
               <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
@@ -96,7 +165,7 @@ export function GlobalSearchModal({ open, onClose }) {
               </div>
               <div className="space-y-1">
                 {results.employees.map(e => (
-                  <div key={e.id} onClick={() => handleSelect('/employees')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={e.id} onClick={() => handleSelect('employees')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
                       <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{e.name}</div>
                       <div className="text-[0.65rem] text-[#777587]">{e.department} · {e.email}</div>
@@ -108,17 +177,20 @@ export function GlobalSearchModal({ open, onClose }) {
             </div>
           )}
 
+          {/* Leaves */}
           {results.leaves.length > 0 && (
             <div className="py-2.5">
               <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
-                <Umbrella size={12} className="text-amber-600" /> Leave Requests
+                <Umbrella size={12} className="text-amber-600" /> {isEmployee ? 'My Leave Requests' : 'Leave Requests'}
               </div>
               <div className="space-y-1">
                 {results.leaves.map(l => (
-                  <div key={l.id} onClick={() => handleSelect('/leaves')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={l.id} onClick={() => handleSelect('leaves')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
-                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{l.employee_name} ({l.leave_type})</div>
-                      <div className="text-[0.65rem] text-[#777587]">{l.start_date} to {l.end_date} · Status: {l.status}</div>
+                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd] capitalize">
+                        {isEmployee ? l.leave_type : (l.employee_name || l.name)} {!isEmployee && `(${l.leave_type})`}
+                      </div>
+                      <div className="text-[0.65rem] text-[#777587]">{l.start_date} → {l.end_date} · {l.status}</div>
                     </div>
                     <ArrowRight size={14} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
                   </div>
@@ -127,16 +199,17 @@ export function GlobalSearchModal({ open, onClose }) {
             </div>
           )}
 
+          {/* Documents */}
           {results.documents.length > 0 && (
             <div className="py-2.5">
               <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
-                <FileText size={12} className="text-indigo-600" /> Documents
+                <FileText size={12} className="text-indigo-600" /> {isEmployee ? 'My Documents' : 'Documents'}
               </div>
               <div className="space-y-1">
                 {results.documents.map(d => (
-                  <div key={d.id} onClick={() => handleSelect('/documents')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={d.id} onClick={() => handleSelect('documents')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
-                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{d.title}</div>
+                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{d.name || d.title}</div>
                       <div className="text-[0.65rem] text-[#777587]">{d.category || 'Company Doc'}</div>
                     </div>
                     <ArrowRight size={14} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
@@ -146,6 +219,7 @@ export function GlobalSearchModal({ open, onClose }) {
             </div>
           )}
 
+          {/* Announcements */}
           {results.announcements.length > 0 && (
             <div className="py-2.5">
               <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
@@ -153,7 +227,7 @@ export function GlobalSearchModal({ open, onClose }) {
               </div>
               <div className="space-y-1">
                 {results.announcements.map(a => (
-                  <div key={a.id} onClick={() => handleSelect('/announcements')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={a.id} onClick={() => handleSelect('announcements')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
                       <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{a.title}</div>
                       <div className="text-[0.65rem] text-[#777587] line-clamp-1">{a.content}</div>

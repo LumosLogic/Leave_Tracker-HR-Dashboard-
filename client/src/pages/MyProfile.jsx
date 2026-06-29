@@ -105,7 +105,7 @@ export default function MyProfile() {
   }
 
   return (
-    <div className="p-5 md:p-8 max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="mb-2">
         <h1 className="text-2xl font-black text-[#151c27] tracking-tight">My Profile</h1>
         <p className="text-[#777587] text-sm mt-0.5">Manage your personal information, security and privacy settings.</p>
