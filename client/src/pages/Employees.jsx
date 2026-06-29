@@ -211,6 +211,13 @@ function EmployeeProfile({ emp, onBack }) {
     enabled:  isCustomReady,
   });
 
+  const { data: schedule } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings/schedule'),
+    staleTime: 300000,
+  });
+  const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
+
   // Compute range boundaries
   let rangeStart, rangeEnd;
   if (viewMode === 'monthly') {
@@ -225,14 +232,16 @@ function EmployeeProfile({ emp, onBack }) {
   }
   const effectiveEnd = today < rangeEnd ? today : rangeEnd;
 
-  const workingDays  = isCustomReady ? countWorkingDaysInRange(rangeStart, effectiveEnd) : 0;
+  const workingDays  = isCustomReady ? countWorkingDaysInRange(rangeStart, effectiveEnd, activeWorkDays) : 0;
   const approved     = leaves.filter(l => l.status === 'approved');
-  const onLeaveCount = approved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, effectiveEnd), 0);
-  const halfDayCount = approved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, effectiveEnd), 0);
-  const wfhCount     = approved.filter(l => l.leave_time === 'wfh').reduce((s, l)  => s + countLeaveDaysInRange(l, rangeStart, effectiveEnd), 0);
+  const onLeaveCount = approved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
+  const halfDayCount = approved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
+  const wfhCount     = approved.filter(l => l.leave_time === 'wfh').reduce((s, l)  => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
+
   const lateCount    = attendance.filter(r => r.is_late).length;
   const absentCount  = attendance.filter(r => r.status === 'absent').length;
   const presentCount = Math.max(0, workingDays - onLeaveCount - absentCount);
+
 
   const periodLabel = viewMode === 'monthly' ? `${MONTHS[month - 1]} ${year}`
                     : viewMode === 'yearly'  ? `${year}`

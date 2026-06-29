@@ -96,9 +96,13 @@ function leaveAppliedHtml(employee, leave) {
         ${ROW('To Date',    leave.end_date)}
         ${ROW('Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
       </table>
-      <div style="margin-top:20px;padding:12px 16px;background:#eff6ff;border-left:4px solid #0284C7;border-radius:4px;font-size:13px;color:#1e3a5f;">
-        Please log in to <strong>HR Tracker</strong> to approve or reject this request.
+      <div style="margin-top:24px;text-align:center;">
+        <a href="${process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com'}/leaves" 
+           style="display:inline-block;background:linear-gradient(135deg,#3525cd,#712ae2);color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;box-shadow:0 4px 12px rgba(53,37,205,0.25);">
+          Review Leave Request →
+        </a>
       </div>
+
       ${FOOTER}
     `)
   );

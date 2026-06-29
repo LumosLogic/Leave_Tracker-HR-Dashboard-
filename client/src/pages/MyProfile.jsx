@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { UserCircle, Lock, Save, Eye, EyeOff, Check, Building2, Briefcase, Mail } from 'lucide-react';
-import { apiPut, apiGet } from '@/lib/api';
+import { UserCircle, Lock, Save, Eye, EyeOff, Check, Building2, Briefcase, Mail, ShieldCheck, ShieldAlert, Trash2, AlertTriangle } from 'lucide-react';
+import { apiPut, apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { Modal } from '@/components/ui/Modal';
 import { initials } from '@/lib/utils';
 
 const AVATAR_COLORS = [
@@ -24,6 +25,12 @@ export default function MyProfile() {
   const [confPw, setConfPw] = useState('');
   const [showCur, setShowCur] = useState(false);
   const [showNew, setShowNew] = useState(false);
+
+  // Email verification modal state
+  const [verifyModal, setVerifyModal] = useState(false);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [delModal, setDelModal] = useState(false);
+  const [delReason, setDelReason] = useState('');
 
   // Fetch multi-department info for employees
   const { data: myDepts = [] } = useQuery({
@@ -55,6 +62,42 @@ export default function MyProfile() {
     onError: (e) => toast(e.message, 'error'),
   });
 
+  const sendVerifyCode = useMutation({
+    mutationFn: () => apiPost('/auth/send-verification', {}),
+    onSuccess: (data) => {
+      toast(data.message || 'Verification code sent to your email.', 'info');
+      setVerifyModal(true);
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
+  const submitVerify = useMutation({
+    mutationFn: () => apiPost('/auth/verify-email', { code: verifyCode }),
+    onSuccess: (data) => {
+      toast(data.message || 'Email verified successfully!', 'success');
+      saveAuth(token, { ...user, email_verified: true });
+      setVerifyModal(false); setVerifyCode('');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
+  const deactivateAcc = useMutation({
+    mutationFn: () => apiPost('/auth/deactivate', {}),
+    onSuccess: () => {
+      toast('Account deactivated successfully.', 'warning');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
+  const requestDel = useMutation({
+    mutationFn: () => apiPost('/auth/request-deletion', { reason: delReason }),
+    onSuccess: (data) => {
+      toast(data.message || 'Deletion request submitted to HR.', 'success');
+      setDelModal(false); setDelReason('');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
   function handlePwSubmit() {
     if (newPw !== confPw) { toast('Passwords do not match.', 'error'); return; }
     if (newPw.length < 6) { toast('Password must be at least 6 characters.', 'error'); return; }
@@ -65,14 +108,26 @@ export default function MyProfile() {
     <div className="p-5 md:p-8 max-w-2xl mx-auto space-y-6">
       <div className="mb-2">
         <h1 className="text-2xl font-black text-[#151c27] tracking-tight">My Profile</h1>
-        <p className="text-[#777587] text-sm mt-0.5">Manage your personal information and password.</p>
+        <p className="text-[#777587] text-sm mt-0.5">Manage your personal information, security and privacy settings.</p>
       </div>
 
       {/* Account Info — email editable */}
       <div className="bg-white rounded-xl shadow-card border border-[#c7c4d8] p-6">
-        <h2 className="text-sm font-black text-[#151c27] uppercase tracking-wider flex items-center gap-2 mb-5">
-          <UserCircle size={15} className="text-[#3525cd]" /> Account Info
-        </h2>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-black text-[#151c27] uppercase tracking-wider flex items-center gap-2">
+            <UserCircle size={15} className="text-[#3525cd]" /> Account Info
+          </h2>
+          {user?.email_verified ? (
+            <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+              <ShieldCheck size={13} /> Email Verified
+            </span>
+          ) : (
+            <button onClick={() => sendVerifyCode.mutate()} disabled={sendVerifyCode.isPending}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300 font-bold hover:bg-amber-100 transition-colors">
+              <ShieldAlert size={13} /> {sendVerifyCode.isPending ? 'Sending…' : 'Verify Email'}
+            </button>
+          )}
+        </div>
         <div className="space-y-3">
           <div>
             <label className="form-label flex items-center gap-1.5"><Mail size={13} className="text-[#3525cd]" /> Email Address</label>
@@ -193,6 +248,57 @@ export default function MyProfile() {
           </button>
         </div>
       </div>
+
+      {/* Account Privacy & GDPR Controls */}
+      <div className="bg-white rounded-xl shadow-card border border-rose-200 p-6">
+        <h2 className="text-sm font-black text-rose-700 uppercase tracking-wider flex items-center gap-2 mb-2">
+          <AlertTriangle size={15} className="text-rose-600" /> Account Controls & Privacy (GDPR)
+        </h2>
+        <p className="text-xs text-[#777587] mb-4">Manage your account deactivation or submit a GDPR Right to be Forgotten deletion request.</p>
+
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={() => deactivateAcc.mutate()} disabled={deactivateAcc.isPending}
+            className="btn btn-outline btn-sm border-amber-300 text-amber-800 hover:bg-amber-50">
+            {deactivateAcc.isPending ? 'Deactivating…' : 'Deactivate Account'}
+          </button>
+          <button onClick={() => setDelModal(true)}
+            className="btn btn-danger btn-sm flex items-center gap-1.5">
+            <Trash2 size={13} /> Request Account Deletion (GDPR)
+          </button>
+        </div>
+      </div>
+
+      {/* Verification Code Modal */}
+      <Modal open={verifyModal} onClose={() => setVerifyModal(false)} title="Enter Email Verification Code"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setVerifyModal(false)} className="btn btn-outline btn-sm">Cancel</button>
+            <button onClick={() => submitVerify.mutate()} disabled={submitVerify.isPending || verifyCode.length < 6} className="btn btn-primary btn-sm">
+              {submitVerify.isPending ? 'Verifying…' : 'Verify Now'}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-xs text-[#777587] mb-3">Please enter the 6-digit verification code sent to <strong>{user?.email}</strong>.</p>
+        <input className="form-control tracking-widest text-center text-lg font-black" maxLength={6} placeholder="123456" value={verifyCode} onChange={e => setVerifyCode(e.target.value)} />
+      </Modal>
+
+      {/* GDPR Deletion Request Modal */}
+      <Modal open={delModal} onClose={() => setDelModal(false)} title="Request Account Deletion (GDPR)"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setDelModal(false)} className="btn btn-outline btn-sm">Cancel</button>
+            <button onClick={() => requestDel.mutate()} disabled={requestDel.isPending} className="btn btn-danger btn-sm">
+              {requestDel.isPending ? 'Submitting…' : 'Submit Deletion Request'}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-xs text-[#777587] mb-3">Under GDPR Right to be Forgotten, you can request permanent deletion of your profile and data. HR will review your request.</p>
+        <label className="form-label">Reason for deletion (optional)</label>
+        <textarea className="form-control text-xs" rows={3} placeholder="Provide a reason..." value={delReason} onChange={e => setDelReason(e.target.value)} />
+      </Modal>
     </div>
   );
 }
+

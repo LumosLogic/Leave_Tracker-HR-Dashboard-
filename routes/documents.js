@@ -45,8 +45,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const allowedMIMEs = [
+      'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    if (!allowedMIMEs.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Invalid file type. Only PDF, Images (JPG, PNG, WEBP), and Word documents are permitted.' });
+    }
+
     const { name, category, userId, expiry_date } = req.body;
     const targetId = isAdmin(req.user.role) && userId ? Number(userId) : req.user.id;
+
 
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(

@@ -4,6 +4,8 @@ import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, In
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
+import { countWorkingDaysInRange } from '@/lib/utils';
+
 
 const LEAVE_TYPES = [
   { value: 'annual',    label: 'Annual Leave',    quota: 'annual'     },
@@ -387,27 +389,28 @@ export default function MyLeaves() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-[#151c27]">
-                      {l.start_date === l.end_date ? l.start_date : `${l.start_date} → ${l.end_date}`}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-[#151c27]">
+                        {l.start_date === l.end_date ? l.start_date : `${l.start_date} → ${l.end_date}`}
+                      </p>
+                      <span className="text-[0.68rem] font-bold px-2 py-0.5 rounded bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+                        {l.leave_time === 'half' ? '0.5 Working Day' : `${countWorkingDaysInRange(l.start_date, l.end_date)} Working Days`}
+                      </span>
+                    </div>
+
                     {l.reason && <p className="text-xs text-[#777587] mt-1 italic">"{l.reason}"</p>}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border font-bold ${s.bg} ${s.text} ${s.border}`}>
                       {s.icon} {l.status}
                     </span>
-                    {l.status === 'approved' && (
-                      <button onClick={() => revert.mutate(l.id)} disabled={revert.isPending}
-                        className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 font-semibold hover:bg-amber-100 transition-colors">
-                        <RotateCcw size={12} /> Revert
-                      </button>
-                    )}
                     {l.status === 'pending' && (
                       <button onClick={() => setDelTarget(l)}
                         className="w-7 h-7 flex items-center justify-center rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors">
                         <Trash2 size={13} />
                       </button>
                     )}
+
                   </div>
                 </div>
               </div>

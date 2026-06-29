@@ -60,6 +60,8 @@ export default function Calendar() {
                       : l.leave_time === 'half' ? 'half_day'
                       : 'on_leave';
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      if (dow === 0 || dow === 6) continue; // Skip Saturday and Sunday
       const ds = toISODate(d);
       if (!grouped[ds]) grouped[ds] = [];
       const existingIdx = grouped[ds].findIndex(r => r.user_id === l.user_id);

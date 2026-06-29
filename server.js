@@ -213,13 +213,25 @@ async function getRecipients(oId) {
     if (oId) q = q.eq('organization_id', oId);
     const { data } = await q;
     if (data && data.length > 0) return data.map(r => r.email).filter(Boolean);
-  } catch { /* fall back to env */ }
-  return [
+  } catch { /* fall back */ }
+
+  const envEmails = [
     process.env.HR_EMAIL,
     process.env.COMPANY_HEAD_1_EMAIL,
     process.env.COMPANY_HEAD_2_EMAIL,
   ].filter(Boolean);
+  if (envEmails.length > 0) return envEmails;
+
+  try {
+    let adminQuery = supabase.from('users').select('email').in('role', ['admin', 'root_admin']);
+    if (oId) adminQuery = adminQuery.eq('organization_id', oId);
+    const { data: admins } = await adminQuery;
+    if (admins && admins.length > 0) return admins.map(a => a.email).filter(Boolean);
+  } catch { /* ignore */ }
+
+  return [];
 }
+
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
@@ -639,6 +651,73 @@ app.put('/api/auth/change-password', auth, async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── Email Verification & Deactivation Routes ────────────────────────────────
+app.post('/api/auth/send-verification', auth, async (req, res) => {
+  try {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    await supabase.from('users').update({ email_verify_code: code }).eq('id', req.user.id);
+    sendMail({
+      to: req.user.email,
+      subject: 'Email Verification Code — Lumens HR Tracker',
+      html: `<p>Your email verification code is: <strong>${code}</strong></p>`
+    });
+    res.json({ success: true, message: 'Verification code sent to email' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/auth/verify-email', auth, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const { data: user } = await supabase.from('users').select('email_verify_code').eq('id', req.user.id).single();
+    if (!code || user?.email_verify_code !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+    await supabase.from('users').update({ email_verified: true, email_verify_code: null }).eq('id', req.user.id);
+    res.json({ success: true, message: 'Email verified successfully!' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/auth/deactivate', auth, async (req, res) => {
+  try {
+    await supabase.from('users').update({ status: 'inactive' }).eq('id', req.user.id);
+    res.json({ success: true, message: 'Account deactivated successfully' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/auth/request-deletion', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const recipients = await getRecipients(orgId(req));
+    sendMail({
+      to: recipients,
+      subject: `GDPR Account Deletion Request — ${req.user.name}`,
+      html: `<p>Employee <strong>${req.user.name}</strong> (${req.user.email}) has requested account deletion.</p><p>Reason: ${reason || 'None provided'}</p>`
+    });
+    res.json({ success: true, message: 'Account deletion request submitted to HR' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Archive Storage system for Data Restoration
+const archiveStore = [];
+
+app.get('/api/admin/archives', auth, adminOnly, (req, res) => {
+  res.json(archiveStore.filter(a => a.organization_id === orgId(req)));
+});
+
+app.post('/api/admin/archives/:id/restore', auth, adminOnly, async (req, res) => {
+  try {
+    const idx = archiveStore.findIndex(a => a.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Archive record not found' });
+    const item = archiveStore[idx];
+    const { id: _, ...recordToInsert } = item.record;
+    const { error } = await supabase.from(item.table_name).insert(recordToInsert);
+    if (error) throw new Error(error.message);
+    archiveStore.splice(idx, 1);
+    res.json({ success: true, message: 'Record restored successfully' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 
 // ─── Forgot Password ──────────────────────────────────────────────────────────
 app.post('/api/auth/forgot-password', async (req, res) => {
@@ -1357,21 +1436,20 @@ app.post('/api/leaves', auth, async (req, res) => {
       .select('*, users!leaves_user_id_fkey(name, email, department)').single();
     if (error) throw new Error(error.message);
 
-    // Notify HR + company heads when an employee submits a leave request
-    if (req.user.role === 'employee') {
-      const emp = data.users || {};
-      const recipients = await getRecipients(orgId(req));
-      if (recipients.length > 0) {
-        sendMail({
-          to: recipients,
-          subject: `Leave Request — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
-          html: leaveAppliedHtml(
-            { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
-            data
-          ),
-        });
-      }
+    // Notify HR + company heads when a leave request is submitted
+    const emp = data.users || {};
+    const recipients = await getRecipients(orgId(req));
+    if (recipients.length > 0) {
+      sendMail({
+        to: recipients,
+        subject: `Leave Request — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
+        html: leaveAppliedHtml(
+          { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
+          data
+        ),
+      });
     }
+
 
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1481,7 +1559,7 @@ app.put('/api/leaves/:id/revert', auth, async (req, res) => {
 });
 
 
-// Clean up attendance records with leave-based status but no approved leave backing them
+// Clean up attendance records with leave-based status on weekends or with no approved leave backing them
 app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
   try {
     const { data: leaveAttendance } = await supabase.from('attendance')
@@ -1496,6 +1574,13 @@ app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
 
     const toDelete = [];
     for (const att of leaveAttendance) {
+      const d = new Date(att.date + 'T12:00:00');
+      const dow = d.getDay();
+      // Delete if on weekend (Saturday = 6, Sunday = 0)
+      if (dow === 0 || dow === 6) {
+        toDelete.push(att.id);
+        continue;
+      }
       const hasLeave = (approvedLeaves || []).some(l => {
         if (l.user_id !== att.user_id) return false;
         if (att.date < l.start_date || att.date > l.end_date) return false;
@@ -1506,9 +1591,10 @@ app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
     }
 
     if (toDelete.length) await supabase.from('attendance').delete().in('id', toDelete);
-    res.json({ removed: toDelete.length });
+    res.json({ removed: toDelete.length, success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 
 app.delete('/api/leaves/:id', auth, async (req, res) => {
   try {
@@ -2161,6 +2247,7 @@ app.get('/api/leave-balance', auth, async (req, res) => {
       .eq('organization_id', orgId(req))
       .like('date', `${year}-%`);
 
+    const settings = await getSettings(orgId(req));
     let usedLeaveDays = 0;
     for (const l of approvedLeaves || []) {
       if (l.leave_time === 'wfh') continue;
@@ -2170,11 +2257,12 @@ app.get('/api/leave-balance', auth, async (req, res) => {
         const start = new Date(l.start_date + 'T12:00:00');
         const end   = new Date(l.end_date   + 'T12:00:00');
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const dow = d.getDay();
-          if (dow !== 0 && dow !== 6) usedLeaveDays++;
+          const ds = d.toISOString().split('T')[0];
+          if (isWorkingDay(ds, settings)) usedLeaveDays++;
         }
       }
     }
+
 
     res.json({
       userId, year,

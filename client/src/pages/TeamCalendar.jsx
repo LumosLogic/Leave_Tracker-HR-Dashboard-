@@ -61,10 +61,22 @@ export default function TeamCalendar() {
     staleTime: 300000,
   });
 
+  const { data: schedule } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings/schedule'),
+    staleTime: 300000,
+  });
+  const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
+
   function getLeavesForDay(day) {
+    if (!day) return [];
+    const dateObj = new Date(year, month - 1, day);
+    const dow = dateObj.getDay();
+    if (!activeWorkDays.includes(dow)) return []; // Exclude non-working days based on company schedule settings
     const ds = `${year}-${pad(month)}-${pad(day)}`;
     return teamLeaves.filter(l => l.start_date <= ds && l.end_date >= ds);
   }
+
 
   function getHolidayForDay(day) {
     const ds = `${year}-${pad(month)}-${pad(day)}`;

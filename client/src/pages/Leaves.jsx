@@ -8,7 +8,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge, LeaveTypeBadge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { fmtDate, fmtDateRange, fmtTime, fmtHours, initials, todayStr, cn } from '@/lib/utils';
+import { fmtDate, fmtDateRange, fmtTime, fmtHours, initials, todayStr, cn, countWorkingDaysInRange } from '@/lib/utils';
+
 
 const LEAVE_TYPES = ['casual','sick','annual','maternity','paternity','bereavement','unpaid'];
 
@@ -224,7 +225,13 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
           {l.leave_time === 'full' && <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>}
           <StatusBadge status={l.status} />
         </div>
-        <div className="text-xs text-[#777587] mt-1 flex items-center gap-1"><Calendar size={11} /> {fmtDateRange(l.start_date, l.end_date)}</div>
+        <div className="text-xs text-[#777587] mt-1 flex items-center gap-1.5 flex-wrap">
+          <span className="flex items-center gap-1"><Calendar size={11} /> {fmtDateRange(l.start_date, l.end_date)}</span>
+          <span className="text-[0.68rem] font-bold px-2 py-0.5 rounded bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+            {l.leave_time === 'half' ? '0.5 Working Day' : `${countWorkingDaysInRange(l.start_date, l.end_date)} Working Days`}
+          </span>
+        </div>
+
         {l.reason && <div className="text-xs text-[#777587] italic mt-0.5">"{l.reason}"</div>}
         {l.approver_name && <div className="text-xs text-[#777587] mt-0.5">By: {l.approver_name}</div>}
         <div className="flex gap-2 mt-2.5 flex-wrap">

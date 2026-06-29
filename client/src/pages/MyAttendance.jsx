@@ -37,6 +37,13 @@ export default function MyAttendance() {
     queryFn:  () => apiGet(`/leaves?year=${year}&month=${month}`),
   });
 
+  const { data: schedule } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings/schedule'),
+    staleTime: 300000,
+  });
+  const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
+
   // Fetch real-time Clockify hours directly for this employee
   // This gives the accurate SUM of all sessions (start→stop→start→stop) with breaks excluded
   const { data: clockifyData } = useQuery({
@@ -68,6 +75,8 @@ export default function MyAttendance() {
     const start = new Date(l.start_date + 'T12:00:00');
     const end   = new Date(l.end_date   + 'T12:00:00');
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      if (!activeWorkDays.includes(dow)) continue; // Skip non-working days based on company schedule settings
       const ds = toDSString(d);
       // Only overlay if within the displayed month
       const [dy, dm] = ds.split('-').map(Number);
@@ -86,11 +95,17 @@ export default function MyAttendance() {
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayStr   = toDSString(new Date());
 
-  // Summary counts from merged map
+  // Summary counts from merged map (excluding non-working days)
   const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
   Object.values(recMap).forEach(r => {
-    if (summary[r.status] !== undefined) summary[r.status]++;
+    const d = new Date(r.date + 'T12:00:00');
+    const dow = d.getDay();
+    if (activeWorkDays.includes(dow) && summary[r.status] !== undefined) {
+      summary[r.status]++;
+    }
   });
+
+
 
   // Merged records array for the table (original only, no synthetics)
   const tableRecords = records.map(r => {

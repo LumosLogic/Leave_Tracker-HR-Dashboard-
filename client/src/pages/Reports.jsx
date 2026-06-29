@@ -36,15 +36,19 @@ function DownloadModal({ open, onClose, active, onDownload }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Download Report" size="sm"
+    <Modal open={open} onClose={onClose} title="Export & Print Report" size="sm"
       footer={
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-2 flex-wrap">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-secondary" onClick={() => { window.print(); onClose(); }}>
+            <FileText size={14} /> Print / Save PDF
+          </button>
           <button className="btn btn-primary" onClick={handleDownload}>
             <Download size={14} /> Download CSV
           </button>
         </div>
       }>
+
       <div className="space-y-4">
         <div>
           <label className="form-label">Period Type</label>

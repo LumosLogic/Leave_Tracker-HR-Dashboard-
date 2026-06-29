@@ -97,7 +97,13 @@ export function liveElapsed(startTime) {
   return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 }
 
-export function countWorkingDays(year, month, maxDate) {
+export function isDayActive(dow, workDays) {
+  if (!workDays) return dow !== 0 && dow !== 6;
+  const activeList = Array.isArray(workDays) ? workDays : String(workDays).split(',').map(Number);
+  return activeList.includes(dow);
+}
+
+export function countWorkingDays(year, month, maxDate, workDays) {
   let count = 0;
   const days = new Date(year, month, 0).getDate();
   const cap  = maxDate ? new Date(maxDate + 'T23:59:59') : null;
@@ -105,12 +111,12 @@ export function countWorkingDays(year, month, maxDate) {
     const date = new Date(year, month - 1, d);
     if (cap && date > cap) break;
     const dow = date.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (isDayActive(dow, workDays)) count++;
   }
   return count;
 }
 
-export function countLeaveDaysInMonth(leave, year, month, maxDate) {
+export function countLeaveDaysInMonth(leave, year, month, maxDate, workDays) {
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd   = maxDate ? new Date(maxDate + 'T23:59:59') : new Date(year, month, 0);
   const start = new Date(Math.max(new Date(leave.start_date + 'T12:00:00'), monthStart));
@@ -118,12 +124,12 @@ export function countLeaveDaysInMonth(leave, year, month, maxDate) {
   let count = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (isDayActive(dow, workDays)) count++;
   }
   return count;
 }
 
-export function countWorkingDaysInRange(startStr, endStr) {
+export function countWorkingDaysInRange(startStr, endStr, workDays) {
   if (!startStr || !endStr) return 0;
   const start = new Date(startStr + 'T12:00:00');
   const end   = new Date(endStr   + 'T12:00:00');
@@ -131,12 +137,12 @@ export function countWorkingDaysInRange(startStr, endStr) {
   let count = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (isDayActive(dow, workDays)) count++;
   }
   return count;
 }
 
-export function countLeaveDaysInRange(leave, startStr, endStr) {
+export function countLeaveDaysInRange(leave, startStr, endStr, workDays) {
   if (!startStr || !endStr) return 0;
   const rangeStart = new Date(startStr + 'T12:00:00');
   const rangeEnd   = new Date(endStr   + 'T12:00:00');
@@ -146,7 +152,8 @@ export function countLeaveDaysInRange(leave, startStr, endStr) {
   let count = 0;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (isDayActive(dow, workDays)) count++;
   }
   return count;
 }
+
