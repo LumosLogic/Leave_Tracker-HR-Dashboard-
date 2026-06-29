@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, FolderOpen, File, Trash2, Download, AlertCircle, FileText, Image, Archive, X, ExternalLink, Eye, Users } from 'lucide-react';
+import { Upload, FolderOpen, File, Trash2, Download, AlertCircle, FileText, Image, Archive, X, ExternalLink, Eye, Users, Info, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiDelete } from '@/lib/api';
@@ -19,6 +19,42 @@ const CATEGORIES = [
 ];
 
 const CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.value, c]));
+
+// Guidance cards shown in the empty state for employees
+const DOCUMENT_GUIDE = [
+  {
+    icon: '🪪',
+    label: 'Identity Documents',
+    examples: ['Aadhaar Card', 'PAN Card', 'Passport', 'Voter ID'],
+    cats: ['id_proof'],
+    color: 'border-[#3525cd]/20 bg-[#f0f3ff]/60',
+    iconBg: 'bg-[#f0f3ff]',
+  },
+  {
+    icon: '🏠',
+    label: 'Address Proof',
+    examples: ['Utility Bill', 'Bank Statement', 'Rent Agreement'],
+    cats: ['address_proof'],
+    color: 'border-amber-200 bg-amber-50/60',
+    iconBg: 'bg-amber-50',
+  },
+  {
+    icon: '🎓',
+    label: 'Educational Records',
+    examples: ['Degree Certificate', 'Marksheets', 'Diplomas', 'Transcripts'],
+    cats: ['education', 'certificate'],
+    color: 'border-emerald-200 bg-emerald-50/60',
+    iconBg: 'bg-emerald-50',
+  },
+  {
+    icon: '📄',
+    label: 'Employment Documents',
+    examples: ['Offer Letter', 'Appointment Letter', 'Employment Contract', 'NDA'],
+    cats: ['offer_letter', 'contract'],
+    color: 'border-purple-200 bg-purple-50/60',
+    iconBg: 'bg-purple-50',
+  },
+];
 
 function fmtBytes(b) {
   if (!b) return '';
@@ -48,7 +84,6 @@ function PreviewModal({ doc, onClose }) {
       style={{ background: 'rgba(4,6,14,.85)', backdropFilter: 'blur(12px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-[#f0f3ff] flex-shrink-0">
           <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] flex items-center justify-center">
             {fileIcon(doc.file_type)}
@@ -66,8 +101,6 @@ function PreviewModal({ doc, onClose }) {
             <X size={18} />
           </button>
         </div>
-
-        {/* Preview body */}
         <div className="flex-1 overflow-auto bg-[#f9f9ff] flex items-center justify-center p-4">
           {isImage && (
             <img src={doc.file_url} alt={doc.name}
@@ -84,6 +117,55 @@ function PreviewModal({ doc, onClose }) {
   );
 }
 
+// ── Employee guidance shown when no docs uploaded ──────────────────────────────
+function DocumentGuide({ onUpload }) {
+  return (
+    <div className="space-y-6">
+      {/* Info banner */}
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-[#f0f3ff] border border-[#3525cd]/20">
+        <Info size={16} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-xs font-black text-[#151c27] mb-0.5">What documents should I upload?</p>
+          <p className="text-xs text-[#464555]">
+            HR requires certain documents for onboarding and compliance. Upload your documents below —
+            supported formats are <strong>PDF, JPG, PNG, WEBP, DOC, DOCX</strong> (max 10 MB each).
+          </p>
+        </div>
+      </div>
+
+      {/* Document type guide grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {DOCUMENT_GUIDE.map(g => (
+          <div key={g.label} className={`rounded-xl border p-4 ${g.color}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-9 h-9 rounded-xl ${g.iconBg} flex items-center justify-center text-lg flex-shrink-0`}>
+                {g.icon}
+              </div>
+              <p className="text-sm font-black text-[#151c27]">{g.label}</p>
+            </div>
+            <ul className="space-y-1">
+              {g.examples.map(ex => (
+                <li key={ex} className="flex items-center gap-2 text-xs text-[#464555]">
+                  <CheckCircle size={11} className="text-[#3525cd] flex-shrink-0" />
+                  {ex}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {/* Upload CTA */}
+      <div className="text-center py-4">
+        <button className="btn btn-primary" onClick={onUpload}>
+          <Upload size={15} /> Upload Your First Document
+        </button>
+        <p className="text-xs text-[#777587] mt-2">PDF · JPG · PNG · WEBP · DOC · DOCX &nbsp;·&nbsp; Max 10 MB</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Documents() {
   const { isAdmin, isEmployee } = useAuth();
@@ -94,10 +176,10 @@ export default function Documents() {
   const [uploading,   setUploading]   = useState(false);
   const [confirmDel,  setConfirmDel]  = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
-  const [upForm,      setUpForm]      = useState({ name: '', category: 'other', expiry_date: '' });
+  const [upForm,      setUpForm]      = useState({ name: '', category: '', expiry_date: '' });
   const [activeTab,   setActiveTab]   = useState('all');
   const [preview,     setPreview]     = useState(null);
-  const [empFilter,   setEmpFilter]   = useState('all'); // admin: filter by employee
+  const [empFilter,   setEmpFilter]   = useState('all');
 
   const { data: _docsData, isLoading } = useQuery({
     queryKey: ['documents', empFilter],
@@ -113,6 +195,7 @@ export default function Documents() {
 
   async function handleUpload() {
     if (!pendingFile || !upForm.name) { toast('Please enter a name for the document', 'error'); return; }
+    if (!upForm.category) { toast('Please select a document type before uploading', 'error'); return; }
     setUploading(true);
     try {
       const token = localStorage.getItem('lt_token');
@@ -127,7 +210,7 @@ export default function Documents() {
       toast('Document uploaded!', 'success');
       qc.invalidateQueries({ queryKey: ['documents'] });
       setPendingFile(null);
-      setUpForm({ name: '', category: 'other', expiry_date: '' });
+      setUpForm({ name: '', category: '', expiry_date: '' });
     } catch (err) { toast(err.message, 'error'); }
     finally { setUploading(false); }
   }
@@ -139,7 +222,6 @@ export default function Documents() {
   const filtered = activeTab === 'all' ? docs : docs.filter(d => d.category === activeTab);
   const usedCats = [...new Set(docs.map(d => d.category))];
 
-  // For admin: unique employees whose docs we're seeing
   const uniqueEmployees = isAdmin
     ? [...new Map(docs.map(d => [d.user_id, { id: d.user_id, name: d.owner?.name, avatar_color: d.owner?.avatar_color, department: d.owner?.department }])).values()].filter(e => e.name)
     : [];
@@ -151,14 +233,14 @@ export default function Documents() {
           <h1 className="page-title">{isEmployee ? 'My Documents' : 'Employee Documents'}</h1>
           <p className="page-subtitle">{docs.length} document{docs.length !== 1 ? 's' : ''} · securely stored</p>
         </div>
-        {isEmployee && (
+        {isEmployee && docs.length > 0 && (
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
             <Upload size={15} /> Upload Document
           </button>
         )}
       </div>
 
-      <input type="file" ref={fileRef} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+      <input type="file" ref={fileRef} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
         onChange={e => {
           if (e.target.files[0]) {
             const f = e.target.files[0];
@@ -170,34 +252,65 @@ export default function Documents() {
       {/* Upload panel (employee only) */}
       {pendingFile && (
         <div className="card p-5 mb-6 border-[#3525cd]/20 bg-[#f0f3ff]/30">
-          <div className="flex items-center gap-3 mb-4">
-            {fileIcon(pendingFile.type)}
-            <div className="flex-1">
-              <p className="font-bold text-[#151c27] text-sm">{pendingFile.name}</p>
-              <p className="text-xs text-[#777587]">{fmtBytes(pendingFile.size)}</p>
+          {/* File info row */}
+          <div className="flex items-center gap-3 mb-4 pb-4 border-b border-[#e7eefe]">
+            <div className="w-9 h-9 rounded-xl bg-white border border-[#c7c4d8] flex items-center justify-center flex-shrink-0">
+              {fileIcon(pendingFile.type)}
             </div>
-            <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" onClick={() => setPendingFile(null)}>✕</button>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-[#151c27] text-sm truncate">{pendingFile.name}</p>
+              <p className="text-xs text-[#777587]">{fmtBytes(pendingFile.size)} · {pendingFile.type || 'file'}</p>
+            </div>
+            <button className="p-1.5 rounded-lg text-[#777587] hover:text-rose-500 hover:bg-rose-50 transition-colors" onClick={() => setPendingFile(null)}>
+              <X size={16} />
+            </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+
+          {/* Supported formats notice */}
+          <div className="flex items-center gap-2 p-2.5 mb-4 rounded-lg bg-white border border-[#e7eefe] text-xs text-[#777587]">
+            <Info size={12} className="text-[#3525cd] flex-shrink-0" />
+            <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG, WEBP, DOC, DOCX</strong> &nbsp;·&nbsp; Max size: <strong className="text-[#464555]">10 MB</strong></span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="form-label">Document Name *</label>
+              <label className="form-label">Document Name <span className="text-rose-500">*</span></label>
               <input className="form-control" value={upForm.name} onChange={e => setUpForm(v => ({ ...v, name: e.target.value }))} placeholder="e.g. Aadhaar Card" />
-            </div>
-            <div>
-              <label className="form-label">Category</label>
-              <select className="form-control" value={upForm.category} onChange={e => setUpForm(v => ({ ...v, category: e.target.value }))}>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
-              </select>
             </div>
             <div>
               <label className="form-label">Expiry Date <span className="font-normal text-[#777587] normal-case tracking-normal">(if applicable)</span></label>
               <input type="date" className="form-control" value={upForm.expiry_date} onChange={e => setUpForm(v => ({ ...v, expiry_date: e.target.value }))} />
             </div>
           </div>
+
+          {/* Document Type — visual pill selector (mandatory) */}
+          <div className="mb-4">
+            <label className="form-label">
+              Document Type <span className="text-rose-500">*</span>
+              {!upForm.category && <span className="ml-2 text-xs font-normal text-rose-500 normal-case tracking-normal">Required — please select one</span>}
+            </label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {CATEGORIES.map(c => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setUpForm(v => ({ ...v, category: c.value }))}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                    upForm.category === c.value
+                      ? 'bg-[#3525cd] text-white border-[#3525cd] shadow-sm'
+                      : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/50 hover:text-[#3525cd]'
+                  }`}
+                >
+                  <span>{c.icon}</span> {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex gap-3">
-            <button className="btn btn-outline" onClick={() => setPendingFile(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleUpload} disabled={uploading || !upForm.name}>
-              {uploading ? <><span className="spinner w-4 h-4" />Uploading…</> : <><Upload size={14} />Upload</>}
+            <button className="btn btn-outline" onClick={() => { setPendingFile(null); setUpForm({ name: '', category: '', expiry_date: '' }); }}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleUpload} disabled={uploading || !upForm.name || !upForm.category}>
+              {uploading ? <><span className="spinner w-4 h-4" />Uploading…</> : <><Upload size={14} />Upload Document</>}
             </button>
           </div>
         </div>
@@ -246,20 +359,15 @@ export default function Documents() {
       {isLoading ? (
         <div className="loading"><div className="spinner" />Loading documents…</div>
       ) : docs.length === 0 ? (
-        <div className="empty-state">
-          <FolderOpen size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
-          <p className="font-semibold text-[#464555] mb-1">
-            {isEmployee ? 'No documents uploaded yet' : 'No employee documents found'}
-          </p>
-          <p className="text-sm">
-            {isEmployee ? 'Upload your ID, contracts, certificates and other documents' : 'Employees can upload their documents from the Employee Portal'}
-          </p>
-          {isEmployee && (
-            <button className="btn btn-primary mt-4" onClick={() => fileRef.current?.click()}>
-              <Upload size={14} />Upload First Document
-            </button>
-          )}
-        </div>
+        isEmployee ? (
+          <DocumentGuide onUpload={() => fileRef.current?.click()} />
+        ) : (
+          <div className="empty-state">
+            <FolderOpen size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
+            <p className="font-semibold text-[#464555] mb-1">No employee documents found</p>
+            <p className="text-sm">Employees can upload their documents from the Employee Portal</p>
+          </div>
+        )
       ) : (
         <>
           {/* Category filter tabs */}
@@ -289,7 +397,6 @@ export default function Documents() {
               return (
                 <div key={doc.id} className={`card overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-200 ${isExpd ? 'border-rose-200' : isExpng ? 'border-amber-200' : ''}`}>
                   <div className="p-5">
-                    {/* Admin: show employee who owns this doc */}
                     {isAdmin && doc.owner?.name && (
                       <div className="flex items-center gap-2 mb-3 pb-3 border-b border-[#f0f3ff]">
                         <Avatar name={doc.owner.name} color={doc.owner.avatar_color} size={24} />
@@ -355,7 +462,6 @@ export default function Documents() {
         </>
       )}
 
-      {/* Inline preview modal */}
       {preview && <PreviewModal doc={preview} onClose={() => setPreview(null)} />}
 
       <ConfirmModal open={!!confirmDel} title="Delete Document"

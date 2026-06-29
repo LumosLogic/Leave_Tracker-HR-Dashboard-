@@ -706,22 +706,27 @@ app.post('/api/auth/request-deletion', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Archive Storage system for Data Restoration
-const archiveStore = [];
-
-app.get('/api/admin/archives', auth, adminOnly, (req, res) => {
-  res.json(archiveStore.filter(a => a.organization_id === orgId(req)));
+// Archive Storage system for Data Restoration (Supabase-backed)
+app.get('/api/admin/archives', auth, adminOnly, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('archives')
+      .select('*')
+      .eq('organization_id', orgId(req))
+      .order('archived_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/archives/:id/restore', auth, adminOnly, async (req, res) => {
   try {
-    const idx = archiveStore.findIndex(a => a.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Archive record not found' });
-    const item = archiveStore[idx];
+    const { data: item, error: fe } = await supabase.from('archives')
+      .select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
+    if (fe || !item) return res.status(404).json({ error: 'Archive record not found' });
     const { id: _, ...recordToInsert } = item.record;
-    const { error } = await supabase.from(item.table_name).insert(recordToInsert);
-    if (error) throw new Error(error.message);
-    archiveStore.splice(idx, 1);
+    const { error: ie } = await supabase.from(item.table_name).insert(recordToInsert);
+    if (ie) throw new Error(ie.message);
+    await supabase.from('archives').delete().eq('id', req.params.id);
     res.json({ success: true, message: 'Record restored successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1444,18 +1449,21 @@ app.post('/api/leaves', auth, async (req, res) => {
       .select('*, users!leaves_user_id_fkey(name, email, department)').single();
     if (error) throw new Error(error.message);
 
-    // Notify HR + company heads when a leave request is submitted
-    const emp = data.users || {};
-    const recipients = await getRecipients(orgId(req));
-    if (recipients.length > 0) {
-      sendMail({
-        to: recipients,
-        subject: `Leave Request — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
-        html: leaveAppliedHtml(
-          { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
-          data
-        ),
-      });
+    // Notify HR when employee applies leave, or when admin applies on behalf of another user
+    const isOnBehalf = isAdminRole(req.user.role) && targetUserId !== req.user.id;
+    if (req.user.role === 'employee' || isOnBehalf) {
+      const emp = data.users || {};
+      const recipients = await getRecipients(orgId(req));
+      if (recipients.length > 0) {
+        sendMail({
+          to: recipients,
+          subject: `Leave Request — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
+          html: leaveAppliedHtml(
+            { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
+            data
+          ),
+        });
+      }
     }
 
 

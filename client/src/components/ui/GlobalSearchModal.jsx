@@ -11,12 +11,9 @@ export function GlobalSearchModal({ open, onClose }) {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (open) onClose(); else setQuery('');
-      }
+      if (e.key === 'Escape') onClose();
     }
-    window.addEventListener('keydown', handleKeyDown);
+    if (open) window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
 
@@ -141,6 +138,25 @@ export function GlobalSearchModal({ open, onClose }) {
                     <div>
                       <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{d.title}</div>
                       <div className="text-[0.65rem] text-[#777587]">{d.category || 'Company Doc'}</div>
+                    </div>
+                    <ArrowRight size={14} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.announcements.length > 0 && (
+            <div className="py-2.5">
+              <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
+                <Megaphone size={12} className="text-purple-600" /> Announcements
+              </div>
+              <div className="space-y-1">
+                {results.announcements.map(a => (
+                  <div key={a.id} onClick={() => handleSelect('/announcements')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                    <div>
+                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{a.title}</div>
+                      <div className="text-[0.65rem] text-[#777587] line-clamp-1">{a.content}</div>
                     </div>
                     <ArrowRight size={14} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
                   </div>
