@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell } from 'lucide-react';
+import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -17,10 +17,12 @@ const TYPE_CFG = {
 function AnnouncementModal({ open, onClose, ann }) {
   const toast  = useToast();
   const qc     = useQueryClient();
+  const fileRef = useRef(null);
   const isEdit = !!ann;
+  const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState(() => isEdit
-    ? { title: ann.title, content: ann.content, type: ann.type || 'general', priority: ann.priority || 'normal', target_audience: ann.target_audience || 'all', pinned: !!ann.pinned, expires_at: ann.expires_at || '' }
-    : { title: '', content: '', type: 'general', priority: 'normal', target_audience: 'all', pinned: false, expires_at: '' });
+    ? { title: ann.title, content: ann.content, type: ann.type || 'general', priority: ann.priority || 'normal', target_audience: ann.target_audience || 'all', pinned: !!ann.pinned, expires_at: ann.expires_at || '', file_url: ann.file_url || null, file_name: ann.file_name || null, file_type: ann.file_type || null }
+    : { title: '', content: '', type: 'general', priority: 'normal', target_audience: 'all', pinned: false, expires_at: '', file_url: null, file_name: null, file_type: null });
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/announcements/${ann.id}`, form) : apiPost('/announcements', form),
@@ -30,12 +32,37 @@ function AnnouncementModal({ open, onClose, ann }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch('/api/announcements/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setForm(f => ({ ...f, file_url: data.file_url, file_name: data.file_name, file_type: data.file_type }));
+      toast('Poster / Document uploaded!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Announcement' : 'New Announcement'} size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.title || !form.content}>
+          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || uploading || !form.title || !form.content}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : isEdit ? 'Save Changes' : 'Post Announcement'}
           </button>
         </div>
@@ -60,6 +87,30 @@ function AnnouncementModal({ open, onClose, ann }) {
             ))}
           </div>
         </div>
+
+        {/* Poster / Document Upload Section */}
+        <div>
+          <label className="form-label">Attach Poster or Document <span className="font-normal text-[#777587] normal-case tracking-normal">(Stored in Cloudinary)</span></label>
+          <input type="file" ref={fileRef} onChange={handleFileUpload} className="hidden" accept="image/*,application/pdf,.doc,.docx" />
+          {form.file_url ? (
+            <div className="flex items-center justify-between p-3 bg-[#f0f3ff] border border-[#3525cd]/30 rounded-xl">
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip size={16} className="text-[#3525cd] flex-shrink-0" />
+                <span className="text-xs font-bold text-[#151c27] truncate">{form.file_name || 'Attached Document'}</span>
+              </div>
+              <button type="button" onClick={() => setForm(f => ({ ...f, file_url: null, file_name: null, file_type: null }))}
+                className="p-1 text-[#777587] hover:text-rose-600 rounded-lg transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[#c7c4d8] hover:border-[#3525cd] bg-[#f9f9ff] hover:bg-[#f0f3ff] rounded-xl text-xs font-bold text-[#3525cd] transition-all">
+              {uploading ? <><span className="spinner w-4 h-4" /> Uploading to Cloudinary…</> : <><Upload size={16} /> Upload Image / PDF / Doc</>}
+            </button>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Audience</label>
@@ -110,6 +161,7 @@ export default function AnnouncementsPage() {
   const [editAnn,    setEditAnn]    = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [filter,     setFilter]     = useState('all');
+  const [previewMedia, setPreviewMedia] = useState(null);
 
   const { data: _annData, isLoading } = useQuery({ queryKey: ['announcements'], queryFn: () => apiGet('/announcements') });
   const announcements = Array.isArray(_annData) ? _annData : [];
@@ -167,7 +219,7 @@ export default function AnnouncementsPage() {
                 <Pin size={12} className="text-[#3525cd]" />
                 <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Pinned</span>
               </div>
-              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} />)}
+              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} />)}
               {regular.length > 0 && (
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Latest</span>
@@ -176,7 +228,7 @@ export default function AnnouncementsPage() {
               )}
             </>
           )}
-          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} />)}
+          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} />)}
         </div>
       )}
 
@@ -184,13 +236,32 @@ export default function AnnouncementsPage() {
       {editAnn  && <AnnouncementModal open onClose={() => setEditAnn(null)} ann={editAnn} />}
       <ConfirmModal open={!!confirmDel} title="Delete Announcement" message={`Delete "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
+
+      {/* Poster In-Page Lightbox Modal */}
+      {previewMedia && (
+        <Modal open onClose={() => setPreviewMedia(null)} title={previewMedia.title || 'Announcement Poster'} size="lg"
+          footer={
+            <div className="flex justify-between items-center w-full">
+              <a href={previewMedia.url} download={previewMedia.title || 'poster'} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
+                <Download size={14} /> Download File
+              </a>
+              <button className="btn btn-primary btn-sm" onClick={() => setPreviewMedia(null)}>Close Preview</button>
+            </div>
+          }>
+          <div className="flex items-center justify-center bg-[#151c27] rounded-xl p-2 max-h-[70vh] overflow-auto">
+            <img src={previewMedia.url} alt={previewMedia.title} className="max-h-[65vh] w-auto object-contain rounded-lg shadow-2xl" />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete }) {
+function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
   const cfg     = TYPE_CFG[a.type] || TYPE_CFG.general;
   const expired = a.expires_at && a.expires_at < today;
+  const isImage = a.file_url && (a.file_type?.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif)$/i.test(a.file_url));
+
   return (
     <div className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''}`}>
       <div className="h-1 w-full" style={{ background: cfg.strip }} />
@@ -215,6 +286,30 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete }) {
               )}
             </div>
             <p className="text-sm text-[#464555] whitespace-pre-wrap leading-relaxed mb-3">{a.content}</p>
+
+            {/* Attached Poster or Document Display */}
+            {a.file_url && (
+              <div className="mb-3">
+                {isImage ? (
+                  <div className="rounded-xl overflow-hidden border border-[#c7c4d8] max-w-lg">
+                    <button type="button" onClick={() => onPreview({ url: a.file_url, title: a.title })} className="block w-full text-left relative group cursor-pointer">
+                      <img src={a.file_url} alt={a.file_name || 'Poster'} className="w-full max-h-96 object-cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-bold">
+                        <ExternalLink size={16} /> Click to View Poster
+                      </div>
+                    </button>
+                  </div>
+                ) : (
+                  <a href={a.file_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2.5 px-4 py-2 bg-[#f0f3ff] hover:bg-[#e0e7ff] border border-[#3525cd]/30 rounded-xl text-xs font-bold text-[#3525cd] transition-all">
+                    <FileText size={16} />
+                    <span>{a.file_name || 'View Attachment Document'}</span>
+                    <Download size={14} className="ml-1" />
+                  </a>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center gap-3 text-xs text-[#777587]">
               <span className="font-semibold">{a.creator_name || 'Admin'}</span>
               <span>·</span>
@@ -228,3 +323,5 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete }) {
     </div>
   );
 }
+
+

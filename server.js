@@ -585,9 +585,13 @@ app.put('/api/platform/organizations/:id/features', platformAdminAuth, async (re
 // ─── Organization Settings (get / update) ─────────────────────────────────────
 app.get('/api/org/settings', auth, async (req, res) => {
   try {
+    let targetOrgId = orgId(req);
+    if (req.user.role === 'root_admin' && req.query.org_id) {
+      targetOrgId = Number(req.query.org_id);
+    }
     const { data } = await supabase.from('organizations')
       .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
-      .eq('id', orgId(req)).single();
+      .eq('id', targetOrgId).single();
     if (!data) return res.status(404).json({ error: 'Organization not found' });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -597,6 +601,7 @@ app.put('/api/org/settings', auth, async (req, res) => {
   try {
     if (req.user.role !== 'root_admin') return res.status(403).json({ error: 'Root admin access required' });
     const {
+      org_id,
       name, domain, logo_url,
       smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from,
       google_client_id, google_client_secret, google_refresh_token, google_calendar_id,
@@ -604,6 +609,8 @@ app.put('/api/org/settings', auth, async (req, res) => {
       vapid_public_key, vapid_private_key,
       total_annual_leaves,
     } = req.body;
+
+    const targetOrgId = org_id ? Number(org_id) : orgId(req);
 
     const update = {};
     if (name)               update.name = name.trim();
@@ -625,9 +632,10 @@ app.put('/api/org/settings', auth, async (req, res) => {
     if (total_annual_leaves) update.total_annual_leaves = parseInt(total_annual_leaves) || 18;
 
     const { data, error } = await supabase.from('organizations')
-      .update(update).eq('id', orgId(req))
+      .update(update).eq('id', targetOrgId)
       .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status').single();
     if (error) throw new Error(error.message);
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2337,6 +2345,14 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
       attendanceBreakdown,
       leavesByType,
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// List all organizations for Root Admin selector
+app.get('/api/root/organizations', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const { data } = await supabase.from('organizations').select('id, name, slug').order('name', { ascending: true });
+    res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

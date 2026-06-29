@@ -145,6 +145,8 @@ export default function OrgSettings() {
         </div>
       </div>
 
+
+
       {/* Org Profile */}
       <Section icon={<Building2 size={18} />} title="Organization Profile" subtitle="Basic company information" defaultOpen>
         <div className="grid grid-cols-2 gap-4">
