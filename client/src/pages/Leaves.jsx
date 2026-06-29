@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Clock, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle } from 'lucide-react';
+import { Plus, Clock, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -67,10 +67,15 @@ export default function Leaves() {
     try { await apiPut(`/leaves/${id}/reject`, {}); toast('Leave rejected', 'warning'); refetchLeaves(); }
     catch (err) { toast(err.message, 'error'); }
   }
+  async function revert(id) {
+    try { await apiPut(`/leaves/${id}/revert`, {}); toast('Leave reverted', 'info'); refetchLeaves(); }
+    catch (err) { toast(err.message, 'error'); }
+  }
   async function cancel(id) {
     try { await apiDelete(`/leaves/${id}`); toast('Leave cancelled', 'info'); refetchLeaves(); }
     catch (err) { toast(err.message, 'error'); }
   }
+
   async function deleteLeave(id) {
     try { await apiDelete(`/leaves/${id}`); toast('Leave deleted', 'success'); refetchLeaves(); }
     catch (err) { toast(err.message, 'error'); }
@@ -139,7 +144,7 @@ export default function Leaves() {
                 ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>No leave records</p></div>
                 : activeList.map(l => (
                     <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                      onApprove={approve} onReject={reject} onCancel={cancel}
+                      onApprove={approve} onReject={reject} onRevert={revert} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
                       onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
                   ))
@@ -195,12 +200,13 @@ function TabBtn({ active, onClick, children }) {
 
 // ── Leave Card ────────────────────────────────────────────────────────────────
 const STATUS_CARD = {
-  pending:  { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
-  approved: { border: 'border-l-4 border-l-emerald-400', bg: '' },
-  rejected: { border: 'border-l-4 border-l-rose-400',    bg: '' },
+  pending:   { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
+  approved:  { border: 'border-l-4 border-l-emerald-400', bg: '' },
+  rejected:  { border: 'border-l-4 border-l-rose-400',    bg: '' },
+  cancelled: { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
 };
 
-function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onCancel, onEdit, onDelete }) {
+function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
   const sc = STATUS_CARD[l.status] || {};
   return (
     <div className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''}`}>
@@ -228,11 +234,17 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onCancel, onE
               <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
             </>
           )}
+          {l.status === 'approved' && (isAdmin || l.user_id === user?.id) && (
+            <button className="btn btn-outline btn-sm text-xs border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => onRevert(l.id)}>
+              <RotateCcw size={12} /> Revert Leave
+            </button>
+          )}
           {l.status === 'pending' && l.user_id === user?.id && (
             <button className="btn btn-outline btn-sm text-xs" onClick={() => onCancel(l.id)}><X size={12} /> Cancel</button>
           )}
         </div>
       </div>
+
       <div className="flex items-center gap-1.5 shrink-0">
         <button className="btn btn-outline btn-sm text-xs py-1 px-2" onClick={onEdit}><Edit size={12} /> Edit</button>
         {isAdmin && (

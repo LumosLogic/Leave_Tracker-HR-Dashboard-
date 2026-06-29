@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, Info, Loader2 } from 'lucide-react';
-import { apiGet, apiPost, apiDelete } from '@/lib/api';
+import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, Info, Loader2, RotateCcw } from 'lucide-react';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
 
@@ -14,10 +14,12 @@ const LEAVE_TYPES = [
 ];
 
 const STATUS_STYLES = {
-  pending:  { bg:'bg-amber-50',   text:'text-amber-700',   border:'border-amber-200',   icon:<Clock size={13} /> },
-  approved: { bg:'bg-emerald-50', text:'text-emerald-700', border:'border-emerald-200', icon:<CheckCircle2 size={13} /> },
-  rejected: { bg:'bg-rose-50',    text:'text-rose-700',    border:'border-rose-200',    icon:<XCircle size={13} /> },
+  pending:   { bg:'bg-amber-50',   text:'text-amber-700',   border:'border-amber-200',   icon:<Clock size={13} /> },
+  approved:  { bg:'bg-emerald-50', text:'text-emerald-700', border:'border-emerald-200', icon:<CheckCircle2 size={13} /> },
+  rejected:  { bg:'bg-rose-50',    text:'text-rose-700',    border:'border-rose-200',    icon:<XCircle size={13} /> },
+  cancelled: { bg:'bg-slate-50',   text:'text-slate-700',   border:'border-slate-200',   icon:<XCircle size={13} /> },
 };
+
 
 const TYPE_COLORS = {
   annual:    'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]',
@@ -298,6 +300,16 @@ export default function MyLeaves() {
     onError: (e) => toast(e.message, 'error'),
   });
 
+  const revert = useMutation({
+    mutationFn: (id) => apiPut(`/leaves/${id}/revert`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-leaves'] });
+      qc.invalidateQueries({ queryKey: ['my-leaves-recent'] });
+      toast('Leave reverted successfully.', 'info');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
   const del = useMutation({
     mutationFn: (id) => apiDelete(`/leaves/${id}`),
     onSuccess: () => {
@@ -384,6 +396,12 @@ export default function MyLeaves() {
                     <span className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border font-bold ${s.bg} ${s.text} ${s.border}`}>
                       {s.icon} {l.status}
                     </span>
+                    {l.status === 'approved' && (
+                      <button onClick={() => revert.mutate(l.id)} disabled={revert.isPending}
+                        className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 font-semibold hover:bg-amber-100 transition-colors">
+                        <RotateCcw size={12} /> Revert
+                      </button>
+                    )}
                     {l.status === 'pending' && (
                       <button onClick={() => setDelTarget(l)}
                         className="w-7 h-7 flex items-center justify-center rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors">
@@ -397,6 +415,7 @@ export default function MyLeaves() {
           })}
         </div>
       )}
+
 
       {/* Leave Apply Slide-out */}
       <LeaveApplyPanel

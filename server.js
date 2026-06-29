@@ -1449,6 +1449,38 @@ app.put('/api/leaves/:id/reject', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.put('/api/leaves/:id/revert', auth, async (req, res) => {
+  try {
+    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+    if (!leave) return res.status(404).json({ error: 'Leave not found' });
+    if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+    if (leave.status !== 'approved') return res.status(400).json({ error: 'Only approved leaves can be reverted' });
+
+    await supabase.from('leaves').update({ status: 'cancelled', google_event_id: null }).eq('id', req.params.id);
+
+    const settings = await getSettings(orgId(req));
+    const start = new Date(leave.start_date + 'T12:00:00');
+    const end   = new Date(leave.end_date   + 'T12:00:00');
+    const dates = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const ds = d.toISOString().split('T')[0];
+      if (isWorkingDay(ds, settings)) dates.push(ds);
+    }
+    if (dates.length) {
+      await supabase.from('attendance')
+        .delete()
+        .eq('user_id', leave.user_id)
+        .in('date', dates);
+    }
+
+    if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+
+    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+    res.json(flatOne(data));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 // Clean up attendance records with leave-based status but no approved leave backing them
 app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
   try {

@@ -111,7 +111,9 @@ function AppRoutes() {
       <Route element={<HRRoute><AppLayout /></HRRoute>}>
         <Route path="/dashboard"        element={<Dashboard />} />
         <Route path="/calendar"         element={<Calendar />} />
+        <Route path="/attendance"       element={<Navigate to="/calendar" replace />} />
         <Route path="/leaves"           element={<Leaves />} />
+
         <Route path="/employees"        element={<Employees />} />
         <Route path="/departments"      element={<Departments />} />
         <Route path="/holidays"         element={<HolidaysPage />} />

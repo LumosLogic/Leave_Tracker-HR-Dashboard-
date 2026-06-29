@@ -396,7 +396,7 @@ function AttendanceTrendChart({ analytics, navigate }) {
       x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#9ca3af', maxTicksLimit: period === '7d' ? 7 : 10 } },
       y: { min: 0, max: 100, grid: { color: '#f0f0f8' }, border: { display: false }, ticks: { callback: v => `${v}%`, font: { size: 9 }, color: '#9ca3af', maxTicksLimit: 5 } },
     },
-    onClick: () => navigate('/attendance'),
+    onClick: () => navigate('/calendar'),
     onHover: (e) => { const t = e.native?.target; if (t) t.style.cursor = 'pointer'; },
   };
 
@@ -432,97 +432,93 @@ function AttendanceTrendChart({ analytics, navigate }) {
   );
 }
 
-// ── Organization Overview Charts ───────────────────────────────────────────────
+// ── Organization Overview ──────────────────────────────────────────────────────
+// ── Organization Overview ──────────────────────────────────────────────────────
 function OrgOverviewSection({ analytics, navigate }) {
   const { deptDistribution = [], roleDistribution = [], totalDepts = 0, totalEmpCount = 0 } = analytics || {};
+  const [tab, setTab] = useState('depts');
 
   const deptChartData = {
     labels: deptDistribution.map(d => d.name),
     datasets: [{
       data: deptDistribution.map(d => d.count),
       backgroundColor: DEPT_CHART_COLORS.slice(0, deptDistribution.length),
-      borderWidth: 3, borderColor: '#fff', hoverBorderWidth: 3, hoverBorderColor: '#fff', hoverOffset: 5,
+      borderWidth: 2, borderColor: '#fff', hoverOffset: 4,
     }],
   };
+
   const doughnutOpts = {
-    cutout: '68%', maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { ...tooltipStyle } },
+    cutout: '72%', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: tooltipStyle },
     onHover: hoverCursor,
   };
 
-  const roleColors = ['#4f46e5', '#10b981', '#f59e0b', '#94a3b8'];
+  const roleColors = ['#3525cd', '#10b981', '#f59e0b', '#64748b'];
   const roleChartData = {
     labels: roleDistribution.map(r => r.name),
     datasets: [{
       data: roleDistribution.map(r => r.count),
       backgroundColor: roleColors.slice(0, roleDistribution.length),
-      borderWidth: 3, borderColor: '#fff', hoverOffset: 5,
+      borderWidth: 2, borderColor: '#fff', hoverOffset: 4,
     }],
   };
 
+  const isDepts = tab === 'depts';
+  const list = isDepts ? deptDistribution : roleDistribution;
+  const total = isDepts ? totalDepts : totalEmpCount;
+  const chartData = isDepts ? deptChartData : roleChartData;
+  const colors = isDepts ? DEPT_CHART_COLORS : roleColors;
+
   return (
-    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-[#e7eefe]">
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col justify-between h-full">
+      <div className="px-5 py-3.5 border-b border-[#e7eefe] flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-black text-[#151c27]">Organization Overview</h2>
+        <div className="flex items-center gap-1 bg-[#f0f3ff] p-1 rounded-lg border border-[#c7c4d8]">
+          <button onClick={() => setTab('depts')}
+            className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${isDepts ? 'bg-white text-[#3525cd] shadow-xs' : 'text-[#777587] hover:text-[#151c27]'}`}>
+            Depts ({totalDepts})
+          </button>
+          <button onClick={() => setTab('roles')}
+            className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${!isDepts ? 'bg-white text-[#3525cd] shadow-xs' : 'text-[#777587] hover:text-[#151c27]'}`}>
+            Roles ({totalEmpCount})
+          </button>
+        </div>
       </div>
-      <div className="grid grid-cols-2 divide-x divide-[#e7eefe]">
-        {/* Department Distribution */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] mb-4">Department Distribution</h3>
-          <div className="flex items-center gap-4">
-            <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
-              {deptDistribution.length > 0
-                ? <Doughnut data={deptChartData} options={doughnutOpts} />
-                : <div className="w-full h-full rounded-full border-4 border-[#f0f3ff]" />}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-base font-black text-[#151c27]">{totalDepts}</span>
-                <span className="text-[0.55rem] text-[#777587]">Depts</span>
-              </div>
-            </div>
-            <div className="flex-1 space-y-1.5 min-w-0">
-              {deptDistribution.slice(0, 5).map((d, i) => (
-                <div key={d.name} className="flex items-center gap-2 text-xs">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: DEPT_CHART_COLORS[i] }} />
-                  <span className="text-[#464555] truncate font-medium flex-1">{d.name}</span>
-                  <span className="text-[#9ca3af] shrink-0">{d.count} ({d.pct}%)</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-[#f0f3ff] flex justify-between text-xs">
-            <span className="text-[#777587]">Total Departments</span>
-            <span className="font-black text-[#151c27]">{totalDepts}</span>
+
+      <div className="p-5 flex items-center gap-5 flex-1">
+        <div className="relative shrink-0" style={{ width: 110, height: 110 }}>
+          {list.length > 0 && list.some(x => x.count > 0)
+            ? <Doughnut data={chartData} options={doughnutOpts} />
+            : <div className="w-full h-full rounded-full border-4 border-[#f0f3ff]" />}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-xl font-black text-[#151c27]">{total}</span>
+            <span className="text-[0.58rem] font-bold text-[#777587] uppercase">{isDepts ? 'Depts' : 'Members'}</span>
           </div>
         </div>
 
-        {/* Role Distribution */}
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-[#777587] mb-4">Employment Type</h3>
-          <div className="flex items-center gap-4">
-            <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
-              {roleDistribution.length > 0 && roleDistribution.some(r => r.count > 0)
-                ? <Doughnut data={roleChartData} options={doughnutOpts} />
-                : <div className="w-full h-full rounded-full border-4 border-[#f0f3ff]" />}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-base font-black text-[#151c27]">{totalEmpCount}</span>
-                <span className="text-[0.55rem] text-[#777587]">Total</span>
+        <div className="flex-1 space-y-2.5 min-w-0">
+          {list.slice(0, 5).map((item, i) => (
+            <div key={item.name} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[i % colors.length] }} />
+                  <span className="text-[#151c27] truncate font-bold">{item.name}</span>
+                </div>
+                <span className="text-[#464555] font-black shrink-0 ml-2">{item.count} <span className="text-[0.65rem] font-normal text-[#777587]">({item.pct}%)</span></span>
+              </div>
+              <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${item.pct}%`, background: colors[i % colors.length] }} />
               </div>
             </div>
-            <div className="flex-1 space-y-1.5 min-w-0">
-              {roleDistribution.map((r, i) => (
-                <div key={r.name} className="flex items-center gap-2 text-xs">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: roleColors[i] }} />
-                  <span className="text-[#464555] truncate font-medium flex-1">{r.name}</span>
-                  <span className="text-[#9ca3af] shrink-0">{r.count} ({r.pct}%)</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-[#f0f3ff] flex justify-between text-xs">
-            <span className="text-[#777587]">Total Employees</span>
-            <span className="font-black text-[#151c27]">{totalEmpCount}</span>
-          </div>
+          ))}
         </div>
+      </div>
+
+      <div className="px-5 py-2.5 bg-[#fafaff] border-t border-[#e7eefe] flex items-center justify-between text-xs">
+        <span className="text-[#777587] font-medium">Department Management</span>
+        <button onClick={() => navigate('/departments')} className="font-bold text-[#3525cd] hover:underline flex items-center gap-1">
+          Manage Departments →
+        </button>
       </div>
     </div>
   );
@@ -575,7 +571,6 @@ function LeaveBalanceSection({ analytics, navigate }) {
 function HRInsightsRow({ d, culture, navigate }) {
   const lateToday = d?.lateToday ?? 0;
   const birthdayCount = (culture?.birthdaysToday?.length ?? 0) + (culture?.upcomingBirthdays?.length ?? 0);
-  const probationEnding = 0; // no probation field yet
 
   const insights = [
     {
@@ -583,21 +578,21 @@ function HRInsightsRow({ d, culture, navigate }) {
       bg: lateToday === 0 ? 'bg-emerald-50' : 'bg-amber-50',
       title: lateToday === 0 ? 'No attendance issues today' : `${lateToday} late arrival${lateToday > 1 ? 's' : ''} today`,
       subtitle: lateToday === 0 ? 'Great job! Everything looks good.' : 'Review attendance records.',
-      onClick: () => navigate('/attendance'),
+      onClick: () => navigate('/calendar'),
     },
     {
       icon: <Gift size={16} className="text-pink-500" />,
       bg: 'bg-pink-50',
       title: birthdayCount > 0 ? `${birthdayCount} birthday${birthdayCount > 1 ? 's' : ''} coming up` : 'No upcoming birthdays',
       subtitle: birthdayCount > 0 ? 'Send wishes to your team' : 'Next 7 days are clear.',
-      onClick: () => {},
+      onClick: () => navigate('/holidays'),
     },
     {
       icon: <FileText size={16} className="text-blue-500" />,
       bg: 'bg-blue-50',
       title: 'Document management',
       subtitle: 'Review employee documents.',
-      onClick: () => navigate('/employees'),
+      onClick: () => navigate('/documents'),
     },
     {
       icon: <Users size={16} className="text-purple-500" />,
@@ -710,10 +705,10 @@ export default function Dashboard() {
 
   const kpiCards = [
     { label: 'Total Employees',   value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,      iconBg: 'bg-[#f0f3ff] text-[#3525cd]',    onClick: () => navigate('/employees') },
-    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate('/attendance') },
+    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate('/calendar') },
     { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves') },
     { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate('/leaves') },
-    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate('/attendance') },
+    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate('/calendar') },
     { label: 'Pending Approvals', value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
       icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves') },
   ];
@@ -797,7 +792,7 @@ export default function Dashboard() {
                   {isToday ? `Today · ${displayDate}` : displayDate}
                 </p>
               </div>
-              <button onClick={() => navigate('/attendance')}
+              <button onClick={() => navigate('/calendar')}
                 className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
                 View all
               </button>
@@ -833,7 +828,7 @@ export default function Dashboard() {
               ))}
             </div>
             <div className="px-5 py-3 border-t border-[#e7eefe]">
-              <button onClick={() => navigate('/attendance')}
+              <button onClick={() => navigate('/calendar')}
                 className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
                 View full attendance <ChevronRight size={13} />
               </button>
@@ -915,8 +910,9 @@ export default function Dashboard() {
                 {[
                   { label: 'Add Employee',    icon: <UserPlus size={14} />,     color: 'text-[#3525cd] bg-[#f0f3ff]',    onClick: () => navigate('/employees') },
                   { label: 'Apply Leave',     icon: <Umbrella size={14} />,     color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
-                  { label: 'Mark Attendance', icon: <UserCheck size={14} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/attendance') },
+                  { label: 'Mark Attendance', icon: <UserCheck size={14} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/calendar') },
                   { label: 'Regularization',  icon: <Pencil size={14} />,       color: 'text-orange-600 bg-orange-50',   onClick: () => navigate('/regularization') },
+
                   { label: 'Announcement',    icon: <Megaphone size={14} />,    color: 'text-purple-600 bg-purple-50',   onClick: () => navigate('/announcements') },
                   { label: 'View Reports',    icon: <BarChart2 size={14} />,    color: 'text-sky-600 bg-sky-50',         onClick: () => navigate('/reports') },
                   { label: 'Assign Shift',    icon: <Clock size={14} />,        color: 'text-indigo-600 bg-indigo-50',   onClick: () => navigate('/shifts') },
