@@ -67,7 +67,11 @@ export default function Calendar() {
       const existingIdx = grouped[ds].findIndex(r => r.user_id === l.user_id);
       if (existingIdx === -1) {
         grouped[ds].push({ user_id: l.user_id, date: ds, status: leaveStatus, _synthetic: true });
-      } else if (!['on_leave', 'wfh', 'half_day'].includes(grouped[ds][existingIdx].status)) {
+      } else if (
+        !['on_leave', 'wfh', 'half_day'].includes(grouped[ds][existingIdx].status) &&
+        !grouped[ds][existingIdx].check_in
+      ) {
+        // Only override with leave status if the employee didn't actually clock in
         grouped[ds][existingIdx] = { ...grouped[ds][existingIdx], status: leaveStatus };
       }
     }

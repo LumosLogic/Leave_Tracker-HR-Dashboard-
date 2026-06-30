@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays, Bell, BellOff } from 'lucide-react';
+import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays, Bell, BellOff, Wrench } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -255,6 +255,58 @@ function ClockifyCard({ clockify, isAdmin, onSaved }) {
 }
 
 // ── Status Legend Card ────────────────────────────────────────────────────────
+function AttendanceCleanupCard() {
+  const toast = useToast();
+  const [running, setRunning] = useState(false);
+  const [result,  setResult]  = useState(null);
+
+  async function runCleanup() {
+    setRunning(true);
+    setResult(null);
+    try {
+      const data = await apiPost('/attendance/cleanup-orphaned', {});
+      setResult(data.removed);
+      toast(
+        data.removed > 0
+          ? `Cleaned up ${data.removed} orphaned attendance record${data.removed !== 1 ? 's' : ''}.`
+          : 'No orphaned records found — attendance data is clean.',
+        data.removed > 0 ? 'success' : 'info',
+      );
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Wrench size={18} className="text-[#3525cd]" />
+        <span className="font-bold text-[#151c27]">Attendance Data Cleanup</span>
+      </div>
+      <p className="text-sm text-[#464555] mb-4 leading-relaxed">
+        Removes attendance records marked as <strong>On Leave / WFH / Half Day</strong> that no longer have a matching approved leave.
+        This can happen when a leave is reverted or a past sync ran incorrectly. Safe to run at any time.
+      </p>
+      {result !== null && (
+        <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg mb-4 ${result > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]'}`}>
+          <Check size={13} />
+          {result > 0 ? `${result} orphaned record${result !== 1 ? 's' : ''} removed.` : 'Attendance data is already clean.'}
+        </div>
+      )}
+      <button
+        onClick={runCleanup}
+        disabled={running}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-sm disabled:opacity-60"
+        style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}
+      >
+        {running ? <><span className="spinner w-3.5 h-3.5" /> Running…</> : <><RefreshCw size={14} /> Run Cleanup</>}
+      </button>
+    </div>
+  );
+}
+
 function StatusLegendCard() {
   return (
     <div className="card p-6">
@@ -538,6 +590,7 @@ export default function Settings() {
         <PushNotificationsCard userId={user?.id} />
         <StatusLegendCard />
         <MyProfileCard user={user} />
+        {isAdmin && <AttendanceCleanupCard />}
         {isRootAdmin && <RootAdminsCard />}
         {isRootAdmin && <NotificationRecipientsCard />}
       </div>

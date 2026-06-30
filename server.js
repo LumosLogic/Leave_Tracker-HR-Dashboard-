@@ -1605,6 +1605,28 @@ app.put('/api/leaves/:id/reject', auth, adminOnly, async (req, res) => {
     const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
     if (!leave) return res.status(404).json({ error: 'Leave not found' });
     if (leave.status === 'rejected') return res.json(leave); // already rejected — skip duplicate email
+
+    // If the leave was previously approved, remove the attendance records it created.
+    // This prevents orphaned on_leave/wfh/half_day records staying in the attendance table.
+    if (leave.status === 'approved') {
+      const settings = await getSettings(orgId(req));
+      const start = new Date(leave.start_date + 'T12:00:00');
+      const end   = new Date(leave.end_date   + 'T12:00:00');
+      const dates = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        if (isWorkingDay(ds, settings)) dates.push(ds);
+      }
+      if (dates.length) {
+        await supabase.from('attendance')
+          .delete()
+          .eq('user_id', leave.user_id)
+          .eq('organization_id', orgId(req))
+          .in('date', dates)
+          .in('status', ['on_leave', 'half_day', 'wfh']); // only remove leave-status records, not manual check-ins
+      }
+    }
+
     await supabase.from('leaves').update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date().toISOString(), google_event_id: null }).eq('id', req.params.id);
     // Remove from Google Calendar if it was synced
     if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
@@ -1652,14 +1674,18 @@ app.put('/api/leaves/:id/revert', auth, async (req, res) => {
 // Clean up attendance records with leave-based status on weekends or with no approved leave backing them
 app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
   try {
+    const oid = orgId(req);
+
     const { data: leaveAttendance } = await supabase.from('attendance')
       .select('id, user_id, date, status')
+      .eq('organization_id', oid)
       .in('status', ['on_leave', 'half_day', 'wfh']);
 
     if (!leaveAttendance?.length) return res.json({ removed: 0 });
 
     const { data: approvedLeaves } = await supabase.from('leaves')
       .select('user_id, start_date, end_date, leave_time')
+      .eq('organization_id', oid)
       .eq('status', 'approved');
 
     const toDelete = [];
@@ -1680,7 +1706,7 @@ app.post('/api/attendance/cleanup-orphaned', auth, async (req, res) => {
       if (!hasLeave) toDelete.push(att.id);
     }
 
-    if (toDelete.length) await supabase.from('attendance').delete().in('id', toDelete);
+    if (toDelete.length) await supabase.from('attendance').delete().eq('organization_id', oid).in('id', toDelete);
     res.json({ removed: toDelete.length, success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

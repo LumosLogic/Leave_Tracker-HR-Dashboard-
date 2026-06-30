@@ -252,11 +252,14 @@ export default function MyAttendance() {
       const [dy, dm] = ds.split('-').map(Number);
       if (dy !== year || dm !== month) continue;
       const existing = recMap[ds];
-      // Approved leaves always override attendance status for those dates
       const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
                         : l.leave_time === 'half' ? 'half_day'
                         : 'on_leave';
-      recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: !existing };
+      // Only apply leave status if the employee didn't actually clock in that day.
+      // A real check-in means they worked — don't hide that behind the leave badge.
+      if (!existing || !existing.check_in) {
+        recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: !existing };
+      }
     }
   });
 
