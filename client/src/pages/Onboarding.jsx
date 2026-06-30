@@ -230,7 +230,7 @@ function AdminOnboarding() {
 
 export default function Onboarding() {
   const { isAdmin, isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const wrap = '';
   return (
     <div className={wrap}>
       <div className="page-header">

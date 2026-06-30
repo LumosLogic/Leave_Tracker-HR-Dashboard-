@@ -71,6 +71,14 @@ function CheckinWidget({ onRefresh }) {
   const toast = useToast();
   const [record, setRecord] = useState(null);
   const [elapsed, setElapsed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const { data: checkinMode } = useQuery({
+    queryKey: ['checkin-mode'],
+    queryFn: () => apiGet('/attendance/checkin-mode'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const clockifySyncs = checkinMode?.syncs_clockify ?? false;
 
   const load = useCallback(async () => {
     try { const r = await apiGet('/attendance/today'); setRecord(r); } catch { /* silent */ }
@@ -94,16 +102,26 @@ function CheckinWidget({ onRefresh }) {
   }, [record]);
 
   async function checkIn() {
+    setBusy(true);
     try {
-      const { record: r, message } = await apiPost('/attendance/checkin', {});
-      setRecord(r); toast(message || 'Checked in!', 'success'); onRefresh?.();
+      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkin', {});
+      setRecord(r);
+      toast(message || 'Checked in!', 'success');
+      if (clockify_synced) toast('Timer started in Clockify', 'success');
+      onRefresh?.();
     } catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
   }
   async function checkOut() {
+    setBusy(true);
     try {
-      const { record: r, message } = await apiPost('/attendance/checkout', {});
-      setRecord(r); toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success'); onRefresh?.();
+      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkout', {});
+      setRecord(r);
+      toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
+      if (clockify_synced) toast('Timer stopped in Clockify', 'success');
+      onRefresh?.();
     } catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
   }
 
   const now = new Date();
@@ -111,9 +129,22 @@ function CheckinWidget({ onRefresh }) {
 
   return (
     <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#e7eefe] flex items-center gap-2">
-        <CalendarDays size={13} className="text-[#777587]" />
-        <span className="text-xs font-semibold text-[#777587]">{dateStr}</span>
+      <div className="px-4 py-3 border-b border-[#e7eefe] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarDays size={13} className="text-[#777587]" />
+          <span className="text-xs font-semibold text-[#777587]">{dateStr}</span>
+        </div>
+        {clockifySyncs && (
+          <span className="flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white"
+            style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+            <Timer size={9} /> Clockify
+          </span>
+        )}
+        {checkinMode && !clockifySyncs && checkinMode.has_clockify && (
+          <span className="flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
+            <Timer size={9} /> Link Clockify ID
+          </span>
+        )}
       </div>
       <div className="p-4">
         {!record || !record.check_in ? (
@@ -124,15 +155,17 @@ function CheckinWidget({ onRefresh }) {
               </div>
               <div>
                 <p className="text-sm font-bold text-[#151c27]">Check In</p>
-                <p className="text-xs text-[#777587]">You haven't checked in today</p>
+                <p className="text-xs text-[#777587]">
+                  {clockifySyncs ? 'Will start your Clockify timer too' : "You haven't checked in today"}
+                </p>
               </div>
             </div>
-            <button onClick={checkIn}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
-              <CheckCircle2 size={14} /> Check In Now
+            <button onClick={checkIn} disabled={busy}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+              <CheckCircle2 size={14} /> {busy ? 'Checking in…' : 'Check In Now'}
             </button>
             <p className="text-center text-[0.65rem] text-[#9ca3af] mt-2 flex items-center justify-center gap-1">
-              <Building2 size={10} /> Head Office
+              <Building2 size={10} /> {clockifySyncs ? 'Syncs with Clockify' : 'Standalone Mode'}
             </p>
           </>
         ) : !record.check_out ? (
@@ -142,13 +175,15 @@ function CheckinWidget({ onRefresh }) {
                 <CheckCircle2 size={16} className="text-emerald-500" />
               </div>
               <div>
-                <p className="text-sm font-bold text-emerald-600">Checked In</p>
+                <p className="text-sm font-bold text-emerald-600">
+                  Checked In {record.clockify_entry_id && <span className="ml-1 text-[0.6rem] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded font-bold">Clockify ✓</span>}
+                </p>
                 <p className="text-xs text-[#777587]">Since {fmtTime(record.check_in)} · {elapsed}</p>
               </div>
             </div>
-            <button onClick={checkOut}
-              className="w-full flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogOut size={14} /> Check Out
+            <button onClick={checkOut} disabled={busy}
+              className="w-full flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogOut size={14} /> {busy ? 'Checking out…' : (clockifySyncs ? 'Check Out & Stop Timer' : 'Check Out')}
             </button>
           </>
         ) : (
@@ -158,7 +193,9 @@ function CheckinWidget({ onRefresh }) {
             </div>
             <div>
               <p className="text-sm font-bold text-[#151c27]">Work Done</p>
-              <p className="text-xs text-[#777587]">{fmtHours(record.work_hours)} worked today</p>
+              <p className="text-xs text-[#777587]">
+                {fmtTime(record.check_in)} – {fmtTime(record.check_out)} · {fmtHours(record.work_hours)}
+              </p>
             </div>
           </div>
         )}

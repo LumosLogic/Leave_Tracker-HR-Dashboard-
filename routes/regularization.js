@@ -87,12 +87,53 @@ router.put('/:id/review', async (req, res) => {
     if (error) throw error;
 
     if (status === 'approved') {
+      // Update/insert attendance record as present
       await supabase.from('attendance').upsert({
         user_id: reg.user_id, date: reg.date,
         check_in: reg.requested_check_in || null,
         check_out: reg.requested_check_out || null,
         status: 'present', organization_id: oId,
       }, { onConflict: 'user_id,date' });
+
+      // Revert any approved leave that overlaps this date and restore the balance
+      const { data: overlappingLeaves } = await supabase.from('leaves')
+        .select('id, leave_type, start_date, end_date, half_day')
+        .eq('user_id', reg.user_id)
+        .eq('organization_id', oId)
+        .eq('status', 'approved')
+        .lte('start_date', reg.date)
+        .gte('end_date', reg.date);
+
+      for (const leave of (overlappingLeaves || [])) {
+        // Cancel the leave
+        await supabase.from('leaves').update({ status: 'cancelled' }).eq('id', leave.id);
+
+        // Restore leave balance: calculate days to restore
+        const start = new Date(leave.start_date + 'T12:00:00');
+        const end   = new Date(leave.end_date   + 'T12:00:00');
+        let daysToRestore = 0;
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dow = d.getDay();
+          if (dow !== 0 && dow !== 6) daysToRestore++; // skip weekends
+        }
+        if (leave.half_day) daysToRestore = 0.5;
+
+        if (daysToRestore > 0) {
+          const { data: balance } = await supabase.from('leave_balances')
+            .select('id, used_days')
+            .eq('user_id', reg.user_id)
+            .eq('organization_id', oId)
+            .eq('leave_type', leave.leave_type)
+            .maybeSingle();
+
+          if (balance) {
+            const newUsed = Math.max(0, (balance.used_days || 0) - daysToRestore);
+            await supabase.from('leave_balances')
+              .update({ used_days: newUsed })
+              .eq('id', balance.id);
+          }
+        }
+      }
     }
 
     await supabase.from('notifications').insert({

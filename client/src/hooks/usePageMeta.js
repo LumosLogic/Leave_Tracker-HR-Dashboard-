@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const META = {
@@ -68,5 +69,9 @@ const META = {
 
 export function usePageMeta() {
   const { pathname } = useLocation();
-  return META[pathname] || { title: 'HRMS', subtitle: '' };
+  const meta = META[pathname] || { title: 'HRMS', subtitle: '' };
+  useEffect(() => {
+    document.title = meta.title ? `LeaveTrackr | ${meta.title}` : 'LeaveTrackr';
+  }, [meta.title]);
+  return meta;
 }

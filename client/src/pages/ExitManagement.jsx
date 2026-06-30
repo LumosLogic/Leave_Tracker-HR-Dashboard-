@@ -169,7 +169,7 @@ function ExitCard({ req, isAdmin }) {
 
 export default function ExitManagement() {
   const { isAdmin, isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const wrap = '';
   const [resignOpen, setResignOpen] = useState(false);
 
   const { data: _exitData, isLoading } = useQuery({ queryKey: ['exit-requests'], queryFn: () => apiGet('/exit') });

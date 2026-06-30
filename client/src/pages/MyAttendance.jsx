@@ -1,7 +1,177 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { apiGet } from '@/lib/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut, Timer, Clock } from 'lucide-react';
+import { apiGet, apiPost } from '@/lib/api';
+import { useToast } from '@/context/ToastContext';
+
+function fmtTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+function fmtHours(h) {
+  if (!h) return '0h 0m';
+  const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60);
+  return hrs > 0 ? `${hrs}h ${min}m` : `${min}m`;
+}
+
+function AttendanceCheckinCard({ onRefreshed }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [record, setRecord] = useState(null);
+  const [elapsed, setElapsed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const { data: mode } = useQuery({
+    queryKey: ['checkin-mode'],
+    queryFn: () => apiGet('/attendance/checkin-mode'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const clockifySyncs = mode?.syncs_clockify ?? false;
+
+  const load = useCallback(async () => {
+    try { setRecord(await apiGet('/attendance/today')); } catch { /* silent */ }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!record?.check_in || record?.check_out) { setElapsed(''); return; }
+    const tick = () => {
+      const [h, m] = record.check_in.split(':').map(Number);
+      const start = new Date(); start.setHours(h, m, 0, 0);
+      const total = Math.floor((Date.now() - start.getTime()) / 60000);
+      const hrs = Math.floor(total / 60); const min = total % 60;
+      setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [record]);
+
+  async function checkIn() {
+    setBusy(true);
+    try {
+      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkin', {});
+      setRecord(r);
+      toast(message || 'Checked in!', 'success');
+      if (clockify_synced) toast('Clockify timer started', 'success');
+      qc.invalidateQueries(['my-attendance']);
+      onRefreshed?.();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
+  }
+  async function checkOut() {
+    setBusy(true);
+    try {
+      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkout', {});
+      setRecord(r);
+      toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
+      if (clockify_synced) toast('Clockify timer stopped', 'success');
+      qc.invalidateQueries(['my-attendance']);
+      onRefreshed?.();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setBusy(false); }
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden mb-6">
+      {/* Header */}
+      <div className="px-5 py-3 bg-[#f8f9ff] border-b border-[#e7eefe] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Clock size={14} className="text-[#777587]" />
+          <span className="text-xs font-semibold text-[#777587]">Today's Attendance · {dateStr}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {clockifySyncs ? (
+            <span className="flex items-center gap-1 text-[0.6rem] font-bold px-2 py-0.5 rounded text-white"
+              style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+              <Timer size={9} /> Clockify Sync ON
+            </span>
+          ) : mode?.has_clockify ? (
+            <span className="text-[0.6rem] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
+              Link your Clockify ID to enable sync
+            </span>
+          ) : (
+            <span className="text-[0.6rem] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-500">
+              Standalone Mode
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        {/* Status block */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {!record?.check_in ? (
+            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+              <LogIn size={18} className="text-slate-400" />
+            </div>
+          ) : !record?.check_out ? (
+            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+              <CheckCircle2 size={18} className="text-emerald-500" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-[#f0f3ff] flex items-center justify-center shrink-0">
+              <CheckCircle2 size={18} className="text-[#3525cd]" />
+            </div>
+          )}
+          <div className="min-w-0">
+            {!record?.check_in ? (
+              <>
+                <p className="text-sm font-bold text-[#151c27]">Not Checked In</p>
+                <p className="text-xs text-[#777587]">
+                  {clockifySyncs ? 'Checking in will also start your Clockify timer' : 'Mark yourself present for today'}
+                </p>
+              </>
+            ) : !record?.check_out ? (
+              <>
+                <p className="text-sm font-bold text-emerald-600 flex items-center gap-1.5">
+                  Checked In at {fmtTime(record.check_in)}
+                  {record.clockify_entry_id && (
+                    <span className="text-[0.6rem] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded font-bold">Clockify ✓</span>
+                  )}
+                </p>
+                <p className="text-xs text-[#777587]">{elapsed ? `Working for ${elapsed}` : 'Timer running'}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-[#151c27]">Work Complete</p>
+                <p className="text-xs text-[#777587]">
+                  {fmtTime(record.check_in)} – {fmtTime(record.check_out)} · {fmtHours(record.work_hours)} worked
+                  {record.status === 'half_day' && ' · Half Day'}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Action button */}
+        <div className="shrink-0">
+          {!record?.check_in ? (
+            <button onClick={checkIn} disabled={busy}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogIn size={15} /> {busy ? 'Checking in…' : 'Check In'}
+            </button>
+          ) : !record?.check_out ? (
+            <button onClick={checkOut} disabled={busy}
+              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogOut size={15} /> {busy ? 'Checking out…' : 'Check Out'}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-[#777587] bg-[#f0f3ff] px-4 py-2.5 rounded-xl border border-[#c7c4d8]">
+              <CheckCircle2 size={13} className="text-[#3525cd]" /> Day Complete
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -116,6 +286,9 @@ export default function MyAttendance() {
 
   return (
     <div>
+      {/* Check-in / Check-out */}
+      <AttendanceCheckinCard />
+
       {/* Month nav */}
       <div className="flex justify-end mb-6">
         <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-xl p-1 shadow-sm">

@@ -272,7 +272,7 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
 // ── Main Payroll Page ─────────────────────────────────────────────────────────
 export default function Payroll() {
   const { isAdmin, isEmployee } = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
   const now   = new Date();

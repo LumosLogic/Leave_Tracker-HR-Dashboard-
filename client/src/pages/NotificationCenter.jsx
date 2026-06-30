@@ -7,17 +7,20 @@ import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { usePushNotification } from '@/hooks/usePushNotification';
 
-// Map notification type → portal route to navigate to on click
-const TYPE_LINK = {
-  payroll:        '/portal/payslips',
-  expense:        '/portal/expenses',
-  regularization: '/portal/regularization',
-  performance:    '/portal/performance',
-  onboarding:     '/portal/onboarding',
-  exit:           '/portal/exit',
-  announcement:   '/portal/announcements',
-  asset:          '/portal/home',
-};
+// Build role-aware navigation map for notification types
+function getTypeLink(isEmployee, isRootAdmin) {
+  const prefix = isEmployee ? '/portal' : isRootAdmin ? '/root' : '';
+  return {
+    payroll:        isEmployee ? '/portal/payslips'      : `${prefix}/payroll`,
+    expense:        `${prefix}/expenses`,
+    regularization: isEmployee ? '/portal/regularization' : `${prefix}/regularization`,
+    performance:    `${prefix}/performance`,
+    onboarding:     isEmployee ? '/portal/onboarding'    : `${prefix}/onboarding`,
+    exit:           isEmployee ? '/portal/exit'          : `${prefix}/exit-management`,
+    announcement:   isEmployee ? '/portal/announcements' : `${prefix}/announcements`,
+    asset:          isEmployee ? '/portal/home'          : `${prefix}/assets`,
+  };
+}
 
 const TYPE_CFG = {
   regularization: { icon: <ClipboardList size={14} />, bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   strip: '#F59E0B', label: 'Regularization' },
@@ -44,7 +47,8 @@ function timeAgo(dateStr) {
 }
 
 export default function NotificationCenter() {
-  const { isEmployee, user } = useAuth();
+  const { isEmployee, isRootAdmin, user } = useAuth();
+  const TYPE_LINK = getTypeLink(isEmployee, isRootAdmin);
   const wrap = '';
   const { permission, subscribed, requestAndSubscribe, unsubscribe, isSupported } = usePushNotification(user?.id);
   const pushEnabled = permission === 'granted' && subscribed;

@@ -49,12 +49,7 @@ export function Header({ title, subtitle, onMenuClick }) {
           <Menu size={18} className="text-[#464555]" />
         </button>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="text-[1.12rem] font-black tracking-tight leading-none text-[#151c27]">
-            {title}
-          </h1>
-          {subtitle && <p className="text-[0.78rem] text-[#777587] mt-0.5">{subtitle}</p>}
-        </div>
+        <div className="flex-1 min-w-0" />
 
         {/* Global Search Trigger */}
         <button

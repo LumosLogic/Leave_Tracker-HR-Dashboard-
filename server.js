@@ -872,13 +872,32 @@ app.get('/api/dashboard', auth, async (req, res) => {
     }
 
     // ── 4. Calculate stats ────────────────────────────────────────────────────
+    // Attendance statuses that Clockify must never overwrite
+    const LEAVE_ATT_STATUSES = new Set(['on_leave', 'half_day', 'wfh']);
+
+    // onLeaveIds — pure on_leave only, used for dashboard counts (WFH/half_day still count as present)
     const onLeaveIds = new Set(todayRecords.filter(r => r.status === 'on_leave').map(r => r.user_id));
+
+    // clockifyGuardIds — broader: prevents Clockify from creating/overwriting ANY leave attendance record.
+    // Also cross-checks the leaves table so employees with approved leaves but missing attendance
+    // records are protected too (e.g. leave approved after the last Clockify sync).
+    const clockifyGuardIds = new Set(todayRecords.filter(r => LEAVE_ATT_STATUSES.has(r.status)).map(r => r.user_id));
+    if (empIds.length > 0) {
+      const { data: todayApprovedLeaves } = await supabase.from('leaves')
+        .select('user_id')
+        .eq('organization_id', orgId(req))
+        .eq('status', 'approved')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .in('user_id', empIds);
+      for (const l of (todayApprovedLeaves || [])) clockifyGuardIds.add(l.user_id);
+    }
 
     // Persist Clockify check-ins to attendance DB so MyAttendance and all views stay in sync
     if (isToday && clockifyActiveIds.size > 0) {
       const settings = await getSettings(orgId(req));
       await Promise.all([...clockifyActiveIds].map(async id => {
-        if (onLeaveIds.has(id)) return; // employee is on leave — skip
+        if (clockifyGuardIds.has(id)) return; // employee is on leave — skip Clockify sync entirely
         const checkInTime = clockifyStartTimes[id] || null;
         const is_late = checkInTime && settings ? toMinutes(checkInTime) > toMinutes(settings.late_threshold) : false;
         const existing = todayRecords.find(r => r.user_id === id);
@@ -893,8 +912,8 @@ app.get('/api/dashboard', auth, async (req, res) => {
               todayRecords.push({ ...inserted, name: emp?.name, avatar_color: emp?.avatar_color, department: emp?.department });
             }
           } catch { /* insert failed — skip */ }
-        } else if (!existing.check_in) {
-          // Record exists but no manual check-in — set from Clockify (never overwrite manual check-ins)
+        } else if (!existing.check_in && !LEAVE_ATT_STATUSES.has(existing.status)) {
+          // Record exists, no manual check-in, and not a leave record — sync from Clockify
           try {
             await supabase.from('attendance')
               .update({ check_in: checkInTime, status: 'present', is_late })
@@ -909,7 +928,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
 
     const onLeaveToday   = onLeaveIds.size;
     const presentToday   = Math.max(0, totalEmployees - onLeaveToday);
-    const onClockify     = isToday ? [...clockifyActiveIds].filter(id => !onLeaveIds.has(id)).length : null;
+    const onClockify     = isToday ? [...clockifyActiveIds].filter(id => !clockifyGuardIds.has(id)).length : null;
     const notOnClockify  = isToday ? Math.max(0, presentToday - onClockify) : null;
     const lateToday      = todayRecords.filter(r => r.is_late).length;
     const earlyExitToday = todayRecords.filter(r => r.is_early_exit).length;
@@ -928,7 +947,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
     // Fallback: Clockify-active users that failed to insert (edge case)
     if (isToday) {
       for (const id of clockifyActiveIds) {
-        if (!activityMap.has(id) && !onLeaveIds.has(id)) {
+        if (!activityMap.has(id) && !clockifyGuardIds.has(id)) {
           const emp = allEmployees.find(e => e.id === id);
           if (emp) activityMap.set(id, { user_id: emp.id, name: emp.name, avatar_color: emp.avatar_color, department: emp.department, status: 'present', check_in: clockifyStartTimes[id] || null, clockify_live: true });
         }
@@ -1088,11 +1107,25 @@ app.get('/api/attendance/today', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Returns whether the org has Clockify configured and if this employee is linked
+app.get('/api/attendance/checkin-mode', auth, async (req, res) => {
+  try {
+    const config = await getClockifyConfig(orgId(req));
+    const has_clockify = !!(config?.api_key && config?.workspace_id);
+    let user_clockify_id = null;
+    if (has_clockify) {
+      const { data: u } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+      user_clockify_id = u?.clockify_user_id || null;
+    }
+    res.json({ has_clockify, user_clockify_id, syncs_clockify: has_clockify && !!user_clockify_id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/attendance/checkin', auth, async (req, res) => {
   try {
     const today   = localDateStr();
     const timeStr = localTimeStr();
-    const settings = await getSettings();
+    const settings = await getSettings(orgId(req));
 
     const { data: existing } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
@@ -1104,16 +1137,39 @@ app.post('/api/attendance/checkin', auth, async (req, res) => {
     let record;
     if (existing) {
       const { data } = await supabase.from('attendance')
-        .update({ check_in: timeStr, status: 'present', is_late })
+        .update({ check_in: timeStr, status: 'present', is_late, organization_id: orgId(req) })
         .eq('id', existing.id).select().single();
       record = data;
     } else {
       const { data } = await supabase.from('attendance')
-        .insert({ user_id: req.user.id, date: today, check_in: timeStr, status: 'present', is_late })
+        .insert({ user_id: req.user.id, date: today, check_in: timeStr, status: 'present', is_late, organization_id: orgId(req) })
         .select().single();
       record = data;
     }
-    res.json({ record, message: is_late ? 'Checked in (Late)' : 'Checked in successfully' });
+
+    // Attempt Clockify sync: start a timer for this employee if Clockify is configured
+    let clockify_synced = false;
+    try {
+      const config = await getClockifyConfig(orgId(req));
+      if (config?.api_key && config?.workspace_id) {
+        const { data: userRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+        if (userRow?.clockify_user_id) {
+          const resp = await axios.post(
+            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
+            { start: new Date().toISOString(), description: '' },
+            { headers: { 'X-Api-Key': config.api_key } }
+          );
+          if (resp.data?.id) {
+            await supabase.from('attendance').update({ clockify_entry_id: resp.data.id }).eq('id', record.id);
+            record = { ...record, clockify_entry_id: resp.data.id };
+          }
+          clockify_synced = true;
+        }
+      }
+    } catch { /* Clockify unavailable — standalone attendance saved */ }
+
+    const baseMsg = is_late ? 'Checked in (Late)' : 'Checked in successfully';
+    res.json({ record, clockify_synced, message: clockify_synced ? `${baseMsg} · Synced to Clockify` : baseMsg });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1121,7 +1177,7 @@ app.post('/api/attendance/checkout', auth, async (req, res) => {
   try {
     const today   = localDateStr();
     const timeStr = localTimeStr();
-    const settings = await getSettings();
+    const settings = await getSettings(orgId(req));
 
     const { data: record } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
@@ -1137,10 +1193,28 @@ app.post('/api/attendance/checkout', auth, async (req, res) => {
       .update({ check_out: timeStr, work_hours: Math.round(workHours * 100) / 100, status, is_early_exit })
       .eq('id', record.id).select().single();
 
+    // Attempt Clockify sync: stop the running timer for this employee
+    let clockify_synced = false;
+    try {
+      const config = await getClockifyConfig(orgId(req));
+      if (config?.api_key && config?.workspace_id) {
+        const { data: userRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+        if (userRow?.clockify_user_id) {
+          await axios.patch(
+            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
+            { end: new Date().toISOString() },
+            { headers: { 'X-Api-Key': config.api_key } }
+          );
+          clockify_synced = true;
+        }
+      }
+    } catch { /* Clockify unavailable — local checkout saved */ }
+
     const msgs = [];
     if (is_early_exit)        msgs.push('Early exit noted');
     if (status === 'half_day') msgs.push('Half day recorded');
-    res.json({ record: updated, message: msgs.length ? msgs.join(', ') : 'Checked out successfully' });
+    if (clockify_synced)       msgs.push('Synced to Clockify');
+    res.json({ record: updated, clockify_synced, message: msgs.length ? msgs.join(' · ') : 'Checked out successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

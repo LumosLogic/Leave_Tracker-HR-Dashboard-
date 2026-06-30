@@ -119,14 +119,20 @@ export default function TeamCalendar() {
   return (
     <div className="space-y-5">
 
-      {/* ── Month navigation ─────────────────────────────────────────────── */}
-      <div className="flex justify-end">
+      {/* ── Page header ──────────────────────────────────────────────────── */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Team Calendar</h1>
+          <p className="page-subtitle">See who's on leave or working from home</p>
+        </div>
+        {/* Month navigation inline with header */}
         <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-xl px-2 py-1.5 shadow-sm">
           <button onClick={prev} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><ChevronLeft size={15} /></button>
           <span className="font-black text-[#151c27] min-w-[8rem] text-center text-sm">{MONTHS[month - 1]} {year}</span>
           <button onClick={next} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><ChevronRight size={15} /></button>
         </div>
       </div>
+
 
       {/* ── Today's snapshot ─────────────────────────────────────────────────── */}
       {isCurrentMonth && todayLeaves.length > 0 && (
@@ -180,7 +186,7 @@ export default function TeamCalendar() {
             ) : (
               <div className="grid grid-cols-7">
                 {calDays.map((day, i) => {
-                  if (!day) return <div key={`e-${i}`} className="min-h-[110px] border-b border-r border-[#f0f3ff] bg-[#fafafa]" />;
+                  if (!day) return <div key={`e-${i}`} className="min-h-[130px] border-b border-r border-[#f0f3ff] bg-[#fafafa]" />;
 
                   const ds         = `${year}-${pad(month)}-${pad(day)}`;
                   const isToday_   = ds === today;
@@ -193,7 +199,7 @@ export default function TeamCalendar() {
 
                   return (
                     <div key={day} onClick={() => setSelectedDay(selectedDay === day ? null : day)}
-                      className={`min-h-[110px] border-b border-r border-[#f0f3ff] p-1.5 cursor-pointer transition-all
+                      className={`min-h-[130px] border-b border-r border-[#f0f3ff] p-2 cursor-pointer transition-all
                         ${isWeekend ? 'bg-[#fafafe]' : 'bg-white'}
                         ${holiday   ? 'bg-emerald-50/50' : ''}
                         ${isSelected ? 'ring-2 ring-inset ring-[#3525cd]' : 'hover:bg-[#f9f9ff]'}
@@ -213,29 +219,29 @@ export default function TeamCalendar() {
 
                       {/* Holiday */}
                       {holiday && (
-                        <div className="text-[0.65rem] font-bold text-emerald-700 truncate px-0.5 mb-0.5 leading-tight">{holiday.name}</div>
+                        <div className="text-xs font-bold text-emerald-700 truncate px-0.5 mb-0.5 leading-tight">{holiday.name}</div>
                       )}
 
                       {/* Leave chips — show avatar + name */}
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {dayLeaves.slice(0, 3).map(l => {
                           const isWfh   = l.leave_time === 'wfh';
                           const isMe    = l.user_id === user?.id;
                           const colors  = isWfh ? LEAVE_TYPE_COLORS.wfh : (LEAVE_TYPE_COLORS[l.leave_type] || LEAVE_TYPE_COLORS.other);
                           return (
-                            <div key={l.id} className="flex items-center gap-1 rounded px-1 py-[3px] text-[0.65rem] font-bold truncate"
+                            <div key={l.id} className="flex items-center gap-1 rounded px-1.5 py-1 text-[0.75rem] font-semibold truncate"
                               style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
-                              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 flex items-center justify-center text-[0.55rem] font-black text-white"
+                              <div className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[0.65rem] font-black text-white"
                                 style={{ background: l.avatar_color || '#3525cd' }}>
                                 {avatarInitials(l.name)}
                               </div>
-                              <span className="truncate">{isMe ? 'You' : l.name?.split(' ')[0]}</span>
-                              {isWfh ? <Home size={8} className="flex-shrink-0 ml-auto" /> : <Umbrella size={8} className="flex-shrink-0 ml-auto" />}
+                              <span className="truncate font-bold">{isMe ? 'You' : l.name?.split(' ')[0]}</span>
+                              {isWfh ? <Home size={10} className="flex-shrink-0 ml-auto" /> : <Umbrella size={10} className="flex-shrink-0 ml-auto" />}
                             </div>
                           );
                         })}
                         {dayLeaves.length > 3 && (
-                          <div className="text-[0.65rem] text-[#777587] pl-1 font-semibold">+{dayLeaves.length - 3} more</div>
+                          <div className="text-[0.72rem] text-[#777587] pl-1 font-semibold">+{dayLeaves.length - 3} more</div>
                         )}
                       </div>
                     </div>

@@ -73,7 +73,7 @@ function AssetModal({ open, onClose, asset, employees }) {
 
 export default function Assets() {
   const { isAdmin, isEmployee }  = useAuth();
-  const wrap = isEmployee ? 'p-5 md:p-8 max-w-4xl mx-auto' : '';
+  const wrap = '';
   const toast        = useToast();
   const qc           = useQueryClient();
   const [addOpen,    setAddOpen]    = useState(false);
