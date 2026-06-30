@@ -31,11 +31,11 @@ router.get('/goals', async (req, res) => {
 router.post('/goals', async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { title, description, category, target_date, review_cycle, user_id } = req.body;
+    const { title, description, category, target_date, review_cycle, user_id, progress } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
     const targetUserId = isAdmin(req.user.role) && user_id ? user_id : req.user.id;
     const { data, error } = await supabase.from('performance_goals')
-      .insert({ user_id: targetUserId, title, description: description || '', category: category || 'individual', target_date: target_date || null, review_cycle: review_cycle || String(new Date().getFullYear()), created_by: req.user.id, organization_id: oId, progress: 0, status: 'active' })
+      .insert({ user_id: targetUserId, title, description: description || '', category: category || 'individual', target_date: target_date || null, review_cycle: review_cycle || String(new Date().getFullYear()), created_by: req.user.id, organization_id: oId, progress: Number(progress) || 0, status: 'active' })
       .select().single();
     if (error) throw error;
     res.json(data);

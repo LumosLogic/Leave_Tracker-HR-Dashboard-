@@ -155,7 +155,7 @@ export default function RootDashboard() {
 
   const isBusy       = approveMut.isPending || rejectMut.isPending;
   const onLeaveToday = attendanceBreakdown.on_leave || 0;
-  const presentPct   = totalEmployees > 0 ? Math.round((presentToday / totalEmployees) * 100) : 0;
+  const presentPct   = totalEmployees > 0 ? Math.min(100, Math.round((presentToday / totalEmployees) * 100)) : 0;
   const yearlyEmployees = [...(yearlyData?.employees || [])].sort((a, b) => b.usedDays - a.usedDays);
 
   // ── Today's Workforce chart data ─────────────────────────────────────────────
@@ -368,7 +368,7 @@ export default function RootDashboard() {
         ticks: { font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 5 },
       },
     },
-    onClick: () => navigate('/root/employees'),
+    onClick: () => navigate('/root/employees?role=employee'),
     onHover: (event) => {
       const t = event.native?.target;
       if (t) t.style.cursor = 'pointer';

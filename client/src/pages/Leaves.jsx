@@ -36,6 +36,11 @@ export default function Leaves() {
     queryFn: () => apiGet('/leaves'),
   });
 
+  const { data: policies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn: () => apiGet('/leave-policies'),
+  });
+
   const { data: todayAtt = [] } = useQuery({
     queryKey: ['attendance-today'],
     queryFn: () => apiGet('/attendance', { date: todayStr() }),
@@ -57,8 +62,9 @@ export default function Leaves() {
     },
   });
 
-  const myLeaves  = leaves.filter(l => l.user_id === user?.id);
-  const allLeaves = isAdmin ? leaves : myLeaves;
+  const myLeaves      = leaves.filter(l => l.user_id === user?.id);
+  const allLeaves     = isAdmin ? leaves : myLeaves;
+  const summaryLeaves = isAdmin ? allLeaves : myLeaves;
 
   async function approve(id) {
     try { await apiPut(`/leaves/${id}/approve`, {}); toast('Leave approved', 'success'); refetchLeaves(); }
@@ -95,7 +101,8 @@ export default function Leaves() {
     return src;
   })();
 
-  const pendingCount = leaves.filter(l => l.status === 'pending').length;
+  const pendingCount    = allLeaves.filter(l => l.status === 'pending' && l.leave_time !== 'wfh').length;
+  const wfhPendingCount = allLeaves.filter(l => l.status === 'pending' && l.leave_time === 'wfh').length;
 
   return (
     <div>
@@ -131,7 +138,7 @@ export default function Leaves() {
               </TabBtn>
             )}
             <TabBtn active={tab === 'mine'} onClick={() => setTab('mine')}>My Leaves</TabBtn>
-            <TabBtn active={tab === 'wfh'}  onClick={() => setTab('wfh')}><Home size={13} /> WFH</TabBtn>
+            <TabBtn active={tab === 'wfh'}  onClick={() => setTab('wfh')}><Home size={13} /> WFH {wfhPendingCount > 0 && <span className="ml-1 bg-rose-500 text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">{wfhPendingCount}</span>}</TabBtn>
             {isAdmin && (
               <TabBtn active={tab === 'today'} onClick={() => setTab('today')}><Clock size={13} /> Today</TabBtn>
             )}
@@ -153,24 +160,21 @@ export default function Leaves() {
           </div>
         </div>
 
-        {/* Summary */}
+        {/* Summary — shows policy quotas configured by admin */}
         <div className="card self-start">
           <div className="px-5 py-4 border-b border-[#f0f3ff] font-black text-[#151c27]">Leave Summary</div>
-          <div className="p-5">
-            {LEAVE_TYPES.map(t => {
-              const approved = myLeaves.filter(l => l.leave_type === t && l.status === 'approved').length;
-              const pending  = myLeaves.filter(l => l.leave_type === t && l.status === 'pending').length;
-              return (
-                <div key={t} className="flex items-center justify-between py-2 border-b border-[#f0f3ff] last:border-0">
-                  <LeaveTypeBadge type={t} />
-                  <div className="flex gap-1.5">
-                    {approved > 0 && <StatusBadge status="approved">{approved} approved</StatusBadge>}
-                    {pending  > 0 && <StatusBadge status="pending">{pending} pending</StatusBadge>}
-                    {!approved && !pending && <span className="text-xs text-[#777587]">None</span>}
-                  </div>
+          <div className="p-5 space-y-0">
+            {policies.length === 0
+              ? <p className="text-xs text-[#9ca3af] text-center py-4">No leave policies configured</p>
+              : policies.filter(p => p.active).map(p => (
+                <div key={p.leave_type} className="flex items-center justify-between py-2.5 border-b border-[#f0f3ff] last:border-0">
+                  <LeaveTypeBadge type={p.leave_type} />
+                  <span className="text-xs font-semibold text-[#464555]">
+                    {p.annual_quota > 0 ? `${p.annual_quota} days` : '—'}
+                  </span>
                 </div>
-              );
-            })}
+              ))
+            }
           </div>
         </div>
       </div>

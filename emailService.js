@@ -33,15 +33,6 @@ async function sendMail({ to, subject, html }) {
   }
 }
 
-// ─── Notification recipients ───────────────────────────────────────────────────
-function getNotifyList() {
-  return [
-    process.env.HR_EMAIL,
-    process.env.COMPANY_HEAD_1_EMAIL,
-    process.env.COMPANY_HEAD_2_EMAIL,
-  ].filter(Boolean);
-}
-
 // ─── Templates ────────────────────────────────────────────────────────────────
 
 const HEADER = (title, sub) => `
@@ -307,4 +298,4 @@ function passwordResetHtml(user, resetLink) {
   );
 }
 
-module.exports = { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };
+module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };

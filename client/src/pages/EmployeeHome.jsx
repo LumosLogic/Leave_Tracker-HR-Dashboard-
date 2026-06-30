@@ -1,9 +1,10 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, Umbrella, TrendingUp, Cake, PartyPopper } from 'lucide-react';
+import { CalendarDays, Umbrella, TrendingUp, Cake, PartyPopper, Home, Users } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
+import { todayStr } from '@/lib/utils';
 
 const STATUS_COLORS = {
   pending:  'bg-amber-50 text-amber-700 border-amber-200',
@@ -31,11 +32,21 @@ export default function EmployeeHome() {
     retry: 2,
   });
 
+  const today = todayStr();
+  const { data: todayTeamLeaves = [] } = useQuery({
+    queryKey: ['team-leaves-today'],
+    queryFn:  () => apiGet('/team-leaves', { startDate: today, endDate: today }),
+    staleTime: 60000,
+  });
+
   const recentLeaves     = myLeaves.slice(0, 4);
   const upcomingHolidays = (culture?.holidays || []).slice(0, 3);
   const birthdaysToday   = culture?.birthdaysToday || [];
   const upcomingBdays    = culture?.upcomingBirthdays || [];
   const upcomingEvents   = (culture?.events || []).slice(0, 4);
+
+  const teamOnLeave = todayTeamLeaves.filter(l => l.leave_time !== 'wfh' && l.user_id !== user?.id);
+  const teamWfh     = todayTeamLeaves.filter(l => l.leave_time === 'wfh' && l.user_id !== user?.id);
 
   return (
     <div>
@@ -51,6 +62,63 @@ export default function EmployeeHome() {
           <Avatar name={user?.name} color={user?.avatar_color} size={52} className="border-2 border-white/30" />
         </div>
       </div>
+
+      {/* Team Leave & WFH Today */}
+      {(teamOnLeave.length > 0 || teamWfh.length > 0) && (
+        <div className="bg-white rounded-xl shadow-card border border-[#c7c4d8] p-5 mb-6">
+          <h2 className="text-sm font-black text-[#151c27] uppercase tracking-wider flex items-center gap-2 mb-4">
+            <Users size={15} className="text-[#3525cd]" /> Team Status Today
+          </h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {/* On Leave */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Umbrella size={13} className="text-amber-500" />
+                <span className="text-xs font-bold text-amber-700">On Leave</span>
+                <span className="ml-auto text-[0.65rem] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{teamOnLeave.length}</span>
+              </div>
+              {teamOnLeave.length === 0
+                ? <p className="text-xs text-[#9ca3af]">Everyone is in today</p>
+                : <div className="space-y-1.5">
+                    {teamOnLeave.slice(0, 4).map(l => (
+                      <div key={l.id} className="flex items-center gap-2">
+                        <Avatar name={l.name} color={l.avatar_color} size={22} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#151c27] truncate">{l.name}</p>
+                          <p className="text-[0.62rem] text-[#9ca3af] capitalize">{l.leave_time === 'half' ? `Half Day (${l.half_type === 'second_half' ? 'PM' : 'AM'})` : 'Full Day'}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {teamOnLeave.length > 4 && <p className="text-[0.65rem] text-[#777587]">+{teamOnLeave.length - 4} more</p>}
+                  </div>
+              }
+            </div>
+            {/* WFH */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Home size={13} className="text-[#3525cd]" />
+                <span className="text-xs font-bold text-[#3525cd]">Working From Home</span>
+                <span className="ml-auto text-[0.65rem] font-black text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full">{teamWfh.length}</span>
+              </div>
+              {teamWfh.length === 0
+                ? <p className="text-xs text-[#9ca3af]">No WFH today</p>
+                : <div className="space-y-1.5">
+                    {teamWfh.slice(0, 4).map(l => (
+                      <div key={l.id} className="flex items-center gap-2">
+                        <Avatar name={l.name} color={l.avatar_color} size={22} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#151c27] truncate">{l.name}</p>
+                          <p className="text-[0.62rem] text-[#9ca3af]">{l.department || 'WFH'}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {teamWfh.length > 4 && <p className="text-[0.65rem] text-[#777587]">+{teamWfh.length - 4} more</p>}
+                  </div>
+              }
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Monthly Stats */}

@@ -81,6 +81,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PATCH /api/documents/:id/status — admin only: set verified | pending_review | rejected
+router.patch('/:id/status', async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const { status } = req.body;
+    if (!['pending_review', 'verified', 'rejected'].includes(status))
+      return res.status(400).json({ error: 'Invalid status' });
+    const { data, error } = await supabase.from('employee_documents')
+      .update({ status })
+      .eq('id', req.params.id)
+      .eq('organization_id', req.user.organization_id)
+      .select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/documents/:id
 router.delete('/:id', async (req, res) => {
   try {

@@ -40,8 +40,8 @@ export const adminTourSteps = [
   {
     element: '#tour-nav-people',
     popover: {
-      title: '🎯 People',
-      description: 'Track <strong>Performance</strong> reviews and manage employee <strong>Documents</strong>.',
+      title: '🎯 People & Growth',
+      description: 'Track <strong>Performance</strong> reviews and manage employee <strong>Documents</strong>. This section focuses on employee development and records.',
       side: 'right',
       align: 'start',
     },
@@ -49,8 +49,8 @@ export const adminTourSteps = [
   {
     element: '#tour-nav-account',
     popover: {
-      title: '🔔 Account',
-      description: 'View <strong>Notifications</strong>, adjust <strong>Settings</strong>, and manage your <strong>Profile</strong>.',
+      title: '⚙️ Admin & Account',
+      description: 'View <strong>Notifications</strong>, adjust <strong>Settings</strong>, manage your <strong>Profile</strong>, and access admin-only tools.',
       side: 'right',
       align: 'start',
     },

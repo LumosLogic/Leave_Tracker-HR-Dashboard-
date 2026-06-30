@@ -93,19 +93,21 @@ export default function TeamCalendar() {
   const selectedDs     = selectedDay ? `${year}-${pad(month)}-${pad(selectedDay)}` : null;
   const selectedHol    = selectedDay ? getHolidayForDay(selectedDay) : null;
 
-  // Build a unique list of people on leave this month for the sidebar
+  // Build a unique list of people on leave this month (excluding WFH)
   const onLeaveThisMonth = [];
   const seen = new Set();
   for (const l of teamLeaves) {
+    if (l.leave_time === 'wfh') continue;
     if (!seen.has(l.user_id)) {
       seen.add(l.user_id);
       onLeaveThisMonth.push({ user_id: l.user_id, name: l.name, avatar_color: l.avatar_color, department: l.department });
     }
   }
 
-  // Count leave days per person this month
+  // Count leave days per person this month (excluding WFH)
   const leaveDayCount = {};
   for (const l of teamLeaves) {
+    if (l.leave_time === 'wfh') continue;
     const start = new Date(Math.max(new Date(l.start_date + 'T12:00:00'), new Date(monthStart + 'T12:00:00')));
     const end   = new Date(Math.min(new Date(l.end_date   + 'T12:00:00'), new Date(monthEnd   + 'T12:00:00')));
     if (start > end) continue;

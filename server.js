@@ -10,7 +10,7 @@ const axios    = require('axios');
 const path     = require('path');
 const webpush  = require('web-push');
 const { supabase, seed } = require('./db');
-const { sendMail, getNotifyList, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml } = require('./emailService');
+const { sendMail, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml } = require('./emailService');
 
 // ─── VAPID / Push Notification Setup ─────────────────────────────────────────
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
@@ -207,6 +207,8 @@ function isWorkingDay(dateStr, settings) {
 }
 
 // ─── Dynamic notification recipients ─────────────────────────────────────────
+// Priority: 1) notification_recipients table (custom per-org list)
+//           2) all admin/root_admin users in the org (automatic fallback)
 async function getRecipients(oId) {
   try {
     let q = supabase.from('notification_recipients').select('email').eq('active', true);
@@ -214,13 +216,6 @@ async function getRecipients(oId) {
     const { data } = await q;
     if (data && data.length > 0) return data.map(r => r.email).filter(Boolean);
   } catch { /* fall back */ }
-
-  const envEmails = [
-    process.env.HR_EMAIL,
-    process.env.COMPANY_HEAD_1_EMAIL,
-    process.env.COMPANY_HEAD_2_EMAIL,
-  ].filter(Boolean);
-  if (envEmails.length > 0) return envEmails;
 
   try {
     let adminQuery = supabase.from('users').select('email').in('role', ['admin', 'root_admin']);
@@ -2243,7 +2238,7 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const from30 = d30ago.toISOString().split('T')[0];
 
     const [{ data: allLeaves }, { data: monthAtt }, { data: last7Att }, { count: totalEmps }, { data: allEmps }, { data: last30Att }, { data: leavePolicies }] = await Promise.all([
-      supabase.from('leaves').select('status, leave_type').eq('organization_id', orgId(req)),
+      supabase.from('leaves').select('status, leave_type, leave_time').eq('organization_id', orgId(req)),
       supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
@@ -2253,10 +2248,12 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     ]);
 
     const leaveByStatus = { approved: 0, pending: 0, rejected: 0, cancelled: 0 };
-    (allLeaves || []).forEach(l => { if (leaveByStatus[l.status] !== undefined) leaveByStatus[l.status]++; });
+    (allLeaves || []).filter(l => l.leave_time !== 'wfh').forEach(l => { if (leaveByStatus[l.status] !== undefined) leaveByStatus[l.status]++; });
 
+    // Only count approved, non-WFH leaves by type (rejected/WFH don't consume leave quota)
     const leaveByType = {};
-    (allLeaves || []).forEach(l => { leaveByType[l.leave_type] = (leaveByType[l.leave_type] || 0) + 1; });
+    (allLeaves || []).filter(l => l.status === 'approved' && l.leave_time !== 'wfh')
+      .forEach(l => { leaveByType[l.leave_type] = (leaveByType[l.leave_type] || 0) + 1; });
 
     const attByStatus = { present: 0, on_leave: 0, absent: 0, wfh: 0, half_day: 0 };
     (monthAtt || []).forEach(r => { if (attByStatus[r.status] !== undefined) attByStatus[r.status]++; });
@@ -2332,7 +2329,7 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
     const LEAVE_COLORS = { casual: '#10b981', sick: '#ef4444', annual: '#3525cd', emergency: '#f59e0b', wfh: '#6366f1', maternity: '#ec4899', paternity: '#8b5cf6', comp_off: '#94a3b8' };
     const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave', quota: 20 }, sick: { label: 'Sick Leave', quota: 15 }, annual: { label: 'Annual Leave', quota: 18 }, emergency: { label: 'Emergency Leave', quota: 5 }, wfh: { label: 'WFH', quota: 10 } };
     const approvedByType = {};
-    (allLeaves || []).filter(l => l.status === 'approved').forEach(l => { approvedByType[l.leave_type] = (approvedByType[l.leave_type] || 0) + 1; });
+    (allLeaves || []).filter(l => l.status === 'approved' && l.leave_time !== 'wfh').forEach(l => { approvedByType[l.leave_type] = (approvedByType[l.leave_type] || 0) + 1; });
     const policyMap = {};
     (leavePolicies || []).forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
     const leaveBalanceByType = Object.entries({ ...LEAVE_DEFAULTS, ...policyMap }).slice(0, 5).map(([type, info]) => ({
@@ -2429,7 +2426,7 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
         .select('status')
         .eq('date', today).eq('organization_id', orgId(req)),
       supabase.from('leaves')
-        .select('leave_type')
+        .select('leave_type, leave_time')
         .eq('organization_id', orgId(req)).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
     ]);
@@ -2440,9 +2437,10 @@ app.get('/api/root/stats', auth, rootAdminOnly, async (req, res) => {
       attendanceBreakdown[r.status] = (attendanceBreakdown[r.status] || 0) + 1;
     }
 
-    // Leave count by type (approved this year)
+    // Leave count by type (approved this year, excluding WFH)
     const leavesByType = {};
     for (const r of yearLeaves || []) {
+      if (r.leave_time === 'wfh') continue;
       leavesByType[r.leave_type] = (leavesByType[r.leave_type] || 0) + 1;
     }
 
@@ -2502,7 +2500,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
         .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).eq('status', 'pending').order('created_at', { ascending: false }).limit(15),
       supabase.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
-      supabase.from('leaves').select('leave_type').eq('organization_id', oid).eq('status', 'approved')
+      supabase.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
       supabase.from('attendance').select('date, user_id, status').eq('organization_id', oid)
         .gte('date', fromDate).lte('date', today),
@@ -2526,9 +2524,10 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
     }
     const presentToday = (attendanceBreakdown.present || 0) + (attendanceBreakdown.wfh || 0) + (attendanceBreakdown.half_day || 0);
 
-    // Leave count by type (approved this year)
+    // Leave count by type (approved this year, excluding WFH)
     const leavesByType = {};
     for (const r of yearLeaves || []) {
+      if (r.leave_time === 'wfh') continue;
       leavesByType[r.leave_type] = (leavesByType[r.leave_type] || 0) + 1;
     }
 
@@ -2823,59 +2822,66 @@ function scheduleDailyAt(hour, minute, fn) {
 }
 
 async function runDailyNotifications() {
-  const today    = localDateStr();
-  const todayMD  = today.slice(5);
-  const tmrDate  = new Date(); tmrDate.setDate(tmrDate.getDate() + 1);
-  const tmrStr   = localDateStr(tmrDate);
+  const today      = localDateStr();
+  const todayMD    = today.slice(5);
+  const tmrDate    = new Date(); tmrDate.setDate(tmrDate.getDate() + 1);
+  const tmrStr     = localDateStr(tmrDate);
   const tomorrowMD = `${String(tmrDate.getMonth()+1).padStart(2,'0')}-${String(tmrDate.getDate()).padStart(2,'0')}`;
 
-  const { data: employees } = await supabase.from('users')
-    .select('id, name, email, department, date_of_birth').eq('role', 'employee');
+  // Process notifications per organisation so each org's HR/admins get the right emails
+  const { data: orgs } = await supabase.from('organizations').select('id').eq('status', 'active');
 
-  // Birthday wishes to employees whose birthday is today
-  for (const emp of employees || []) {
-    if (emp.date_of_birth && emp.date_of_birth.slice(5) === todayMD) {
-      if (emp.email) {
-        sendMail({ to: emp.email, subject: `Happy Birthday, ${emp.name}! 🎂`, html: birthdayWishHtml(emp) });
+  for (const org of orgs || []) {
+    const oId = org.id;
+
+    const { data: employees } = await supabase.from('users')
+      .select('id, name, email, department, date_of_birth')
+      .eq('role', 'employee').eq('organization_id', oId);
+
+    // Birthday wishes to employees whose birthday is today
+    for (const emp of employees || []) {
+      if (emp.date_of_birth && emp.date_of_birth.slice(5) === todayMD) {
+        if (emp.email) {
+          sendMail({ to: emp.email, subject: `Happy Birthday, ${emp.name}! 🎂`, html: birthdayWishHtml(emp) });
+        }
+        await sendPushToUsers([emp.id], {
+          title: `🎂 Happy Birthday, ${emp.name}!`,
+          body:  `Wishing you a wonderful birthday filled with joy and happiness! 🎉`,
+          url:   '/portal/home',
+        }).catch(() => {});
       }
-      // Push notification on their device
-      await sendPushToUsers([emp.id], {
-        title: `🎂 Happy Birthday, ${emp.name}!`,
-        body:  `Wishing you a wonderful birthday filled with joy and happiness! 🎉`,
-        url:   '/portal/home',
-      }).catch(() => {});
     }
-  }
 
-  // Birthday reminder to HR for tomorrow's birthdays
-  const birthdaysTmr = (employees || []).filter(e => e.date_of_birth && e.date_of_birth.slice(5) === tomorrowMD);
-  if (birthdaysTmr.length > 0) {
-    const hrList = await getRecipients();
-    if (hrList.length) {
-      sendMail({
-        to: hrList,
-        subject: `Birthday Reminder — ${birthdaysTmr.map(e => e.name).join(', ')}`,
-        html: birthdayReminderHtml(birthdaysTmr),
-      });
-    }
-  }
-
-  // Holiday reminder to all employees for tomorrow's holidays
-  const { data: tmrHolidays } = await supabase.from('holidays').select('*').eq('date', tmrStr);
-  if (tmrHolidays?.length) {
-    const allEmails  = (employees || []).map(e => e.email).filter(Boolean);
-    const hrEmails   = await getRecipients();
-    const recipients = [...new Set([...allEmails, ...hrEmails])];
-    for (const holiday of tmrHolidays) {
-      if (recipients.length) {
-        sendMail({ to: recipients, subject: `Tomorrow is a Holiday — ${holiday.name}`, html: holidayReminderHtml(holiday) });
+    // Birthday reminder to this org's HR admins for tomorrow's birthdays
+    const birthdaysTmr = (employees || []).filter(e => e.date_of_birth && e.date_of_birth.slice(5) === tomorrowMD);
+    if (birthdaysTmr.length > 0) {
+      const hrList = await getRecipients(oId);
+      if (hrList.length) {
+        sendMail({
+          to: hrList,
+          subject: `Birthday Reminder — ${birthdaysTmr.map(e => e.name).join(', ')}`,
+          html: birthdayReminderHtml(birthdaysTmr),
+        });
       }
-      // Push notification to all employees
-      await sendPushToUsers(null, {
-        title: `🏖️ Tomorrow is a Holiday — ${holiday.name}`,
-        body:  holiday.specific_msg || holiday.description || `Enjoy the ${holiday.name} holiday tomorrow!`,
-        url:   '/portal/home',
-      }).catch(() => {});
+    }
+
+    // Holiday reminder for tomorrow's holidays scoped to this org
+    const { data: tmrHolidays } = await supabase.from('holidays').select('*')
+      .eq('date', tmrStr).eq('organization_id', oId);
+    if (tmrHolidays?.length) {
+      const allEmails  = (employees || []).map(e => e.email).filter(Boolean);
+      const hrEmails   = await getRecipients(oId);
+      const recipients = [...new Set([...allEmails, ...hrEmails])];
+      for (const holiday of tmrHolidays) {
+        if (recipients.length) {
+          sendMail({ to: recipients, subject: `Tomorrow is a Holiday — ${holiday.name}`, html: holidayReminderHtml(holiday) });
+        }
+        await sendPushToUsers(null, {
+          title: `🏖️ Tomorrow is a Holiday — ${holiday.name}`,
+          body:  holiday.specific_msg || holiday.description || `Enjoy the ${holiday.name} holiday tomorrow!`,
+          url:   '/portal/home',
+        }).catch(() => {});
+      }
     }
   }
 

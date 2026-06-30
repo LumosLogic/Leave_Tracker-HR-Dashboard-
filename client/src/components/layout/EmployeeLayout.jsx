@@ -18,15 +18,15 @@ import { initials, cn } from '@/lib/utils';
 const NAV_SECTIONS = [
   { title: 'My Workspace', items: [
     { to: '/portal/home',          label: 'My Dashboard',   Icon: Home },
-    { to: '/portal/leaves',        label: 'My Leaves',      Icon: FileText },
     { to: '/portal/attendance',    label: 'My Attendance',  Icon: Clock },
+    { to: '/portal/leaves',        label: 'My Leaves',      Icon: FileText },
     { to: '/portal/team-calendar', label: 'Team Calendar',  Icon: CalendarDays },
   ]},
   { title: 'Self Service', items: [
     { to: '/portal/regularization',label: 'Regularization', Icon: ClipboardList },
+    { to: '/portal/documents',     label: 'My Documents',   Icon: FolderOpen },
     { to: '/portal/expenses',      label: 'My Expenses',    Icon: Receipt },
     { to: '/portal/payslips',      label: 'My Payslips',    Icon: DollarSign },
-    { to: '/portal/documents',     label: 'My Documents',   Icon: FolderOpen },
   ]},
   { title: 'Growth', items: [
     { to: '/portal/performance',   label: 'Performance',    Icon: Target },
@@ -36,7 +36,6 @@ const NAV_SECTIONS = [
   { title: 'Company', items: [
     { to: '/portal/announcements', label: 'Announcements',  Icon: Megaphone },
     { to: '/portal/notifications', label: 'Notifications',  Icon: Bell, badge: true },
-    { to: '/portal/profile',       label: 'My Profile',     Icon: UserCircle },
   ]},
 ];
 
@@ -93,16 +92,26 @@ function EmployeeSidebar({ onClose }) {
       </nav>
 
       <div id="tour-emp-user-card" className="p-3 border-t border-[#e7eefe]">
-        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-default">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-[0.78rem] font-black text-white flex-shrink-0 border-2 border-white shadow-sm"
-            style={{ background: user?.avatar_color || '#3525cd' }}>
-            {initials(user?.name || '')}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[0.84rem] font-black text-[#151c27] leading-tight truncate">{user?.name}</p>
-            <p className="text-[0.68rem] text-[#777587] mt-0.5 truncate">{user?.position || 'Employee'}</p>
-          </div>
-        </div>
+        <NavLink to="/portal/profile" onClick={onClose}
+          className={({ isActive }) => cn(
+            'flex items-center gap-2.5 px-2.5 py-2 rounded-lg border transition-all duration-150',
+            isActive
+              ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent'
+              : 'border-transparent hover:bg-[#f0f3ff] hover:border-[#c7c4d8] cursor-pointer'
+          )}>
+          {() => (
+            <>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[0.78rem] font-black text-white flex-shrink-0 border-2 border-white shadow-sm"
+                style={{ background: user?.avatar_color || '#3525cd' }}>
+                {initials(user?.name || '')}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[0.84rem] font-black text-[#151c27] leading-tight truncate">{user?.name}</p>
+                <p className="text-[0.68rem] text-[#777587] mt-0.5 truncate">{user?.position || 'Employee'} · My Profile</p>
+              </div>
+            </>
+          )}
+        </NavLink>
         <button onClick={handleLogout}
           className="flex items-center gap-2 w-full px-2.5 py-2 mt-1 rounded-lg text-[0.82rem] font-semibold text-rose-400/80 hover:bg-rose-50 hover:text-rose-500 transition-all duration-150">
           <LogOut size={16} /> Sign Out

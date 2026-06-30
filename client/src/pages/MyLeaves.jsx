@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, Info, Loader2, RotateCcw } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle, Trash2, X, Info, Loader2, RotateCcw, BookOpen } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
@@ -291,6 +291,11 @@ export default function MyLeaves() {
     queryFn:  () => apiGet('/leaves'),
   });
 
+  const { data: policies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn:  () => apiGet('/leave-policies'),
+  });
+
   const apply = useMutation({
     mutationFn: (form) => apiPost('/leaves', form),
     onSuccess: () => {
@@ -324,7 +329,9 @@ export default function MyLeaves() {
   });
 
   const counts = { pending: 0, approved: 0, rejected: 0 };
-  leaves.forEach(l => { if (counts[l.status] !== undefined) counts[l.status]++; });
+  leaves.filter(l => l.leave_time !== 'wfh').forEach(l => { if (counts[l.status] !== undefined) counts[l.status]++; });
+
+  const activePolicies = policies.filter(p => p.active && p.annual_quota > 0);
 
   return (
     <div>
@@ -356,17 +363,19 @@ export default function MyLeaves() {
         ))}
       </div>
 
-      {/* Leave list */}
-      {isLoading ? (
-        <div className="flex justify-center py-16"><div className="spinner w-7 h-7" /></div>
-      ) : leaves.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-[#c7c4d8]">
-          <Inbox size={36} className="mx-auto text-[#c7c4d8] mb-3" />
-          <p className="text-[#464555] font-semibold">No leave requests yet</p>
-          <p className="text-[#777587] text-sm mt-1">Apply for your first leave to get started.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-5 items-start">
+        <div>
+        {/* Leave list */}
+        {isLoading ? (
+          <div className="flex justify-center py-16"><div className="spinner w-7 h-7" /></div>
+        ) : leaves.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-xl border border-[#c7c4d8]">
+            <Inbox size={36} className="mx-auto text-[#c7c4d8] mb-3" />
+            <p className="text-[#464555] font-semibold">No leave requests yet</p>
+            <p className="text-[#777587] text-sm mt-1">Apply for your first leave to get started.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
           {leaves.map(l => {
             const s = STATUS_STYLES[l.status] || STATUS_STYLES.pending;
             return (
@@ -415,9 +424,45 @@ export default function MyLeaves() {
               </div>
             );
           })}
+          </div>
+        )}
         </div>
-      )}
 
+        {/* Leave Balance Summary sidebar */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm self-start">
+          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
+            <BookOpen size={14} className="text-[#3525cd]" />
+            <span className="font-black text-[#151c27] text-sm">Leave Balance</span>
+          </div>
+          <div className="p-4 space-y-0">
+            {activePolicies.length === 0 ? (
+              <p className="text-xs text-[#777587] text-center py-4">No policies configured</p>
+            ) : activePolicies.map(p => {
+              const used      = leaves.filter(l => l.leave_type === p.leave_type && l.status === 'approved' && l.leave_time !== 'wfh').length;
+              const pending   = leaves.filter(l => l.leave_type === p.leave_type && l.status === 'pending'  && l.leave_time !== 'wfh').length;
+              const total     = p.annual_quota;
+              const remaining = Math.max(0, total - used);
+              const pct       = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+              return (
+                <div key={p.leave_type} className="py-3 border-b border-[#f0f3ff] last:border-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-[#151c27] capitalize">{p.label}</span>
+                    <span className="text-xs font-black text-[#3525cd]">{used} <span className="font-normal text-[#777587]">/ {total} days</span></span>
+                  </div>
+                  <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden mb-1">
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#10b981' }} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[0.65rem] text-[#9ca3af]">{remaining} days remaining</span>
+                    {pending > 0 && <span className="text-[0.65rem] font-bold text-amber-600">{pending} pending</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {/* Leave Apply Slide-out */}
       <LeaveApplyPanel

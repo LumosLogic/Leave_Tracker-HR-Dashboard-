@@ -9,8 +9,9 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
 import { fmtDate } from '@/lib/utils';
 
-const CATEGORIES = ['travel','food','accommodation','communication','training','medical','supplies','other'];
-const CAT_ICONS  = { travel: '✈️', food: '🍽️', accommodation: '🏨', communication: '📱', training: '📚', medical: '🏥', supplies: '📦', other: '🧾' };
+const CATEGORIES = ['travel','meals','accommodation','fuel','office_supplies','internet','medical','parking','training','client_entertainment','communication','other'];
+const CAT_ICONS  = { travel:'✈️', meals:'🍽️', accommodation:'🏨', fuel:'⛽', office_supplies:'🖊️', internet:'🌐', medical:'🏥', parking:'🅿️', training:'📚', client_entertainment:'🤝', communication:'📱', other:'🧾' };
+const CAT_LABELS = { travel:'Travel', meals:'Meals', accommodation:'Accommodation', fuel:'Fuel', office_supplies:'Office Supplies', internet:'Internet', medical:'Medical', parking:'Parking', training:'Training', client_entertainment:'Client Entertainment', communication:'Communication', other:'Other' };
 const STATUS_CFG = {
   pending:  { cls: 'badge-pending',  icon: <Clock size={11} />,        label: 'Pending'  },
   approved: { cls: 'badge-approved', icon: <CheckCircle2 size={11} />, label: 'Approved' },
@@ -23,15 +24,32 @@ function ExpenseModal({ open, onClose, expense }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const isEdit = !!expense;
-  const fileRef = useRef();
-  const [uploading, setUploading] = useState(false);
+  const fileRef  = useRef();
+  const [uploading,    setUploading]    = useState(false);
+  const [pendingFile,  setPendingFile]  = useState(null);
+  const [amountErr,    setAmountErr]    = useState('');
+  const today = new Date().toISOString().split('T')[0];
+
   const [form, setForm] = useState(() => isEdit
     ? { title: expense.title, category: expense.category, amount: expense.amount, expense_date: expense.expense_date, description: expense.description || '', receipt_url: expense.receipt_url || '' }
-    : { title: '', category: 'other', amount: '', expense_date: new Date().toISOString().split('T')[0], description: '', receipt_url: '' });
+    : { title: '', category: 'travel', amount: '', expense_date: today, description: '', receipt_url: '' });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  function validateAmount(val) {
+    const n = parseFloat(val);
+    if (!val) { setAmountErr('Amount is required'); return false; }
+    if (isNaN(n) || n <= 0) { setAmountErr('Enter a positive amount'); return false; }
+    setAmountErr('');
+    return true;
+  }
+
   async function handleReceipt(file) {
+    const maxBytes = 5 * 1024 * 1024;
+    if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
+    const ok = ['application/pdf','image/jpeg','image/png','image/jpg'].includes(file.type);
+    if (!ok) { toast('Unsupported format — use PDF, JPG, or PNG', 'error'); return; }
+    setPendingFile(file);
     setUploading(true);
     try {
       const token = localStorage.getItem('lt_token');
@@ -42,60 +60,107 @@ function ExpenseModal({ open, onClose, expense }) {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       set('receipt_url', data.url);
       toast('Receipt uploaded!', 'success');
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) { toast(err.message, 'error'); setPendingFile(null); }
     finally { setUploading(false); }
   }
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/expenses/${expense.id}`, form) : apiPost('/expenses', form),
-    onSuccess: () => { toast(isEdit ? 'Expense updated!' : 'Claim submitted!', 'success'); qc.invalidateQueries({ queryKey: ['expenses'] }); onClose(); },
+    onSuccess: () => {
+      toast(isEdit ? 'Expense updated!' : 'Expense claim submitted successfully. Waiting for manager approval.', 'success');
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+      onClose();
+    },
     onError: e => toast(e.message, 'error'),
   });
+
+  function handleSubmit() {
+    if (!form.title.trim()) { toast('Enter a title for the expense', 'warning'); return; }
+    if (!validateAmount(form.amount)) { return; }
+    if (!form.expense_date) { toast('Select an expense date', 'warning'); return; }
+    mut.mutate();
+  }
+
+  const fmtFileSize = b => b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`;
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Expense' : 'Submit Expense Claim'} size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.title || !form.amount}>
-            {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : isEdit ? 'Save Changes' : 'Submit Claim'}
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.title || !form.amount}>
+            {mut.isPending ? <><span className="spinner w-4 h-4" />Submitting…</> : isEdit ? 'Save Changes' : 'Submit Claim'}
           </button>
         </div>
       }>
       <div className="space-y-4">
+        {/* Title with char counter */}
         <div>
-          <label className="form-label">Title *</label>
-          <input className="form-control" placeholder="e.g. Cab to client office" value={form.title} onChange={e => set('title', e.target.value)} />
+          <div className="flex items-center justify-between mb-1">
+            <label className="form-label mb-0">Title <span className="text-rose-500">*</span></label>
+            <span className="text-[0.65rem] text-[#9ca3af]">{form.title.length}/80</span>
+          </div>
+          <input className="form-control" maxLength={80} placeholder="e.g. Cab to client office" value={form.title}
+            onChange={e => set('title', e.target.value)} />
         </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Category</label>
             <select className="form-control" value={form.category} onChange={e => set('category', e.target.value)}>
-              {CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c]} {c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              {CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c]} {CAT_LABELS[c]}</option>)}
             </select>
           </div>
           <div>
-            <label className="form-label">Amount (₹) *</label>
-            <input type="number" className="form-control" min={0} step={1} placeholder="0" value={form.amount} onChange={e => set('amount', e.target.value)} />
+            <label className="form-label">Amount (₹) <span className="text-rose-500">*</span></label>
+            <input type="number" className={`form-control ${amountErr ? 'border-rose-400' : ''}`}
+              min={0.01} step={0.01} placeholder="0.00" value={form.amount}
+              onChange={e => { set('amount', e.target.value); validateAmount(e.target.value); }} />
+            {amountErr && <p className="text-[0.65rem] text-rose-500 mt-1">{amountErr}</p>}
           </div>
         </div>
+
         <div>
-          <label className="form-label">Expense Date *</label>
-          <input type="date" className="form-control" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} />
+          <label className="form-label">Expense Date <span className="text-rose-500">*</span></label>
+          <input type="date" className="form-control" max={today} value={form.expense_date}
+            onChange={e => set('expense_date', e.target.value)} />
+          <p className="text-[0.65rem] text-[#9ca3af] mt-1">Future dates are not allowed</p>
         </div>
+
+        {/* Description with char counter */}
         <div>
-          <label className="form-label">Description</label>
-          <textarea className="form-control" rows={2} placeholder="Additional details…" value={form.description} onChange={e => set('description', e.target.value)} />
+          <div className="flex items-center justify-between mb-1">
+            <label className="form-label mb-0">Description</label>
+            <span className="text-[0.65rem] text-[#9ca3af]">{form.description.length}/200</span>
+          </div>
+          <textarea className="form-control" rows={2} maxLength={200} placeholder="Additional details about this expense…"
+            value={form.description} onChange={e => set('description', e.target.value)} />
         </div>
+
+        {/* Receipt upload */}
         <div>
           <label className="form-label">Receipt</label>
-          <input type="file" ref={fileRef} className="hidden" accept="image/*,.pdf" onChange={e => e.target.files[0] && handleReceipt(e.target.files[0])} />
+          <div className="flex items-center gap-2 p-2.5 mb-2 rounded-lg bg-[#f0f3ff] border border-[#e7eefe] text-xs text-[#777587]">
+            <span className="text-[#3525cd]">ℹ</span>
+            <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG</strong> · Max size: <strong className="text-[#464555]">5 MB</strong></span>
+          </div>
+          <input type="file" ref={fileRef} className="hidden" accept=".pdf,.jpg,.jpeg,.png"
+            onChange={e => e.target.files[0] && handleReceipt(e.target.files[0])} />
           {form.receipt_url ? (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-              <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-              <span className="text-xs font-semibold text-emerald-700 flex-1">Receipt uploaded</span>
-              <a href={form.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#3525cd] flex items-center gap-1 hover:underline"><ExternalLink size={11} />View</a>
-              <button className="text-xs text-rose-500 hover:underline" onClick={() => set('receipt_url', '')}>Remove</button>
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-emerald-700 truncate">{pendingFile?.name || 'Receipt uploaded'}</p>
+                  {pendingFile && <p className="text-[0.65rem] text-emerald-600">{fmtFileSize(pendingFile.size)}</p>}
+                </div>
+                <a href={form.receipt_url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-[#3525cd] flex items-center gap-1 hover:underline flex-shrink-0">
+                  <ExternalLink size={11} />View
+                </a>
+                <button className="text-xs text-rose-500 hover:underline flex-shrink-0"
+                  onClick={() => { set('receipt_url', ''); setPendingFile(null); }}>Remove</button>
+              </div>
             </div>
           ) : (
             <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
