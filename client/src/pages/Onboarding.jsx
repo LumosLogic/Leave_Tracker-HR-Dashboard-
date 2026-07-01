@@ -7,9 +7,10 @@ import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 
 const ASSIGNED_CFG = {
-  employee: { cls: 'badge-pending',   label: 'You',   bg: 'bg-amber-50',   text: 'text-amber-700'  },
-  hr:       { cls: 'badge-approved',  label: 'HR',    bg: 'bg-emerald-50', text: 'text-emerald-700'},
-  it:       { cls: 'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]', label: 'IT', bg: 'bg-[#f0f3ff]', text: 'text-[#3525cd]' },
+  employee: { cls: 'badge-pending',   label: 'You',     bg: 'bg-amber-50',   text: 'text-amber-700'  },
+  hr:       { cls: 'badge-approved',  label: 'HR',      bg: 'bg-emerald-50', text: 'text-emerald-700'},
+  it:       { cls: 'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]', label: 'IT',      bg: 'bg-[#f0f3ff]', text: 'text-[#3525cd]' },
+  manager:  { cls: 'bg-purple-50 text-purple-700 border-purple-200', label: 'Manager', bg: 'bg-purple-50', text: 'text-purple-700' },
 };
 
 function ProgressRing({ pct }) {
@@ -72,11 +73,14 @@ function MyOnboarding() {
     </div>
   );
 
-  const done      = tasks.filter(t => t.completed).length;
-  const pct       = Math.round((done / tasks.length) * 100);
-  const myTasks   = tasks.filter(t => t.assigned_to === 'employee');
-  const otherTasks= tasks.filter(t => t.assigned_to !== 'employee');
-  const myDone    = myTasks.filter(t => t.completed).length;
+  const done       = tasks.filter(t => t.completed).length;
+  const pct        = Math.round((done / tasks.length) * 100);
+  const myTasks    = tasks.filter(t => t.assigned_to === 'employee');
+  const hrTasks    = tasks.filter(t => t.assigned_to === 'hr');
+  const itTasks    = tasks.filter(t => t.assigned_to === 'it');
+  const mgrTasks   = tasks.filter(t => t.assigned_to === 'manager');
+  const otherTasks = tasks.filter(t => t.assigned_to !== 'employee');
+  const myDone     = myTasks.filter(t => t.completed).length;
 
   return (
     <div className="space-y-6">
@@ -104,7 +108,7 @@ function MyOnboarding() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Your Tasks',    value: `${myDone}/${myTasks.length}`,    color: 'from-[#f0f3ff] to-[#e7eefe]', top: '#3525cd', text: 'text-[#3525cd]' },
-          { label: 'HR/IT Tasks',   value: `${otherTasks.filter(t=>t.completed).length}/${otherTasks.length}`, color: 'from-emerald-50 to-emerald-100', top: '#10B981', text: 'text-emerald-700' },
+          { label: 'Team Tasks',    value: `${otherTasks.filter(t=>t.completed).length}/${otherTasks.length}`, color: 'from-emerald-50 to-emerald-100', top: '#10B981', text: 'text-emerald-700' },
           { label: 'Overall',       value: `${pct}%`,                        color: 'from-amber-50 to-amber-100',   top: '#F59E0B', text: 'text-amber-700' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl p-4 bg-gradient-to-br ${s.color} border border-[#c7c4d8] shadow-card relative overflow-hidden`}>
@@ -129,16 +133,44 @@ function MyOnboarding() {
         </div>
       )}
 
-      {/* HR/IT tasks */}
-      {otherTasks.length > 0 && (
+      {/* HR tasks */}
+      {hrTasks.length > 0 && (
         <div>
           <div className="flex items-center gap-3 mb-3">
-            <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">HR / IT Tasks</p>
+            <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">HR Tasks</p>
             <div className="flex-1 h-px bg-[#f0f3ff]" />
-            <span className="text-xs text-[#777587] italic">Managed by your team</span>
+            <span className="text-xs text-[#777587] italic">Managed by HR</span>
           </div>
           <div className="space-y-2">
-            {otherTasks.map(t => <TaskItem key={t.id} task={t} canToggle={false} />)}
+            {hrTasks.map(t => <TaskItem key={t.id} task={t} canToggle={false} />)}
+          </div>
+        </div>
+      )}
+
+      {/* IT tasks */}
+      {itTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">IT Tasks</p>
+            <div className="flex-1 h-px bg-[#f0f3ff]" />
+            <span className="text-xs text-[#777587] italic">Managed by IT</span>
+          </div>
+          <div className="space-y-2">
+            {itTasks.map(t => <TaskItem key={t.id} task={t} canToggle={false} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Manager tasks */}
+      {mgrTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Manager Tasks</p>
+            <div className="flex-1 h-px bg-[#f0f3ff]" />
+            <span className="text-xs text-[#777587] italic">Managed by your Manager</span>
+          </div>
+          <div className="space-y-2">
+            {mgrTasks.map(t => <TaskItem key={t.id} task={t} canToggle={false} />)}
           </div>
         </div>
       )}

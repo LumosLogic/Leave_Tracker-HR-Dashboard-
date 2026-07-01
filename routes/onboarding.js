@@ -5,16 +5,26 @@ const { supabase } = require('../db');
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 const DEFAULT_TASKS = [
-  { title: 'Complete personal information form',    assigned_to: 'employee', order_index: 1 },
-  { title: 'Upload ID proof and address proof',     assigned_to: 'employee', order_index: 2 },
-  { title: 'Provide bank account details',          assigned_to: 'employee', order_index: 3 },
-  { title: 'Read and acknowledge company policies', assigned_to: 'employee', order_index: 4 },
-  { title: 'Set up work email and tools access',    assigned_to: 'hr',       order_index: 5 },
-  { title: 'Laptop and equipment setup',            assigned_to: 'it',       order_index: 6 },
-  { title: 'Assign buddy / mentor',                 assigned_to: 'hr',       order_index: 7 },
-  { title: 'Complete orientation / induction',      assigned_to: 'employee', order_index: 8 },
-  { title: 'Meet with reporting manager',           assigned_to: 'employee', order_index: 9 },
-  { title: 'Complete first-week review',            assigned_to: 'hr',       order_index: 10 },
+  // ── Employee tasks ────────────────────────────────────────────────────────
+  { title: 'Complete Personal Information Form',                              assigned_to: 'employee', order_index: 1  },
+  { title: 'Upload Aadhaar Card / ID Proof',                                  assigned_to: 'employee', order_index: 2  },
+  { title: 'Upload Address Proof',                                            assigned_to: 'employee', order_index: 3  },
+  { title: 'Provide Bank Account Details',                                    assigned_to: 'employee', order_index: 4  },
+  { title: 'Read & Acknowledge Company Policies',                             assigned_to: 'employee', order_index: 5  },
+  // ── HR tasks ──────────────────────────────────────────────────────────────
+  { title: 'Verify Documents',                                                assigned_to: 'hr',       order_index: 6  },
+  { title: 'Create Company Email',                                            assigned_to: 'hr',       order_index: 7  },
+  { title: 'Create HRMS Account',                                             assigned_to: 'hr',       order_index: 8  },
+  { title: 'Complete HR Orientation',                                         assigned_to: 'hr',       order_index: 9  },
+  { title: 'Assign Buddy / Mentor',                                           assigned_to: 'hr',       order_index: 10 },
+  // ── IT tasks ──────────────────────────────────────────────────────────────
+  { title: 'Laptop & Equipment Setup',                                        assigned_to: 'it',       order_index: 11 },
+  { title: 'Software & Tool Access',                                          assigned_to: 'it',       order_index: 12 },
+  // ── Manager tasks ─────────────────────────────────────────────────────────
+  { title: 'Meet Reporting Manager',                                          assigned_to: 'manager',  order_index: 13 },
+  { title: 'Team Introduction',                                               assigned_to: 'manager',  order_index: 14 },
+  { title: 'Assign First Task',                                               assigned_to: 'manager',  order_index: 15 },
+  { title: 'Complete First Week Review',                                      assigned_to: 'manager',  order_index: 16 },
 ];
 
 // GET /api/onboarding
@@ -95,6 +105,20 @@ router.put('/:id/complete', async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { completed } = req.body;
+
+    // Non-admins can only toggle their own employee-assigned tasks
+    if (!isAdmin(req.user.role)) {
+      const { data: task } = await supabase
+        .from('onboarding_checklists')
+        .select('user_id, assigned_to')
+        .eq('id', req.params.id)
+        .eq('organization_id', oId)
+        .single();
+      if (!task || task.user_id !== req.user.id || task.assigned_to !== 'employee') {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+
     const { data, error } = await supabase.from('onboarding_checklists')
       .update({ completed: !!completed, completed_at: completed ? new Date().toISOString() : null })
       .eq('id', req.params.id).eq('organization_id', oId).select().single();

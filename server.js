@@ -933,6 +933,12 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const _now = new Date();
     const _ms  = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-01`;
     const newThisMonth   = (allEmployees || []).filter(e => e.created_at >= _ms).length;
+    const _7dAgo = new Date(); _7dAgo.setDate(_7dAgo.getDate() - 7);
+    const newJoiners = (allEmployees || [])
+      .filter(e => new Date(e.created_at) >= _7dAgo)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 5)
+      .map(({ id, name, department, avatar_color, created_at, position }) => ({ id, name, department, avatar_color, created_at, position }));
 
     // ── 5. Activity for selected date ─────────────────────────────────────────
     const activityMap = new Map();
@@ -973,7 +979,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const { data: myToday } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
-    res.json({ totalEmployees, presentToday, onLeaveToday, onClockify, notOnClockify, lateToday, earlyExitToday, halfDayToday, wfhToday, checkedInToday, newThisMonth, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday });
+    res.json({ totalEmployees, presentToday, onLeaveToday, onClockify, notOnClockify, lateToday, earlyExitToday, halfDayToday, wfhToday, checkedInToday, newThisMonth, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday, newJoiners });
   } catch (err) {
     console.error(`[Dashboard] step="${_step}" error:`, err.message, err.stack);
     res.status(500).json({ error: err.message });
@@ -1021,6 +1027,15 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
       .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
+
+    // Sync department junction table if department_ids provided
+    const department_ids = req.body.department_ids;
+    if (data && Array.isArray(department_ids) && department_ids.length > 0) {
+      await supabase.from('user_departments').insert(
+        department_ids.map(dId => ({ user_id: data.id, department_id: parseInt(dId), role_in_dept: 'Member', organization_id: orgId(req) }))
+      ).catch(() => {});
+    }
+
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1125,7 +1140,33 @@ app.post('/api/attendance/checkin', auth, async (req, res) => {
     const { data: existing } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
-    if (existing?.check_in) return res.status(400).json({ error: 'Already checked in today' });
+    if (existing?.check_in && !existing?.check_out) return res.status(400).json({ error: 'Already checked in today' });
+
+    // Clockify re-checkin: allow resuming after a break (check_in + check_out both set)
+    if (existing?.check_in && existing?.check_out) {
+      const config = await getClockifyConfig(orgId(req));
+      const { data: uRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+      const isClockifyUser = !!(config?.api_key && config?.workspace_id && uRow?.clockify_user_id);
+      if (!isClockifyUser) return res.status(400).json({ error: 'You have already checked out today' });
+
+      let clockify_synced = false;
+      let entryId = null;
+      try {
+        const resp = await axios.post(
+          `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
+          { start: new Date().toISOString(), description: '' },
+          { headers: { 'X-Api-Key': config.api_key } }
+        );
+        if (resp.data?.id) entryId = resp.data.id;
+        clockify_synced = true;
+      } catch { /* Clockify unavailable */ }
+
+      const updateFields = { check_out: null };
+      if (entryId) updateFields.clockify_entry_id = entryId;
+      const { data: resumed } = await supabase.from('attendance')
+        .update(updateFields).eq('id', existing.id).select().single();
+      return res.json({ record: resumed, clockify_synced, message: clockify_synced ? 'Timer resumed in Clockify' : 'Resumed working today' });
+    }
 
     const is_late = toMinutes(timeStr) > toMinutes(settings.late_threshold);
 
@@ -2116,7 +2157,7 @@ app.get('/api/culture', auth, async (req, res) => {
 
     const birthdaysToday    = (users || []).filter(u => u.date_of_birth && u.date_of_birth.slice(5) === todayMD);
     const upcomingBirthdays = [];
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 1; i <= 30; i++) {
       const d = new Date(); d.setDate(d.getDate() + i);
       const mm   = String(d.getMonth() + 1).padStart(2, '0');
       const dd   = String(d.getDate()).padStart(2, '0');
@@ -2133,6 +2174,21 @@ app.get('/api/culture', auth, async (req, res) => {
     ]);
 
     res.json({ birthdaysToday: birthdaysToday || [], upcomingBirthdays, holidays: holidays || [], events: events || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Returns employees who joined in the last 7 days (visible to all authenticated users)
+app.get('/api/new-joiners', auth, async (req, res) => {
+  try {
+    const _7dAgo = new Date(); _7dAgo.setDate(_7dAgo.getDate() - 7);
+    const { data } = await supabase.from('users')
+      .select('id, name, department, avatar_color, created_at, position')
+      .eq('organization_id', orgId(req))
+      .in('role', ['employee', 'admin'])
+      .gte('created_at', _7dAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(10);
+    res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

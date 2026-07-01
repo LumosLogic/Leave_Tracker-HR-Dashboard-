@@ -29,7 +29,8 @@ export default function Leaves() {
   const [filterDate, setFilterDate] = useState(null);
   const [applyModal, setApplyModal] = useState(false);
   const [editLeave,  setEditLeave]  = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
+  const [confirmDel,    setConfirmDel]    = useState(null);
+  const [confirmRevert, setConfirmRevert] = useState(null);
 
   const { data: leaves = [], refetch: refetchLeaves } = useQuery({
     queryKey: ['leaves'],
@@ -152,7 +153,7 @@ export default function Leaves() {
                 ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>No leave records</p></div>
                 : activeList.map(l => (
                     <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                      onApprove={approve} onReject={reject} onRevert={revert} onCancel={cancel}
+                      onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
                       onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
                   ))
@@ -160,28 +161,72 @@ export default function Leaves() {
           </div>
         </div>
 
-        {/* Summary — shows policy quotas configured by admin */}
-        <div className="card self-start">
-          <div className="px-5 py-4 border-b border-[#f0f3ff] font-black text-[#151c27]">Leave Summary</div>
-          <div className="p-5 space-y-0">
-            {policies.length === 0
-              ? <p className="text-xs text-[#9ca3af] text-center py-4">No leave policies configured</p>
-              : policies.filter(p => p.active).map(p => (
-                <div key={p.leave_type} className="flex items-center justify-between py-2.5 border-b border-[#f0f3ff] last:border-0">
-                  <LeaveTypeBadge type={p.leave_type} />
-                  <span className="text-xs font-semibold text-[#464555]">
-                    {p.annual_quota > 0 ? `${p.annual_quota} days` : '—'}
-                  </span>
-                </div>
-              ))
-            }
+        {/* Right column */}
+        <div className="space-y-4 self-start">
+          {/* Leave Quotas */}
+          <div className="card">
+            <div className="px-5 py-4 border-b border-[#f0f3ff] font-black text-[#151c27] text-sm">Leave Quotas</div>
+            <div className="p-5 space-y-0">
+              {policies.length === 0
+                ? <p className="text-xs text-[#9ca3af] text-center py-4">No leave policies configured</p>
+                : policies.filter(p => p.active).map(p => (
+                  <div key={p.leave_type} className="flex items-center justify-between py-2.5 border-b border-[#f0f3ff] last:border-0">
+                    <LeaveTypeBadge type={p.leave_type} />
+                    <span className="text-xs font-semibold text-[#464555]">
+                      {p.annual_quota > 0 ? `${p.annual_quota} days / yr` : '—'}
+                    </span>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+
+          {/* Upcoming Leaves */}
+          <div className="card">
+            <div className="px-5 py-4 border-b border-[#f0f3ff] font-black text-[#151c27] text-sm flex items-center gap-2">
+              <Calendar size={14} className="text-[#3525cd]" /> Upcoming Leaves
+            </div>
+            <div className="divide-y divide-[#f0f3ff]">
+              {(() => {
+                const today = todayStr();
+                const upcoming = allLeaves
+                  .filter(l => l.status === 'approved' && l.start_date >= today && l.leave_time !== 'wfh')
+                  .sort((a, b) => a.start_date.localeCompare(b.start_date))
+                  .slice(0, 6);
+                if (upcoming.length === 0) return (
+                  <div className="py-6 text-center">
+                    <CheckCircle size={22} className="text-emerald-400 mx-auto mb-1" />
+                    <p className="text-xs text-[#777587]">No upcoming leaves</p>
+                  </div>
+                );
+                return upcoming.map(l => (
+                  <div key={l.id} className="px-4 py-3 flex items-center gap-3">
+                    {isAdmin && <Avatar name={l.name} color={l.avatar_color} size={26} />}
+                    <div className="flex-1 min-w-0">
+                      {isAdmin && <p className="text-xs font-bold text-[#151c27] truncate">{l.name}</p>}
+                      <p className="text-[0.65rem] text-[#777587]">{fmtDateRange(l.start_date, l.end_date)}</p>
+                    </div>
+                    <LeaveTypeBadge type={l.leave_type} />
+                  </div>
+                ));
+              })()}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Modals */}
-      {applyModal && <ApplyLeaveModal employees={employees} isAdmin={isAdmin} onClose={() => setApplyModal(false)} onSuccess={refetchLeaves} />}
+      {applyModal && <ApplyLeaveModal employees={employees} isAdmin={isAdmin} allLeaves={allLeaves} policies={policies} onClose={() => setApplyModal(false)} onSuccess={refetchLeaves} />}
       {editLeave  && <EditLeaveModal  leave={editLeave} isAdmin={isAdmin} onClose={() => setEditLeave(null)} onSuccess={refetchLeaves} />}
+      <ConfirmModal
+        open={!!confirmRevert}
+        title="Confirm Revert Leave"
+        message="Are you sure you want to revert this leave request? The leave will be cancelled and attendance records for those days will be removed."
+        confirmLabel="Revert"
+        variant="warning"
+        onConfirm={() => revert(confirmRevert)}
+        onCancel={() => setConfirmRevert(null)}
+      />
       <ConfirmModal
         open={!!confirmDel}
         title="Delete Leave Record"
@@ -225,7 +270,7 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
               {l.half_type === 'second_half' ? 'Second Half' : 'First Half'}
             </span>
           )}
-          {l.leave_time === 'wfh' && <span className="badge badge-wfh flex items-center gap-1"><Home size={10} /> WFH</span>}
+          {l.leave_time === 'wfh' && l.leave_type !== 'casual' && <span className="badge badge-wfh flex items-center gap-1"><Home size={10} /> WFH</span>}
           {l.leave_time === 'full' && <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>}
           <StatusBadge status={l.status} />
         </div>
@@ -257,7 +302,9 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
-        <button className="btn btn-outline btn-sm text-xs py-1 px-2" onClick={onEdit}><Edit size={12} /> Edit</button>
+        {(isAdmin || l.status !== 'approved') && (
+          <button className="btn btn-outline btn-sm text-xs py-1 px-2" onClick={onEdit}><Edit size={12} /> Edit</button>
+        )}
         {isAdmin && (
           <button className="btn btn-danger btn-sm text-xs py-1 px-2" onClick={onDelete}><Trash2 size={12} /></button>
         )}
@@ -341,7 +388,7 @@ function TodayAttendanceTab({ employees, attendance, clockifyData }) {
 }
 
 // ── Apply Leave Modal ─────────────────────────────────────────────────────────
-function ApplyLeaveModal({ employees, isAdmin, onClose, onSuccess }) {
+function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onSuccess }) {
   const toast = useToast();
   const blank = () => ({ emp: '', type: 'casual', time: 'full', half: 'first_half', start: '', end: '', reason: '' });
   const [forms, setForms] = useState([blank()]);
@@ -349,6 +396,19 @@ function ApplyLeaveModal({ employees, isAdmin, onClose, onSuccess }) {
   function update(i, k, v) { setForms(fs => fs.map((f, idx) => idx === i ? { ...f, [k]: v } : f)); }
   function add()    { setForms(fs => [...fs, blank()]); }
   function remove(i){ setForms(fs => fs.filter((_, idx) => idx !== i)); }
+
+  function getEmpBalance(empId) {
+    if (!empId || !isAdmin) return null;
+    const empLeaves = (allLeaves || []).filter(l => String(l.user_id) === String(empId) && l.status === 'approved');
+    const activePolicies = (policies || []).filter(p => p.active && p.annual_quota > 0);
+    return activePolicies.map(p => {
+      const used = empLeaves
+        .filter(l => l.leave_type === p.leave_type && l.leave_time !== 'wfh')
+        .reduce((s, l) => s + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+      const remaining = Math.max(0, p.annual_quota - used);
+      return { type: p.leave_type, quota: p.annual_quota, used, remaining };
+    }).filter(b => ['casual', 'sick', 'annual', 'emergency'].includes(b.type));
+  }
 
   async function submit() {
     for (const [i, f] of forms.entries()) {
@@ -379,11 +439,32 @@ function ApplyLeaveModal({ employees, isAdmin, onClose, onSuccess }) {
                   {i > 0 && <button className="btn btn-ghost btn-sm text-xs text-rose-400" onClick={() => remove(i)}><X size={12} /> Remove</button>}
                 </div>
                 {isAdmin && (
-                  <div className="mb-3"><label className="form-label">Employee</label>
+                  <div className="mb-3">
+                    <label className="form-label">Employee</label>
                     <select className="form-control" value={f.emp} onChange={e => update(i, 'emp', e.target.value)}>
                       <option value="">Select employee…</option>
                       {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                     </select>
+                    {f.emp && (() => {
+                      const balance = getEmpBalance(f.emp);
+                      if (!balance || balance.length === 0) return null;
+                      return (
+                        <div className="mt-2 p-3 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8]">
+                          <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-wider mb-2">Leave Balance</p>
+                          <div className="flex flex-wrap gap-3">
+                            {balance.map(b => (
+                              <div key={b.type} className="text-xs">
+                                <span className="capitalize text-[#464555] font-semibold">{b.type}: </span>
+                                <span className={b.remaining === 0 ? 'text-rose-600 font-black' : b.remaining <= 2 ? 'text-amber-600 font-black' : 'text-emerald-600 font-black'}>
+                                  {b.remaining}
+                                </span>
+                                <span className="text-[#9ca3af]">/{b.quota} days</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3 mb-3">

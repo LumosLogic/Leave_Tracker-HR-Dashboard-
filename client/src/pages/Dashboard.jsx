@@ -621,8 +621,8 @@ function HRInsightsRow({ d, culture, navigate }) {
       icon: <Gift size={16} className="text-pink-500" />,
       bg: 'bg-pink-50',
       title: birthdayCount > 0 ? `${birthdayCount} birthday${birthdayCount > 1 ? 's' : ''} coming up` : 'No upcoming birthdays',
-      subtitle: birthdayCount > 0 ? 'Send wishes to your team' : 'Next 7 days are clear.',
-      onClick: () => navigate('/holidays'),
+      subtitle: birthdayCount > 0 ? 'Send wishes to your team' : 'No birthdays in next 30 days.',
+      onClick: () => navigate('/employees'),
     },
     {
       icon: <FileText size={16} className="text-blue-500" />,
@@ -814,6 +814,9 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* HR INSIGHTS */}
+        {isAdmin && <HRInsightsRow d={d} culture={culture} navigate={navigate} />}
+
         {/* LIVE ATTENDANCE + TREND CHART + LEAVE REQUESTS */}
         <div className="grid lg:grid-cols-[1fr_280px_260px] gap-4">
 
@@ -966,16 +969,40 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* HR INSIGHTS */}
-        <HRInsightsRow d={d} culture={culture} navigate={navigate} />
+        {/* NEW JOINERS */}
+        {(d?.newJoiners || []).length > 0 && (
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                <UserPlus size={14} className="text-emerald-500" /> New Joiners
+              </h2>
+              <span className="text-[0.65rem] text-[#777587]">Last 7 days</span>
+            </div>
+            <div className="divide-y divide-[#f9f9ff]">
+              {(d.newJoiners || []).map(e => {
+                const joined = new Date(e.created_at);
+                const daysAgo = Math.floor((Date.now() - joined.getTime()) / 86400000);
+                return (
+                  <div key={e.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
+                    <Avatar name={e.name} color={e.avatar_color} size={34} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-[#151c27]">{e.name}</p>
+                      <p className="text-[0.62rem] text-[#777587]">{e.position || 'Staff'} · {e.department || '—'}</p>
+                    </div>
+                    <span className="text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                      {daysAgo === 0 ? 'Today' : `${daysAgo}d ago`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
 
       {/* ── RIGHT SIDEBAR ────────────────────────────────────────────────────── */}
       <div className="hidden xl:flex xl:flex-col w-[288px] shrink-0 gap-4">
-
-        {/* Check In Widget */}
-        <CheckinWidget onRefresh={refetch} />
 
         {/* Upcoming Holidays */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
@@ -1052,36 +1079,44 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Birthdays widget */}
-        {((birthdaysToday.length + upcomingBirthdays.length) > 0) && (
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
-              <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
-                <Cake size={13} className="text-pink-500" /> Birthdays
-              </h2>
-              {isAdmin && <ManageBirthdaysBtn onRefresh={refetch} />}
-            </div>
-            <div className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex -space-x-2 shrink-0">
-                  {[...birthdaysToday, ...upcomingBirthdays].slice(0, 3).map((u, i) => (
-                    <div key={u.id} style={{ zIndex: 3 - i }}>
-                      <Avatar name={u.name} color={u.avatar_color} size={30} className="ring-2 ring-white" />
-                    </div>
-                  ))}
-                </div>
-                <div className="min-w-0">
-                  {birthdaysToday.length > 0 && (
-                    <p className="text-xs font-bold text-[#151c27]">🎂 {birthdaysToday.length} birthday{birthdaysToday.length > 1 ? 's' : ''} today!</p>
-                  )}
-                  <p className="text-[0.6rem] text-[#777587]">
-                    {[...birthdaysToday, ...upcomingBirthdays].length} upcoming in 7 days
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* Birthdays widget — always visible */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
+            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
+              <Cake size={13} className="text-pink-500" /> Upcoming Birthdays
+            </h2>
+            {isAdmin && <ManageBirthdaysBtn onRefresh={refetch} />}
           </div>
-        )}
+          <div className="p-4">
+            {(birthdaysToday.length + upcomingBirthdays.length) === 0 ? (
+              <div className="flex items-center gap-2 py-1">
+                <div className="w-7 h-7 rounded-lg bg-pink-50 flex items-center justify-center text-sm shrink-0">🎁</div>
+                <p className="text-xs text-[#777587]">No birthdays in the next 30 days</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {birthdaysToday.map(u => (
+                  <div key={u.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-pink-50 border border-pink-100">
+                    <Avatar name={u.name} color={u.avatar_color} size={26} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-[#151c27] truncate">{u.name} 🎂</p>
+                      <p className="text-[0.58rem] text-pink-500 font-semibold">Birthday today!</p>
+                    </div>
+                  </div>
+                ))}
+                {upcomingBirthdays.slice(0, 4).map(u => (
+                  <div key={u.id + u.birthday_date} className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-pink-50 border border-pink-100 flex items-center justify-center text-sm shrink-0">🎂</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#151c27] truncate">{u.name}</p>
+                      <p className="text-[0.58rem] text-[#777587]">in {u.days_until} day{u.days_until !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Employee Quick View Modal */}

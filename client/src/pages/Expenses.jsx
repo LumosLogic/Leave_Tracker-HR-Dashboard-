@@ -78,6 +78,7 @@ function ExpenseModal({ open, onClose, expense }) {
     if (!form.title.trim()) { toast('Enter a title for the expense', 'warning'); return; }
     if (!validateAmount(form.amount)) { return; }
     if (!form.expense_date) { toast('Select an expense date', 'warning'); return; }
+    if (!form.receipt_url) { toast('Receipt is required. Please upload a receipt before submitting.', 'warning'); return; }
     mut.mutate();
   }
 
@@ -88,7 +89,7 @@ function ExpenseModal({ open, onClose, expense }) {
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.title || !form.amount}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.title || !form.amount || !form.receipt_url}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Submitting…</> : isEdit ? 'Save Changes' : 'Submit Claim'}
           </button>
         </div>
@@ -139,7 +140,7 @@ function ExpenseModal({ open, onClose, expense }) {
 
         {/* Receipt upload */}
         <div>
-          <label className="form-label">Receipt</label>
+          <label className="form-label">Receipt <span className="text-rose-500">*</span></label>
           <div className="flex items-center gap-2 p-2.5 mb-2 rounded-lg bg-[#f0f3ff] border border-[#e7eefe] text-xs text-[#777587]">
             <span className="text-[#3525cd]">ℹ</span>
             <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG</strong> · Max size: <strong className="text-[#464555]">5 MB</strong></span>

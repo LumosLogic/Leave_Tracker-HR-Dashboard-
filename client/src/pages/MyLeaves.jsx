@@ -391,7 +391,7 @@ export default function MyLeaves() {
                           Half Day
                         </span>
                       )}
-                      {l.leave_time === 'wfh' && (
+                      {l.leave_time === 'wfh' && l.leave_type !== 'casual' && (
                         <span className="text-xs bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] px-2.5 py-0.5 rounded-full font-medium">
                           WFH
                         </span>
@@ -438,8 +438,12 @@ export default function MyLeaves() {
             {activePolicies.length === 0 ? (
               <p className="text-xs text-[#777587] text-center py-4">No policies configured</p>
             ) : activePolicies.map(p => {
-              const used      = leaves.filter(l => l.leave_type === p.leave_type && l.status === 'approved' && l.leave_time !== 'wfh').length;
-              const pending   = leaves.filter(l => l.leave_type === p.leave_type && l.status === 'pending'  && l.leave_time !== 'wfh').length;
+              const used    = leaves
+                .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && l.leave_time !== 'wfh')
+                .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+              const pending = leaves
+                .filter(l => l.leave_type === p.leave_type && l.status === 'pending' && l.leave_time !== 'wfh')
+                .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
               const total     = p.annual_quota;
               const remaining = Math.max(0, total - used);
               const pct       = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;

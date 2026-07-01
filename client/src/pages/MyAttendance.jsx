@@ -30,6 +30,17 @@ function AttendanceCheckinCard({ onRefreshed }) {
   });
   const clockifySyncs = mode?.syncs_clockify ?? false;
 
+  // Fetch live Clockify total for today
+  const nowDate = new Date();
+  const todayISO = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')}`;
+  const { data: clockifyData, refetch: refetchClockify } = useQuery({
+    queryKey: ['my-clockify-hours', nowDate.getFullYear(), nowDate.getMonth() + 1],
+    queryFn: () => apiGet('/my-clockify-hours', { year: nowDate.getFullYear(), month: nowDate.getMonth() + 1 }),
+    staleTime: 2 * 60 * 1000,
+    enabled: clockifySyncs,
+  });
+  const clockifyTodayHours = clockifyData?.hours?.[todayISO] || 0;
+
   const load = useCallback(async () => {
     try { setRecord(await apiGet('/attendance/today')); } catch { /* silent */ }
   }, []);
@@ -57,6 +68,7 @@ function AttendanceCheckinCard({ onRefreshed }) {
       toast(message || 'Checked in!', 'success');
       if (clockify_synced) toast('Clockify timer started', 'success');
       qc.invalidateQueries(['my-attendance']);
+      refetchClockify();
       onRefreshed?.();
     } catch (err) { toast(err.message, 'error'); }
     finally { setBusy(false); }
@@ -67,8 +79,9 @@ function AttendanceCheckinCard({ onRefreshed }) {
       const { record: r, message, clockify_synced } = await apiPost('/attendance/checkout', {});
       setRecord(r);
       toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
-      if (clockify_synced) toast('Clockify timer stopped', 'success');
+      if (clockify_synced) toast('Clockify timer paused', 'success');
       qc.invalidateQueries(['my-attendance']);
+      refetchClockify();
       onRefreshed?.();
     } catch (err) { toast(err.message, 'error'); }
     finally { setBusy(false); }
@@ -76,6 +89,10 @@ function AttendanceCheckinCard({ onRefreshed }) {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // For Clockify mode: paused = check_out is set, running = check_in set and no check_out
+  const isClockifyPaused = clockifySyncs && record?.check_in && record?.check_out;
+  const isClockifyRunning = clockifySyncs && record?.check_in && !record?.check_out;
 
   return (
     <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden mb-6">
@@ -111,9 +128,14 @@ function AttendanceCheckinCard({ onRefreshed }) {
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
               <LogIn size={18} className="text-slate-400" />
             </div>
-          ) : !record?.check_out ? (
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+          ) : isClockifyRunning ? (
+            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 relative">
               <CheckCircle2 size={18} className="text-emerald-500" />
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse" />
+            </div>
+          ) : isClockifyPaused ? (
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+              <Timer size={18} className="text-amber-500" />
             </div>
           ) : (
             <div className="w-10 h-10 rounded-full bg-[#f0f3ff] flex items-center justify-center shrink-0">
@@ -125,18 +147,29 @@ function AttendanceCheckinCard({ onRefreshed }) {
               <>
                 <p className="text-sm font-bold text-[#151c27]">Not Checked In</p>
                 <p className="text-xs text-[#777587]">
-                  {clockifySyncs ? 'Checking in will also start your Clockify timer' : 'Mark yourself present for today'}
+                  {clockifySyncs ? 'Click Check In to start your Clockify timer' : 'Mark yourself present for today'}
                 </p>
               </>
-            ) : !record?.check_out ? (
+            ) : isClockifyRunning ? (
               <>
                 <p className="text-sm font-bold text-emerald-600 flex items-center gap-1.5">
-                  Checked In at {fmtTime(record.check_in)}
-                  {record.clockify_entry_id && (
-                    <span className="text-[0.6rem] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded font-bold">Clockify ✓</span>
-                  )}
+                  Clockify Running
+                  <span className="text-[0.6rem] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded font-bold">Live</span>
                 </p>
-                <p className="text-xs text-[#777587]">{elapsed ? `Working for ${elapsed}` : 'Timer running'}</p>
+                <p className="text-xs text-[#777587]">
+                  {clockifyTodayHours > 0
+                    ? <><strong className="text-[#151c27]">{fmtHours(clockifyTodayHours)}</strong> total today · current session {elapsed || '…'}</>
+                    : (elapsed ? `Session running for ${elapsed}` : 'Timer running')}
+                </p>
+              </>
+            ) : isClockifyPaused ? (
+              <>
+                <p className="text-sm font-bold text-amber-600">Timer Paused</p>
+                <p className="text-xs text-[#777587]">
+                  Total today: <strong className="text-[#151c27]">{fmtHours(clockifyTodayHours)}</strong>
+                  <span className="ml-1 text-[#3525cd] font-bold text-[0.6rem]">(Clockify)</span>
+                  {' · Click Resume to continue'}
+                </p>
               </>
             ) : (
               <>
@@ -151,11 +184,21 @@ function AttendanceCheckinCard({ onRefreshed }) {
         </div>
 
         {/* Action button */}
-        <div className="shrink-0">
+        <div className="shrink-0 flex gap-2">
           {!record?.check_in ? (
             <button onClick={checkIn} disabled={busy}
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
               <LogIn size={15} /> {busy ? 'Checking in…' : 'Check In'}
+            </button>
+          ) : isClockifyRunning ? (
+            <button onClick={checkOut} disabled={busy}
+              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogOut size={15} /> {busy ? 'Pausing…' : 'Go on Break'}
+            </button>
+          ) : isClockifyPaused ? (
+            <button onClick={checkIn} disabled={busy}
+              className="flex items-center gap-2 bg-[#3525cd] hover:bg-[#4f46e5] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+              <LogIn size={15} /> {busy ? 'Resuming…' : 'Resume Timer'}
             </button>
           ) : !record?.check_out ? (
             <button onClick={checkOut} disabled={busy}

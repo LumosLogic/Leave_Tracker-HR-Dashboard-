@@ -18,6 +18,9 @@ export function GlobalSearchModal({ open, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Clear query every time modal closes
+  useEffect(() => { if (!open) setQuery(''); }, [open]);
+
   // Clear results when modal closes or query is empty
   useEffect(() => {
     if (!query.trim() || !open) {
@@ -95,13 +98,19 @@ export function GlobalSearchModal({ open, onClose }) {
   if (!open) return null;
 
   // Navigate based on role
-  const paths = isEmployee
+  const basePaths = isEmployee
     ? { employees: '/portal/home', leaves: '/portal/leaves', documents: '/portal/documents', announcements: '/portal/announcements' }
     : { employees: '/employees',  leaves: '/leaves',         documents: '/documents',         announcements: '/announcements' };
 
-  const handleSelect = (section) => {
+  const handleSelect = (section, item) => {
     onClose();
-    navigate(paths[section]);
+    if (section === 'employees' && item?.id && !isEmployee) {
+      navigate(`/employees?view=${item.id}`);
+    } else if (section === 'documents' && item?.id) {
+      navigate(`${basePaths.documents}?doc=${item.id}`);
+    } else {
+      navigate(basePaths[section]);
+    }
   };
 
   const hasResults = results.employees.length > 0 || results.leaves.length > 0 ||
@@ -165,7 +174,7 @@ export function GlobalSearchModal({ open, onClose }) {
               </div>
               <div className="space-y-1">
                 {results.employees.map(e => (
-                  <div key={e.id} onClick={() => handleSelect('employees')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={e.id} onClick={() => handleSelect('employees', e)} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
                       <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{e.name}</div>
                       <div className="text-[0.65rem] text-[#777587]">{e.department} · {e.email}</div>
@@ -207,7 +216,7 @@ export function GlobalSearchModal({ open, onClose }) {
               </div>
               <div className="space-y-1">
                 {results.documents.map(d => (
-                  <div key={d.id} onClick={() => handleSelect('documents')} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                  <div key={d.id} onClick={() => handleSelect('documents', d)} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
                     <div>
                       <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{d.name || d.title}</div>
                       <div className="text-[0.65rem] text-[#777587]">{d.category || 'Company Doc'}</div>

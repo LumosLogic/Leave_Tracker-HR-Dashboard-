@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -493,30 +493,41 @@ function EmployeeProfile({ emp, onBack }) {
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee' }) {
-  const isEdit      = !!employee;
-  const toast       = useToast();
+  const isEdit          = !!employee;
+  const toast           = useToast();
   const { isRootAdmin } = useAuth();
-  const qc     = useQueryClient();
+  const qc              = useQueryClient();
+  const navigate        = useNavigate();
   const [showPw, setShowPw] = useState(false);
+  const [tab,    setTab]    = useState('personal');
 
-  // department_ids: list of selected department IDs (multi-select)
   const initDeptIds = isEdit && employee.departments?.length
     ? employee.departments.map(d => d.id)
     : [];
 
   const [form, setForm] = useState(() => isEdit ? {
-    name:           employee.name,
-    email:          employee.email,
-    password:       '',
-    department:     employee.department || '',
-    position:       employee.position   || '',
-    role:           employee.role,
-    avatar_color:   employee.avatar_color || '#3525cd',
-    date_of_birth:  employee.date_of_birth || '',
-    department_ids: initDeptIds,
+    name:                 employee.name            || '',
+    email:                employee.email           || '',
+    phone:                employee.phone           || '',
+    personal_email:       employee.personal_email  || '',
+    date_of_birth:        employee.date_of_birth   || '',
+    department:           employee.department      || '',
+    department_ids:       initDeptIds,
+    position:             employee.position        || '',
+    joining_date:         employee.joining_date    || '',
+    employment_type:      employee.employment_type || 'full_time',
+    work_mode:            employee.work_mode       || 'office',
+    employee_status:      employee.employee_status || 'active',
+    ctc:                  employee.ctc             || '',
+    salary_effective_date:employee.salary_effective_date || '',
+    role:                 employee.role,
+    avatar_color:         employee.avatar_color    || '#3525cd',
+    password:             '',
   } : {
     name: '', email: '', password: '', department: '', position: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
+    phone: '', personal_email: '', joining_date: '', employment_type: 'full_time',
+    work_mode: 'office', employee_status: 'active', ctc: '', salary_effective_date: '',
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -526,11 +537,17 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       const ids = f.department_ids.includes(deptId)
         ? f.department_ids.filter(id => id !== deptId)
         : [...f.department_ids, deptId];
-      // Keep department string in sync with first selected dept name (for backward compat)
       const firstName = departments.find(d => d.id === ids[0])?.name || '';
       return { ...f, department_ids: ids, department: firstName };
     });
   }
+
+  // Fetch employee docs for Documents tab
+  const { data: empDocs = [] } = useQuery({
+    queryKey: ['emp-docs-modal', employee?.id],
+    queryFn:  () => apiGet('/documents', { userId: employee?.id }),
+    enabled:  isEdit && tab === 'documents' && !!employee?.id,
+  });
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -539,134 +556,302 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
         if (!body.password) delete body.password;
         return apiPut(`/employees/${employee.id}`, body);
       }
-      // On create, just use the primary department string (junction records added on PUT after creation)
       return apiPost('/employees', form);
     },
-    onSuccess: () => {
-      toast(isEdit ? 'Employee updated!' : 'Employee added!', 'success');
+    onSuccess: (data) => {
+      toast(isEdit ? 'Employee updated!' : 'Employee added! Redirecting to profile…', 'success');
       qc.invalidateQueries({ queryKey: ['employees'] });
       onSaved?.();
       onClose();
+      if (!isEdit && data?.id) {
+        navigate(`/employees?view=${data.id}`);
+      }
     },
     onError: err => toast(err.message, 'error'),
   });
 
+  // Tab definitions (only for edit mode)
+  const TABS = [
+    { id: 'personal',   label: 'Personal'   },
+    { id: 'employment', label: 'Employment' },
+    { id: 'salary',     label: 'Salary'     },
+    { id: 'documents',  label: 'Documents'  },
+    { id: 'account',    label: 'Account'    },
+  ];
+
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Employee' : 'Add Employee'} size="lg" disableOutsideClick
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Employee — ${employee.name}` : 'Add Employee'} size="lg" disableOutsideClick
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? <span className="flex gap-2 items-center"><span className="spinner w-4 h-4" /> Saving…</span>
-              : isEdit ? 'Save Changes' : 'Add Employee'}
+            {mutation.isPending
+              ? <span className="flex gap-2 items-center"><span className="spinner w-4 h-4" /> Saving…</span>
+              : <><CheckCircle2 size={14} /> {isEdit ? 'Save Changes' : 'Add Employee'}</>}
           </button>
         </div>
       }
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="form-label">Full Name</label>
-            <input className="form-control" placeholder="John Doe" value={form.name}
-              onChange={e => set('name', e.target.value)} required />
-          </div>
-          <div>
-            <label className="form-label">Email</label>
-            <input className="form-control" type="email" placeholder="john@company.com" value={form.email}
-              onChange={e => set('email', e.target.value)} required />
-          </div>
-        </div>
-
+      {/* ── Edit mode: tabbed layout ── */}
+      {isEdit ? (
         <div>
-          <label className="form-label">
-            {isEdit ? 'New Password (leave blank to keep current)' : 'Password'}
-          </label>
-          <div className="relative">
-            <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
-              placeholder={isEdit ? 'Leave blank to keep' : 'Min 6 characters'}
-              value={form.password} onChange={e => set('password', e.target.value)}
-              required={!isEdit} />
-            <button type="button" onClick={() => setShowPw(s => !s)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
-              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="form-label">
-            Departments
-            <span className="text-xs font-normal text-[#777587] ml-1">(select one or more)</span>
-          </label>
-          {departments.length === 0 ? (
-            <div className="form-control text-[#777587] text-xs py-2">
-              No departments found — create departments first from the Departments page.
+          {/* Employee identity header */}
+          <div className="flex items-center gap-4 p-4 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] mb-4">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black text-lg flex-shrink-0"
+              style={{ background: form.avatar_color }}>
+              {form.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
             </div>
-          ) : (
-            <div className="border border-[#c7c4d8] rounded-lg p-2 max-h-36 overflow-y-auto bg-white space-y-1">
-              {departments.map(d => (
-                <label key={d.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[#f0f3ff] cursor-pointer transition-colors">
-                  <input
-                    type="checkbox"
-                    className="accent-[#3525cd] w-3.5 h-3.5"
-                    checked={form.department_ids.includes(d.id)}
-                    onChange={() => toggleDept(d.id)}
-                  />
-                  <span className="text-sm text-[#151c27] font-medium">{d.name}</span>
-                </label>
-              ))}
+            <div>
+              <p className="font-black text-[#151c27]">{form.name || '—'}</p>
+              <p className="text-xs text-[#777587]">{form.email}</p>
+            </div>
+          </div>
+
+          {/* Tab bar */}
+          <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl border border-[#c7c4d8] mb-5">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition-all ${
+                  tab === t.id ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Personal ── */}
+          {tab === 'personal' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
+                  <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Phone</label>
+                  <input className="form-control" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Personal Email</label>
+                  <input className="form-control" type="email" placeholder="personal@gmail.com" value={form.personal_email} onChange={e => set('personal_email', e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Company Email <span className="text-rose-500">*</span></label>
+                  <input className="form-control" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Date of Birth</label>
+                  <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+                </div>
+              </div>
             </div>
           )}
-          {form.department_ids.length > 0 && (
-            <p className="text-[0.7rem] text-[#777587] mt-1">
-              Primary department: <strong className="text-[#3525cd]">{form.department || '—'}</strong>
-            </p>
+
+          {/* ── Employment ── */}
+          {tab === 'employment' && (
+            <div className="space-y-4">
+              <div>
+                <label className="form-label">Departments <span className="text-xs font-normal text-[#777587]">(select one or more)</span></label>
+                {departments.length === 0 ? (
+                  <p className="text-xs text-[#777587] p-2">No departments — create from Departments page.</p>
+                ) : (
+                  <div className="border border-[#c7c4d8] rounded-lg p-2 max-h-32 overflow-y-auto bg-white space-y-1">
+                    {departments.map(d => (
+                      <label key={d.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[#f0f3ff] cursor-pointer">
+                        <input type="checkbox" className="accent-[#3525cd] w-3.5 h-3.5"
+                          checked={form.department_ids.includes(d.id)} onChange={() => toggleDept(d.id)} />
+                        <span className="text-sm text-[#151c27] font-medium">{d.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Designation / Position</label>
+                  <input className="form-control" placeholder="Senior Developer" value={form.position} onChange={e => set('position', e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Joining Date</label>
+                  <input className="form-control" type="date" value={form.joining_date} onChange={e => set('joining_date', e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="form-label">Employment Type</label>
+                  <select className="form-control" value={form.employment_type} onChange={e => set('employment_type', e.target.value)}>
+                    <option value="full_time">Full Time</option>
+                    <option value="part_time">Part Time</option>
+                    <option value="contract">Contract</option>
+                    <option value="intern">Intern</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Work Mode</label>
+                  <select className="form-control" value={form.work_mode} onChange={e => set('work_mode', e.target.value)}>
+                    <option value="office">Office</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Status</label>
+                  <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on_leave">On Leave</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Salary ── */}
+          {tab === 'salary' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">CTC (Annual)</label>
+                  <input className="form-control" type="number" placeholder="e.g. 600000" value={form.ctc} onChange={e => set('ctc', e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Salary Effective Date</label>
+                  <input className="form-control" type="date" value={form.salary_effective_date} onChange={e => set('salary_effective_date', e.target.value)} />
+                </div>
+              </div>
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                <p className="text-xs text-amber-700 font-semibold">Note: Detailed salary structure (HRA, PF, etc.) is managed in the Payroll section.</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Documents ── */}
+          {tab === 'documents' && (
+            <div>
+              {empDocs.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-[#777587]">No documents uploaded by this employee yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {empDocs.map(doc => (
+                    <div key={doc.id} className="flex items-center gap-3 p-3 rounded-xl border border-[#c7c4d8] bg-white hover:bg-[#f9f9ff] transition-colors">
+                      <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0 text-[#3525cd]">
+                        <CalendarDays size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-[#151c27] truncate">{doc.name}</p>
+                        <p className="text-[0.65rem] text-[#9ca3af] capitalize">{doc.category?.replace(/_/g, ' ')}</p>
+                      </div>
+                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-[#3525cd] font-semibold hover:underline flex-shrink-0">View</a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Account ── */}
+          {tab === 'account' && (
+            <div className="space-y-4">
+              <div>
+                <label className="form-label">Role</label>
+                <select className="form-control" value={form.role} onChange={e => set('role', e.target.value)}>
+                  <option value="employee">Employee</option>
+                  <option value="admin">HR Admin</option>
+                  {isRootAdmin && <option value="root_admin">Root Admin</option>}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Avatar Color</label>
+                <div className="flex gap-2 flex-wrap mt-1">
+                  {AVATAR_COLORS.map(c => (
+                    <button key={c} type="button" onClick={() => set('avatar_color', c)}
+                      className="w-7 h-7 rounded-full border-2 flex-shrink-0"
+                      style={{ background: c, borderColor: form.avatar_color === c ? '#3525cd' : 'transparent', outline: form.avatar_color === c ? '2px solid #BAE6FD' : 'none' }} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="form-label">Reset Password <span className="font-normal text-[#777587] normal-case text-xs">(leave blank to keep current)</span></label>
+                <div className="relative">
+                  <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
+                    placeholder="New password…"
+                    value={form.password} onChange={e => set('password', e.target.value)} />
+                  <button type="button" onClick={() => setShowPw(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
+                    {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        <div>
-          <label className="form-label">Position</label>
-          <input className="form-control" placeholder="Developer" value={form.position}
-            onChange={e => set('position', e.target.value)} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+      ) : (
+        /* ── Add Employee: minimal popup ── */
+        <div className="space-y-4">
+          <p className="text-xs text-[#777587] bg-[#f0f3ff] border border-[#e7eefe] rounded-lg px-3 py-2">
+            Fill in the essentials below. After adding, you'll be taken to the employee profile to complete remaining details.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
+              <input className="form-control" placeholder="John Doe" value={form.name} onChange={e => set('name', e.target.value)} required />
+            </div>
+            <div>
+              <label className="form-label">Company Email <span className="text-rose-500">*</span></label>
+              <input className="form-control" type="email" placeholder="john@company.com" value={form.email} onChange={e => set('email', e.target.value)} required />
+            </div>
+          </div>
           <div>
-            <label className="form-label">Role</label>
+            <label className="form-label">Temporary Password <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
+                placeholder="Min 6 characters" value={form.password} onChange={e => set('password', e.target.value)} required />
+              <button type="button" onClick={() => setShowPw(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Department <span className="text-rose-500">*</span></label>
+              {departments.length === 0 ? (
+                <div className="form-control text-[#777587] text-xs py-2">No departments — create from Departments page.</div>
+              ) : (
+                <select className="form-control" value={form.department_ids[0] || ''}
+                  onChange={e => {
+                    const id = e.target.value ? parseInt(e.target.value) : null;
+                    const name = departments.find(d => d.id === id)?.name || '';
+                    setForm(f => ({ ...f, department_ids: id ? [id] : [], department: name }));
+                  }}>
+                  <option value="">Select department</option>
+                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="form-label">Designation <span className="text-rose-500">*</span></label>
+              <input className="form-control" placeholder="e.g. Software Developer"
+                value={form.position} onChange={e => set('position', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="form-label">Role <span className="text-rose-500">*</span></label>
             <select className="form-control" value={form.role} onChange={e => set('role', e.target.value)}>
               <option value="employee">Employee</option>
               <option value="admin">HR Admin</option>
               {isRootAdmin && <option value="root_admin">Root Admin</option>}
             </select>
           </div>
-          <div>
-            <label className="form-label">Avatar Color</label>
-            <div className="flex gap-2 flex-wrap mt-1">
-              {AVATAR_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => set('avatar_color', c)}
-                  className="w-7 h-7 rounded-full border-2 flex-shrink-0"
-                  style={{
-                    background: c,
-                    borderColor: form.avatar_color === c ? '#3525cd' : 'transparent',
-                    outline: form.avatar_color === c ? '2px solid #BAE6FD' : 'none',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
         </div>
-
-        <div>
-          <label className="form-label">
-            Date of Birth <span className="text-xs text-[#777587]">(for birthday reminders)</span>
-          </label>
-          <input className="form-control" type="date" value={form.date_of_birth}
-            onChange={e => set('date_of_birth', e.target.value)} />
-        </div>
-      </div>
+      )}
     </Modal>
   );
 }
@@ -680,6 +865,7 @@ export default function Employees() {
 
   const roleFilter     = searchParams.get('role');   // 'employee' | 'admin' | null
   const actionParam    = searchParams.get('action'); // 'addHR' | null
+  const viewParam      = searchParams.get('view');   // employee id from search deep-link
 
   const [profileEmp,     setProfileEmp]     = useState(null);
   const [addOpen,        setAddOpen]        = useState(false);
@@ -701,6 +887,18 @@ export default function Employees() {
     queryKey: ['employees'],
     queryFn:  () => apiGet('/employees'),
   });
+
+  // Auto-open employee profile when navigated here with ?view=ID (from global search)
+  useEffect(() => {
+    if (viewParam && allEmployees.length > 0) {
+      const emp = allEmployees.find(e => String(e.id) === String(viewParam));
+      if (emp) {
+        setProfileEmp(emp);
+        setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('view'); return n; }, { replace: true });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewParam, allEmployees]);
 
   // Filter by role when a role query param is present
   const employees = roleFilter
