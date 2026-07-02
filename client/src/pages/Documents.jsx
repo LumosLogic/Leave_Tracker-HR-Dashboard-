@@ -661,7 +661,7 @@ export default function Documents() {
             </div>
           </div>
 
-          <RightPanel onUpload={() => fileRef.current?.click()} isEmployee={isEmployee} hrEmail={hrContact?.email} />
+          <RightPanel isEmployee={isEmployee} hrEmail={hrContact?.email} />
         </div>
       )}
 
@@ -682,8 +682,8 @@ export default function Documents() {
       <ConfirmModal
         open={!!confirmDel}
         title="Delete Document"
-        message={`Permanently delete "${confirmDel?.name}"? This cannot be undone.`}
-        confirmLabel="Delete"
+        message={<>Are you sure you want to delete <strong>"{confirmDel?.name}"</strong>?<br />This action will permanently remove the document and cannot be undone.</>}
+        confirmLabel="Delete Document"
         onConfirm={() => delMut.mutate(confirmDel.id)}
         onCancel={() => setConfirmDel(null)} />
     </div>
@@ -960,7 +960,7 @@ function EditDocModal({ doc, isAdmin, isEmployee, colleagues, allEmployees, onCl
 }
 
 // ── Right Panel ──────────────────────────────────────────────────────────────────
-function RightPanel({ onUpload, isEmployee, hrEmail }) {
+function RightPanel({ isEmployee, hrEmail }) {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-[#c7c4d8] overflow-hidden">
@@ -980,11 +980,6 @@ function RightPanel({ onUpload, isEmployee, hrEmail }) {
               {g}
             </div>
           ))}
-          {onUpload && (
-            <button onClick={onUpload} className="btn btn-primary w-full mt-3 text-xs">
-              <Upload size={13} /> Upload Document
-            </button>
-          )}
         </div>
       </div>
 
