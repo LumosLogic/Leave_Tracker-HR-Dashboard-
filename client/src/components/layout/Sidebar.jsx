@@ -14,22 +14,24 @@ import { initials, cn } from '@/lib/utils';
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
-const CORE_ITEMS = [
-  { to: '/dashboard',      label: 'Dashboard',      Icon: LayoutDashboard },
-  { to: '/calendar',       label: 'Calendar',       Icon: Calendar },
-  { to: '/leaves',         label: 'Leaves',         Icon: FileText },
-  { to: '/employees',      label: 'Employees',      Icon: Users, adminOnly: true },
-  { to: '/regularization', label: 'Regularization', Icon: ClipboardList, featureKey: 'regularization' },
-  { to: '/announcements',  label: 'Announcements',  Icon: Megaphone,     featureKey: 'announcements' },
+const OVERVIEW_ITEMS = [
+  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
 ];
 
-const HR_ITEMS = [
-  { to: '/departments',    label: 'Departments',    Icon: Building2 },
-  { to: '/holidays',       label: 'Holidays',       Icon: CalendarDays },
-  { to: '/leave-policies', label: 'Leave Policies', Icon: Shield,      featureKey: 'leave_policies' },
-  { to: '/shifts',         label: 'Shifts & Roster',Icon: Clock,       featureKey: 'shifts' },
-  { to: '/onboarding',     label: 'Onboarding',     Icon: UserCheck,   featureKey: 'onboarding' },
-  { to: '/exit-management',label: 'Exit Mgmt',      Icon: Exit,        featureKey: 'exit_management' },
+const EMPLOYEE_MGMT_ITEMS = [
+  { to: '/employees',       label: 'Employees',       Icon: Users,      adminOnly: true },
+  { to: '/departments',     label: 'Departments',     Icon: Building2,  adminOnly: true },
+  { to: '/onboarding',      label: 'Onboarding',      Icon: UserCheck,  adminOnly: true, featureKey: 'onboarding' },
+  { to: '/exit-management', label: 'Exit Management', Icon: Exit,       adminOnly: true, featureKey: 'exit_management' },
+];
+
+const ATTENDANCE_ITEMS = [
+  { to: '/leaves',         label: 'Leaves',          Icon: FileText },
+  { to: '/calendar',       label: 'Calendar',        Icon: Calendar },
+  { to: '/regularization', label: 'Regularization',  Icon: ClipboardList, featureKey: 'regularization' },
+  { to: '/holidays',       label: 'Holidays',        Icon: CalendarDays, adminOnly: true },
+  { to: '/leave-policies', label: 'Leave Policies',  Icon: Shield,        adminOnly: true, featureKey: 'leave_policies' },
+  { to: '/shifts',         label: 'Shifts & Roster', Icon: Clock,         adminOnly: true, featureKey: 'shifts' },
 ];
 
 const FINANCE_ITEMS = [
@@ -39,18 +41,22 @@ const FINANCE_ITEMS = [
   { to: '/reports',  label: 'Reports',  Icon: BarChart3,  featureKey: 'reports' },
 ];
 
-const PEOPLE_ITEMS = [
+const PERFORMANCE_ITEMS = [
   { to: '/performance', label: 'Performance', Icon: Target,     featureKey: 'performance' },
   { to: '/documents',   label: 'Documents',   Icon: FolderOpen, featureKey: 'documents' },
 ];
 
-const BOTTOM_ITEMS = [
-  { to: '/notifications', label: 'Notifications', Icon: Bell },
-  { to: '/settings',      label: 'Settings',      Icon: Settings },
-  { to: '/profile',       label: 'Profile',       Icon: UserCircle },
+const COMMUNICATION_ITEMS = [
+  { to: '/announcements', label: 'Announcements', Icon: Megaphone,   featureKey: 'announcements' },
+  { to: '/notifications', label: 'Notifications', Icon: Bell,        notifBadge: true },
 ];
 
-function NavSection({ title, items, onClose, isAdmin, prefix = '' }) {
+const ADMIN_ITEMS = [
+  { to: '/settings', label: 'Settings', Icon: Settings },
+  { to: '/profile',  label: 'Profile',  Icon: UserCircle },
+];
+
+function NavSection({ title, items, onClose, isAdmin, prefix = '', unreadCount = 0 }) {
   const featureFlags = useContext(FeatureFlagContext);
   const filtered = items.filter(i => {
     if (i.adminOnly && !isAdmin) return false;
@@ -65,8 +71,9 @@ function NavSection({ title, items, onClose, isAdmin, prefix = '' }) {
     <div className="mb-3">
       {title && <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{title}</p>}
       <div className="flex flex-col gap-0.5">
-        {filtered.map(({ to, label, Icon }) => {
+        {filtered.map(({ to, label, Icon, notifBadge }) => {
           const path = prefix + to.replace(/^\//, '/');
+          const badge = notifBadge && unreadCount > 0 ? unreadCount : null;
           return (
             <NavLink key={path} to={path} onClick={onClose}
               className={({ isActive }) => cn(
@@ -79,6 +86,11 @@ function NavSection({ title, items, onClose, isAdmin, prefix = '' }) {
                 <>
                   <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
                   {label}
+                  {badge && (
+                    <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
@@ -102,11 +114,7 @@ export function Sidebar({ onClose, prefix = '' }) {
 
   function handleLogout() { logout(); navigate('/login'); }
 
-  const bottomWithBadge = BOTTOM_ITEMS.map(item =>
-    item.label === 'Notifications'
-      ? { ...item, badge: unread > 0 ? unread : null }
-      : item
-  );
+  const sharedProps = { onClose, isAdmin, prefix, unreadCount: unread };
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">
@@ -125,36 +133,22 @@ export function Sidebar({ onClose, prefix = '' }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        <div id="tour-nav-overview"><NavSection title="Overview"  items={CORE_ITEMS}    onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>
-        {isAdmin && <div id="tour-nav-hr"><NavSection title="HR Management" items={HR_ITEMS}   onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>}
-        {isAdmin && <div id="tour-nav-finance"><NavSection title="Finance"       items={FINANCE_ITEMS} onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>}
-        <div id="tour-nav-people"><NavSection title="People"    items={PEOPLE_ITEMS}  onClose={onClose} isAdmin={isAdmin} prefix={prefix} /></div>
-
-        {/* Bottom items with notification badge */}
-        <div id="tour-nav-account" className="mb-3">
-          <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">Account</p>
-          <div className="flex flex-col gap-0.5">
-            {bottomWithBadge.map(({ to, label, Icon, badge }) => {
-              const path = prefix + to.replace(/^\//, '/');
-              return (
-                <NavLink key={path} to={path} onClick={onClose}
-                  className={({ isActive }) => cn(
-                    'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
-                    isActive
-                      ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
-                      : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
-                  )}>
-                  {({ isActive }) => (
-                    <>
-                      <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                      {label}
-                      {badge > 0 && <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">{badge > 99 ? '99+' : badge}</span>}
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
-          </div>
+        <div id="tour-nav-overview">
+          <NavSection title="Overview" items={OVERVIEW_ITEMS} {...sharedProps} />
+        </div>
+        <div id="tour-nav-hr">
+          <NavSection title="Employee Management" items={EMPLOYEE_MGMT_ITEMS} {...sharedProps} />
+        </div>
+        <NavSection title="Attendance & Leave" items={ATTENDANCE_ITEMS} {...sharedProps} />
+        <div id="tour-nav-finance">
+          <NavSection title="Finance" items={FINANCE_ITEMS} {...sharedProps} />
+        </div>
+        <div id="tour-nav-people">
+          <NavSection title="Performance" items={PERFORMANCE_ITEMS} {...sharedProps} />
+        </div>
+        <NavSection title="Communication" items={COMMUNICATION_ITEMS} {...sharedProps} />
+        <div id="tour-nav-account">
+          <NavSection title="Administration" items={ADMIN_ITEMS} {...sharedProps} />
         </div>
       </nav>
 

@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
+  Radio,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from './Header';
@@ -11,47 +12,59 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
 import { useTour } from '@/hooks/useTour';
 import { adminTourSteps } from '@/lib/tours';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api';
 
 const NAV_SECTIONS = [
-  { title: 'Overview', items: [
-    { to: '/root/dashboard',      label: 'Dashboard',      Icon: LayoutDashboard },
-    { to: '/root/calendar',       label: 'Calendar',       Icon: Calendar },
-    { to: '/root/leaves',         label: 'Leaves',         Icon: FileText },
-    { to: '/root/employees',      label: 'Employees',      Icon: Users },
-    { to: '/root/regularization', label: 'Regularization', Icon: ClipboardList },
-    { to: '/root/announcements',  label: 'Announcements',  Icon: Megaphone },
+  { id: 'tour-nav-overview', title: 'Overview', items: [
+    { to: '/root/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+    { to: '/root/reports',   label: 'Reports',   Icon: BarChart3 },
   ]},
-  { title: 'HR Management', items: [
-    { to: '/root/departments',    label: 'Departments',    Icon: Building2 },
-    { to: '/root/holidays',       label: 'Holidays',       Icon: CalendarDays },
-    { to: '/root/leave-policies', label: 'Leave Policies', Icon: Shield },
-    { to: '/root/shifts',         label: 'Shifts & Roster',Icon: Clock },
-    { to: '/root/onboarding',     label: 'Onboarding',     Icon: UserCheck },
-    { to: '/root/exit-management',label: 'Exit Mgmt',      Icon: LogOut },
+  { id: 'tour-nav-hr', title: 'Workforce Management', items: [
+    { to: '/root/employees',       label: 'Employees',       Icon: Users },
+    { to: '/root/departments',     label: 'Departments',     Icon: Building2 },
+    { to: '/root/manage-hr',       label: 'Manage HR',       Icon: ShieldCheck },
+    { to: '/root/onboarding',      label: 'Onboarding',      Icon: UserCheck },
+    { to: '/root/exit-management', label: 'Exit Management', Icon: LogOut },
   ]},
-  { title: 'Finance', items: [
-    { to: '/root/payroll',        label: 'Payroll',        Icon: DollarSign },
-    { to: '/root/expenses',       label: 'Expenses',       Icon: Receipt },
-    { to: '/root/assets',         label: 'Assets',         Icon: Monitor },
-    { to: '/root/reports',        label: 'Reports',        Icon: BarChart3 },
+  { id: 'tour-nav-attendance', title: 'Attendance & Leave', items: [
+    { to: '/root/calendar',        label: 'Calendar',        Icon: Calendar },
+    { to: '/root/leaves',          label: 'Leaves',          Icon: FileText },
+    { to: '/root/regularization',  label: 'Regularization',  Icon: ClipboardList },
+    { to: '/root/holidays',        label: 'Holidays',        Icon: CalendarDays },
+    { to: '/root/leave-policies',  label: 'Leave Policies',  Icon: Shield },
+    { to: '/root/shifts',          label: 'Shifts & Roster', Icon: Clock },
   ]},
-  { title: 'People', items: [
-    { to: '/root/performance',    label: 'Performance',    Icon: Target },
-    { to: '/root/documents',      label: 'Documents',      Icon: FolderOpen },
+  { id: 'tour-nav-finance', title: 'Finance', items: [
+    { to: '/root/payroll',  label: 'Payroll',  Icon: DollarSign },
+    { to: '/root/expenses', label: 'Expenses', Icon: Receipt },
+    { to: '/root/assets',   label: 'Assets',   Icon: Monitor },
   ]},
-  { title: 'Admin', items: [
-    { to: '/root/manage-hr',      label: 'Manage HR',      Icon: ShieldCheck },
-    { to: '/root/broadcast',      label: 'Broadcast',      Icon: Bell },
-    { to: '/root/settings',       label: 'Settings',       Icon: Settings },
-    { to: '/root/org-settings',   label: 'Org Settings',   Icon: Building2 },
-    { to: '/root/notifications',  label: 'Notifications',  Icon: Bell },
-    { to: '/root/profile',        label: 'Profile',        Icon: UserCircle },
+  { id: 'tour-nav-people', title: 'Performance', items: [
+    { to: '/root/performance', label: 'Performance', Icon: Target },
+    { to: '/root/documents',   label: 'Documents',   Icon: FolderOpen },
+  ]},
+  { id: 'tour-nav-comms', title: 'Communication', items: [
+    { to: '/root/announcements', label: 'Announcements', Icon: Megaphone },
+    { to: '/root/broadcast',     label: 'Broadcast',     Icon: Radio },
+    { to: '/root/notifications', label: 'Notifications', Icon: Bell, notifBadge: true },
+  ]},
+  { id: 'tour-nav-account', title: 'Administration', items: [
+    { to: '/root/org-settings', label: 'Org Settings', Icon: Building2 },
+    { to: '/root/settings',     label: 'Settings',     Icon: Settings },
   ]},
 ];
 
 function RootSidebar({ onClose }) {
   const { user, logout, organization } = useAuth();
   const navigate = useNavigate();
+
+  const { data: countData } = useQuery({
+    queryKey: ['notif-count-root'],
+    queryFn: () => apiGet('/notifications/unread-count'),
+    refetchInterval: 30000,
+  });
+  const unread = countData?.count || 0;
 
   function handleLogout() { logout(); navigate('/login'); }
 
@@ -70,26 +83,34 @@ function RootSidebar({ onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        {NAV_SECTIONS.map((sec, idx) => (
-          <div key={sec.title} id={`tour-nav-${['overview','hr','finance','people','account'][idx] || idx}`} className="mb-2">
+        {NAV_SECTIONS.map(sec => (
+          <div key={sec.title} id={sec.id} className="mb-2">
             <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
             <div className="flex flex-col gap-0.5">
-              {sec.items.map(({ to, label, Icon }) => (
-                <NavLink key={to} to={to} onClick={onClose}
-                  className={({ isActive }) => cn(
-                    'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
-                    isActive
-                      ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
-                      : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
-                  )}>
-                  {({ isActive }) => (
-                    <>
-                      <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                      {label}
-                    </>
-                  )}
-                </NavLink>
-              ))}
+              {sec.items.map(({ to, label, Icon, notifBadge }) => {
+                const badge = notifBadge && unread > 0 ? unread : null;
+                return (
+                  <NavLink key={to} to={to} onClick={onClose}
+                    className={({ isActive }) => cn(
+                      'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+                      isActive
+                        ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+                        : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                    )}>
+                    {({ isActive }) => (
+                      <>
+                        <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
+                        {label}
+                        {badge && (
+                          <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">
+                            {badge > 99 ? '99+' : badge}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
             </div>
           </div>
         ))}
