@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -179,8 +179,9 @@ function AttendanceDayTimeline({ empId, date, totalHours }) {
 }
 
 // ── Employee Profile ──────────────────────────────────────────────────────────
-function EmployeeProfile({ emp, onBack }) {
+function EmployeeProfile({ emp, onBack, onEdit }) {
   const now = new Date();
+  const [activeTab,   setActiveTab]   = useState('overview');
   const [viewMode,    setViewMode]    = useState('monthly');
   const [year,        setYear]        = useState(now.getFullYear());
   const [month,       setMonth]       = useState(now.getMonth() + 1);
@@ -193,6 +194,19 @@ function EmployeeProfile({ emp, onBack }) {
 
   const isCustomReady = viewMode !== 'custom' || (!!customStart && !!customEnd && customStart <= customEnd);
 
+  // Always fetch current month stats for the header
+  const curMonth = now.getMonth() + 1;
+  const curYear  = now.getFullYear();
+  const { data: curAttendance = [] } = useQuery({
+    queryKey: ['emp-att-cur', emp.id, curYear, curMonth],
+    queryFn:  () => apiGet('/attendance', { year: curYear, month: curMonth, userId: emp.id }),
+  });
+  const { data: curLeaves = [] } = useQuery({
+    queryKey: ['emp-leaves-cur', emp.id, curYear, curMonth],
+    queryFn:  () => apiGet('/leaves', { userId: emp.id, year: curYear, month: curMonth }),
+  });
+
+  // Tab-specific queries (Leave & Attendance tab)
   const attParams = viewMode === 'monthly' ? { year, month, userId: emp.id }
                   : viewMode === 'yearly'  ? { year, userId: emp.id }
                   : { startDate: customStart, endDate: customEnd, userId: emp.id };
@@ -203,12 +217,25 @@ function EmployeeProfile({ emp, onBack }) {
   const { data: attendance = [] } = useQuery({
     queryKey: ['emp-att', emp.id, viewMode, year, month, customStart, customEnd],
     queryFn:  () => apiGet('/attendance', attParams),
-    enabled:  isCustomReady,
+    enabled:  activeTab === 'leave-attendance' && isCustomReady,
   });
   const { data: leaves = [] } = useQuery({
     queryKey: ['emp-leaves', emp.id, viewMode, year, month, customStart, customEnd],
     queryFn:  () => apiGet('/leaves', lvParams),
-    enabled:  isCustomReady,
+    enabled:  activeTab === 'leave-attendance' && isCustomReady,
+  });
+
+  // Documents
+  const { data: empDocs = [] } = useQuery({
+    queryKey: ['emp-docs', emp.id],
+    queryFn:  () => apiGet('/documents', { userId: emp.id }),
+  });
+
+  // Leave policies for balance
+  const { data: leavePolicies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn:  () => apiGet('/leave-policies'),
+    staleTime: 300000,
   });
 
   const { data: schedule } = useQuery({
@@ -218,7 +245,20 @@ function EmployeeProfile({ emp, onBack }) {
   });
   const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
 
-  // Compute range boundaries
+  // Current month range for header stats
+  const curRangeStart = `${curYear}-${String(curMonth).padStart(2,'0')}-01`;
+  const curRangeEnd   = `${curYear}-${String(curMonth).padStart(2,'0')}-${new Date(curYear, curMonth, 0).getDate()}`;
+  const curEffEnd     = today < curRangeEnd ? today : curRangeEnd;
+  const curWorkingDays  = countWorkingDaysInRange(curRangeStart, curEffEnd, activeWorkDays);
+  const curApproved     = curLeaves.filter(l => l.status === 'approved');
+  const curLeaveCount   = curApproved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, curRangeStart, curRangeEnd, activeWorkDays), 0);
+  const curHalfCount    = curApproved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, curRangeStart, curRangeEnd, activeWorkDays), 0);
+  const curWfhCount     = curApproved.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh').reduce((s, l) => s + countLeaveDaysInRange(l, curRangeStart, curRangeEnd, activeWorkDays), 0);
+  const curLateCount    = curAttendance.filter(r => r.is_late).length;
+  const curAbsentCount  = curAttendance.filter(r => r.status === 'absent').length;
+  const curPresentCount = Math.max(0, curWorkingDays - curLeaveCount - curAbsentCount);
+
+  // Tab-specific range
   let rangeStart, rangeEnd;
   if (viewMode === 'monthly') {
     rangeStart = `${year}-${String(month).padStart(2,'0')}-01`;
@@ -236,256 +276,565 @@ function EmployeeProfile({ emp, onBack }) {
   const approved     = leaves.filter(l => l.status === 'approved');
   const onLeaveCount = approved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
   const halfDayCount = approved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
-  const wfhCount     = approved.filter(l => l.leave_time === 'wfh').reduce((s, l)  => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
-
+  const wfhCount     = approved.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
   const lateCount    = attendance.filter(r => r.is_late).length;
   const absentCount  = attendance.filter(r => r.status === 'absent').length;
   const presentCount = Math.max(0, workingDays - onLeaveCount - absentCount);
-
-
-  const periodLabel = viewMode === 'monthly' ? `${MONTHS[month - 1]} ${year}`
-                    : viewMode === 'yearly'  ? `${year}`
-                    : (customStart && customEnd) ? `${fmtDate(customStart)} – ${fmtDate(customEnd)}` : '—';
-
-  const stats = [
-    { icon: <UserCheck size={18} />, label: 'Present Days',  value: presentCount,  variant: 'success' },
-    { icon: <Umbrella size={18} />,  label: 'Leave Days',    value: onLeaveCount,  variant: 'danger'  },
-    { icon: <XCircle size={18} />,   label: 'Absent Days',   value: absentCount,   variant: 'danger'  },
-    { icon: <Clock size={18} />,     label: 'Half Days',     value: halfDayCount,  variant: 'info'    },
-    { icon: <Home size={18} />,      label: 'WFH Days',      value: wfhCount,      variant: 'default' },
-    { icon: <AlarmClock size={18} />,label: 'Late Entries',  value: lateCount,     variant: 'warning' },
-  ];
-
-  const variantBorder = {
-    success: 'border-t-emerald-500',
-    danger:  'border-t-rose-500',
-    info:    'border-t-blue-500',
-    warning: 'border-t-orange-400',
-    default: 'border-t-cyan-400',
-  };
-  const variantIcon = {
-    success: 'bg-emerald-50 text-emerald-600',
-    danger:  'bg-rose-50 text-rose-600',
-    info:    'bg-blue-50 text-blue-600',
-    warning: 'bg-orange-50 text-orange-600',
-    default: 'bg-cyan-50 text-cyan-700',
-  };
+  const periodLabel  = viewMode === 'monthly' ? `${MONTHS[month - 1]} ${year}`
+                     : viewMode === 'yearly'  ? `${year}`
+                     : (customStart && customEnd) ? `${fmtDate(customStart)} – ${fmtDate(customEnd)}` : '—';
 
   const absentRecords = attendance.filter(r => r.status === 'absent').sort((a, b) => b.date.localeCompare(a.date));
 
+  // Leave balance computation
+  const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave (CL)', quota: 12 }, sick: { label: 'Sick Leave (SL)', quota: 10 }, earned: { label: 'Earned Leave (EL)', quota: 20 }, comp_off: { label: 'Comp Off (CO)', quota: 5 } };
+  const LEAVE_COLORS   = { casual: '#10B981', sick: '#3525cd', earned: '#F59E0B', comp_off: '#712ae2' };
+  const policyMap = {};
+  (leavePolicies || []).filter(p => p.leave_type !== 'wfh').forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
+  const allYearLeaves = useQuery({
+    queryKey: ['emp-leaves-year', emp.id, curYear],
+    queryFn:  () => apiGet('/leaves', { userId: emp.id, year: curYear }),
+    staleTime: 60000,
+  });
+  const yearLeaves = allYearLeaves.data || [];
+  const usedByType = {};
+  yearLeaves.filter(l => l.status === 'approved' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').forEach(l => {
+    usedByType[l.leave_type] = (usedByType[l.leave_type] || 0) + countLeaveDaysInRange(l, `${curYear}-01-01`, `${curYear}-12-31`, activeWorkDays);
+  });
+  const leaveBalance = Object.entries({ ...LEAVE_DEFAULTS, ...policyMap }).slice(0, 4).map(([type, info]) => ({
+    type, label: info.label, used: usedByType[type] || 0, total: info.quota || 20, color: LEAVE_COLORS[type] || '#94a3b8',
+  }));
+
+  // Helpers
+  const empId     = `EMP-${String(emp.id).padStart(4, '0')}`;
+  const statusColor = emp.employee_status === 'inactive' ? 'bg-rose-100 text-rose-700 border-rose-200'
+                    : emp.employee_status === 'on_leave'  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  const statusLabel = emp.employee_status === 'inactive' ? 'Inactive'
+                    : emp.employee_status === 'on_leave'  ? 'On Leave'
+                    : 'Active';
+  const fmtEmploymentType = (t) => ({ full_time: 'Full Time', part_time: 'Part Time', contract: 'Contract', intern: 'Intern' }[t] || t || '—');
+  const fmtWorkMode       = (m) => ({ office: 'Office', remote: 'Remote', hybrid: 'Hybrid' }[m] || m || '—');
+  const deptLabel = emp.departments?.length > 0
+    ? emp.departments.map(d => d.name).join(', ')
+    : emp.department || '—';
+
+  const TABS = [
+    { id: 'overview',         label: 'Overview'          },
+    { id: 'leave-attendance', label: 'Leave & Attendance' },
+  ];
+
   return (
     <div>
-      {/* Header */}
-      <div className="page-header mb-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <button className="btn btn-outline btn-sm" onClick={onBack}>
-            <ChevronLeft size={15} /> Back
+      {/* ── Top Action Bar ── */}
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <button
+          className="flex items-center gap-2 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors"
+          onClick={onBack}
+        >
+          <ArrowLeft size={16} /> Back to Team
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#c7c4d8] bg-white text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-all"
+            onClick={() => onEdit(emp)}
+          >
+            <Pencil size={14} /> Edit Profile
           </button>
-          <Avatar name={emp.name} color={emp.avatar_color} size={48} />
-          <div>
-            <div className="page-title">{emp.name}</div>
-            <div className="page-subtitle">
-              {emp.position || ''}{emp.department ? ` · ${emp.department}` : ''}
-            </div>
-          </div>
-        </div>
-
-        {/* View mode toggle + date picker */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl">
-            {['monthly', 'yearly', 'custom'].map(m => (
-              <button key={m} onClick={() => setViewMode(m)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg capitalize transition-colors ${
-                  viewMode === m
-                    ? 'bg-white text-[#3525cd] shadow-sm'
-                    : 'text-[#777587] hover:text-[#151c27]'
-                }`}>
-                {m}
-              </button>
-            ))}
-          </div>
-
-          {viewMode === 'monthly' && (
-            <input type="month" className="form-control w-auto" value={monthValue}
-              onChange={e => {
-                const [y, mo] = e.target.value.split('-').map(Number);
-                setYear(y); setMonth(mo);
-              }} />
-          )}
-
-          {viewMode === 'yearly' && (
-            <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-lg px-3 py-2">
-              <button onClick={() => setYear(y => y - 1)} className="text-[#3525cd] hover:text-[#4f46e5]">
-                <ChevronLeft size={15} />
-              </button>
-              <span className="font-bold text-[#151c27] min-w-[3.5rem] text-center">{year}</span>
-              <button onClick={() => setYear(y => Math.min(y + 1, now.getFullYear()))}
-                className="text-[#3525cd] hover:text-[#4f46e5] disabled:opacity-40"
-                disabled={year >= now.getFullYear()}>
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          )}
-
-          {viewMode === 'custom' && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <input type="date" className="form-control w-auto" value={customStart}
-                max={customEnd || today}
-                onChange={e => setCustomStart(e.target.value)} />
-              <span className="text-[#777587] text-sm font-medium">to</span>
-              <input type="date" className="form-control w-auto" value={customEnd}
-                min={customStart} max={today}
-                onChange={e => setCustomEnd(e.target.value)} />
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Custom mode — waiting for dates */}
-      {viewMode === 'custom' && !isCustomReady && (
-        <div className="empty-state py-12">
-          <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
-          <p>Select a start and end date to view leave records</p>
+      {/* ── Profile Hero Card ── */}
+      <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm mb-5 overflow-hidden">
+        <div className="p-6">
+          <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+            {/* Left: Avatar + Name + Contact */}
+            <div className="flex items-start gap-5 flex-1 min-w-0">
+              <div className="relative flex-shrink-0">
+                <Avatar name={emp.name} color={emp.avatar_color} size={80} />
+                <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap mb-1">
+                  <h1 className="text-xl font-black text-[#151c27] tracking-tight uppercase">{emp.name}</h1>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${statusColor}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="text-sm text-[#777587] mb-3">
+                  {emp.position || 'Team Member'}
+                  {deptLabel !== '—' ? ` · ${deptLabel}` : ''}
+                </p>
+                <div className="space-y-1.5">
+                  {emp.email && (
+                    <div className="flex items-center gap-2 text-sm text-[#464555]">
+                      <Mail size={13} className="text-[#3525cd] flex-shrink-0" />
+                      <span>{emp.email}</span>
+                    </div>
+                  )}
+                  {emp.phone && (
+                    <div className="flex items-center gap-2 text-sm text-[#464555]">
+                      <Phone size={13} className="text-[#3525cd] flex-shrink-0" />
+                      <span>{emp.phone}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-[#464555]">
+                    <User size={13} className="text-[#3525cd] flex-shrink-0" />
+                    <span>ID: {empId}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Metadata grid */}
+            <div className="grid grid-cols-2 gap-x-10 gap-y-3 flex-shrink-0">
+              <div>
+                <p className="text-[0.68rem] font-semibold text-[#a09ead] uppercase tracking-wider mb-0.5">Department</p>
+                <p className="text-sm font-semibold text-[#151c27]">{deptLabel}</p>
+              </div>
+              <div>
+                <p className="text-[0.68rem] font-semibold text-[#a09ead] uppercase tracking-wider mb-0.5">Work Mode</p>
+                <div className="flex items-center gap-1.5">
+                  <Briefcase size={12} className="text-[#777587]" />
+                  <p className="text-sm font-semibold text-[#151c27]">{fmtWorkMode(emp.work_mode)}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[0.68rem] font-semibold text-[#a09ead] uppercase tracking-wider mb-0.5">Joined On</p>
+                <div className="flex items-center gap-1.5">
+                  <Calendar size={12} className="text-[#777587]" />
+                  <p className="text-sm font-semibold text-[#151c27]">
+                    {emp.joining_date ? fmtDate(emp.joining_date) : (emp.created_at ? fmtDate(emp.created_at.split('T')[0]) : '—')}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[0.68rem] font-semibold text-[#a09ead] uppercase tracking-wider mb-0.5">Employee Type</p>
+                <p className="text-sm font-semibold text-[#151c27]">{fmtEmploymentType(emp.employment_type)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="border-t border-[#f0f3ff] grid grid-cols-3 sm:grid-cols-6 divide-x divide-[#f0f3ff]">
+          {[
+            { icon: <UserCheck size={16} />, label: 'Present Days',  value: curPresentCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { icon: <Umbrella size={16} />,  label: 'Leave Days',    value: curLeaveCount,   color: 'text-rose-600',   bg: 'bg-rose-50'    },
+            { icon: <XCircle size={16} />,   label: 'Absent Days',   value: curAbsentCount,  color: 'text-rose-500',   bg: 'bg-rose-50'    },
+            { icon: <Clock size={16} />,     label: 'Half Days',     value: curHalfCount,    color: 'text-blue-600',   bg: 'bg-blue-50'    },
+            { icon: <Home size={16} />,      label: 'WFH Days',      value: curWfhCount,     color: 'text-cyan-600',   bg: 'bg-cyan-50'    },
+            { icon: <AlarmClock size={16} />,label: 'Late Entries',  value: curLateCount,    color: 'text-orange-600', bg: 'bg-orange-50'  },
+          ].map(s => (
+            <div key={s.label} className="flex flex-col items-center justify-center py-4 px-3 gap-1.5">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color}`}>
+                {s.icon}
+              </div>
+              <div className="text-xl font-black text-[#151c27]">{s.value}</div>
+              <div className="text-[0.65rem] text-[#777587] text-center leading-tight">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-1 rounded-xl mb-5">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all ${
+              activeTab === t.id ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Overview Tab ── */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Left column (2/3) */}
+          <div className="lg:col-span-2 space-y-5">
+            {/* Personal Information */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-[#151c27] text-sm">Personal Information</h3>
+                <button onClick={() => onEdit(emp)}
+                  className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+                  <Pencil size={11} /> Edit
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+                {[
+                  { label: 'Full Name',       value: emp.name },
+                  { label: 'Date of Birth',   value: emp.date_of_birth ? fmtDate(emp.date_of_birth) : '—' },
+                  { label: 'Personal Email',  value: emp.personal_email || '—' },
+                  { label: 'Phone',           value: emp.phone || '—' },
+                  { label: 'Company Email',   value: emp.email },
+                ].map(row => (
+                  <div key={row.label} className="border-b border-[#f5f5f9] pb-3">
+                    <p className="text-[0.68rem] text-[#a09ead] font-semibold mb-0.5">{row.label}</p>
+                    <p className="text-sm font-semibold text-[#151c27]">{row.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Employment Details */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-[#151c27] text-sm">Employment Details</h3>
+                <button onClick={() => onEdit(emp)}
+                  className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+                  <Pencil size={11} /> Edit
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+                {[
+                  { label: 'Department',       value: deptLabel },
+                  { label: 'Designation',      value: emp.position || '—' },
+                  { label: 'Joining Date',     value: emp.joining_date ? fmtDate(emp.joining_date) : '—' },
+                  { label: 'Employment Type',  value: fmtEmploymentType(emp.employment_type) },
+                  { label: 'Work Mode',        value: fmtWorkMode(emp.work_mode) },
+                  { label: 'Status',           value: (
+                    <span className={`inline-flex text-xs font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
+                      {statusLabel}
+                    </span>
+                  )},
+                ].map(row => (
+                  <div key={row.label} className="border-b border-[#f5f5f9] pb-3">
+                    <p className="text-[0.68rem] text-[#a09ead] font-semibold mb-0.5">{row.label}</p>
+                    <p className="text-sm font-semibold text-[#151c27]">{row.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Salary Overview */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-[#151c27] text-sm">Salary Overview</h3>
+                <button onClick={() => onEdit(emp)}
+                  className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+                  <Pencil size={11} /> Edit
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="border-b border-[#f5f5f9] pb-3">
+                  <p className="text-[0.68rem] text-[#a09ead] font-semibold mb-0.5">CTC (Annual)</p>
+                  <p className="text-sm font-semibold text-[#151c27]">
+                    {emp.ctc ? `₹${Number(emp.ctc).toLocaleString('en-IN')}` : '—'}
+                  </p>
+                </div>
+                <div className="border-b border-[#f5f5f9] pb-3">
+                  <p className="text-[0.68rem] text-[#a09ead] font-semibold mb-0.5">Salary Effective Date</p>
+                  <p className="text-sm font-semibold text-[#151c27]">
+                    {emp.salary_effective_date ? fmtDate(emp.salary_effective_date) : '—'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                <p className="text-xs text-amber-700 font-semibold">Note: Detailed salary structure (HRA, PF, etc.) is managed in the Payroll section.</p>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <h3 className="font-black text-[#151c27] text-sm mb-4">Quick Actions</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => { setActiveTab('leave-attendance'); setRecordsTab('leaves'); }}
+                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-[#3525cd]/30 text-[#3525cd] text-xs font-bold hover:bg-[#f0f3ff] transition-all">
+                  <Umbrella size={14} /> View Leaves
+                </button>
+                <button
+                  onClick={() => { setActiveTab('leave-attendance'); setRecordsTab('attendance'); }}
+                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-50 transition-all">
+                  <BarChart3 size={14} /> View Attendance
+                </button>
+                <button
+                  onClick={() => onEdit(emp)}
+                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-[#c7c4d8] text-[#464555] text-xs font-bold hover:bg-[#f0f3ff] transition-all">
+                  <Upload size={14} /> Edit Documents
+                </button>
+                <button
+                  onClick={() => onEdit(emp)}
+                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-orange-200 text-orange-700 text-xs font-bold hover:bg-orange-50 transition-all">
+                  <Key size={14} /> Reset Password
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right column (1/3) */}
+          <div className="space-y-5">
+            {/* Documents */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-[#151c27] text-sm">Documents</h3>
+              </div>
+              {empDocs.length === 0 ? (
+                <div className="text-center py-6">
+                  <FileText size={28} className="mx-auto mb-2 text-[#c7c4d8]" />
+                  <p className="text-xs text-[#777587]">No documents uploaded</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {empDocs.slice(0, 4).map(doc => (
+                    <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#f0f3ff] hover:bg-[#f9f9ff] transition-colors">
+                      <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                        <FileText size={13} className="text-[#3525cd]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-[#151c27] truncate">{doc.name}</p>
+                        <p className="text-[0.65rem] text-[#9ca3af] capitalize">{doc.category?.replace(/_/g, ' ') || 'Document'}</p>
+                      </div>
+                      {doc.verified && (
+                        <span className="text-[0.6rem] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full flex-shrink-0">Verified</span>
+                      )}
+                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                        className="text-[#777587] hover:text-[#3525cd] transition-colors flex-shrink-0">
+                        <Eye size={13} />
+                      </a>
+                    </div>
+                  ))}
+                  {empDocs.length > 4 && (
+                    <p className="text-xs text-center text-[#777587] mt-2">+{empDocs.length - 4} more</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Leave Balance */}
+            <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-[#151c27] text-sm">Leave Balance</h3>
+                <span className="text-[0.65rem] text-[#777587] font-semibold">{curYear}</span>
+              </div>
+              <div className="space-y-4">
+                {leaveBalance.map(lb => (
+                  <div key={lb.type}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-[#464555]">{lb.label}</span>
+                      <span className="text-xs font-black text-[#151c27]">{lb.used} / {lb.total} Days</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-[#f0f3ff] overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${Math.min(100, (lb.used / lb.total) * 100)}%`, background: lb.color }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {isCustomReady && (
-        <>
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-            {stats.map(s => (
-              <div key={s.label} className={`card border-t-4 ${variantBorder[s.variant]} p-4`}>
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg mb-3 ${variantIcon[s.variant]}`}>{s.icon}</div>
-                <div className="text-2xl font-black text-[#151c27]">{s.value}</div>
-                <div className="text-xs text-[#464555] mt-1">{s.label}</div>
+      {/* ── Leave & Attendance Tab ── */}
+      {activeTab === 'leave-attendance' && (
+        <div>
+          {/* View mode controls */}
+          <div className="flex items-center gap-3 flex-wrap mb-5">
+            <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl">
+              {['monthly', 'yearly', 'custom'].map(m => (
+                <button key={m} onClick={() => setViewMode(m)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg capitalize transition-colors ${
+                    viewMode === m ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
+                  }`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            {viewMode === 'monthly' && (
+              <input type="month" className="form-control w-auto" value={monthValue}
+                onChange={e => { const [y, mo] = e.target.value.split('-').map(Number); setYear(y); setMonth(mo); }} />
+            )}
+            {viewMode === 'yearly' && (
+              <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-lg px-3 py-2">
+                <button onClick={() => setYear(y => y - 1)} className="text-[#3525cd] hover:text-[#4f46e5]"><ChevronLeft size={15} /></button>
+                <span className="font-bold text-[#151c27] min-w-[3.5rem] text-center">{year}</span>
+                <button onClick={() => setYear(y => Math.min(y + 1, now.getFullYear()))} className="text-[#3525cd] hover:text-[#4f46e5] disabled:opacity-40" disabled={year >= now.getFullYear()}><ChevronRight size={15} /></button>
               </div>
-            ))}
+            )}
+            {viewMode === 'custom' && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <input type="date" className="form-control w-auto" value={customStart} max={customEnd || today} onChange={e => setCustomStart(e.target.value)} />
+                <span className="text-[#777587] text-sm font-medium">to</span>
+                <input type="date" className="form-control w-auto" value={customEnd} min={customStart} max={today} onChange={e => setCustomEnd(e.target.value)} />
+              </div>
+            )}
           </div>
 
-          {/* Tab switcher */}
-          <div className="flex gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-1 rounded-xl mb-4">
-            {[
-              { key: 'attendance', label: 'Attendance & Hours', icon: <Timer size={13} /> },
-              { key: 'leaves',     label: 'Leaves & Absences',  icon: <Umbrella size={13} /> },
-            ].map(t => (
-              <button key={t.key} onClick={() => setRecordsTab(t.key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                  recordsTab === t.key ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
-                }`}>
-                {t.icon} {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Attendance & Hours Tab ── */}
-          {recordsTab === 'attendance' && (() => {
-            const presentRecords = attendance
-              .filter(r => ['present', 'wfh', 'half_day'].includes(r.status))
-              .sort((a, b) => b.date.localeCompare(a.date));
-
-            return presentRecords.length === 0 ? (
-              <div className="empty-state">
-                <CalendarDays size={36} className="mx-auto mb-2 opacity-30" />
-                <p>No attendance records for {periodLabel}</p>
+          {viewMode === 'custom' && !isCustomReady ? (
+            <div className="empty-state py-12">
+              <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
+              <p>Select a start and end date to view records</p>
+            </div>
+          ) : (
+            <>
+              {/* Period stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-5">
+                {[
+                  { icon: <UserCheck size={16} />, label: 'Present',  value: presentCount, cls: 'border-t-emerald-500', iconCls: 'bg-emerald-50 text-emerald-600' },
+                  { icon: <Umbrella size={16} />,  label: 'Leave',    value: onLeaveCount, cls: 'border-t-rose-500',    iconCls: 'bg-rose-50 text-rose-600'       },
+                  { icon: <XCircle size={16} />,   label: 'Absent',   value: absentCount,  cls: 'border-t-rose-400',    iconCls: 'bg-rose-50 text-rose-500'       },
+                  { icon: <Clock size={16} />,     label: 'Half Days',value: halfDayCount, cls: 'border-t-blue-500',    iconCls: 'bg-blue-50 text-blue-600'       },
+                  { icon: <Home size={16} />,      label: 'WFH',      value: wfhCount,     cls: 'border-t-cyan-400',    iconCls: 'bg-cyan-50 text-cyan-700'       },
+                  { icon: <AlarmClock size={16} />,label: 'Late',     value: lateCount,    cls: 'border-t-orange-400',  iconCls: 'bg-orange-50 text-orange-600'   },
+                ].map(s => (
+                  <div key={s.label} className={`bg-white rounded-xl border border-[#e7eefe] border-t-4 ${s.cls} p-4 shadow-sm`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${s.iconCls}`}>{s.icon}</div>
+                    <div className="text-xl font-black text-[#151c27]">{s.value}</div>
+                    <div className="text-xs text-[#464555] mt-0.5">{s.label}</div>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {presentRecords.map(r => {
-                  const totalHours = r.clockify_hours > 0 ? r.clockify_hours : r.work_hours;
-                  const dow = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-                  const dayNum = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  return (
-                    <div key={r.id} className="card p-4">
-                      {/* Day header row */}
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-3">
-                          {/* Date chip */}
-                          <div className="text-center bg-[#f0f3ff] rounded-lg px-2.5 py-1.5 flex-shrink-0">
-                            <div className="text-[0.6rem] font-bold text-[#777587] uppercase tracking-widest">{dow}</div>
-                            <div className="text-sm font-black text-[#3525cd] leading-tight">{dayNum}</div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <StatusBadge status={r.status} />
-                              {totalHours > 0 && (
-                                <span className="flex items-center gap-1 text-xs font-black text-[#3525cd]">
-                                  <Timer size={12} /> {totalHours}h
-                                </span>
-                              )}
-                              {r.clockify_hours > 0 && (
-                                <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">
-                                  Clockify
-                                </span>
-                              )}
+
+              {/* Sub-tabs */}
+              <div className="flex gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-1 rounded-xl mb-4">
+                {[
+                  { key: 'attendance', label: 'Attendance & Hours', icon: <Timer size={13} /> },
+                  { key: 'leaves',     label: 'Leaves & Absences',  icon: <Umbrella size={13} /> },
+                  { key: 'wfh',        label: 'WFH',                icon: <Home size={13} /> },
+                ].map(t => (
+                  <button key={t.key} onClick={() => setRecordsTab(t.key)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      recordsTab === t.key ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
+                    }`}>
+                    {t.icon} {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Attendance records */}
+              {recordsTab === 'attendance' && (() => {
+                const presentRecords = attendance
+                  .filter(r => ['present', 'wfh', 'half_day'].includes(r.status))
+                  .sort((a, b) => b.date.localeCompare(a.date));
+                return presentRecords.length === 0 ? (
+                  <div className="empty-state">
+                    <CalendarDays size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>No attendance records for {periodLabel}</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {presentRecords.map(r => {
+                      const totalHours = r.clockify_hours > 0 ? r.clockify_hours : r.work_hours;
+                      const dow    = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+                      const dayNum = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      return (
+                        <div key={r.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-3">
+                              <div className="text-center bg-[#f0f3ff] rounded-lg px-2.5 py-1.5 flex-shrink-0">
+                                <div className="text-[0.6rem] font-bold text-[#777587] uppercase tracking-widest">{dow}</div>
+                                <div className="text-sm font-black text-[#3525cd] leading-tight">{dayNum}</div>
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <StatusBadge status={r.status} />
+                                  {totalHours > 0 && (
+                                    <span className="flex items-center gap-1 text-xs font-black text-[#3525cd]">
+                                      <Timer size={12} /> {totalHours}h
+                                    </span>
+                                  )}
+                                  {r.clockify_hours > 0 && (
+                                    <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">Clockify</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
+                          <AttendanceDayTimeline empId={emp.id} date={r.date} totalHours={totalHours} />
                         </div>
-                      </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
-                      {/* Expandable Clockify timeline */}
-                      <AttendanceDayTimeline
-                        empId={emp.id}
-                        date={r.date}
-                        totalHours={totalHours}
-                      />
+              {/* Leaves & Absences */}
+              {recordsTab === 'leaves' && (
+                <div className="flex flex-col gap-3">
+                  {leaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length === 0 && absentCount === 0 ? (
+                    <div className="empty-state">
+                      <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
+                      <p>No leave records for {periodLabel}</p>
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* ── Leaves & Absences Tab ── */}
-          {recordsTab === 'leaves' && (
-            <div className="flex flex-col gap-3">
-              {leaves.length === 0 && absentCount === 0 ? (
-                <div className="empty-state">
-                  <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
-                  <p>No leave records for {periodLabel}</p>
+                  ) : (
+                    <>
+                      {leaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh').map(l => (
+                        <div key={l.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4 flex items-start gap-3">
+                          <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                              {(l.leave_time === 'wfh' || l.leave_type === 'wfh') ? <StatusBadge status="wfh" /> : <LeaveTypeBadge type={l.leave_type} />}
+                              {l.leave_time === 'half' && l.leave_type !== 'wfh' ? (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
+                                  {l.half_type === 'second_half' ? 'Second Half' : 'First Half'}
+                                </span>
+                              ) : l.leave_time !== 'wfh' && l.leave_type !== 'wfh' ? (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>
+                              ) : null}
+                              <StatusBadge status={l.status} />
+                            </div>
+                            <div className="text-xs text-[#464555]">{fmtDateRange(l.start_date, l.end_date)}</div>
+                            {l.reason && <div className="text-xs text-[#777587] italic mt-1">"{l.reason}"</div>}
+                            {l.approver_name && <div className="text-xs text-[#777587] mt-1">By: {l.approver_name}</div>}
+                          </div>
+                        </div>
+                      ))}
+                      {absentRecords.map(r => (
+                        <div key={r.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4 flex items-start gap-3">
+                          <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                              <StatusBadge status="absent" />
+                            </div>
+                            <div className="text-xs text-[#464555]">{fmtDate(r.date)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
-              ) : (
-                <>
-                  {leaves.map(l => (
-                    <div key={l.id} className="card p-4 flex items-start gap-3">
-                      <Avatar name={emp.name} color={emp.avatar_color} size={32} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
-                          <LeaveTypeBadge type={l.leave_type} />
-                          {l.leave_time === 'half' ? (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
-                              {l.half_type === 'second_half' ? '🌙 Second Half' : '☀️ First Half'}
-                            </span>
-                          ) : l.leave_time === 'wfh' ? (
-                            <StatusBadge status="wfh" />
-                          ) : (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>
-                          )}
-                          <StatusBadge status={l.status} />
-                        </div>
-                        <div className="text-xs text-[#464555]">{fmtDateRange(l.start_date, l.end_date)}</div>
-                        {l.reason && <div className="text-xs text-[#777587] italic mt-1">"{l.reason}"</div>}
-                        {l.approver_name && <div className="text-xs text-[#777587] mt-1">By: {l.approver_name}</div>}
-                      </div>
-                    </div>
-                  ))}
-                  {absentRecords.map(r => (
-                    <div key={r.id} className="card p-4 flex items-start gap-3">
-                      <Avatar name={emp.name} color={emp.avatar_color} size={32} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
-                          <StatusBadge status="absent" />
-                        </div>
-                        <div className="text-xs text-[#464555]">{fmtDate(r.date)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </>
               )}
-            </div>
+
+              {/* WFH records */}
+              {recordsTab === 'wfh' && (() => {
+                const wfhRecords = leaves.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh').sort((a, b) => b.start_date.localeCompare(a.start_date));
+                return wfhRecords.length === 0 ? (
+                  <div className="empty-state">
+                    <Home size={36} className="mx-auto mb-2 opacity-30" />
+                    <p>No WFH records for {periodLabel}</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {wfhRecords.map(l => (
+                      <div key={l.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4 flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                          <Home size={16} className="text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">WFH</span>
+                            <StatusBadge status={l.status} />
+                          </div>
+                          <div className="text-xs font-semibold text-[#151c27]">{fmtDateRange(l.start_date, l.end_date)}</div>
+                          {l.reason && <div className="text-xs text-[#777587] italic mt-1">"{l.reason}"</div>}
+                          {l.approver_name && <div className="text-xs text-[#777587] mt-1">Approved by: {l.approver_name}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -900,6 +1249,15 @@ export default function Employees() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewParam, allEmployees]);
 
+  // Keep profileEmp in sync when the employees list refetches (e.g., after an edit)
+  useEffect(() => {
+    if (profileEmp && allEmployees.length > 0) {
+      const updated = allEmployees.find(e => e.id === profileEmp.id);
+      if (updated) setProfileEmp(updated);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allEmployees]);
+
   // Filter by role when a role query param is present
   const employees = roleFilter
     ? allEmployees.filter(e => e.role === roleFilter)
@@ -926,7 +1284,23 @@ export default function Employees() {
   }
 
   if (profileEmp) {
-    return <EmployeeProfile emp={profileEmp} onBack={() => setProfileEmp(null)} />;
+    return (
+      <>
+        <EmployeeProfile
+          emp={profileEmp}
+          onBack={() => setProfileEmp(null)}
+          onEdit={(emp) => setEditEmp(emp)}
+        />
+        {editEmp && (
+          <EmployeeFormModal
+            open={!!editEmp}
+            onClose={() => setEditEmp(null)}
+            employee={editEmp}
+            departments={departments}
+          />
+        )}
+      </>
+    );
   }
 
   return (

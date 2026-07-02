@@ -150,8 +150,9 @@ export default function EmployeeHome() {
   const upcomingBdays   = culture?.upcomingBirthdays || [];
   const upcomingEvents  = (culture?.events || []).slice(0, 4);
 
-  const teamOnLeave = todayTeamLeaves.filter(l => l.leave_time !== 'wfh' && l.user_id !== user?.id);
-  const teamWfh     = todayTeamLeaves.filter(l => l.leave_time === 'wfh' && l.user_id !== user?.id);
+  const isWFHLeave  = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
+  const teamOnLeave = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id);
+  const teamWfh     = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id);
 
   const orgName  = user?.organization_name || user?.org_name || 'lumoslogic';
   const roleLabel = user?.position || 'Team Member';

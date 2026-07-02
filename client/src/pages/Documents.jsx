@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   Upload, FolderOpen, Trash2, Download, AlertCircle, FileText,
   Image, Archive, X, ExternalLink, Eye, Users, Info, CheckCircle2,
-  ChevronLeft, ChevronRight, Phone,
+  ChevronLeft, ChevronRight, Mail,
   BookOpen, Globe, Lock, UserCheck, Share2, Edit2, RefreshCw,
   CreditCard, Landmark, Camera, GraduationCap, Briefcase, ScanLine, User, Home,
 } from 'lucide-react';
@@ -125,6 +125,14 @@ export default function Documents() {
   });
   const docs = Array.isArray(_docsData) ? _docsData : [];
 
+  // Separate unfiltered query to keep the employee filter buttons stable (Issue 2 fix)
+  const { data: _allDocsData } = useQuery({
+    queryKey: ['documents', 'all'],
+    queryFn: () => apiGet('/documents', {}),
+    enabled: isAdmin,
+  });
+  const allDocs = Array.isArray(_allDocsData) ? _allDocsData : [];
+
   // Colleagues list for sharing picker (available to all authenticated users)
   const { data: colleagues = [] } = useQuery({
     queryKey: ['doc-colleagues'],
@@ -141,10 +149,18 @@ export default function Documents() {
     enabled: isAdmin,
   });
 
+  // HR admin contact email for employee "Email HR" button (Issue 3 fix)
+  const { data: hrContact } = useQuery({
+    queryKey: ['hr-contact'],
+    queryFn: () => apiGet('/org/hr-contact'),
+    enabled: isEmployee,
+    staleTime: 300000,
+  });
+
   // ── Mutations ────────────────────────────────────────────────────────────────
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/documents/${id}`),
-    onSuccess:  () => { toast('Document deleted', 'warning'); qc.invalidateQueries({ queryKey: ['documents'] }); setConfirmDel(null); },
+    onSuccess:  () => { toast('Document deleted successfully.', 'success'); qc.invalidateQueries({ queryKey: ['documents'] }); setConfirmDel(null); },
     onError:    e  => toast(e.message, 'error'),
   });
 
@@ -207,8 +223,9 @@ export default function Documents() {
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
 
+  // Derived from ALL docs (not filtered) so employee filter buttons stay visible after selecting one
   const uniqueEmployees = isAdmin
-    ? [...new Map(docs.map(d => [d.user_id, { id: d.user_id, name: d.owner?.name, avatar_color: d.owner?.avatar_color }])).values()].filter(e => e.name)
+    ? [...new Map(allDocs.map(d => [d.user_id, { id: d.user_id, name: d.owner?.name, avatar_color: d.owner?.avatar_color }])).values()].filter(e => e.name)
     : [];
 
   // Sharing targets for picker
@@ -462,7 +479,7 @@ export default function Documents() {
               <p className="text-xs text-[#777587] mt-2">PDF · JPG · PNG · WEBP · DOC · DOCX · Max 10 MB</p>
             </div>
           </div>
-          <RightPanel />
+          <RightPanel isEmployee={isEmployee} hrEmail={hrContact?.email} />
         </div>
 
       ) : docs.length === 0 && isAdmin ? (
@@ -644,7 +661,7 @@ export default function Documents() {
             </div>
           </div>
 
-          <RightPanel onUpload={() => fileRef.current?.click()} />
+          <RightPanel onUpload={() => fileRef.current?.click()} isEmployee={isEmployee} hrEmail={hrContact?.email} />
         </div>
       )}
 
@@ -943,7 +960,7 @@ function EditDocModal({ doc, isAdmin, isEmployee, colleagues, allEmployees, onCl
 }
 
 // ── Right Panel ──────────────────────────────────────────────────────────────────
-function RightPanel({ onUpload }) {
+function RightPanel({ onUpload, isEmployee, hrEmail }) {
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-[#c7c4d8] overflow-hidden">
@@ -989,14 +1006,25 @@ function RightPanel({ onUpload }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-[#c7c4d8] p-4">
-        <p className="text-xs font-black text-[#151c27] mb-1">Need Help?</p>
-        <p className="text-xs text-[#777587] mb-3">If you face any issue uploading documents, please contact HR.</p>
-        <button className="btn btn-primary w-full text-xs">
-          <Phone size={13} /> Contact HR
-        </button>
-      </div>
-
+      {/* Need Help — only for employees */}
+      {isEmployee && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] p-4">
+          <p className="text-xs font-black text-[#151c27] mb-1">Need Help?</p>
+          <p className="text-xs text-[#777587] mb-3">
+            If you face any issue uploading documents, contact HR via email.
+          </p>
+          {hrEmail ? (
+            <a
+              href={`mailto:${hrEmail}?subject=Document Query&body=Hi HR Team,%0A%0AI need help with my documents.%0A%0ARegards`}
+              className="btn btn-primary w-full text-xs flex items-center justify-center gap-1.5"
+            >
+              <Mail size={13} /> Email HR
+            </a>
+          ) : (
+            <p className="text-xs text-[#9ca3af] text-center">HR contact not available.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

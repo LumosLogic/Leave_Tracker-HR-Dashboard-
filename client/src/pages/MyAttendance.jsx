@@ -295,7 +295,7 @@ export default function MyAttendance() {
       const [dy, dm] = ds.split('-').map(Number);
       if (dy !== year || dm !== month) continue;
       const existing = recMap[ds];
-      const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
+      const leaveStatus = (l.leave_time === 'wfh' || l.leave_type === 'wfh') ? 'wfh'
                         : l.leave_time === 'half' ? 'half_day'
                         : 'on_leave';
       // Only apply leave status if the employee didn't actually clock in that day.

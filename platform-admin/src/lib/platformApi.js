@@ -29,8 +29,9 @@ export const paGet    = (ep, qs = {}) => {
   const q = new URLSearchParams(qs).toString();
   return paFetch('GET', ep + (q ? '?' + q : ''));
 };
-export const paPost   = (ep, body) => paFetch('POST', ep, body);
-export const paPut    = (ep, body) => paFetch('PUT',  ep, body);
+export const paPost   = (ep, body) => paFetch('POST',  ep, body);
+export const paPut    = (ep, body) => paFetch('PUT',   ep, body);
+export const paPatch  = (ep, body) => paFetch('PATCH', ep, body);
 export const paDelete = (ep)       => paFetch('DELETE', ep);
 
 // Direct login call (no auth token needed)

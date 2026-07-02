@@ -93,17 +93,17 @@ export default function Leaves() {
     if (tab === 'today') return [];
     let src = tab === 'all' ? allLeaves : (tab === 'wfh' ? allLeaves : myLeaves);
     if (tab === 'wfh') {
-      src = src.filter(l => l.leave_time === 'wfh');
+      src = src.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
       if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
       return src;
     }
-    src = src.filter(l => l.leave_time !== 'wfh');
+    src = src.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
     if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
     return src;
   })();
 
-  const pendingCount    = allLeaves.filter(l => l.status === 'pending' && l.leave_time !== 'wfh').length;
-  const wfhPendingCount = allLeaves.filter(l => l.status === 'pending' && l.leave_time === 'wfh').length;
+  const pendingCount    = allLeaves.filter(l => l.status === 'pending' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
+  const wfhPendingCount = allLeaves.filter(l => l.status === 'pending' && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
 
   return (
     <div>
@@ -190,7 +190,7 @@ export default function Leaves() {
               {(() => {
                 const today = todayStr();
                 const upcoming = allLeaves
-                  .filter(l => l.status === 'approved' && l.start_date >= today && l.leave_time !== 'wfh')
+                  .filter(l => l.status === 'approved' && l.start_date >= today && l.leave_time !== 'wfh' && l.leave_type !== 'wfh')
                   .sort((a, b) => a.start_date.localeCompare(b.start_date))
                   .slice(0, 6);
                 if (upcoming.length === 0) return (
@@ -264,14 +264,18 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-black">{l.name}</span>
-          <LeaveTypeBadge type={l.leave_type} />
+          {/* WFH is not a leave type — show WFH badge only, never the leave_type badge */}
+          {(l.leave_time === 'wfh' || l.leave_type === 'wfh') ? (
+            <span className="badge badge-wfh flex items-center gap-1"><Home size={10} /> WFH</span>
+          ) : (
+            <LeaveTypeBadge type={l.leave_type} />
+          )}
           {l.leave_time === 'half' && (
             <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
               {l.half_type === 'second_half' ? 'Second Half' : 'First Half'}
             </span>
           )}
-          {l.leave_time === 'wfh' && l.leave_type !== 'casual' && <span className="badge badge-wfh flex items-center gap-1"><Home size={10} /> WFH</span>}
-          {l.leave_time === 'full' && <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>}
+          {l.leave_time === 'full' && l.leave_type !== 'wfh' && <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555]">Full Day</span>}
           <StatusBadge status={l.status} />
         </div>
         <div className="text-xs text-[#777587] mt-1 flex items-center gap-1.5 flex-wrap">
@@ -403,7 +407,7 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
     const activePolicies = (policies || []).filter(p => p.active && p.annual_quota > 0);
     return activePolicies.map(p => {
       const used = empLeaves
-        .filter(l => l.leave_type === p.leave_type && l.leave_time !== 'wfh')
+        .filter(l => l.leave_type === p.leave_type && l.leave_time !== 'wfh' && l.leave_type !== 'wfh')
         .reduce((s, l) => s + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
       const remaining = Math.max(0, p.annual_quota - used);
       return { type: p.leave_type, quota: p.annual_quota, used, remaining };
@@ -474,7 +478,11 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
                     </select>
                   </div>
                   <div><label className="form-label">Leave Time</label>
-                    <select className="form-control" value={f.time} onChange={e => update(i, 'time', e.target.value)}>
+                    <select className="form-control" value={f.time} onChange={e => {
+                      const t = e.target.value;
+                      update(i, 'time', t);
+                      if (t === 'wfh') update(i, 'type', 'wfh');
+                    }}>
                       <option value="full">Full Leave</option>
                       <option value="half">Half Leave</option>
                       <option value="wfh">Work from Home</option>
@@ -540,7 +548,10 @@ function EditLeaveModal({ leave: l, isAdmin, onClose, onSuccess }) {
                   </select>
                 </div>
                 <div><label className="form-label">Leave Time</label>
-                  <select className="form-control" value={form.time} disabled={!canEdit} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}>
+                  <select className="form-control" value={form.time} disabled={!canEdit} onChange={e => {
+                    const t = e.target.value;
+                    setForm(f => ({ ...f, time: t, ...(t === 'wfh' ? { type: 'wfh' } : {}) }));
+                  }}>
                     <option value="full">Full Leave</option><option value="half">Half Leave</option><option value="wfh">WFH</option>
                   </select>
                 </div>

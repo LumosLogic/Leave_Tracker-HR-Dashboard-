@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Home, Umbrella, Globe, Users, CalendarDays, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Home, Umbrella, Activity, AlertTriangle, Globe, Users, CalendarDays, Clock } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAuth } from '@/context/AuthContext';
@@ -17,6 +17,12 @@ const LEAVE_TYPE_COLORS = {
 };
 
 function pad(n) { return String(n).padStart(2, '0'); }
+
+function LeaveIcon({ leaveType, size = 10, className = '' }) {
+  if (leaveType === 'sick')      return <Activity      size={size} className={className} />;
+  if (leaveType === 'emergency') return <AlertTriangle size={size} className={className} />;
+  return <Umbrella size={size} className={className} />;
+}
 
 function getCalendarDays(year, month) {
   const first = new Date(year, month - 1, 1).getDay();
@@ -97,7 +103,7 @@ export default function TeamCalendar() {
   const onLeaveThisMonth = [];
   const seen = new Set();
   for (const l of teamLeaves) {
-    if (l.leave_time === 'wfh') continue;
+    if (l.leave_time === 'wfh' || l.leave_type === 'wfh') continue;
     if (!seen.has(l.user_id)) {
       seen.add(l.user_id);
       onLeaveThisMonth.push({ user_id: l.user_id, name: l.name, avatar_color: l.avatar_color, department: l.department });
@@ -107,7 +113,7 @@ export default function TeamCalendar() {
   // Count leave days per person this month (excluding WFH)
   const leaveDayCount = {};
   for (const l of teamLeaves) {
-    if (l.leave_time === 'wfh') continue;
+    if (l.leave_time === 'wfh' || l.leave_type === 'wfh') continue;
     const start = new Date(Math.max(new Date(l.start_date + 'T12:00:00'), new Date(monthStart + 'T12:00:00')));
     const end   = new Date(Math.min(new Date(l.end_date   + 'T12:00:00'), new Date(monthEnd   + 'T12:00:00')));
     if (start > end) continue;
@@ -147,8 +153,8 @@ export default function TeamCalendar() {
           </div>
           <div className="flex flex-wrap gap-2">
             {todayLeaves.map(l => {
-              const typeLabel = l.leave_time === 'wfh' ? 'WFH' : l.leave_time === 'half' ? 'Half Day' : l.leave_type === 'sick' ? 'Sick' : 'On Leave';
-              const isWfh    = l.leave_time === 'wfh';
+              const isWfh    = l.leave_time === 'wfh' || l.leave_type === 'wfh';
+              const typeLabel = isWfh ? 'WFH' : l.leave_time === 'half' ? 'Half Day' : l.leave_type === 'sick' ? 'Sick' : 'On Leave';
               return (
                 <div key={l.id} className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 border ${isWfh ? 'bg-[#f0f3ff] border-[#c7c4d8]' : 'bg-amber-50 border-amber-200'}`}>
                   <Avatar name={l.name || '?'} color={l.avatar_color} size={22} />
@@ -227,7 +233,7 @@ export default function TeamCalendar() {
                       {/* Leave chips — show avatar + name */}
                       <div className="space-y-1">
                         {dayLeaves.slice(0, 3).map(l => {
-                          const isWfh   = l.leave_time === 'wfh';
+                          const isWfh   = l.leave_time === 'wfh' || l.leave_type === 'wfh';
                           const isMe    = l.user_id === user?.id;
                           const colors  = isWfh ? LEAVE_TYPE_COLORS.wfh : (LEAVE_TYPE_COLORS[l.leave_type] || LEAVE_TYPE_COLORS.other);
                           return (
@@ -238,7 +244,7 @@ export default function TeamCalendar() {
                                 {avatarInitials(l.name)}
                               </div>
                               <span className="truncate font-bold">{isMe ? 'You' : l.name?.split(' ')[0]}</span>
-                              {isWfh ? <Home size={10} className="flex-shrink-0 ml-auto" /> : <Umbrella size={10} className="flex-shrink-0 ml-auto" />}
+                              {isWfh ? <Home size={10} className="flex-shrink-0 ml-auto" /> : <LeaveIcon leaveType={l.leave_type} size={10} className="flex-shrink-0 ml-auto" />}
                             </div>
                           );
                         })}
@@ -291,7 +297,7 @@ export default function TeamCalendar() {
                 ) : (
                   <div className="space-y-2">
                     {selectedLeaves.map(l => {
-                      const isWfh  = l.leave_time === 'wfh';
+                      const isWfh  = l.leave_time === 'wfh' || l.leave_type === 'wfh';
                       const isHalf = l.leave_time === 'half';
                       const isMe   = l.user_id === user?.id;
                       return (
@@ -356,8 +362,8 @@ export default function TeamCalendar() {
             <div className="space-y-2">
               {[
                 { label: 'Total leaves',    value: teamLeaves.length,                                        color: 'text-amber-600 bg-amber-50' },
-                { label: 'On leave',        value: teamLeaves.filter(l => l.leave_time !== 'wfh').length,   color: 'text-rose-600 bg-rose-50' },
-                { label: 'WFH',             value: teamLeaves.filter(l => l.leave_time === 'wfh').length,   color: 'text-[#3525cd] bg-[#f0f3ff]' },
+                { label: 'On leave',        value: teamLeaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length, color: 'text-rose-600 bg-rose-50' },
+                { label: 'WFH',             value: teamLeaves.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh').length, color: 'text-[#3525cd] bg-[#f0f3ff]' },
                 { label: 'People affected', value: onLeaveThisMonth.length,                                  color: 'text-purple-600 bg-purple-50' },
                 { label: 'Public holidays', value: holidays.filter(h => h.date >= monthStart && h.date <= monthEnd).length, color: 'text-emerald-600 bg-emerald-50' },
               ].map(s => (

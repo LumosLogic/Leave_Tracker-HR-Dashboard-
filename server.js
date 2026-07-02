@@ -46,7 +46,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (!origin || ALLOWED_ORIGINS.includes(origin)) {
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -371,7 +371,35 @@ app.get('/api/platform/stats', platformAdminAuth, async (req, res) => {
     const { data: recentRequests } = await supabase.from('org_registration_requests')
       .select('id, company_name, contact_name, email, status, created_at').order('created_at', { ascending: false }).limit(5);
 
-    res.json({ totalOrgs: totalOrgs || 0, pendingRequests: pendingReqs || 0, totalUsers: totalUsers || 0, approvedOrgs: approvedOrgs || 0, recentOrgs: recentOrgs || [], recentRequests: recentRequests || [] });
+    // Plan distribution
+    const { data: allOrgs } = await supabase.from('organizations').select('plan, status, created_at');
+    const planDist = {};
+    const statusDist = {};
+    (allOrgs || []).forEach(o => {
+      const p = (o.plan || 'free').toLowerCase();
+      planDist[p]   = (planDist[p] || 0) + 1;
+      const s = o.status || 'active';
+      statusDist[s] = (statusDist[s] || 0) + 1;
+    });
+
+    // Monthly org growth — last 6 months
+    const monthlyGrowth = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      const count = (allOrgs || []).filter(o => o.created_at && o.created_at.startsWith(`${y}-${m}`)).length;
+      monthlyGrowth.push({ label, count });
+    }
+
+    res.json({
+      totalOrgs: totalOrgs || 0, pendingRequests: pendingReqs || 0,
+      totalUsers: totalUsers || 0, approvedOrgs: approvedOrgs || 0,
+      recentOrgs: recentOrgs || [], recentRequests: recentRequests || [],
+      planDistribution: planDist, statusDistribution: statusDist, monthlyGrowth,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -503,8 +531,10 @@ app.post('/api/platform/requests/:id/reject', platformAdminAuth, async (req, res
 app.get('/api/platform/activity', platformAdminAuth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const { data } = await supabase.from('platform_activity')
-      .select('*').order('created_at', { ascending: false }).limit(limit);
+    const orgId  = req.query.orgId ? parseInt(req.query.orgId) : null;
+    let query = supabase.from('platform_activity').select('*').order('created_at', { ascending: false }).limit(limit);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data } = await query;
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -574,6 +604,28 @@ app.put('/api/platform/organizations/:id/features', platformAdminAuth, async (re
         .upsert(upserts, { onConflict: 'organization_id,feature_key' });
     }
     res.json({ success: true, updated: upserts.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update org plan + apply preset feature flags
+const PLAN_FEATURES = {
+  free:     { announcements: true, documents: true, regularization: false, leave_policies: false, shifts: false, onboarding: false, exit_management: false, payroll: false, expenses: false, assets: false, reports: false, performance: false, clockify: false, google_calendar: false, push_notifications: false },
+  gold:     { announcements: true, documents: true, regularization: true, leave_policies: true, shifts: true, reports: true, performance: true, payroll: true, onboarding: false, exit_management: false, expenses: false, assets: false, clockify: false, google_calendar: false, push_notifications: false },
+  platinum: Object.fromEntries(['announcements','regularization','leave_policies','shifts','onboarding','exit_management','payroll','expenses','assets','reports','performance','documents','clockify','google_calendar','push_notifications'].map(k => [k, true])),
+};
+app.patch('/api/platform/organizations/:id/plan', platformAdminAuth, async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.id);
+    const { plan } = req.body;
+    const planKey = (plan || '').toLowerCase();
+    if (!PLAN_FEATURES[planKey]) return res.status(400).json({ error: 'Invalid plan. Use free, gold, or platinum.' });
+    await supabase.from('organizations').update({ plan }).eq('id', orgId);
+    const featureMap = PLAN_FEATURES[planKey];
+    const upserts = Object.entries(featureMap).map(([feature_key, enabled]) => ({
+      organization_id: orgId, feature_key, enabled, updated_at: new Date().toISOString(),
+    }));
+    await supabase.from('organization_features').upsert(upserts, { onConflict: 'organization_id,feature_key' });
+    res.json({ success: true, plan, featuresApplied: upserts.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -877,15 +929,19 @@ app.get('/api/dashboard', auth, async (req, res) => {
     // Also cross-checks the leaves table so employees with approved leaves but missing attendance
     // records are protected too (e.g. leave approved after the last Clockify sync).
     const clockifyGuardIds = new Set(todayRecords.filter(r => LEAVE_ATT_STATUSES.has(r.status)).map(r => r.user_id));
+
+    // Fetch today's approved leaves to fill in missing attendance records (WFH, half_day, on_leave)
+    let todayApprovedLeaves = [];
     if (empIds.length > 0) {
-      const { data: todayApprovedLeaves } = await supabase.from('leaves')
-        .select('user_id')
+      const { data: tal } = await supabase.from('leaves')
+        .select('user_id, leave_type, leave_time')
         .eq('organization_id', orgId(req))
         .eq('status', 'approved')
         .lte('start_date', today)
         .gte('end_date', today)
         .in('user_id', empIds);
-      for (const l of (todayApprovedLeaves || [])) clockifyGuardIds.add(l.user_id);
+      todayApprovedLeaves = tal || [];
+      for (const l of todayApprovedLeaves) clockifyGuardIds.add(l.user_id);
     }
 
     // Persist Clockify check-ins to attendance DB so MyAttendance and all views stay in sync
@@ -921,14 +977,27 @@ app.get('/api/dashboard', auth, async (req, res) => {
       }));
     }
 
+    // Build a wfhIds set from attendance records + approved WFH leaves (in case attendance record is missing)
+    const wfhIds = new Set(todayRecords.filter(r => r.status === 'wfh').map(r => r.user_id));
+    for (const l of todayApprovedLeaves) {
+      if (l.leave_time === 'wfh' || l.leave_type === 'wfh') wfhIds.add(l.user_id);
+    }
+    // Also add to onLeaveIds any approved on_leave without an attendance record
+    for (const l of todayApprovedLeaves) {
+      if (l.leave_time !== 'wfh' && l.leave_type !== 'wfh' && l.leave_time !== 'half') {
+        onLeaveIds.add(l.user_id);
+      }
+    }
+
     const onLeaveToday   = onLeaveIds.size;
-    const presentToday   = Math.max(0, totalEmployees - onLeaveToday);
+    const wfhOnlyCount   = [...wfhIds].filter(id => !onLeaveIds.has(id)).length;
+    const presentToday   = Math.max(0, totalEmployees - onLeaveToday - wfhOnlyCount);
     const onClockify     = isToday ? [...clockifyActiveIds].filter(id => !clockifyGuardIds.has(id)).length : null;
     const notOnClockify  = isToday ? Math.max(0, presentToday - onClockify) : null;
     const lateToday      = todayRecords.filter(r => r.is_late).length;
     const earlyExitToday = todayRecords.filter(r => r.is_early_exit).length;
     const halfDayToday   = todayRecords.filter(r => r.status === 'half_day').length;
-    const wfhToday       = todayRecords.filter(r => r.status === 'wfh').length;
+    const wfhToday       = wfhIds.size;
     const checkedInToday = todayRecords.filter(r => r.check_in).length;
     const _now = new Date();
     const _ms  = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -992,7 +1061,7 @@ app.get('/api/employees', auth, async (req, res) => {
     // root_admin sees all non-root users (HR admins + employees); others see only employees
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const { data: users } = await supabase.from('users')
-      .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at')
+      .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date')
       .eq('organization_id', orgId(req))
       .in('role', roleFilter)
       .order('name');
@@ -1037,21 +1106,37 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
     }
 
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
+    // Log member added event
+    supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).catch(() => {});
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { name, email, role, department, position, avatar_color, password, date_of_birth, department_ids } = req.body;
+    const {
+      name, email, role, department, position, avatar_color, password, date_of_birth, department_ids,
+      phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date,
+    } = req.body;
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
     }
-    const update = { name, email, role, department, position, avatar_color, date_of_birth: date_of_birth||null };
+    const update = {
+      name, email, role, department, position, avatar_color,
+      date_of_birth:        date_of_birth        || null,
+      phone:                phone                || null,
+      personal_email:       personal_email       || null,
+      joining_date:         joining_date         || null,
+      employment_type:      employment_type      || null,
+      work_mode:            work_mode            || null,
+      employee_status:      employee_status      || null,
+      ctc:                  ctc                  || null,
+      salary_effective_date: salary_effective_date || null,
+    };
     if (password) update.password = bcrypt.hashSync(password, 10);
     const { data, error } = await supabase.from('users').update(update)
       .eq('id', req.params.id).eq('organization_id', orgId(req))
-      .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
+      .select('id, name, email, role, department, position, avatar_color, date_of_birth, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date').single();
     if (error) throw new Error(error.message);
 
     // Sync multi-department assignments if provided
@@ -1071,7 +1156,10 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
 app.delete('/api/employees/:id', auth, adminOnly, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
+    const { data: emp } = await supabase.from('users').select('name, email').eq('id', req.params.id).maybeSingle();
     await supabase.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
+    // Log member removed event
+    if (emp) supabase.from('platform_activity').insert({ event_type: 'member_removed', organization_id: orgId(req), description: `Member removed: ${emp.name} (${emp.email})`, metadata: { name: emp.name, email: emp.email, org_id: orgId(req) } }).catch(() => {});
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1416,7 +1504,7 @@ app.get('/api/leaves/date-check', auth, async (req, res) => {
 
     // Check for existing pending/approved leaves on the selected dates for this user
     const { data: conflicts } = await supabase.from('leaves')
-      .select('id, leave_type, status, start_date, end_date')
+      .select('id, leave_type, leave_time, status, start_date, end_date')
       .eq('user_id', req.user.id)
       .eq('organization_id', orgId(req))
       .in('status', ['pending', 'approved'])
@@ -1448,7 +1536,7 @@ app.get('/api/leaves/date-check', auth, async (req, res) => {
       if (!usedByType[l.leave_type]) usedByType[l.leave_type] = 0;
       if (l.leave_time === 'half') {
         usedByType[l.leave_type] += 0.5;
-      } else if (l.leave_time !== 'wfh') {
+      } else if (l.leave_time !== 'wfh' && l.leave_type !== 'wfh') {
         const s = new Date(l.start_date + 'T12:00:00');
         const e = new Date(l.end_date   + 'T12:00:00');
         for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
@@ -1567,7 +1655,7 @@ app.post('/api/leaves', auth, async (req, res) => {
       if (recipients.length > 0) {
         sendMail({
           to: recipients,
-          subject: `Leave Request — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
+          subject: `${leave_type === 'wfh' ? 'WFH Request' : 'Leave Request'} — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
           html: leaveAppliedHtml(
             { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
             data
@@ -1620,7 +1708,8 @@ app.put('/api/leaves/:id/approve', auth, adminOnly, async (req, res) => {
     const upserts = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().split('T')[0];
-      if (isWorkingDay(ds, settings)) upserts.push({ user_id: leave.user_id, date: ds, status: leave.leave_time === 'half' ? 'half_day' : leave.leave_time === 'wfh' ? 'wfh' : 'on_leave', organization_id: orgId(req) });
+      const attStatus = leave.leave_time === 'half' ? 'half_day' : (leave.leave_time === 'wfh' || leave.leave_type === 'wfh') ? 'wfh' : 'on_leave';
+      if (isWorkingDay(ds, settings)) upserts.push({ user_id: leave.user_id, date: ds, status: attStatus, organization_id: orgId(req) });
     }
     if (upserts.length) await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date,organization_id' });
 
@@ -1782,6 +1871,20 @@ app.delete('/api/leaves/:id', auth, async (req, res) => {
 });
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// Returns the HR admin contact email for any org member (used by employee portal)
+app.get('/api/org/hr-contact', auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('users')
+      .select('email, name')
+      .eq('organization_id', orgId(req))
+      .eq('role', 'admin')
+      .order('created_at')
+      .limit(1)
+      .maybeSingle();
+    res.json(data ? { email: data.email, name: data.name } : { email: null, name: null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Org Feature Flags (for client app) ──────────────────────────────────────
 // Returns a key→boolean map of all features for the caller's organization.
 // Missing features default to true (enabled).
@@ -2383,11 +2486,11 @@ app.get('/api/analytics', auth, adminOnly, async (req, res) => {
 
     // Leave balance overview (org-wide approved leaves this year vs policy quota)
     const LEAVE_COLORS = { casual: '#10b981', sick: '#ef4444', annual: '#3525cd', emergency: '#f59e0b', wfh: '#6366f1', maternity: '#ec4899', paternity: '#8b5cf6', comp_off: '#94a3b8' };
-    const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave', quota: 20 }, sick: { label: 'Sick Leave', quota: 15 }, annual: { label: 'Annual Leave', quota: 18 }, emergency: { label: 'Emergency Leave', quota: 5 }, wfh: { label: 'WFH', quota: 10 } };
+    const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave', quota: 20 }, sick: { label: 'Sick Leave', quota: 15 }, annual: { label: 'Annual Leave', quota: 18 }, emergency: { label: 'Emergency Leave', quota: 5 } };
     const approvedByType = {};
-    (allLeaves || []).filter(l => l.status === 'approved' && l.leave_time !== 'wfh').forEach(l => { approvedByType[l.leave_type] = (approvedByType[l.leave_type] || 0) + 1; });
+    (allLeaves || []).filter(l => l.status === 'approved' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').forEach(l => { approvedByType[l.leave_type] = (approvedByType[l.leave_type] || 0) + 1; });
     const policyMap = {};
-    (leavePolicies || []).forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
+    (leavePolicies || []).filter(p => p.leave_type !== 'wfh').forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
     const leaveBalanceByType = Object.entries({ ...LEAVE_DEFAULTS, ...policyMap }).slice(0, 5).map(([type, info]) => ({
       type, label: info.label, used: approvedByType[type] || 0, total: info.quota || 20, color: LEAVE_COLORS[type] || '#94a3b8',
     }));

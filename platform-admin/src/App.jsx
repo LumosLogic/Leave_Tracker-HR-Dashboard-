@@ -6,6 +6,7 @@ import PlatformLogin     from '@/pages/PlatformLogin';
 import PlatformDashboard from '@/pages/PlatformDashboard';
 import PlatformRequests  from '@/pages/PlatformRequests';
 import PlatformOrgs      from '@/pages/PlatformOrgs';
+import PlatformOrgDetail from '@/pages/PlatformOrgDetail';
 import PlatformActivity  from '@/pages/PlatformActivity';
 import PlatformFeatures  from '@/pages/PlatformFeatures';
 
@@ -21,11 +22,12 @@ function AppRoutes() {
       <Route path="/login" element={token ? <Navigate to="/dashboard" replace /> : <PlatformLogin />} />
 
       <Route element={<PlatformRoute><PlatformLayout /></PlatformRoute>}>
-        <Route path="/dashboard" element={<PlatformDashboard />} />
-        <Route path="/requests"  element={<PlatformRequests />} />
-        <Route path="/orgs"      element={<PlatformOrgs />} />
-        <Route path="/activity"  element={<PlatformActivity />} />
-        <Route path="/features"  element={<PlatformFeatures />} />
+        <Route path="/dashboard"  element={<PlatformDashboard />} />
+        <Route path="/requests"   element={<PlatformRequests />} />
+        <Route path="/orgs"       element={<PlatformOrgs />} />
+        <Route path="/orgs/:id"   element={<PlatformOrgDetail />} />
+        <Route path="/activity"   element={<PlatformActivity />} />
+        <Route path="/features"   element={<PlatformFeatures />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? '/dashboard' : '/login'} replace />} />

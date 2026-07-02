@@ -56,7 +56,7 @@ export default function Calendar() {
   leaves.filter(l => l.status === 'approved').forEach(l => {
     const start = new Date(l.start_date + 'T12:00:00');
     const end   = new Date(l.end_date   + 'T12:00:00');
-    const leaveStatus = l.leave_time === 'wfh' ? 'wfh'
+    const leaveStatus = (l.leave_time === 'wfh' || l.leave_type === 'wfh') ? 'wfh'
                       : l.leave_time === 'half' ? 'half_day'
                       : 'on_leave';
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -67,11 +67,16 @@ export default function Calendar() {
       const existingIdx = grouped[ds].findIndex(r => r.user_id === l.user_id);
       if (existingIdx === -1) {
         grouped[ds].push({ user_id: l.user_id, date: ds, status: leaveStatus, _synthetic: true });
+      } else if (leaveStatus === 'wfh') {
+        // WFH: override 'present' status — employee is present but working from home.
+        // Don't downgrade on_leave or half_day to wfh.
+        if (!['on_leave', 'half_day'].includes(grouped[ds][existingIdx].status)) {
+          grouped[ds][existingIdx] = { ...grouped[ds][existingIdx], status: 'wfh' };
+        }
       } else if (
         !['on_leave', 'wfh', 'half_day'].includes(grouped[ds][existingIdx].status) &&
         !grouped[ds][existingIdx].check_in
       ) {
-        // Only override with leave status if the employee didn't actually clock in
         grouped[ds][existingIdx] = { ...grouped[ds][existingIdx], status: leaveStatus };
       }
     }

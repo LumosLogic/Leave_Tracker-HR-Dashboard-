@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Building2, Activity, PlusCircle, RefreshCw } from 'lucide-react';
+import {
+  CheckCircle2, XCircle, Building2, Activity, PlusCircle,
+  RefreshCw, UserPlus, UserMinus, Filter,
+} from 'lucide-react';
 import { paGet } from '@/lib/platformApi';
 
 const EVENT_META = {
   org_request_submitted: { icon: <Building2 size={14} />,   color: '#d97706', bg: 'bg-amber-50',   border: 'border-amber-200',   label: 'Request Submitted' },
   org_approved:          { icon: <CheckCircle2 size={14} />, color: '#059669', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Org Approved' },
   org_rejected:          { icon: <XCircle size={14} />,      color: '#dc2626', bg: 'bg-rose-50',    border: 'border-rose-200',    label: 'Org Rejected' },
-  org_created:           { icon: <PlusCircle size={14} />,   color: '#3525cd', bg: 'bg-[#f0f3ff]',  border: 'border-[#c7c4d8]',   label: 'Org Created' },
+  org_created:           { icon: <PlusCircle size={14} />,   color: '#3525cd', bg: 'bg-[#f0f3ff]',  border: 'border-[#c7c4d8]',  label: 'Org Created' },
+  member_added:          { icon: <UserPlus size={14} />,     color: '#10b981', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Member Added' },
+  member_removed:        { icon: <UserMinus size={14} />,    color: '#ef4444', bg: 'bg-rose-50',    border: 'border-rose-200',    label: 'Member Removed' },
 };
 
 function fmtDate(d) {
@@ -19,24 +24,60 @@ function fmtDate(d) {
 }
 
 export default function PlatformActivity() {
+  const [orgFilter, setOrgFilter] = useState('');
+
+  const { data: orgs = [] } = useQuery({
+    queryKey: ['platform-orgs-activity'],
+    queryFn: () => paGet('/organizations'),
+  });
+
+  const queryParams = { limit: 100 };
+  if (orgFilter) queryParams.orgId = orgFilter;
+
   const { data: events = [], isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['platform-activity'],
-    queryFn: () => paGet('/activity', { limit: 100 }),
+    queryKey: ['platform-activity', orgFilter],
+    queryFn: () => paGet('/activity', queryParams),
     refetchInterval: 30000,
   });
 
+  const selectedOrgName = orgs.find(o => String(o.id) === orgFilter)?.name || '';
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-[#151c27] tracking-tight">Platform Activity</h1>
-          <p className="text-sm text-[#464555] mt-0.5">Real-time log of all platform-level events</p>
+          <p className="text-sm text-[#464555] mt-0.5">
+            {orgFilter ? `Showing activity for ${selectedOrgName}` : 'Real-time log of all platform-level events'}
+          </p>
         </div>
-        <button onClick={() => refetch()} disabled={isFetching}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-[#464555] border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all disabled:opacity-50">
-          <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Org filter */}
+          <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-xl px-3 py-2">
+            <Filter size={13} className="text-[#777587] flex-shrink-0" />
+            <select
+              value={orgFilter}
+              onChange={e => setOrgFilter(e.target.value)}
+              className="text-xs font-semibold text-[#151c27] bg-transparent outline-none cursor-pointer min-w-[160px]"
+            >
+              <option value="">All Organizations</option>
+              {orgs.map(o => (
+                <option key={o.id} value={String(o.id)}>{o.name}</option>
+              ))}
+            </select>
+          </div>
+          {orgFilter && (
+            <button onClick={() => setOrgFilter('')}
+              className="text-xs font-bold px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+              Clear
+            </button>
+          )}
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-[#464555] border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all disabled:opacity-50">
+            <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {isLoading && (
@@ -50,8 +91,10 @@ export default function PlatformActivity() {
           <div className="w-14 h-14 rounded-2xl bg-[#f0f3ff] flex items-center justify-center mx-auto mb-3">
             <Activity size={28} className="text-[#3525cd]/40" />
           </div>
-          <p className="text-[#464555] font-bold">No activity yet</p>
-          <p className="text-[#777587] text-sm mt-1">Platform events will appear here as they happen</p>
+          <p className="text-[#464555] font-bold">No activity {orgFilter ? 'for this organization' : 'yet'}</p>
+          <p className="text-[#777587] text-sm mt-1">
+            {orgFilter ? 'Member events will appear here once activity occurs' : 'Platform events will appear here as they happen'}
+          </p>
         </div>
       )}
 
@@ -95,7 +138,7 @@ export default function PlatformActivity() {
                           {ev.metadata.email && (
                             <span className="text-xs px-2 py-0.5 rounded-lg text-[#464555] bg-[#f0f3ff] border border-[#e7eefe]">{ev.metadata.email}</span>
                           )}
-                          {ev.metadata.org_id && (
+                          {!orgFilter && ev.metadata.org_id && (
                             <span className="text-xs px-2 py-0.5 rounded-lg text-[#464555] bg-[#f0f3ff] border border-[#e7eefe]">org #{ev.metadata.org_id}</span>
                           )}
                         </div>
