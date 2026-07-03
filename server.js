@@ -2653,7 +2653,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
       supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', oid),
       supabase.from('leaves')
-        .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .select('id, user_id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
       supabase.from('leaves')
         .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
@@ -2741,18 +2741,18 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
     const liveActivity = [];
     for (const a of (todayAttendance || []).filter(x => x.check_in).slice(0, 5)) {
       const emp = empById[a.user_id];
-      if (emp) liveActivity.push({ type: 'checkin', name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
+      if (emp) liveActivity.push({ type: 'checkin', user_id: emp.id, name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
         time: `${today}T${a.check_in}`,
         detail: a.status === 'wfh' ? 'started working from home' : a.status === 'half_day' ? 'marked half day' : 'checked in' });
     }
     for (const l of flat(recentLeavesRaw || []).slice(0, 6)) {
-      liveActivity.push({ type: 'leave', name: l.name, department: l.department, avatar_color: l.avatar_color,
+      liveActivity.push({ type: 'leave', user_id: l.user_id, name: l.name, department: l.department, avatar_color: l.avatar_color,
         time: l.created_at, detail: `applied for ${l.leave_type} leave`, status: l.status });
     }
     const recentJoiners = (allEmployees || []).filter(e => e.role === 'employee')
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 3);
     for (const emp of recentJoiners) {
-      liveActivity.push({ type: 'joined', name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
+      liveActivity.push({ type: 'joined', user_id: emp.id, name: emp.name, department: emp.department, avatar_color: emp.avatar_color,
         time: emp.created_at, detail: 'joined the organization' });
     }
     liveActivity.sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -2760,7 +2760,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
     // Action center items
     const actionCenter = [];
     if (pendingLeaves > 0) actionCenter.push({ type: 'leaves', label: `${pendingLeaves} leave approval${pendingLeaves !== 1 ? 's' : ''} pending`, priority: pendingLeaves > 5 ? 'High' : 'Medium', link: '/root/leaves' });
-    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/attendance' });
+    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/regularization' });
     if (pendingExp > 0)   actionCenter.push({ type: 'expenses', label: `${pendingExp} expense${pendingExp !== 1 ? 's' : ''} awaiting approval`, priority: 'Medium', link: '/root/expenses' });
     if (actionCenter.length === 0) actionCenter.push({ type: 'all_clear', label: 'All tasks up to date', priority: 'Low' });
 

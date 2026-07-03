@@ -5,13 +5,13 @@ import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useAuth } from '@/context/AuthContext';
 import { useTour } from '@/hooks/useTour';
-import { adminTourSteps } from '@/lib/tours';
+import { hrAdminTourSteps } from '@/lib/tours';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { title, subtitle } = usePageMeta();
   const { user } = useAuth();
-  useTour(adminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_admin_${user.id}` : null);
+  useTour(hrAdminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_hr_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">

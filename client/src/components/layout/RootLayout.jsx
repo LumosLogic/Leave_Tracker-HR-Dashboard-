@@ -11,7 +11,7 @@ import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
 import { useTour } from '@/hooks/useTour';
-import { adminTourSteps } from '@/lib/tours';
+import { rootAdminTourSteps } from '@/lib/tours';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 
@@ -141,7 +141,7 @@ export function RootLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { title, subtitle } = usePageMeta();
   const { user } = useAuth();
-  useTour(adminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_admin_${user.id}` : null);
+  useTour(rootAdminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_root_${user.id}` : null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f9f9ff]">

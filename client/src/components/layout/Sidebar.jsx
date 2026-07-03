@@ -139,14 +139,18 @@ export function Sidebar({ onClose, prefix = '' }) {
         <div id="tour-nav-hr">
           <NavSection title="Employee Management" items={EMPLOYEE_MGMT_ITEMS} {...sharedProps} />
         </div>
-        <NavSection title="Attendance & Leave" items={ATTENDANCE_ITEMS} {...sharedProps} />
+        <div id="tour-nav-attendance">
+          <NavSection title="Attendance & Leave" items={ATTENDANCE_ITEMS} {...sharedProps} />
+        </div>
         <div id="tour-nav-finance">
           <NavSection title="Finance" items={FINANCE_ITEMS} {...sharedProps} />
         </div>
         <div id="tour-nav-people">
           <NavSection title="Performance" items={PERFORMANCE_ITEMS} {...sharedProps} />
         </div>
-        <NavSection title="Communication" items={COMMUNICATION_ITEMS} {...sharedProps} />
+        <div id="tour-nav-comms">
+          <NavSection title="Communication" items={COMMUNICATION_ITEMS} {...sharedProps} />
+        </div>
         <div id="tour-nav-account">
           <NavSection title="Administration" items={ADMIN_ITEMS} {...sharedProps} />
         </div>

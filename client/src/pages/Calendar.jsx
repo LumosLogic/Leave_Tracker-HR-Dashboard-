@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Home, Umbrella, UserCheck, XCircle, Timer, Play, Pause, Square, ChevronDown, ChevronUp } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -17,10 +18,25 @@ const LEAVE_TYPE_LABEL = { annual:'Annual', sick:'Sick', casual:'Casual', emerge
 export default function Calendar() {
   const { user, isAdmin } = useAuth();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [date, setDate]   = useState(new Date());
   const [mode, setMode]   = useState('month');
   const [dayModal, setDayModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
+
+  // Auto-open day modal when navigated here with ?date=YYYY-MM-DD (or ?date=today)
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (!dateParam) return;
+    const resolved = dateParam === 'today' ? todayStr() : dateParam;
+    const d = new Date(resolved + 'T12:00:00');
+    if (!isNaN(d.getTime())) {
+      setDate(d);         // navigate calendar to show the right month
+      setDayModal(resolved); // open day detail modal
+    }
+    setSearchParams({}, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const year  = date.getFullYear();
   const month = date.getMonth() + 1;

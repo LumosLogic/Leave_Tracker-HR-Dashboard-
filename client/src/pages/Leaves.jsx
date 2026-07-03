@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Clock, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -25,8 +26,24 @@ export default function Leaves() {
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
-  const [tab,        setTab]        = useState(isAdmin ? 'all' : 'mine');
-  const [filterDate, setFilterDate] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const tabParam    = searchParams.get('tab');
+  const dateParam   = searchParams.get('date');
+  const statusParam = searchParams.get('status');
+
+  // Initialise tab from URL param; fall back to role-based default
+  const [tab, setTab] = useState(() => {
+    if (['all', 'mine', 'wfh', 'today'].includes(tabParam)) return tabParam;
+    if (statusParam === 'pending') return 'all';
+    return isAdmin ? 'all' : 'mine';
+  });
+
+  // Initialise date filter from URL param ('today' resolves to today's date string)
+  const [filterDate, setFilterDate] = useState(() => {
+    if (dateParam === 'today') return todayStr();
+    return dateParam || null;
+  });
   const [applyModal, setApplyModal] = useState(false);
   const [editLeave,  setEditLeave]  = useState(null);
   const [confirmDel,    setConfirmDel]    = useState(null);
@@ -40,19 +57,6 @@ export default function Leaves() {
   const { data: policies = [] } = useQuery({
     queryKey: ['leave-policies'],
     queryFn: () => apiGet('/leave-policies'),
-  });
-
-  const { data: todayAtt = [] } = useQuery({
-    queryKey: ['attendance-today'],
-    queryFn: () => apiGet('/attendance', { date: todayStr() }),
-    enabled: isAdmin,
-  });
-
-  const { data: clockifyLive } = useQuery({
-    queryKey: ['clockify-live'],
-    queryFn: () => apiGet('/clockify/live'),
-    enabled: isAdmin,
-    refetchInterval: 60000,
   });
 
   const { data: employees = [] } = useQuery({
@@ -105,6 +109,10 @@ export default function Leaves() {
   const pendingCount    = allLeaves.filter(l => l.status === 'pending' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
   const wfhPendingCount = allLeaves.filter(l => l.status === 'pending' && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
 
+  // When navigated with ?status=pending, narrow the list to pending leaves only
+  const pendingOnly = statusParam === 'pending';
+  const displayList = pendingOnly ? activeList.filter(l => l.status === 'pending') : activeList;
+
   return (
     <div>
       <div className="page-header">
@@ -119,6 +127,19 @@ export default function Leaves() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         <div>
+          {/* Active filter badges */}
+          {pendingOnly && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <AlertTriangle size={11} /> Pending approvals only
+              </span>
+              <button className="text-xs text-[#3525cd] hover:underline font-semibold"
+                onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('status'); return n; }, { replace: true })}>
+                Clear filter
+              </button>
+            </div>
+          )}
+
           {/* Date filter — hidden for Today tab */}
           {tab !== 'today' && (
             <div className="flex items-center gap-2.5 mb-3 flex-wrap">
@@ -148,10 +169,20 @@ export default function Leaves() {
           {/* List */}
           <div className="flex flex-col gap-3">
             {tab === 'today'
-              ? <TodayAttendanceTab employees={employees} attendance={todayAtt} clockifyData={clockifyLive} />
-              : activeList.length === 0
-                ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>No leave records</p></div>
-                : activeList.map(l => (
+              ? <TodayLeavesTab
+                  leaves={allLeaves}
+                  isAdmin={isAdmin}
+                  user={user}
+                  onApprove={approve}
+                  onReject={reject}
+                  onRevert={(id) => setConfirmRevert(id)}
+                  onCancel={cancel}
+                  onEdit={(l) => setEditLeave(l)}
+                  onDelete={(l) => setConfirmDel({ id: l.id, name: l.name })}
+                />
+              : displayList.length === 0
+                ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
+                : displayList.map(l => (
                     <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
                       onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
@@ -317,76 +348,73 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
   );
 }
 
-// ── Today's Attendance Tab ────────────────────────────────────────────────────
-function TodayAttendanceTab({ employees, attendance, clockifyData }) {
-  const attMap = {};
-  for (const rec of attendance) {
-    attMap[rec.user_id] = rec;
-  }
+// ── Today's Leave & WFH Tab ──────────────────────────────────────────────────
+function TodayLeavesTab({ leaves, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
+  const today = todayStr();
+  const todayLeaves   = leaves.filter(l => l.start_date <= today && l.end_date >= today);
+  const regularLeaves = todayLeaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+  const wfhLeaves     = todayLeaves.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
 
-  const timers = clockifyData?.timers || {};
+  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  const STATUS_ORDER = { present: 0, wfh: 1, half_day: 2, on_leave: 3, absent: 4 };
-
-  const rows = employees.map(emp => {
-    const att   = attMap[emp.id];
-    const timer = timers[emp.id];
-    return {
-      ...emp,
-      status:        att?.status || 'absent',
-      check_in:      att?.check_in  || null,
-      check_out:     att?.check_out || null,
-      clockify_live: timer?.running || false,
-    };
-  });
-
-  rows.sort((a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5));
-
-  if (rows.length === 0) {
+  if (todayLeaves.length === 0) {
     return (
       <div className="empty-state">
         <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
-        <p>No employees found</p>
+        <p>No leaves or WFH today</p>
+        <p className="text-xs mt-1 text-[#9ca3af]">All employees are expected to be in office today.</p>
       </div>
     );
   }
 
-  const presentCount = rows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status)).length;
-  const todayLabel   = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
   return (
     <>
-      <div className="flex items-center gap-2 mb-2 text-xs text-[#777587]">
+      <div className="flex items-center gap-2 mb-3 text-xs text-[#777587]">
         <Calendar size={12} />
         <span className="font-semibold">{todayLabel}</span>
-        <span className="ml-auto">
-          <span className="font-black text-emerald-600">{presentCount}</span>
-          <span> / {rows.length} in office</span>
-        </span>
+        <div className="ml-auto flex gap-2">
+          {regularLeaves.length > 0 && (
+            <span className="font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+              {regularLeaves.length} On Leave
+            </span>
+          )}
+          {wfhLeaves.length > 0 && (
+            <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+              {wfhLeaves.length} WFH
+            </span>
+          )}
+        </div>
       </div>
-      {rows.map(emp => {
-        const cfg = ATT_STATUS_CFG[emp.status] || ATT_STATUS_CFG.absent;
-        return (
-          <div key={emp.id} className="card px-4 py-3.5 flex items-center gap-3.5 hover:shadow-card-hover transition-all duration-150">
-            <Avatar name={emp.name} color={emp.avatar_color} size={36} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-black">{emp.name}</span>
-                <span className={`badge border text-xs ${cfg.cls}`}>{cfg.label}</span>
-                {emp.clockify_live && (
-                  <span className="badge border flex items-center gap-1 text-xs bg-green-50 text-green-700 border-green-200">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" />
-                    Clockify
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-4 mt-1 text-xs text-[#777587] flex-wrap">
-                <span>{emp.department}</span>
-              </div>
-            </div>
+
+      {regularLeaves.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] mb-2">
+            On Leave ({regularLeaves.length})
+          </p>
+          <div className="flex flex-col gap-3">
+            {regularLeaves.map(l => (
+              <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
+                onApprove={onApprove} onReject={onReject} onRevert={onRevert} onCancel={onCancel}
+                onEdit={() => onEdit(l)} onDelete={() => onDelete(l)} />
+            ))}
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      {wfhLeaves.length > 0 && (
+        <div>
+          <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] mb-2">
+            Working from Home ({wfhLeaves.length})
+          </p>
+          <div className="flex flex-col gap-3">
+            {wfhLeaves.map(l => (
+              <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
+                onApprove={onApprove} onReject={onReject} onRevert={onRevert} onCancel={onCancel}
+                onEdit={() => onEdit(l)} onDelete={() => onDelete(l)} />
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

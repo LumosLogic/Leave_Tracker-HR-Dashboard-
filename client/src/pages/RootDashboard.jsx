@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, UserCheck, ClipboardList, ShieldCheck, CalendarDays,
   Check, X, Clock, TrendingUp, AlertCircle, Building2,
-  Activity, Zap, Star, UserPlus, Calendar, CheckCircle2,
+  Activity, Zap, Star, UserPlus, Calendar, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
@@ -97,6 +97,15 @@ function greeting() {
   return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
 }
 
+function fmtUpdatedAt(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
 // ── Doughnut wrapper (Chart.js + center label) ─────────────────────────────────
 function DoughnutChart({ data, options, centerLabel, centerSub }) {
   const total = data.datasets[0]?.data?.reduce((a, b) => a + b, 0) ?? 0;
@@ -111,6 +120,21 @@ function DoughnutChart({ data, options, centerLabel, centerSub }) {
   );
 }
 
+// ── KPI Card Tooltip ───────────────────────────────────────────────────────────
+function KpiTooltip({ text, children }) {
+  return (
+    <div className="relative group/tip">
+      {children}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 hidden group-hover/tip:block pointer-events-none">
+        <div className="bg-[#151c27] text-white text-[0.65rem] font-medium px-2.5 py-1.5 rounded-lg shadow-xl max-w-[180px] whitespace-normal text-center leading-snug">
+          {text}
+        </div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-[#151c27]" />
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function RootDashboard() {
   const navigate = useNavigate();
@@ -118,7 +142,7 @@ export default function RootDashboard() {
   const toast    = useToast();
   const qc       = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey:        ['root-dashboard'],
     queryFn:         () => apiGet('/root/dashboard'),
     refetchInterval: 60000,
@@ -186,7 +210,7 @@ export default function RootDashboard() {
     onClick: (event, elements) => {
       if (elements.length > 0) {
         const s = workforceEntries[elements[0].index];
-        if (s) navigate(`/root/attendance?status=${s.urlStatus}`);
+        if (s) navigateWorkforceStatus(s.urlStatus);
       }
     },
     onHover: hoverCursor,
@@ -295,7 +319,7 @@ export default function RootDashboard() {
     onClick: (event, elements) => {
       if (elements.length > 0) {
         const entry = attendanceTrend[elements[0].index];
-        if (entry?.date) navigate(`/root/attendance?date=${entry.date}`);
+        if (entry?.date) navigate(`/root/calendar?date=${entry.date}`);
       }
     },
     onHover: hoverCursor,
@@ -433,30 +457,53 @@ export default function RootDashboard() {
     onHover: hoverCursor,
   };
 
+  // Maps workforce donut/legend status clicks to valid routes
+  function navigateWorkforceStatus(urlStatus) {
+    const today = new Date().toISOString().split('T')[0];
+    if (urlStatus === 'on_leave') return navigate('/root/leaves?tab=today');
+    if (urlStatus === 'wfh')      return navigate(`/root/leaves?tab=wfh&date=${today}`);
+    return navigate(`/root/calendar?date=${today}`); // present, half_day, absent
+  }
+
   // ── KPI cards ─────────────────────────────────────────────────────────────────
   const kpiCards = [
     { label: 'Total Employees', value: totalEmployees, sub: `+${recentJoiners.length} recent`,
       icon: <Users size={16} />, iconBg: 'bg-[#f0f3ff] text-[#3525cd]',
+      tooltip: 'Total active employees in the organization. Click to view the full employee list.',
       onClick: () => navigate('/root/employees?role=employee') },
     { label: 'Present Today', value: `${presentPct}%`, sub: `${presentToday} present`,
       icon: <UserCheck size={16} />, iconBg: 'bg-emerald-50 text-emerald-600',
-      onClick: () => navigate('/root/attendance') },
+      tooltip: 'Percentage of employees who are present, WFH, or on half-day today.',
+      onClick: () => navigate(`/root/calendar?date=${new Date().toISOString().split('T')[0]}`) },
     { label: 'Pending Approvals', value: pendingLeaves,
       sub: pendingLeaves > 0 ? 'Needs attention' : 'All clear',
       icon: <ClipboardList size={16} />,
       iconBg: pendingLeaves > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
-      alert: pendingLeaves > 0, onClick: () => navigate('/root/leaves') },
+      tooltip: 'Leave requests awaiting your approval. Click to review and act on them.',
+      alert: pendingLeaves > 0, onClick: () => navigate('/root/leaves?tab=all&status=pending') },
     { label: 'HR Admins', value: totalHR, sub: 'Active admins',
       icon: <ShieldCheck size={16} />, iconBg: 'bg-purple-50 text-purple-600',
-      onClick: () => navigate('/root/employees?role=admin') },
+      tooltip: 'Number of HR administrators managing the organization. Click to manage HR access.',
+      onClick: () => navigate('/root/manage-hr') },
     { label: 'Departments', value: departmentHealth.length, sub: 'Active teams',
-      icon: <Building2 size={16} />, iconBg: 'bg-sky-50 text-sky-600' },
+      icon: <Building2 size={16} />, iconBg: 'bg-sky-50 text-sky-600',
+      tooltip: 'Total active departments or teams. Click to view and manage departments.',
+      onClick: () => navigate('/root/departments') },
     { label: 'On Leave Today', value: onLeaveToday,
       sub: onLeaveToday > 0 ? `${onLeaveToday} out today` : 'Full attendance',
       icon: <CalendarDays size={16} />,
       iconBg: onLeaveToday > 3 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-500',
-      onClick: () => navigate('/root/attendance?status=on_leave') },
+      tooltip: 'Employees on approved leave today. Click to see who is absent.',
+      onClick: () => navigate('/root/leaves?tab=today') },
   ];
+
+  // ── Activity click handler ────────────────────────────────────────────────────
+  function handleActivityNameClick(e, item) {
+    e.stopPropagation();
+    if (item.type === 'leave') navigate('/root/leaves');
+    else if (item.type === 'checkin') navigate('/root/calendar');
+    else navigate('/root/employees');
+  }
 
   return (
     <div className="space-y-5">
@@ -492,7 +539,7 @@ export default function RootDashboard() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 lg:flex-col lg:w-auto">
-            <button onClick={() => navigate('/root/employees')}
+            <button onClick={() => navigate('/root/employees?action=add')}
               className="flex items-center gap-2 bg-white text-[#3525cd] font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-white/90 transition-all shadow-sm">
               <UserPlus size={13} /> Add Employee
             </button>
@@ -504,21 +551,42 @@ export default function RootDashboard() {
         </div>
       </div>
 
+      {/* ── KPI SECTION HEADER (last updated + refresh) ───────────────────────── */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-black text-[#777587] uppercase tracking-wider">Key Metrics</h2>
+        <div className="flex items-center gap-3">
+          {dataUpdatedAt > 0 && (
+            <span className="text-[0.68rem] text-[#9ca3af]">
+              Updated {fmtUpdatedAt(dataUpdatedAt)}
+            </span>
+          )}
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1.5 text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2.5 py-1.5 rounded-lg hover:bg-[#f0f3ff] border border-transparent hover:border-[#c7c4d8] transition-all disabled:opacity-50">
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
       {/* ── KPI CARDS ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {kpiCards.map((card, i) => (
-          <div key={i} onClick={card.onClick}
-            className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 ${card.onClick ? 'cursor-pointer' : ''}`}>
-            <div className="flex items-start justify-between mb-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${card.iconBg}`}>{card.icon}</div>
-              {card.alert && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
+          <KpiTooltip key={i} text={card.tooltip}>
+            <div onClick={card.onClick}
+              className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 cursor-pointer h-full">
+              <div className="flex items-start justify-between mb-2">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${card.iconBg}`}>{card.icon}</div>
+                {card.alert && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />}
+              </div>
+              <p className="text-xl font-black text-[#151c27] leading-tight">{card.value}</p>
+              <p className="text-[0.68rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
+              {card.sub && (
+                <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-amber-600' : 'text-emerald-600'}`}>{card.sub}</p>
+              )}
             </div>
-            <p className="text-xl font-black text-[#151c27] leading-tight">{card.value}</p>
-            <p className="text-[0.68rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
-            {card.sub && (
-              <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-amber-600' : 'text-emerald-600'}`}>{card.sub}</p>
-            )}
-          </div>
+          </KpiTooltip>
         ))}
       </div>
 
@@ -531,20 +599,29 @@ export default function RootDashboard() {
             <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live Activity
             </h2>
-            <button onClick={() => navigate('/root/attendance')}
+            <button onClick={() => navigate('/root/calendar')}
               className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               View all
             </button>
           </div>
           <div className="divide-y divide-[#f9f9ff]">
             {liveActivity.length === 0 ? (
-              <div className="py-10 text-center text-sm text-[#777587]">No activity yet today</div>
+              <div className="py-10 text-center">
+                <Activity size={22} className="text-[#c7c4d8] mx-auto mb-2" />
+                <p className="text-sm font-semibold text-[#464555]">No activity yet today</p>
+                <p className="text-xs text-[#9ca3af] mt-0.5">Check-ins and leave requests will appear here.</p>
+              </div>
             ) : liveActivity.slice(0, 7).map((item, i) => (
               <div key={i} className="flex items-start gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
                 <Avatar name={item.name} color={item.avatar_color} size={30} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-[#464555] leading-snug">
-                    <span className="font-bold text-[#3525cd]">{item.name}</span>{' '}{item.detail}
+                    <button
+                      onClick={e => handleActivityNameClick(e, item)}
+                      className="font-bold text-[#3525cd] hover:underline focus:outline-none">
+                      {item.name}
+                    </button>
+                    {' '}{item.detail}
                   </p>
                   {item.department && <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{item.department}</p>}
                 </div>
@@ -566,7 +643,15 @@ export default function RootDashboard() {
             </button>
           </div>
           <div className="divide-y divide-[#f9f9ff]">
-            {actionCenter.map((item, i) => (
+            {actionCenter.length === 0 || (actionCenter.length === 1 && actionCenter[0].type === 'all_clear') ? (
+              <div className="py-8 text-center">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-2">
+                  <CheckCircle2 size={16} className="text-emerald-500" />
+                </div>
+                <p className="text-sm font-semibold text-[#151c27]">All clear!</p>
+                <p className="text-xs text-[#777587] mt-0.5">No pending tasks — everything is up to date.</p>
+              </div>
+            ) : actionCenter.filter(item => item.type !== 'all_clear').map((item, i) => (
               <div key={i} onClick={item.link ? () => navigate(item.link) : undefined}
                 className={`flex items-center gap-3 px-5 py-3.5 ${item.link ? 'cursor-pointer hover:bg-[#fafaff]' : ''} transition-colors`}>
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -620,7 +705,8 @@ export default function RootDashboard() {
           {workforceEntries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 gap-2">
               <Clock size={22} className="text-[#c7c4d8]" />
-              <p className="text-xs text-[#777587]">No check-ins yet</p>
+              <p className="text-sm font-semibold text-[#464555]">No check-ins yet</p>
+              <p className="text-xs text-[#9ca3af] text-center">Workforce data will appear once employees mark their attendance.</p>
             </div>
           ) : (
             <>
@@ -632,7 +718,7 @@ export default function RootDashboard() {
               />
               <div className="mt-3 space-y-1.5">
                 {workforceEntries.map(s => (
-                  <button key={s.key} onClick={() => navigate(`/root/attendance?status=${s.urlStatus}`)}
+                  <button key={s.key} onClick={() => navigateWorkforceStatus(s.urlStatus)}
                     className="w-full flex items-center justify-between text-xs hover:bg-[#f9f9ff] px-1 py-0.5 rounded transition-colors">
                     <span className="flex items-center gap-1.5 font-medium text-[#464555]">
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
@@ -666,8 +752,10 @@ export default function RootDashboard() {
               <Line data={trendChartData} options={trendOptions} />
             </div>
           ) : (
-            <div className="h-40 flex flex-col items-center justify-center gap-2 text-sm text-[#9ca3af]">
-              <TrendingUp size={22} className="text-[#c7c4d8]" /> No attendance data yet
+            <div className="h-40 flex flex-col items-center justify-center gap-2">
+              <TrendingUp size={22} className="text-[#c7c4d8]" />
+              <p className="text-sm font-semibold text-[#464555]">No attendance records yet</p>
+              <p className="text-xs text-[#9ca3af]">Trend data will appear as employees mark attendance daily.</p>
             </div>
           )}
         </div>
@@ -680,8 +768,10 @@ export default function RootDashboard() {
           </div>
           <p className="text-[0.68rem] text-[#9ca3af] mb-4">Approved leaves by type · Click to view</p>
           {leaveSegs.length === 0 ? (
-            <div className="h-40 flex flex-col items-center justify-center gap-2 text-sm text-[#9ca3af]">
-              <TrendingUp size={22} className="text-[#c7c4d8]" /> No approved leaves yet
+            <div className="h-40 flex flex-col items-center justify-center gap-2">
+              <CalendarDays size={22} className="text-[#c7c4d8]" />
+              <p className="text-sm font-semibold text-[#464555]">No approved leaves yet</p>
+              <p className="text-xs text-[#9ca3af]">Leave distribution will appear once leaves are approved this year.</p>
             </div>
           ) : (
             <div className="flex items-center gap-5">
@@ -724,8 +814,10 @@ export default function RootDashboard() {
           </div>
           <p className="text-[0.68rem] text-[#9ca3af] mb-4">Click a bar to view department employees</p>
           {departmentHealth.length === 0 ? (
-            <div className="h-40 flex flex-col items-center justify-center gap-2 text-sm text-[#9ca3af]">
-              <Building2 size={22} className="text-[#c7c4d8]" /> No department data
+            <div className="h-40 flex flex-col items-center justify-center gap-2">
+              <Building2 size={22} className="text-[#c7c4d8]" />
+              <p className="text-sm font-semibold text-[#464555]">No departments found</p>
+              <p className="text-xs text-[#9ca3af]">Add departments and assign employees to see attendance health.</p>
             </div>
           ) : (
             <div style={{ height: Math.max(180, departmentHealth.length * 44) }}>
@@ -746,8 +838,10 @@ export default function RootDashboard() {
               <Line data={headChartData} options={headOptions} />
             </div>
           ) : (
-            <div className="h-40 flex flex-col items-center justify-center gap-2 text-sm text-[#9ca3af]">
-              <TrendingUp size={22} className="text-[#c7c4d8]" /> No data yet
+            <div className="h-40 flex flex-col items-center justify-center gap-2">
+              <TrendingUp size={22} className="text-[#c7c4d8]" />
+              <p className="text-sm font-semibold text-[#464555]">No headcount data yet</p>
+              <p className="text-xs text-[#9ca3af]">Growth trends will appear as employees are added over time.</p>
             </div>
           )}
         </div>
@@ -769,7 +863,11 @@ export default function RootDashboard() {
           </div>
           <div className="divide-y divide-[#f9f9ff]">
             {upcomingEvents.length === 0 ? (
-              <div className="py-10 text-center text-sm text-[#9ca3af]">No upcoming events</div>
+              <div className="py-10 text-center">
+                <Calendar size={22} className="text-[#c7c4d8] mx-auto mb-2" />
+                <p className="text-sm font-semibold text-[#464555]">No upcoming events</p>
+                <p className="text-xs text-[#9ca3af] mt-0.5">Add holidays or events to see them here.</p>
+              </div>
             ) : upcomingEvents.map((ev, i) => (
               <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#fafaff] transition-colors cursor-pointer"
                 onClick={() => navigate('/root/holidays')}>
@@ -815,7 +913,10 @@ export default function RootDashboard() {
               <p className="text-[0.65rem] font-bold text-[#777587] uppercase tracking-wide mb-2">New Joiners</p>
               <div className="space-y-2">
                 {recentJoiners.length === 0 ? (
-                  <p className="text-xs text-[#9ca3af]">No recent joiners</p>
+                  <div className="py-3 text-center">
+                    <p className="text-xs font-semibold text-[#464555]">No recent joiners</p>
+                    <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">New employees added will appear here.</p>
+                  </div>
                 ) : recentJoiners.map((emp, i) => (
                   <div key={i} onClick={() => navigate('/root/employees')}
                     className="flex items-center gap-2.5 hover:bg-[#fafaff] -mx-2 px-2 py-1 rounded-lg transition-colors cursor-pointer">
@@ -843,7 +944,7 @@ export default function RootDashboard() {
                 </span>
               )}
             </h2>
-            <button onClick={() => navigate('/root/leaves')}
+            <button onClick={() => navigate('/root/leaves?tab=all&status=pending')}
               className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               View all →
             </button>
@@ -855,7 +956,7 @@ export default function RootDashboard() {
                   <Check size={18} className="text-emerald-500" />
                 </div>
                 <p className="text-sm font-semibold text-[#151c27]">All caught up!</p>
-                <p className="text-xs text-[#777587] mt-0.5">No pending leave requests.</p>
+                <p className="text-xs text-[#777587] mt-0.5">No pending leave requests at the moment.</p>
               </div>
             ) : pendingLeavesData.slice(0, 5).map(l => (
               <div key={l.id} className="flex items-center gap-2.5 px-4 py-3 hover:bg-[#f9f9ff] transition-colors">

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -847,6 +847,8 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
   const { isRootAdmin } = useAuth();
   const qc              = useQueryClient();
   const navigate        = useNavigate();
+  const location        = useLocation();
+  const employeesBase   = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
   const [showPw, setShowPw] = useState(false);
   const [tab,    setTab]    = useState('personal');
 
@@ -913,7 +915,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       onSaved?.();
       onClose();
       if (!isEdit && data?.id) {
-        navigate(`/employees?view=${data.id}`);
+        navigate(`${employeesBase}?view=${data.id}`);
       }
     },
     onError: err => toast(err.message, 'error'),
@@ -1222,10 +1224,14 @@ export default function Employees() {
   const [editEmp,        setEditEmp]        = useState(null);
   const [confirmDel,     setConfirmDel]     = useState(null); // { id, name }
 
-  // Auto-open Add modal when navigated here with ?action=addHR
+  // Auto-open Add modal when navigated here with ?action=add or ?action=addHR
   useEffect(() => {
     if (actionParam === 'addHR') {
       setAddDefaultRole('admin');
+      setAddOpen(true);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('action'); return n; }, { replace: true });
+    } else if (actionParam === 'add') {
+      setAddDefaultRole('employee');
       setAddOpen(true);
       setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('action'); return n; }, { replace: true });
     }
@@ -1258,10 +1264,10 @@ export default function Employees() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allEmployees]);
 
-  // Filter by role when a role query param is present
-  const employees = roleFilter
-    ? allEmployees.filter(e => e.role === roleFilter)
-    : allEmployees;
+  // Always show employees only by default; ?role=admin switches to HR Admins view
+  const employees = roleFilter === 'admin'
+    ? allEmployees.filter(e => e.role === 'admin')
+    : allEmployees.filter(e => e.role === 'employee');
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -1309,15 +1315,15 @@ export default function Employees() {
         <div>
           <div className="page-title flex items-center gap-2">
             Team Members
-            {roleFilter && (
+            {roleFilter === 'admin' && (
               <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8] normal-case tracking-normal">
-                {roleFilter === 'admin' ? 'HR Admins only' : 'Employees only'}
+                HR Admins only
               </span>
             )}
           </div>
           <div className="page-subtitle flex items-center gap-2">
             {employees.length} member{employees.length !== 1 ? 's' : ''}
-            {roleFilter && (
+            {roleFilter === 'admin' && (
               <button
                 onClick={() => setSearchParams({}, { replace: true })}
                 className="text-xs text-[#3525cd] hover:underline font-semibold">

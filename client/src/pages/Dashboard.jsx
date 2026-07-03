@@ -742,12 +742,12 @@ export default function Dashboard() {
 
   const kpiCards = [
     { label: 'Total Employees',   value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,      iconBg: 'bg-[#f0f3ff] text-[#3525cd]',    onClick: () => navigate('/employees') },
-    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate('/calendar') },
-    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves') },
-    { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate('/leaves') },
-    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate('/calendar') },
+    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate(`/calendar?date=${todayStr()}`) },
+    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves?tab=today') },
+    { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`) },
+    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate(`/calendar?date=${todayStr()}`) },
     { label: 'Pending Approvals', value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
-      icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves') },
+      icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves?tab=all&status=pending') },
   ];
 
   const { birthdaysToday = [], upcomingBirthdays = [], holidays = [] } = culture || {};
@@ -948,7 +948,7 @@ export default function Dashboard() {
               </div>
               <div className="p-4 grid grid-cols-2 gap-2">
                 {[
-                  { label: 'Add Employee',    icon: <UserPlus size={14} />,     color: 'text-[#3525cd] bg-[#f0f3ff]',    onClick: () => navigate('/employees') },
+                  { label: 'Add Employee',    icon: <UserPlus size={14} />,     color: 'text-[#3525cd] bg-[#f0f3ff]',    onClick: () => navigate('/employees?action=add') },
                   { label: 'Apply Leave',     icon: <Umbrella size={14} />,     color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
                   { label: 'Mark Attendance', icon: <UserCheck size={14} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/calendar') },
                   { label: 'Regularization',  icon: <Pencil size={14} />,       color: 'text-orange-600 bg-orange-50',   onClick: () => navigate('/regularization') },

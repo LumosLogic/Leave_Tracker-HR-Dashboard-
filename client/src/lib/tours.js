@@ -1,7 +1,7 @@
 // Tour step definitions for Driver.js walkthroughs.
 // IDs referenced here must match id="tour-*" attributes in the layout components.
 
-export const adminTourSteps = [
+export const rootAdminTourSteps = [
   {
     popover: {
       title: '👋 Welcome to LeaveTracker!',
@@ -14,7 +14,7 @@ export const adminTourSteps = [
     element: '#tour-nav-overview',
     popover: {
       title: '📊 Overview',
-      description: 'Your main navigation — <strong>Dashboard</strong>, <strong>Calendar</strong>, <strong>Leaves</strong>, <strong>Employees</strong>, <strong>Regularization</strong>, and <strong>Announcements</strong>.',
+      description: 'Your starting point — <strong>Dashboard</strong> for a real-time org snapshot and <strong>Reports</strong> for detailed analytics and exports.',
       side: 'right',
       align: 'start',
     },
@@ -22,8 +22,17 @@ export const adminTourSteps = [
   {
     element: '#tour-nav-hr',
     popover: {
-      title: '👥 HR Management',
-      description: 'Manage <strong>Departments</strong>, <strong>Holidays</strong>, <strong>Leave Policies</strong>, <strong>Shifts & Roster</strong>, <strong>Onboarding</strong>, and <strong>Exit Management</strong>.',
+      title: '👥 Workforce Management',
+      description: 'Manage your people — <strong>Employees</strong>, <strong>Departments</strong>, <strong>Manage HR</strong> roles, <strong>Onboarding</strong> workflows, and <strong>Exit Management</strong>.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-attendance',
+    popover: {
+      title: '🗓️ Attendance & Leave',
+      description: 'Track time off — <strong>Leaves</strong>, <strong>Calendar</strong>, <strong>Regularization</strong>, <strong>Holidays</strong>, <strong>Leave Policies</strong>, and <strong>Shifts & Roster</strong>.',
       side: 'right',
       align: 'start',
     },
@@ -32,7 +41,7 @@ export const adminTourSteps = [
     element: '#tour-nav-finance',
     popover: {
       title: '💰 Finance',
-      description: 'Handle <strong>Payroll</strong>, <strong>Expenses</strong>, <strong>Assets</strong>, and generate <strong>Reports</strong> for your organization.',
+      description: 'Handle <strong>Payroll</strong>, track <strong>Expenses</strong>, and manage <strong>Assets</strong> for your organization.',
       side: 'right',
       align: 'start',
     },
@@ -40,8 +49,17 @@ export const adminTourSteps = [
   {
     element: '#tour-nav-people',
     popover: {
-      title: '🎯 People & Growth',
-      description: 'Track <strong>Performance</strong> reviews and manage employee <strong>Documents</strong>. This section focuses on employee development and records.',
+      title: '🎯 Performance',
+      description: 'Drive employee growth — run <strong>Performance</strong> reviews and manage employee <strong>Documents</strong> in one place.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-comms',
+    popover: {
+      title: '📢 Communication',
+      description: 'Keep everyone in the loop — post <strong>Announcements</strong>, send <strong>Broadcasts</strong>, and monitor <strong>Notifications</strong>.',
       side: 'right',
       align: 'start',
     },
@@ -49,8 +67,100 @@ export const adminTourSteps = [
   {
     element: '#tour-nav-account',
     popover: {
-      title: '⚙️ Admin & Account',
-      description: 'View <strong>Notifications</strong>, adjust <strong>Settings</strong>, manage your <strong>Profile</strong>, and access admin-only tools.',
+      title: '⚙️ Administration',
+      description: 'Configure your workspace — manage <strong>Org Settings</strong> and system-level <strong>Settings</strong>.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-user-card',
+    popover: {
+      title: '👤 Your Profile',
+      description: 'Your name and role are shown here. Click <strong>Sign Out</strong> when you\'re done for the day.',
+      side: 'top',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-main-content',
+    popover: {
+      title: '🏠 Your Workspace',
+      description: 'All your data and actions appear right here. You\'re all set — enjoy using <strong>LeaveTracker</strong>! 🎉',
+      side: 'left',
+      align: 'center',
+    },
+  },
+];
+
+export const hrAdminTourSteps = [
+  {
+    popover: {
+      title: '👋 Welcome to LeaveTracker!',
+      description: "Let's take a quick tour so you can hit the ground running. Click <strong>Next</strong> to continue or <strong>Skip Tour</strong> to explore on your own.",
+      side: 'over',
+      align: 'center',
+    },
+  },
+  {
+    element: '#tour-nav-overview',
+    popover: {
+      title: '📊 Overview',
+      description: 'Your starting point — the <strong>Dashboard</strong> gives you a real-time snapshot of your organization\'s activity.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-hr',
+    popover: {
+      title: '👥 Employee Management',
+      description: 'Manage your people — <strong>Employees</strong>, <strong>Departments</strong>, <strong>Onboarding</strong> workflows, and <strong>Exit Management</strong>.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-attendance',
+    popover: {
+      title: '🗓️ Attendance & Leave',
+      description: 'Track time off — <strong>Leaves</strong>, <strong>Calendar</strong>, <strong>Regularization</strong>, <strong>Holidays</strong>, <strong>Leave Policies</strong>, and <strong>Shifts & Roster</strong>.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-finance',
+    popover: {
+      title: '💰 Finance',
+      description: 'Handle <strong>Payroll</strong>, track <strong>Expenses</strong>, manage <strong>Assets</strong>, and generate <strong>Reports</strong> for your organization.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-people',
+    popover: {
+      title: '🎯 Performance',
+      description: 'Drive employee growth — run <strong>Performance</strong> reviews and manage employee <strong>Documents</strong> in one place.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-comms',
+    popover: {
+      title: '📢 Communication',
+      description: 'Keep everyone in the loop — post <strong>Announcements</strong> and stay on top of <strong>Notifications</strong>.',
+      side: 'right',
+      align: 'start',
+    },
+  },
+  {
+    element: '#tour-nav-account',
+    popover: {
+      title: '⚙️ Administration',
+      description: 'Configure your workspace — adjust <strong>Settings</strong> and manage your <strong>Profile</strong>.',
       side: 'right',
       align: 'start',
     },
