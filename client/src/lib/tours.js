@@ -23,7 +23,7 @@ export const rootAdminTourSteps = [
     element: '#tour-nav-hr',
     popover: {
       title: '👥 Workforce Management',
-      description: 'Manage your people — <strong>Employees</strong>, <strong>Departments</strong>, <strong>Manage HR</strong> roles, <strong>Onboarding</strong> workflows, and <strong>Exit Management</strong>.',
+      description: 'Manage your people — <strong>Employees</strong>, <strong>Departments</strong>, <strong>Manage Admins</strong>, <strong>Onboarding</strong> workflows, and <strong>Exit Management</strong>.',
       side: 'right',
       align: 'start',
     },

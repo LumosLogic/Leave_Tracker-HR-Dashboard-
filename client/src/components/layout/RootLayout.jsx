@@ -23,7 +23,7 @@ const NAV_SECTIONS = [
   { id: 'tour-nav-hr', title: 'Workforce Management', items: [
     { to: '/root/employees',       label: 'Employees',       Icon: Users },
     { to: '/root/departments',     label: 'Departments',     Icon: Building2 },
-    { to: '/root/manage-hr',       label: 'Manage HR',       Icon: ShieldCheck },
+    { to: '/root/manage-hr',       label: 'Manage Admins',   Icon: ShieldCheck },
     { to: '/root/onboarding',      label: 'Onboarding',      Icon: UserCheck },
     { to: '/root/exit-management', label: 'Exit Management', Icon: LogOut },
   ]},

@@ -45,7 +45,7 @@ const META = {
   '/root/exit-management':    { title: 'Exit Management',     subtitle: 'Resignations and offboarding' },
   '/root/notifications':      { title: 'Notifications',       subtitle: 'Your notifications' },
   '/root/settings':           { title: 'Settings',            subtitle: 'Configure work schedule' },
-  '/root/manage-hr':          { title: 'Manage HR Staff',     subtitle: 'Create and manage admin users' },
+  '/root/manage-hr':          { title: 'Manage Admins',       subtitle: 'Manage HR and root admin accounts' },
   '/root/broadcast':          { title: 'Broadcast',           subtitle: 'Send notifications to employees' },
   '/root/profile':            { title: 'My Profile',          subtitle: 'Manage your account' },
   '/root/org-settings':       { title: 'Organization Settings', subtitle: 'Configure your organization' },

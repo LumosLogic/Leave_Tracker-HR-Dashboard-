@@ -2664,7 +2664,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       supabase.from('attendance').select('date, user_id, status').eq('organization_id', oid)
         .gte('date', fromDate).lte('date', today),
       supabase.from('users')
-        .select('id, name, department, position, avatar_color, created_at, role, date_of_birth')
+        .select('id, name, department, position, avatar_color, created_at, role, date_of_birth, joining_date, employee_status')
         .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
       supabase.from('holidays').select('id, name, date, type').eq('organization_id', oid)
         .gte('date', today).order('date', { ascending: true }).limit(5),
@@ -2775,6 +2775,14 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
     const birthdays = (allEmployees || []).filter(e => e.date_of_birth && e.date_of_birth.slice(5) === todayMD)
       .map(e => ({ id: e.id, name: e.name, avatar_color: e.avatar_color, department: e.department }));
 
+    // Work anniversaries today (joining_date matches today MM-DD, at least 1 year ago)
+    const anniversaries = (allEmployees || []).filter(e =>
+      e.joining_date && e.joining_date.slice(5) === todayMD && new Date(e.joining_date).getFullYear() < year
+    ).map(e => ({
+      id: e.id, name: e.name, avatar_color: e.avatar_color, department: e.department,
+      years: year - new Date(e.joining_date).getFullYear(),
+    }));
+
     // Recent joiners (top 5 for section)
     const recentJoiners5 = (allEmployees || []).filter(e => e.role === 'employee')
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5)
@@ -2787,7 +2795,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       attendanceBreakdown, leavesByType,
       attendanceTrend, departmentHealth, headcountGrowth,
       liveActivity, actionCenter, upcomingEvents,
-      recentJoiners: recentJoiners5, birthdays,
+      recentJoiners: recentJoiners5, birthdays, anniversaries,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2920,6 +2928,44 @@ app.get('/api/root/root-admins', auth, rootAdminOnly, async (req, res) => {
       .select('id, name, email, department, position, avatar_color, created_at')
       .eq('role', 'root_admin').eq('organization_id', orgId(req)).order('name');
     res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Soft-delete a root admin (demote to employee + mark inactive)
+// Requires ≥2 root admins in org; self-deletion blocked.
+app.delete('/api/root/root-admins/:id', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const oid      = orgId(req);
+
+    if (targetId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot remove your own root admin access.' });
+    }
+
+    // Count active root admins in this org
+    const { data: rootAdmins, error: cntErr } = await supabase
+      .from('users').select('id')
+      .eq('role', 'root_admin').eq('organization_id', oid);
+    if (cntErr) throw cntErr;
+
+    if (!rootAdmins || rootAdmins.length <= 1) {
+      return res.status(400).json({
+        error: 'Cannot remove the last root admin. Assign at least one other root admin first.',
+      });
+    }
+
+    const isTarget = (rootAdmins || []).some(r => r.id === targetId);
+    if (!isTarget) {
+      return res.status(404).json({ error: 'Root admin not found in this organisation.' });
+    }
+
+    // Soft delete: demote role + deactivate
+    const { error: updErr } = await supabase.from('users')
+      .update({ role: 'employee', employee_status: 'inactive' })
+      .eq('id', targetId).eq('organization_id', oid);
+    if (updErr) throw updErr;
+
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -319,6 +319,23 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
     ? emp.departments.map(d => d.name).join(', ')
     : emp.department || '—';
 
+  // Today's attendance for this employee
+  const todayRecord  = curAttendance.find(r => r.date === today);
+  const todayStatus  = todayRecord?.status || null;
+  const todayStatusCfg = {
+    present:  { label: 'Present Today',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    wfh:      { label: 'WFH Today',      cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    half_day: { label: 'Half Day Today', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    on_leave: { label: 'On Leave Today', cls: 'bg-rose-50 text-rose-600 border-rose-200' },
+    absent:   { label: 'Absent Today',   cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+  };
+
+  // Jump helper: switch to Leave & Attendance tab with a specific sub-tab
+  function jumpTo(recordsTabValue) {
+    setActiveTab('leave-attendance');
+    if (recordsTabValue) setRecordsTab(recordsTabValue);
+  }
+
   const TABS = [
     { id: 'overview',         label: 'Overview'          },
     { id: 'leave-attendance', label: 'Leave & Attendance' },
@@ -326,22 +343,43 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
 
   return (
     <div>
-      {/* ── Top Action Bar ── */}
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <button
-          className="flex items-center gap-2 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors"
-          onClick={onBack}
-        >
-          <ArrowLeft size={16} /> Back to Team
+      {/* ── Top Action Hub ── */}
+      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm px-4 py-3 mb-5 flex items-center gap-2 flex-wrap">
+        <button onClick={onBack}
+          className="flex items-center gap-1.5 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors mr-2">
+          <ArrowLeft size={16} /> Back
         </button>
-        <div className="flex items-center gap-2">
-          <button
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#c7c4d8] bg-white text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-all"
-            onClick={() => onEdit(emp)}
-          >
-            <Pencil size={14} /> Edit Profile
+        <div className="w-px h-6 bg-[#e7eefe] mx-1 flex-shrink-0" />
+        <button onClick={() => onEdit(emp)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+          <Pencil size={13} /> Edit Profile
+        </button>
+        <button onClick={() => jumpTo('attendance')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">
+          <UserCheck size={13} /> Attendance
+        </button>
+        <button onClick={() => jumpTo('leaves')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all">
+          <Umbrella size={13} /> Leaves
+        </button>
+        <button onClick={() => jumpTo('wfh')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all">
+          <Home size={13} /> WFH
+        </button>
+        <button onClick={() => onEdit(emp)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+          <Key size={13} /> Reset Password
+        </button>
+        <button onClick={() => onEdit(emp)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+          <FileText size={13} /> Documents
+        </button>
+        {emp.ctc && (
+          <button onClick={() => onEdit(emp)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">
+            <BarChart3 size={13} /> Payroll
           </button>
-        </div>
+        )}
       </div>
 
       {/* ── Profile Hero Card ── */}
@@ -355,11 +393,16 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-3 flex-wrap mb-1">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
                   <h1 className="text-xl font-black text-[#151c27] tracking-tight uppercase">{emp.name}</h1>
                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${statusColor}`}>
                     {statusLabel}
                   </span>
+                  {todayStatus && todayStatusCfg[todayStatus] && (
+                    <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full border ${todayStatusCfg[todayStatus].cls}`}>
+                      {todayStatusCfg[todayStatus].label}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-[#777587] mb-3">
                   {emp.position || 'Team Member'}
@@ -416,23 +459,24 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats row — clickable, jump to Leave & Attendance tab */}
         <div className="border-t border-[#f0f3ff] grid grid-cols-3 sm:grid-cols-6 divide-x divide-[#f0f3ff]">
           {[
-            { icon: <UserCheck size={16} />, label: 'Present Days',  value: curPresentCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { icon: <Umbrella size={16} />,  label: 'Leave Days',    value: curLeaveCount,   color: 'text-rose-600',   bg: 'bg-rose-50'    },
-            { icon: <XCircle size={16} />,   label: 'Absent Days',   value: curAbsentCount,  color: 'text-rose-500',   bg: 'bg-rose-50'    },
-            { icon: <Clock size={16} />,     label: 'Half Days',     value: curHalfCount,    color: 'text-blue-600',   bg: 'bg-blue-50'    },
-            { icon: <Home size={16} />,      label: 'WFH Days',      value: curWfhCount,     color: 'text-cyan-600',   bg: 'bg-cyan-50'    },
-            { icon: <AlarmClock size={16} />,label: 'Late Entries',  value: curLateCount,    color: 'text-orange-600', bg: 'bg-orange-50'  },
+            { icon: <UserCheck size={16} />, label: 'Present Days',  value: curPresentCount, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => jumpTo('attendance') },
+            { icon: <Umbrella size={16} />,  label: 'Leave Days',    value: curLeaveCount,   color: 'text-rose-600',   bg: 'bg-rose-50',    onClick: () => jumpTo('leaves')     },
+            { icon: <XCircle size={16} />,   label: 'Absent Days',   value: curAbsentCount,  color: 'text-rose-500',   bg: 'bg-rose-50',    onClick: () => jumpTo('leaves')     },
+            { icon: <Clock size={16} />,     label: 'Half Days',     value: curHalfCount,    color: 'text-blue-600',   bg: 'bg-blue-50',    onClick: () => jumpTo('attendance') },
+            { icon: <Home size={16} />,      label: 'WFH Days',      value: curWfhCount,     color: 'text-cyan-600',   bg: 'bg-cyan-50',    onClick: () => jumpTo('wfh')        },
+            { icon: <AlarmClock size={16} />,label: 'Late Entries',  value: curLateCount,    color: 'text-orange-600', bg: 'bg-orange-50',  onClick: () => jumpTo('attendance') },
           ].map(s => (
-            <div key={s.label} className="flex flex-col items-center justify-center py-4 px-3 gap-1.5">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color}`}>
+            <button key={s.label} onClick={s.onClick}
+              className="flex flex-col items-center justify-center py-4 px-3 gap-1.5 hover:bg-[#f9f9ff] transition-colors group w-full">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color} group-hover:scale-110 transition-transform`}>
                 {s.icon}
               </div>
               <div className="text-xl font-black text-[#151c27]">{s.value}</div>
-              <div className="text-[0.65rem] text-[#777587] text-center leading-tight">{s.label}</div>
-            </div>
+              <div className="text-[0.65rem] text-[#777587] text-center leading-tight group-hover:text-[#3525cd] transition-colors">{s.label}</div>
+            </button>
           ))}
         </div>
       </div>
@@ -540,27 +584,20 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             {/* Quick Actions */}
             <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
               <h3 className="font-black text-[#151c27] text-sm mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => { setActiveTab('leave-attendance'); setRecordsTab('leaves'); }}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-[#3525cd]/30 text-[#3525cd] text-xs font-bold hover:bg-[#f0f3ff] transition-all">
-                  <Umbrella size={14} /> View Leaves
-                </button>
-                <button
-                  onClick={() => { setActiveTab('leave-attendance'); setRecordsTab('attendance'); }}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-bold hover:bg-emerald-50 transition-all">
-                  <BarChart3 size={14} /> View Attendance
-                </button>
-                <button
-                  onClick={() => onEdit(emp)}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-[#c7c4d8] text-[#464555] text-xs font-bold hover:bg-[#f0f3ff] transition-all">
-                  <Upload size={14} /> Edit Documents
-                </button>
-                <button
-                  onClick={() => onEdit(emp)}
-                  className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-orange-200 text-orange-700 text-xs font-bold hover:bg-orange-50 transition-all">
-                  <Key size={14} /> Reset Password
-                </button>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'View Attendance',  icon: <UserCheck size={13} />,  cls: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',  onClick: () => jumpTo('attendance') },
+                  { label: 'View Leaves',      icon: <Umbrella size={13} />,   cls: 'border-[#3525cd]/30 text-[#3525cd] hover:bg-[#f0f3ff]',    onClick: () => jumpTo('leaves')     },
+                  { label: 'View WFH',         icon: <Home size={13} />,       cls: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50',      onClick: () => jumpTo('wfh')        },
+                  { label: 'Edit Profile',     icon: <Pencil size={13} />,     cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp)          },
+                  { label: 'Reset Password',   icon: <Key size={13} />,        cls: 'border-orange-200 text-orange-700 hover:bg-orange-50',      onClick: () => onEdit(emp)          },
+                  { label: 'Documents',        icon: <FileText size={13} />,   cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp)          },
+                ].map(a => (
+                  <button key={a.label} onClick={a.onClick}
+                    className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${a.cls}`}>
+                    {a.icon} {a.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -573,14 +610,15 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 <h3 className="font-black text-[#151c27] text-sm">Documents</h3>
               </div>
               {empDocs.length === 0 ? (
-                <div className="text-center py-6">
+                <div className="text-center py-8 border-2 border-dashed border-[#e7eefe] rounded-xl">
                   <FileText size={28} className="mx-auto mb-2 text-[#c7c4d8]" />
-                  <p className="text-xs text-[#777587]">No documents uploaded</p>
+                  <p className="text-xs font-semibold text-[#464555]">No documents uploaded</p>
+                  <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Documents will appear here once uploaded.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {empDocs.slice(0, 4).map(doc => (
-                    <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#f0f3ff] hover:bg-[#f9f9ff] transition-colors">
+                  {empDocs.slice(0, 5).map(doc => (
+                    <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded-xl border border-[#f0f3ff] hover:bg-[#f9f9ff] hover:border-[#c7c4d8] transition-all group">
                       <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
                         <FileText size={13} className="text-[#3525cd]" />
                       </div>
@@ -591,14 +629,22 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                       {doc.verified && (
                         <span className="text-[0.6rem] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full flex-shrink-0">Verified</span>
                       )}
-                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                        className="text-[#777587] hover:text-[#3525cd] transition-colors flex-shrink-0">
-                        <Eye size={13} />
-                      </a>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                          className="p-1 rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="Preview">
+                          <Eye size={13} />
+                        </a>
+                        <a href={doc.file_url} download={doc.name}
+                          className="p-1 rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="Download">
+                          <Download size={13} />
+                        </a>
+                      </div>
                     </div>
                   ))}
-                  {empDocs.length > 4 && (
-                    <p className="text-xs text-center text-[#777587] mt-2">+{empDocs.length - 4} more</p>
+                  {empDocs.length > 5 && (
+                    <p className="text-xs text-center text-[#3525cd] font-semibold hover:underline cursor-pointer mt-1">
+                      +{empDocs.length - 5} more document{empDocs.length - 5 !== 1 ? 's' : ''}
+                    </p>
                   )}
                 </div>
               )}
@@ -610,21 +656,43 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 <h3 className="font-black text-[#151c27] text-sm">Leave Balance</h3>
                 <span className="text-[0.65rem] text-[#777587] font-semibold">{curYear}</span>
               </div>
-              <div className="space-y-4">
-                {leaveBalance.map(lb => (
-                  <div key={lb.type}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-[#464555]">{lb.label}</span>
-                      <span className="text-xs font-black text-[#151c27]">{lb.used} / {lb.total} Days</span>
+              <div className="space-y-3.5">
+                {leaveBalance.map(lb => {
+                  const pct       = Math.min(100, Math.round((lb.used / lb.total) * 100));
+                  const remaining = Math.max(0, lb.total - lb.used);
+                  const isLow     = remaining <= 2 && lb.total > 0;
+                  const isWarning = remaining <= Math.ceil(lb.total * 0.25) && !isLow;
+                  const barColor  = isLow ? '#ef4444' : isWarning ? '#f59e0b' : lb.color;
+                  return (
+                    <div key={lb.type}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-[#464555]">{lb.label}</span>
+                          {isLow && (
+                            <span className="text-[0.6rem] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Low</span>
+                          )}
+                          {isWarning && (
+                            <span className="text-[0.6rem] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Running low</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-black text-[#151c27]">{lb.used}</span>
+                          <span className="text-[0.68rem] text-[#9ca3af]"> / {lb.total}d</span>
+                          <span className={`text-[0.65rem] font-bold ml-1.5 ${isLow ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {remaining}d left
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-[#f0f3ff] overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, background: barColor }} />
+                      </div>
+                      <div className="flex justify-end mt-0.5">
+                        <span className="text-[0.6rem] text-[#9ca3af]">{pct}% utilised</span>
+                      </div>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-[#f0f3ff] overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${Math.min(100, (lb.used / lb.total) * 100)}%`, background: lb.color }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1207,6 +1275,39 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
   );
 }
 
+// ── Employee status config ────────────────────────────────────────────────────
+const EMP_STATUS_CFG = {
+  active:        { label: 'Active',        cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  probation:     { label: 'Probation',     cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  notice_period: { label: 'Notice Period', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  notice:        { label: 'Notice',        cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  inactive:      { label: 'Inactive',      cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+  resigned:      { label: 'Resigned',      cls: 'bg-rose-50 text-rose-600 border-rose-200' },
+};
+
+function EmpStatusBadge({ status }) {
+  const cfg = EMP_STATUS_CFG[status] || EMP_STATUS_CFG.active;
+  return (
+    <span className={`text-[0.62rem] font-bold px-1.5 py-0.5 rounded-full border ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function exportEmployeesCSV(rows, filename = 'employees.csv') {
+  const headers = 'Name,Email,Department,Position,Employment Type,Status,Work Mode,Joining Date';
+  const lines = rows.map(e =>
+    [e.name, e.email, e.department, e.position, e.employment_type, e.employee_status, e.work_mode, e.joining_date]
+      .map(v => `"${(v || '').replace(/"/g, '""')}"`)
+      .join(',')
+  );
+  const csv = [headers, ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Main Employees Page ───────────────────────────────────────────────────────
 export default function Employees() {
   const { user } = useAuth();
@@ -1214,17 +1315,33 @@ export default function Employees() {
   const qc       = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const roleFilter     = searchParams.get('role');   // 'employee' | 'admin' | null
-  const actionParam    = searchParams.get('action'); // 'addHR' | null
-  const viewParam      = searchParams.get('view');   // employee id from search deep-link
+  // URL params
+  const roleFilter  = searchParams.get('role');
+  const actionParam = searchParams.get('action');
+  const viewParam   = searchParams.get('view');
 
+  // Modal / profile state
   const [profileEmp,     setProfileEmp]     = useState(null);
   const [addOpen,        setAddOpen]        = useState(false);
   const [addDefaultRole, setAddDefaultRole] = useState('employee');
   const [editEmp,        setEditEmp]        = useState(null);
-  const [confirmDel,     setConfirmDel]     = useState(null); // { id, name }
+  const [confirmDel,     setConfirmDel]     = useState(null);
 
-  // Auto-open Add modal when navigated here with ?action=add or ?action=addHR
+  // Search / filter / sort / view / selection state
+  const [search,       setSearch]       = useState('');
+  const [deptFilter,   setDeptFilter]   = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter,   setTypeFilter]   = useState('');
+  const [sortBy,       setSortBy]       = useState('name');
+  const [sortDir,      setSortDir]      = useState('asc');
+  const [viewMode,     setViewMode]     = useState('card');
+  const [selected,     setSelected]     = useState(new Set());
+  const [page,         setPage]         = useState(1);
+  const [pageSize,     setPageSize]     = useState(24);
+  const [bulkDelConf,  setBulkDelConf]  = useState(false);
+  const [isBulkDel,    setIsBulkDel]    = useState(false);
+
+  // ── URL param effects (unchanged) ──────────────────────────────────────────
   useEffect(() => {
     if (actionParam === 'addHR') {
       setAddDefaultRole('admin');
@@ -1243,7 +1360,6 @@ export default function Employees() {
     queryFn:  () => apiGet('/employees'),
   });
 
-  // Auto-open employee profile when navigated here with ?view=ID (from global search)
   useEffect(() => {
     if (viewParam && allEmployees.length > 0) {
       const emp = allEmployees.find(e => String(e.id) === String(viewParam));
@@ -1255,7 +1371,6 @@ export default function Employees() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewParam, allEmployees]);
 
-  // Keep profileEmp in sync when the employees list refetches (e.g., after an edit)
   useEffect(() => {
     if (profileEmp && allEmployees.length > 0) {
       const updated = allEmployees.find(e => e.id === profileEmp.id);
@@ -1264,10 +1379,9 @@ export default function Employees() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allEmployees]);
 
-  // Always show employees only by default; ?role=admin switches to HR Admins view
-  const employees = roleFilter === 'admin'
-    ? allEmployees.filter(e => e.role === 'admin')
-    : allEmployees.filter(e => e.role === 'employee');
+  // Reset to page 1 when any filter / sort changes
+  useEffect(() => { setPage(1); setSelected(new Set()); },
+    [search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -1285,33 +1399,140 @@ export default function Employees() {
     onError: err => toast(err.message, 'error'),
   });
 
-  function handleDelete(emp) {
-    setConfirmDel({ id: emp.id, name: emp.name });
+  // ── Role-scoped base list ─────────────────────────────────────────────────
+  const employees = roleFilter === 'admin'
+    ? allEmployees.filter(e => e.role === 'admin')
+    : allEmployees.filter(e => e.role === 'employee');
+
+  // ── Filter options ────────────────────────────────────────────────────────
+  const deptOptions = useMemo(() => {
+    const s = new Set();
+    employees.forEach(e => {
+      if (e.department) s.add(e.department);
+      e.departments?.forEach(d => s.add(d.name));
+    });
+    return [...s].sort();
+  }, [employees]);
+
+  // ── Filtered + sorted list ────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    let rows = employees;
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter(e =>
+        e.name?.toLowerCase().includes(q) ||
+        e.email?.toLowerCase().includes(q) ||
+        e.department?.toLowerCase().includes(q) ||
+        e.position?.toLowerCase().includes(q)
+      );
+    }
+    if (deptFilter)   rows = rows.filter(e =>
+      e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
+    if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
+    if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
+    return [...rows].sort((a, b) => {
+      const av = (a[sortBy] || '').toString().toLowerCase();
+      const bv = (b[sortBy] || '').toString().toLowerCase();
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [employees, search, deptFilter, statusFilter, typeFilter, sortBy, sortDir]);
+
+  // ── Pagination ────────────────────────────────────────────────────────────
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const anyFilter  = search || deptFilter || statusFilter || typeFilter;
+
+  // ── Bulk selection helpers ────────────────────────────────────────────────
+  const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
+
+  function toggleAll() {
+    setSelected(s => {
+      const n = new Set(s);
+      if (allPageSelected) pageRows.forEach(e => n.delete(e.id));
+      else pageRows.forEach(e => n.add(e.id));
+      return n;
+    });
+  }
+  function toggleOne(id) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
+  async function handleBulkDelete() {
+    setIsBulkDel(true);
+    let count = 0;
+    try {
+      for (const id of selected) {
+        await apiDelete(`/employees/${id}`);
+        count++;
+      }
+      toast(`${count} employee${count !== 1 ? 's' : ''} deleted`, 'warning');
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setIsBulkDel(false);
+      setBulkDelConf(false);
+    }
+  }
+
+  function handleDelete(emp) { setConfirmDel({ id: emp.id, name: emp.name }); }
+
+  function toggleSortBy(col) {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('asc'); }
+  }
+
+  // ── Profile view ──────────────────────────────────────────────────────────
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfile
-          emp={profileEmp}
-          onBack={() => setProfileEmp(null)}
-          onEdit={(emp) => setEditEmp(emp)}
-        />
+        <EmployeeProfile emp={profileEmp} onBack={() => setProfileEmp(null)} onEdit={e => setEditEmp(e)} />
         {editEmp && (
-          <EmployeeFormModal
-            open={!!editEmp}
-            onClose={() => setEditEmp(null)}
-            employee={editEmp}
-            departments={departments}
-          />
+          <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} departments={departments} />
         )}
       </>
     );
   }
 
+  // ── Loading skeleton ──────────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        <div className="h-14 bg-white rounded-xl border border-[#c7c4d8] animate-pulse" />
+        <div className="h-12 bg-white rounded-xl border border-[#c7c4d8] animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm animate-pulse overflow-hidden">
+              <div className="bg-[#f0f3ff] px-5 pt-5 pb-4 flex items-center gap-3.5">
+                <div className="w-14 h-14 rounded-full bg-[#e7eefe] flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-[#e7eefe] rounded w-3/4" />
+                  <div className="h-3 bg-[#e7eefe] rounded w-1/2" />
+                  <div className="h-3 bg-[#e7eefe] rounded w-1/4" />
+                </div>
+              </div>
+              <div className="px-5 py-3.5 space-y-2">
+                <div className="h-3 bg-[#f0f3ff] rounded w-full" />
+                <div className="h-3 bg-[#f0f3ff] rounded w-3/4" />
+              </div>
+              <div className="px-4 py-3 border-t border-[#e7eefe] flex gap-2">
+                <div className="flex-1 h-8 bg-[#e7eefe] rounded-lg" />
+                <div className="w-10 h-8 bg-[#e7eefe] rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div className="page-header mb-6">
+    <div className="space-y-4">
+
+      {/* ── PAGE HEADER ───────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="page-title flex items-center gap-2">
             Team Members
@@ -1322,48 +1543,187 @@ export default function Employees() {
             )}
           </div>
           <div className="page-subtitle flex items-center gap-2">
-            {employees.length} member{employees.length !== 1 ? 's' : ''}
+            {filtered.length} of {employees.length} member{employees.length !== 1 ? 's' : ''}
+            {anyFilter && <span className="text-[#3525cd] font-semibold">(filtered)</span>}
             {roleFilter === 'admin' && (
-              <button
-                onClick={() => setSearchParams({}, { replace: true })}
+              <button onClick={() => setSearchParams({}, { replace: true })}
                 className="text-xs text-[#3525cd] hover:underline font-semibold">
-                Clear filter
+                Clear role filter
               </button>
             )}
           </div>
         </div>
-        <button className="btn btn-primary" onClick={() => { setAddDefaultRole('employee'); setAddOpen(true); }}>
-          <Plus size={16} /> Add Employee
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn btn-outline btn-sm" onClick={() => exportEmployeesCSV(filtered)}>
+            <Download size={14} /> Export CSV
+          </button>
+          <button className="btn btn-primary" onClick={() => { setAddDefaultRole('employee'); setAddOpen(true); }}>
+            <Plus size={16} /> Add Employee
+          </button>
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="loading"><div className="spinner" /> Loading…</div>
-      ) : employees.length === 0 ? (
-        <div className="empty-state">
-          <Users size={36} className="mx-auto mb-2 opacity-30" />
-          <p>No employees found</p>
+      {/* ── TOOLBAR: search + filters + sort + view ────────────────────────── */}
+      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm px-4 py-3 flex items-center gap-2 flex-wrap">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+          <input
+            type="text"
+            placeholder="Search by name, email, dept…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="form-control pl-8 py-1.5 text-xs w-full" />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#464555]">
+              <X size={12} />
+            </button>
+          )}
         </div>
-      ) : (
+
+        {/* Department */}
+        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+          className="form-control w-auto text-xs py-1.5">
+          <option value="">All Departments</option>
+          {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+
+        {/* Status */}
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="form-control w-auto text-xs py-1.5">
+          <option value="">All Statuses</option>
+          {Object.entries(EMP_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+
+        {/* Employment type */}
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="form-control w-auto text-xs py-1.5">
+          <option value="">All Types</option>
+          {['full_time', 'part_time', 'contract', 'intern'].map(t => (
+            <option key={t} value={t}>{t.replace('_', ' ')}</option>
+          ))}
+        </select>
+
+        {/* Sort */}
+        <select value={`${sortBy}:${sortDir}`}
+          onChange={e => { const [col, dir] = e.target.value.split(':'); setSortBy(col); setSortDir(dir); }}
+          className="form-control w-auto text-xs py-1.5">
+          <option value="name:asc">Name A–Z</option>
+          <option value="name:desc">Name Z–A</option>
+          <option value="department:asc">Dept A–Z</option>
+          <option value="joining_date:desc">Newest Joined</option>
+          <option value="joining_date:asc">Oldest Joined</option>
+          <option value="position:asc">Position A–Z</option>
+        </select>
+
+        {anyFilter && (
+          <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+            className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
+            <X size={12} /> Clear
+          </button>
+        )}
+
+        {/* View toggle */}
+        <div className="ml-auto flex bg-[#f0f3ff] border border-[#c7c4d8] p-0.5 rounded-lg gap-0.5">
+          <button onClick={() => setViewMode('card')}
+            className={`p-1.5 rounded transition-all ${viewMode === 'card' ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'}`}>
+            <LayoutGrid size={15} />
+          </button>
+          <button onClick={() => setViewMode('table')}
+            className={`p-1.5 rounded transition-all ${viewMode === 'table' ? 'bg-white text-[#3525cd] shadow-sm' : 'text-[#777587] hover:text-[#151c27]'}`}>
+            <LayoutList size={15} />
+          </button>
+        </div>
+
+        {/* Page size */}
+        <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}
+          className="form-control w-auto text-xs py-1.5">
+          {[12, 24, 48].map(s => <option key={s} value={s}>{s} / page</option>)}
+        </select>
+      </div>
+
+      {/* ── BULK ACTION TOOLBAR ───────────────────────────────────────────── */}
+      {selected.size > 0 && (
+        <div className="bg-[#3525cd] rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap shadow-md">
+          <span className="text-sm font-black text-white">
+            {selected.size} selected
+          </span>
+          <button onClick={() => setSelected(new Set())}
+            className="text-xs font-bold text-white/70 hover:text-white transition-colors">
+            Deselect all
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => exportEmployeesCSV(employees.filter(e => selected.has(e.id)), 'selected_employees.csv')}
+              className="flex items-center gap-1.5 text-xs font-bold bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg border border-white/30 transition-all">
+              <Download size={13} /> Export Selected
+            </button>
+            <button
+              onClick={() => setBulkDelConf(true)}
+              disabled={isBulkDel}
+              className="flex items-center gap-1.5 text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50">
+              <Trash2 size={13} /> Delete Selected
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMPTY STATE ───────────────────────────────────────────────────── */}
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm py-16 text-center">
+          <Users size={40} className="text-[#c7c4d8] mx-auto mb-3" />
+          <p className="text-sm font-semibold text-[#464555]">
+            {anyFilter ? 'No employees match your filters' : 'No employees yet'}
+          </p>
+          <p className="text-xs text-[#9ca3af] mt-1">
+            {anyFilter
+              ? 'Try clearing some filters to see more results.'
+              : 'Add your first employee to get started.'}
+          </p>
+          {anyFilter && (
+            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+              className="mt-3 text-xs font-bold text-[#3525cd] hover:underline">
+              Clear all filters
+            </button>
+          )}
+        </div>
+      ) : viewMode === 'card' ? (
+
+        /* ── CARD VIEW ───────────────────────────────────────────────────── */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {employees.map(emp => (
-            <div
-              key={emp.id}
-              className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex flex-col overflow-hidden transition-all duration-200 cursor-pointer hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5"
-              onClick={() => setProfileEmp(emp)}
-            >
-              {/* Card header with avatar */}
-              <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5">
-                <Avatar name={emp.name} color={emp.avatar_color} size={52} className="ring-2 ring-white shadow-sm" />
+          {pageRows.map(emp => (
+            <div key={emp.id}
+              className="relative group bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex flex-col overflow-hidden transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/40 hover:-translate-y-0.5">
+
+              {/* Checkbox */}
+              <div
+                className={`absolute top-3 left-3 z-10 transition-opacity duration-150 ${selected.has(emp.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                onClick={e => { e.stopPropagation(); toggleOne(emp.id); }}>
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selected.has(emp.id) ? 'bg-[#3525cd] border-[#3525cd]' : 'bg-white border-[#c7c4d8] hover:border-[#3525cd]'}`}>
+                  {selected.has(emp.id) && <Check size={11} className="text-white" />}
+                </div>
+              </div>
+
+              {/* Header */}
+              <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5 cursor-pointer"
+                onClick={() => setProfileEmp(emp)}>
+                <Avatar name={emp.name} color={emp.avatar_color} size={50} className="ring-2 ring-white shadow-sm flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="font-black text-[#151c27] text-sm leading-tight truncate">{emp.name}</div>
                   <div className="text-xs font-medium text-[#464555] truncate mt-0.5">{emp.position || '—'}</div>
-                  <RoleBadge role={emp.role} className="mt-1.5" />
+                  <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                    <EmpStatusBadge status={emp.employee_status} />
+                    {emp.employment_type && (
+                      <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-white/70 text-[#464555] border border-[#c7c4d8] capitalize">
+                        {emp.employment_type.replace('_', ' ')}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Details */}
-              <div className="px-5 py-3.5 space-y-2 flex-1">
+              <div className="px-5 py-3 space-y-1.5 flex-1 cursor-pointer" onClick={() => setProfileEmp(emp)}>
                 {(emp.departments?.length > 0 || emp.department) && (
                   <div className="flex items-start gap-2">
                     <Building2 size={13} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
@@ -1383,42 +1743,191 @@ export default function Employees() {
                   <Mail size={13} className="text-[#3525cd] flex-shrink-0" />
                   <span className="text-xs text-[#464555] truncate">{emp.email}</span>
                 </div>
+                {emp.joining_date && (
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={13} className="text-[#3525cd] flex-shrink-0" />
+                    <span className="text-xs text-[#464555]">Joined {fmtDate(emp.joining_date)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2 px-4 py-3 border-t border-[#e7eefe] bg-[#f9f9ff]" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-1.5 px-4 py-3 border-t border-[#e7eefe] bg-[#f9f9ff]" onClick={e => e.stopPropagation()}>
                 <button
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold text-[#3525cd] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:border-[#3525cd]/50 transition-all"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold text-[#464555] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/50 transition-all"
+                  onClick={() => setProfileEmp(emp)}>
+                  <User size={12} /> View
+                </button>
+                <button
+                  className="py-2 px-3 rounded-lg text-xs font-bold text-[#3525cd] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:border-[#3525cd]/50 transition-all"
                   onClick={() => setEditEmp(emp)}>
-                  <Pencil size={12} /> Edit
+                  <Pencil size={12} />
                 </button>
                 {emp.id !== user?.id && (
                   <button
-                    className="flex items-center justify-center py-2 px-3 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-40"
+                    className="py-2 px-3 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-40"
                     onClick={() => handleDelete(emp)}
                     disabled={deleteMut.isPending}>
-                    <Trash2 size={13} />
+                    <Trash2 size={12} />
                   </button>
                 )}
               </div>
             </div>
           ))}
         </div>
+
+      ) : (
+
+        /* ── TABLE VIEW ──────────────────────────────────────────────────── */
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
+                <tr>
+                  <th className="px-4 py-3 w-10">
+                    <div onClick={toggleAll}
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${allPageSelected ? 'bg-[#3525cd] border-[#3525cd]' : 'border-[#c7c4d8] hover:border-[#3525cd]'}`}>
+                      {allPageSelected && <Check size={10} className="text-white" />}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left">
+                    <button onClick={() => toggleSortBy('name')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors">
+                      Employee <ArrowUpDown size={11} className={sortBy === 'name' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left">
+                    <button onClick={() => toggleSortBy('department')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors">
+                      Department <ArrowUpDown size={11} className={sortBy === 'department' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left">
+                    <button onClick={() => toggleSortBy('position')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors">
+                      Position <ArrowUpDown size={11} className={sortBy === 'position' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left">
+                    <button onClick={() => toggleSortBy('joining_date')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors whitespace-nowrap">
+                      Joined <ArrowUpDown size={11} className={sortBy === 'joining_date' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#f0f3ff]">
+                {pageRows.map(emp => (
+                  <tr key={emp.id} className="hover:bg-[#f9f9ff] transition-colors group">
+                    <td className="px-4 py-3 w-10">
+                      <div onClick={() => toggleOne(emp.id)}
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selected.has(emp.id) ? 'bg-[#3525cd] border-[#3525cd]' : 'border-[#c7c4d8] hover:border-[#3525cd]'}`}>
+                        {selected.has(emp.id) && <Check size={10} className="text-white" />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setProfileEmp(emp)}>
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                        <div>
+                          <p className="font-bold text-[#151c27] text-sm leading-tight group-hover:text-[#3525cd] transition-colors">{emp.name}</p>
+                          <p className="text-xs text-[#9ca3af] truncate max-w-[160px]">{emp.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[#464555]">
+                      {emp.departments?.length > 0
+                        ? emp.departments.map(d => d.name).join(', ')
+                        : emp.department || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[#464555]">{emp.position || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] capitalize">
+                        {emp.employment_type?.replace('_', ' ') || 'Full Time'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3"><EmpStatusBadge status={emp.employee_status} /></td>
+                    <td className="px-4 py-3 text-xs text-[#464555] whitespace-nowrap">
+                      {emp.joining_date ? fmtDate(emp.joining_date) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setProfileEmp(emp)}
+                          className="p-1.5 rounded-lg text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="View Profile">
+                          <User size={13} />
+                        </button>
+                        <button onClick={() => setEditEmp(emp)}
+                          className="p-1.5 rounded-lg text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors" title="Edit">
+                          <Pencil size={13} />
+                        </button>
+                        {emp.id !== user?.id && (
+                          <button onClick={() => handleDelete(emp)} disabled={deleteMut.isPending}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-40" title="Delete">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
+      {/* ── PAGINATION ────────────────────────────────────────────────────── */}
+      {filtered.length > pageSize && (
+        <div className="flex items-center justify-between bg-white rounded-xl border border-[#c7c4d8] shadow-sm px-5 py-3">
+          <span className="text-xs text-[#777587] font-semibold">
+            Page {page} of {totalPages} · {filtered.length} total
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(1)} disabled={page === 1}
+              className="p-1.5 rounded-lg hover:bg-[#f0f3ff] text-[#3525cd] disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+              <ChevronLeft size={16} />
+            </button>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+              const p = totalPages <= 5 ? i + 1 : page <= 3 ? i + 1 : page >= totalPages - 2 ? totalPages - 4 + i : page - 2 + i;
+              return (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${p === page ? 'bg-[#3525cd] text-white' : 'hover:bg-[#f0f3ff] text-[#464555]'}`}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+              className="p-1.5 rounded-lg hover:bg-[#f0f3ff] text-[#3525cd] disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODALS ────────────────────────────────────────────────────────── */}
       {addOpen && (
         <EmployeeFormModal open={addOpen} onClose={() => { setAddOpen(false); setAddDefaultRole('employee'); }} departments={departments} defaultRole={addDefaultRole} />
       )}
       {editEmp && (
         <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} departments={departments} />
       )}
+
+      {/* Single delete confirmation */}
       <ConfirmModal
         open={!!confirmDel}
         title="Delete Employee"
-        message={`Delete ${confirmDel?.name}? This will also remove all their attendance and leave records.`}
+        message={`Are you sure you want to delete ${confirmDel?.name}? This will permanently remove all their attendance records, leave history, and associated data. This action cannot be undone.`}
         confirmLabel="Delete"
         onConfirm={() => { deleteMut.mutate(confirmDel.id); setConfirmDel(null); }}
         onCancel={() => setConfirmDel(null)}
+      />
+
+      {/* Bulk delete confirmation */}
+      <ConfirmModal
+        open={bulkDelConf}
+        title={`Delete ${selected.size} Employee${selected.size !== 1 ? 's' : ''}`}
+        message={`You are about to permanently delete ${selected.size} employee${selected.size !== 1 ? 's' : ''} along with all their attendance records, leave history, and associated data. This action cannot be undone.`}
+        confirmLabel={isBulkDel ? 'Deleting…' : `Delete ${selected.size}`}
+        onConfirm={handleBulkDelete}
+        onCancel={() => setBulkDelConf(false)}
       />
     </div>
   );
