@@ -366,16 +366,16 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all">
           <Home size={13} /> WFH
         </button>
-        <button onClick={() => onEdit(emp)}
+        <button onClick={() => onEdit(emp, 'account')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
           <Key size={13} /> Reset Password
         </button>
-        <button onClick={() => onEdit(emp)}
+        <button onClick={() => onEdit(emp, 'documents')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
           <FileText size={13} /> Documents
         </button>
         {emp.ctc && (
-          <button onClick={() => onEdit(emp)}
+          <button onClick={() => onEdit(emp, 'salary')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">
             <BarChart3 size={13} /> Payroll
           </button>
@@ -502,7 +502,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-black text-[#151c27] text-sm">Personal Information</h3>
-                <button onClick={() => onEdit(emp)}
+                <button onClick={() => onEdit(emp, 'personal')}
                   className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
                   <Pencil size={11} /> Edit
                 </button>
@@ -527,7 +527,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-black text-[#151c27] text-sm">Employment Details</h3>
-                <button onClick={() => onEdit(emp)}
+                <button onClick={() => onEdit(emp, 'employment')}
                   className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
                   <Pencil size={11} /> Edit
                 </button>
@@ -557,7 +557,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-black text-[#151c27] text-sm">Salary Overview</h3>
-                <button onClick={() => onEdit(emp)}
+                <button onClick={() => onEdit(emp, 'salary')}
                   className="text-xs font-semibold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
                   <Pencil size={11} /> Edit
                 </button>
@@ -586,12 +586,12 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
               <h3 className="font-black text-[#151c27] text-sm mb-4">Quick Actions</h3>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: 'View Attendance',  icon: <UserCheck size={13} />,  cls: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',  onClick: () => jumpTo('attendance') },
-                  { label: 'View Leaves',      icon: <Umbrella size={13} />,   cls: 'border-[#3525cd]/30 text-[#3525cd] hover:bg-[#f0f3ff]',    onClick: () => jumpTo('leaves')     },
-                  { label: 'View WFH',         icon: <Home size={13} />,       cls: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50',      onClick: () => jumpTo('wfh')        },
-                  { label: 'Edit Profile',     icon: <Pencil size={13} />,     cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp)          },
-                  { label: 'Reset Password',   icon: <Key size={13} />,        cls: 'border-orange-200 text-orange-700 hover:bg-orange-50',      onClick: () => onEdit(emp)          },
-                  { label: 'Documents',        icon: <FileText size={13} />,   cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp)          },
+                  { label: 'View Attendance',  icon: <UserCheck size={13} />,  cls: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',  onClick: () => jumpTo('attendance')        },
+                  { label: 'View Leaves',      icon: <Umbrella size={13} />,   cls: 'border-[#3525cd]/30 text-[#3525cd] hover:bg-[#f0f3ff]',    onClick: () => jumpTo('leaves')           },
+                  { label: 'View WFH',         icon: <Home size={13} />,       cls: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50',      onClick: () => jumpTo('wfh')              },
+                  { label: 'Edit Profile',     icon: <Pencil size={13} />,     cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp, 'personal')    },
+                  { label: 'Reset Password',   icon: <Key size={13} />,        cls: 'border-orange-200 text-orange-700 hover:bg-orange-50',      onClick: () => onEdit(emp, 'account')     },
+                  { label: 'Documents',        icon: <FileText size={13} />,   cls: 'border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]',       onClick: () => onEdit(emp, 'documents')   },
                 ].map(a => (
                   <button key={a.label} onClick={a.onClick}
                     className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${a.cls}`}>
@@ -909,7 +909,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
 }
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
-function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee' }) {
+function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee', initialTab = 'personal' }) {
   const isEdit          = !!employee;
   const toast           = useToast();
   const { isRootAdmin } = useAuth();
@@ -918,7 +918,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
   const location        = useLocation();
   const employeesBase   = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
   const [showPw, setShowPw] = useState(false);
-  const [tab,    setTab]    = useState('personal');
+  const [tab,    setTab]    = useState(isEdit ? (initialTab || 'personal') : 'personal');
 
   const initDeptIds = isEdit && employee.departments?.length
     ? employee.departments.map(d => d.id)
@@ -1325,7 +1325,13 @@ export default function Employees() {
   const [addOpen,        setAddOpen]        = useState(false);
   const [addDefaultRole, setAddDefaultRole] = useState('employee');
   const [editEmp,        setEditEmp]        = useState(null);
+  const [editInitialTab, setEditInitialTab] = useState('personal');
   const [confirmDel,     setConfirmDel]     = useState(null);
+
+  function handleEdit(emp, tab = 'personal') {
+    setEditInitialTab(tab);
+    setEditEmp(emp);
+  }
 
   // Search / filter / sort / view / selection state
   const [search,       setSearch]       = useState('');
@@ -1488,9 +1494,10 @@ export default function Employees() {
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfile emp={profileEmp} onBack={() => setProfileEmp(null)} onEdit={e => setEditEmp(e)} />
+        <EmployeeProfile emp={profileEmp} onBack={() => setProfileEmp(null)} onEdit={handleEdit} />
         {editEmp && (
-          <EmployeeFormModal open={!!editEmp} onClose={() => setEditEmp(null)} employee={editEmp} departments={departments} />
+          <EmployeeFormModal open={!!editEmp} onClose={() => { setEditEmp(null); setEditInitialTab('personal'); }}
+            employee={editEmp} departments={departments} initialTab={editInitialTab} />
         )}
       </>
     );

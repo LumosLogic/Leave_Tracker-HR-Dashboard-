@@ -50,8 +50,11 @@ export function useTour(steps, tourKey) {
           steps: validSteps,
         });
 
-        if (!cancelled) driverRef.current.drive();
-      } catch { /* silently skip if driver fails to load */ }
+        if (!cancelled) {
+          localStorage.setItem(tourKey, '1'); // Mark seen when tour starts so browser-close won't repeat it
+          driverRef.current.drive();
+        }
+      } catch { localStorage.setItem(tourKey, '1'); /* mark seen even if driver fails to load */ }
     }, 900);
 
     return () => {

@@ -22,6 +22,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge, LeaveTypeBadge } from '@/components/ui/Badge';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { fmtDate, fmtDateRange, fmtTime, fmtHours, todayStr, getGreeting } from '@/lib/utils';
+import { AttendanceDayModal } from '@/components/AttendanceDayModal';
 
 ChartJS.register(
   ArcElement, CategoryScale, LinearScale, PointElement, LineElement,
@@ -675,6 +676,7 @@ export default function Dashboard() {
   const qc       = useQueryClient();
   const [dashDate, setDashDate]   = useState('');
   const [selectedEmp, setSelectedEmp] = useState(null);
+  const [attModal, setAttModal] = useState(null); // { date, filter }
 
   const qs = dashDate ? { date: dashDate } : {};
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -742,10 +744,10 @@ export default function Dashboard() {
 
   const kpiCards = [
     { label: 'Total Employees',   value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,      iconBg: 'bg-[#f0f3ff] text-[#3525cd]',    onClick: () => navigate('/employees') },
-    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => navigate(`/calendar?date=${todayStr()}`) },
-    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate('/leaves?tab=today') },
+    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => setAttModal({ date: todayStr(), filter: 'present' }) },
+    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}`) },
     { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`) },
-    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => navigate(`/calendar?date=${todayStr()}`) },
+    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => setAttModal({ date: todayStr(), filter: 'present' }) },
     { label: 'Pending Approvals', value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
       icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves?tab=all&status=pending') },
   ];
@@ -1121,6 +1123,15 @@ export default function Dashboard() {
 
       {/* Employee Quick View Modal */}
       {selectedEmp && <EmployeeQuickView record={selectedEmp} onClose={() => setSelectedEmp(null)} />}
+
+      {/* Inline attendance day-view modal — avoids navigation away from Dashboard */}
+      {attModal && (
+        <AttendanceDayModal
+          dateStr={attModal.date}
+          initialTab={attModal.filter}
+          onClose={() => setAttModal(null)}
+        />
+      )}
     </div>
   );
 }

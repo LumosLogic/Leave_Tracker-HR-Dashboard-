@@ -18,6 +18,7 @@ import { apiGet, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { AttendanceDayModal } from '@/components/AttendanceDayModal';
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
@@ -185,6 +186,7 @@ export default function RootDashboard() {
   const [trendDays,      setTrendDays]      = useState(30);
   const [yearlySort,     setYearlySort]     = useState({ col: 'usedDays', dir: 'desc' });
   const [yearlyDeptFilt, setYearlyDeptFilt] = useState('');
+  const [attModal,       setAttModal]       = useState(null); // { date, filter }
 
   const { data, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey:        ['root-dashboard'],
@@ -468,8 +470,8 @@ export default function RootDashboard() {
       onClick: () => navigate('/root/employees?role=employee') },
     { label: 'Present Today', value: `${presentPct}%`, sub: `${presentToday} present`,
       icon: <UserCheck size={16} />, iconBg: 'bg-emerald-50 text-emerald-600',
-      tooltip: 'Percentage of employees present, WFH, or on half-day today.',
-      onClick: () => navigate(`/root/calendar?date=${new Date().toISOString().split('T')[0]}`) },
+      tooltip: 'Percentage of employees present today. Click to view details.',
+      onClick: () => setAttModal({ date: new Date().toISOString().split('T')[0], filter: 'present' }) },
     { label: 'Pending Approvals', value: pendingLeaves,
       sub: pendingLeaves > 0 ? 'Needs attention' : 'All clear',
       icon: <ClipboardList size={16} />,
@@ -488,8 +490,8 @@ export default function RootDashboard() {
       sub: onLeaveToday > 0 ? `${onLeaveToday} out today` : 'Full attendance',
       icon: <CalendarDays size={16} />,
       iconBg: onLeaveToday > 3 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-500',
-      tooltip: 'Employees on approved leave today.',
-      onClick: () => navigate('/root/leaves?tab=today') },
+      tooltip: 'Employees on approved leave today. Click to view filtered leave records.',
+      onClick: () => navigate(`/root/leaves?tab=all&date=${new Date().toISOString().split('T')[0]}`) },
   ];
 
   // ── Activity name click ───────────────────────────────────────────────────────
@@ -503,9 +505,10 @@ export default function RootDashboard() {
   // ── Workforce status navigation ───────────────────────────────────────────────
   function navigateWorkforceStatus(urlStatus) {
     const today = new Date().toISOString().split('T')[0];
-    if (urlStatus === 'on_leave') return navigate('/root/leaves?tab=today');
+    if (urlStatus === 'on_leave') return navigate(`/root/leaves?tab=all&date=${today}`);
     if (urlStatus === 'wfh')      return navigate(`/root/leaves?tab=wfh&date=${today}`);
-    return navigate(`/root/calendar?date=${today}`);
+    // present, half_day, absent — open inline day modal instead of navigating away
+    setAttModal({ date: today, filter: urlStatus === 'present' ? 'present' : urlStatus === 'absent' ? 'absent' : 'all' });
   }
 
   return (
@@ -1129,6 +1132,14 @@ export default function RootDashboard() {
         </div>
       )}
 
+      {/* Inline attendance day-view modal — avoids navigation away from Dashboard */}
+      {attModal && (
+        <AttendanceDayModal
+          dateStr={attModal.date}
+          initialTab={attModal.filter}
+          onClose={() => setAttModal(null)}
+        />
+      )}
     </div>
   );
 }

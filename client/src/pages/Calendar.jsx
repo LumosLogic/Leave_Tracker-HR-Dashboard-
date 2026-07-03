@@ -22,17 +22,24 @@ export default function Calendar() {
   const [date, setDate]   = useState(new Date());
   const [mode, setMode]   = useState('month');
   const [dayModal, setDayModal] = useState(null);
+  const [dayModalInitialTab, setDayModalInitialTab] = useState(null);
   const [editModal, setEditModal] = useState(null);
 
+  function openDayModal(dateStr, initialTab = null) {
+    setDayModal(dateStr);
+    setDayModalInitialTab(initialTab);
+  }
+
   // Auto-open day modal when navigated here with ?date=YYYY-MM-DD (or ?date=today)
+  // Also reads ?status= to pre-select the filter tab in the day modal
   useEffect(() => {
     const dateParam = searchParams.get('date');
     if (!dateParam) return;
     const resolved = dateParam === 'today' ? todayStr() : dateParam;
     const d = new Date(resolved + 'T12:00:00');
     if (!isNaN(d.getTime())) {
-      setDate(d);         // navigate calendar to show the right month
-      setDayModal(resolved); // open day detail modal
+      setDate(d);
+      openDayModal(resolved, searchParams.get('status') || null);
     }
     setSearchParams({}, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,15 +172,18 @@ export default function Calendar() {
 
       {/* Calendar Body */}
       {mode === 'month'
-        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={setDayModal} />
-        : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={setDayModal} getLeaveForDate={getLeaveForDate} />
+        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} />
+        : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} getLeaveForDate={getLeaveForDate} />
       }
 
       {/* Day Modal */}
       {dayModal && (
         <DayModal dateStr={dayModal} records={grouped[dayModal] || []} employees={employees} isAdmin={isAdmin} user={user}
+          initialTab={dayModalInitialTab}
           getLeaveForDate={getLeaveForDate}
-          onClose={() => setDayModal(null)} onEditAtt={r => { setDayModal(null); setEditModal(r); }} onRefresh={refetch} />
+          onClose={() => { setDayModal(null); setDayModalInitialTab(null); }}
+          onEditAtt={r => { setDayModal(null); setDayModalInitialTab(null); setEditModal(r); }}
+          onRefresh={refetch} />
       )}
 
       {/* Edit Attendance Modal */}
@@ -433,10 +443,10 @@ function ClockifyTimeline({ userId, dateStr }) {
 }
 
 // ── Day Modal ─────────────────────────────────────────────────────────────────
-function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditAtt, onRefresh, getLeaveForDate }) {
+function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditAtt, onRefresh, getLeaveForDate, initialTab }) {
   const toast = useToast();
   const d = new Date(dateStr + 'T12:00:00');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState(initialTab || 'all');
 
   async function markAbsent(emp) {
     if (!confirm(`Mark ${emp.name} as absent for ${dateStr}?`)) return;

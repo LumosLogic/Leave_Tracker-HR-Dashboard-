@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Clock, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -34,7 +34,7 @@ export default function Leaves() {
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
-    if (['all', 'mine', 'wfh', 'today'].includes(tabParam)) return tabParam;
+    if (['all', 'mine', 'wfh'].includes(tabParam)) return tabParam;
     if (statusParam === 'pending') return 'all';
     return isAdmin ? 'all' : 'mine';
   });
@@ -94,7 +94,6 @@ export default function Leaves() {
   }
 
   const activeList = (() => {
-    if (tab === 'today') return [];
     let src = tab === 'all' ? allLeaves : (tab === 'wfh' ? allLeaves : myLeaves);
     if (tab === 'wfh') {
       src = src.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
@@ -140,17 +139,15 @@ export default function Leaves() {
             </div>
           )}
 
-          {/* Date filter — hidden for Today tab */}
-          {tab !== 'today' && (
-            <div className="flex items-center gap-2.5 mb-3 flex-wrap">
-              <label className="text-xs font-semibold text-[#777587] flex items-center gap-1"><Calendar size={12} />
-                Filter by Date (leaves covering this date):
-              </label>
-              <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterDate || ''}
-                onChange={e => setFilterDate(e.target.value || null)} />
-              {filterDate && <button className="btn btn-ghost btn-sm text-xs" onClick={() => setFilterDate(null)}><X size={12} /> Clear</button>}
-            </div>
-          )}
+          {/* Date filter */}
+          <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+            <label className="text-xs font-semibold text-[#777587] flex items-center gap-1"><Calendar size={12} />
+              Filter by Date (leaves covering this date):
+            </label>
+            <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterDate || ''}
+              onChange={e => setFilterDate(e.target.value || null)} />
+            {filterDate && <button className="btn btn-ghost btn-sm text-xs" onClick={() => setFilterDate(null)}><X size={12} /> Clear</button>}
+          </div>
 
           {/* Tabs */}
           <div className="flex gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-1 rounded-xl mb-4">
@@ -161,33 +158,18 @@ export default function Leaves() {
             )}
             <TabBtn active={tab === 'mine'} onClick={() => setTab('mine')}>My Leaves</TabBtn>
             <TabBtn active={tab === 'wfh'}  onClick={() => setTab('wfh')}><Home size={13} /> WFH {wfhPendingCount > 0 && <span className="ml-1 bg-rose-500 text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">{wfhPendingCount}</span>}</TabBtn>
-            {isAdmin && (
-              <TabBtn active={tab === 'today'} onClick={() => setTab('today')}><Clock size={13} /> Today</TabBtn>
-            )}
           </div>
 
           {/* List */}
           <div className="flex flex-col gap-3">
-            {tab === 'today'
-              ? <TodayLeavesTab
-                  leaves={allLeaves}
-                  isAdmin={isAdmin}
-                  user={user}
-                  onApprove={approve}
-                  onReject={reject}
-                  onRevert={(id) => setConfirmRevert(id)}
-                  onCancel={cancel}
-                  onEdit={(l) => setEditLeave(l)}
-                  onDelete={(l) => setConfirmDel({ id: l.id, name: l.name })}
-                />
-              : displayList.length === 0
-                ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
-                : displayList.map(l => (
-                    <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                      onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
-                      onEdit={() => setEditLeave(l)}
-                      onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
-                  ))
+            {displayList.length === 0
+              ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
+              : displayList.map(l => (
+                  <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
+                    onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
+                    onEdit={() => setEditLeave(l)}
+                    onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
+                ))
             }
           </div>
         </div>
@@ -345,77 +327,6 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
         )}
       </div>
     </div>
-  );
-}
-
-// ── Today's Leave & WFH Tab ──────────────────────────────────────────────────
-function TodayLeavesTab({ leaves, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
-  const today = todayStr();
-  const todayLeaves   = leaves.filter(l => l.start_date <= today && l.end_date >= today);
-  const regularLeaves = todayLeaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
-  const wfhLeaves     = todayLeaves.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
-
-  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-  if (todayLeaves.length === 0) {
-    return (
-      <div className="empty-state">
-        <CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" />
-        <p>No leaves or WFH today</p>
-        <p className="text-xs mt-1 text-[#9ca3af]">All employees are expected to be in office today.</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="flex items-center gap-2 mb-3 text-xs text-[#777587]">
-        <Calendar size={12} />
-        <span className="font-semibold">{todayLabel}</span>
-        <div className="ml-auto flex gap-2">
-          {regularLeaves.length > 0 && (
-            <span className="font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-              {regularLeaves.length} On Leave
-            </span>
-          )}
-          {wfhLeaves.length > 0 && (
-            <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-              {wfhLeaves.length} WFH
-            </span>
-          )}
-        </div>
-      </div>
-
-      {regularLeaves.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] mb-2">
-            On Leave ({regularLeaves.length})
-          </p>
-          <div className="flex flex-col gap-3">
-            {regularLeaves.map(l => (
-              <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                onApprove={onApprove} onReject={onReject} onRevert={onRevert} onCancel={onCancel}
-                onEdit={() => onEdit(l)} onDelete={() => onDelete(l)} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {wfhLeaves.length > 0 && (
-        <div>
-          <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] mb-2">
-            Working from Home ({wfhLeaves.length})
-          </p>
-          <div className="flex flex-col gap-3">
-            {wfhLeaves.map(l => (
-              <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                onApprove={onApprove} onReject={onReject} onRevert={onRevert} onCancel={onCancel}
-                onEdit={() => onEdit(l)} onDelete={() => onDelete(l)} />
-            ))}
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 
