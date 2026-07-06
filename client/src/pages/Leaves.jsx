@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw, Users, ChevronUp, ChevronDown } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -34,16 +34,19 @@ export default function Leaves() {
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
-    if (['all', 'mine', 'wfh'].includes(tabParam)) return tabParam;
     if (statusParam === 'pending') return 'all';
+    if (tabParam === 'all' || tabParam === 'wfh') return tabParam;
+    if (tabParam === 'mine' && !isAdmin) return 'mine';
     return isAdmin ? 'all' : 'mine';
   });
 
   // Initialise date filter from URL param ('today' resolves to today's date string)
-  const [filterDate, setFilterDate] = useState(() => {
+  const [filterStart, setFilterStart] = useState(() => {
     if (dateParam === 'today') return todayStr();
-    return dateParam || null;
+    return dateParam || '';
   });
+  const [filterEnd,   setFilterEnd]   = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
   const [applyModal, setApplyModal] = useState(false);
   const [editLeave,  setEditLeave]  = useState(null);
   const [confirmDel,    setConfirmDel]    = useState(null);
@@ -94,14 +97,18 @@ export default function Leaves() {
   }
 
   const activeList = (() => {
+    if (tab === 'summary') return [];
     let src = tab === 'all' ? allLeaves : (tab === 'wfh' ? allLeaves : myLeaves);
+    const hasRange = filterStart || filterEnd;
+    const s = filterStart || '0000-01-01';
+    const e = filterEnd   || '9999-12-31';
     if (tab === 'wfh') {
       src = src.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
-      if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
+      if (hasRange) src = src.filter(l => l.start_date <= e && l.end_date >= s);
       return src;
     }
     src = src.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
-    if (filterDate) src = src.filter(l => l.start_date <= filterDate && l.end_date >= filterDate);
+    if (hasRange) src = src.filter(l => l.start_date <= e && l.end_date >= s);
     return src;
   })();
 
@@ -139,14 +146,35 @@ export default function Leaves() {
             </div>
           )}
 
-          {/* Date filter */}
-          <div className="flex items-center gap-2.5 mb-3 flex-wrap">
-            <label className="text-xs font-semibold text-[#777587] flex items-center gap-1"><Calendar size={12} />
-              Filter by Date (leaves covering this date):
-            </label>
-            <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterDate || ''}
-              onChange={e => setFilterDate(e.target.value || null)} />
-            {filterDate && <button className="btn btn-ghost btn-sm text-xs" onClick={() => setFilterDate(null)}><X size={12} /> Clear</button>}
+          {/* Date range filter */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <label className="text-xs font-semibold text-[#777587] flex items-center gap-1 shrink-0"><Calendar size={12} />Filter:</label>
+            <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterStart}
+              onChange={e => { setFilterStart(e.target.value); setFilterMonth(''); }} />
+            <span className="text-xs text-[#777587]">to</span>
+            <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterEnd}
+              onChange={e => { setFilterEnd(e.target.value); setFilterMonth(''); }} />
+            <span className="text-xs text-[#9ca3af] font-medium">or month:</span>
+            <input type="month" className="form-control w-auto py-1.5 px-3 text-xs" value={filterMonth}
+              onChange={e => {
+                const m = e.target.value;
+                setFilterMonth(m);
+                if (m) {
+                  const [yr, mo] = m.split('-').map(Number);
+                  const first = `${yr}-${String(mo).padStart(2, '0')}-01`;
+                  const last  = `${yr}-${String(mo).padStart(2, '0')}-${String(new Date(yr, mo, 0).getDate()).padStart(2, '0')}`;
+                  setFilterStart(first);
+                  setFilterEnd(last);
+                } else {
+                  setFilterStart('');
+                  setFilterEnd('');
+                }
+              }} />
+            {(filterStart || filterEnd) && (
+              <button className="btn btn-ghost btn-sm text-xs" onClick={() => { setFilterStart(''); setFilterEnd(''); setFilterMonth(''); }}>
+                <X size={12} /> Clear
+              </button>
+            )}
           </div>
 
           {/* Tabs */}
@@ -156,22 +184,33 @@ export default function Leaves() {
                 All Leaves {pendingCount > 0 && <span className="ml-1 bg-rose-500 text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
               </TabBtn>
             )}
-            <TabBtn active={tab === 'mine'} onClick={() => setTab('mine')}>My Leaves</TabBtn>
+            {!isAdmin && <TabBtn active={tab === 'mine'} onClick={() => setTab('mine')}>My Leaves</TabBtn>}
             <TabBtn active={tab === 'wfh'}  onClick={() => setTab('wfh')}><Home size={13} /> WFH {wfhPendingCount > 0 && <span className="ml-1 bg-rose-500 text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">{wfhPendingCount}</span>}</TabBtn>
+            {isAdmin && <TabBtn active={tab === 'summary'} onClick={() => setTab('summary')}><Users size={13} /> Summary</TabBtn>}
           </div>
 
-          {/* List */}
-          <div className="flex flex-col gap-3">
-            {displayList.length === 0
-              ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
-              : displayList.map(l => (
-                  <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
-                    onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
-                    onEdit={() => setEditLeave(l)}
-                    onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
-                ))
-            }
-          </div>
+          {/* List / Summary */}
+          {tab === 'summary' ? (
+            <LeaveSummaryTable
+              employees={employees}
+              leaves={leaves}
+              policies={policies}
+              filterStart={filterStart}
+              filterEnd={filterEnd}
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {displayList.length === 0
+                ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
+                : displayList.map(l => (
+                    <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
+                      onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
+                      onEdit={() => setEditLeave(l)}
+                      onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
+                  ))
+              }
+            </div>
+          )}
         </div>
 
         {/* Right column */}
@@ -522,5 +561,176 @@ function EditLeaveModal({ leave: l, isAdmin, onClose, onSuccess }) {
         onCancel={() => setConfirmDel(false)}
       />
     </>
+  );
+}
+
+// ── Employee Leave Summary Table ───────────────────────────────────────────────
+function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd }) {
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+
+  const activePolicies = policies.filter(p => p.active && p.leave_type !== 'wfh');
+
+  const days = recs => recs.reduce((sum, l) =>
+    sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+
+  const summaryData = employees.map(emp => {
+    let empLeaves = leaves.filter(l => l.user_id === emp.id);
+    if (filterStart || filterEnd) {
+      const s = filterStart || '0000-01-01';
+      const e = filterEnd   || '9999-12-31';
+      empLeaves = empLeaves.filter(l => l.start_date <= e && l.end_date >= s);
+    }
+    const approved = empLeaves.filter(l => l.status === 'approved' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+    const pending  = empLeaves.filter(l => l.status === 'pending'  && l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+    const wfhRecs  = empLeaves.filter(l => l.status === 'approved' && (l.leave_time === 'wfh' || l.leave_type === 'wfh'));
+    const byType = {};
+    activePolicies.forEach(p => {
+      byType[p.leave_type] = days(approved.filter(l => l.leave_type === p.leave_type));
+    });
+    return {
+      id: emp.id, name: emp.name, avatar_color: emp.avatar_color,
+      byType,
+      totalApproved: days(approved),
+      totalWfh: days(wfhRecs),
+      totalPending: days(pending),
+    };
+  });
+
+  const filtered = summaryData.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+
+  const sorted = [...filtered].sort((a, b) => {
+    let va, vb;
+    if (sortKey === 'name')    { va = a.name; vb = b.name; return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va); }
+    if (sortKey === 'wfh')     { va = a.totalWfh;     vb = b.totalWfh; }
+    else if (sortKey === 'total')   { va = a.totalApproved; vb = b.totalApproved; }
+    else if (sortKey === 'pending') { va = a.totalPending;  vb = b.totalPending; }
+    else { va = a.byType[sortKey] || 0; vb = b.byType[sortKey] || 0; }
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('desc'); }
+  }
+
+  function SortIcon({ col }) {
+    if (sortKey !== col) return <ChevronUp size={11} className="opacity-20" />;
+    return sortDir === 'asc' ? <ChevronUp size={11} className="text-[#3525cd]" /> : <ChevronDown size={11} className="text-[#3525cd]" />;
+  }
+
+  const totals = {
+    byType: Object.fromEntries(activePolicies.map(p => [p.leave_type, sorted.reduce((s, r) => s + (r.byType[p.leave_type] || 0), 0)])),
+    wfh:     sorted.reduce((s, r) => s + r.totalWfh, 0),
+    total:   sorted.reduce((s, r) => s + r.totalApproved, 0),
+    pending: sorted.reduce((s, r) => s + r.totalPending, 0),
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-3">
+        <input
+          type="text"
+          className="form-control w-52 py-1.5 px-3 text-xs"
+          placeholder="Search employee…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <span className="text-xs text-[#777587]">{sorted.length} employee{sorted.length !== 1 ? 's' : ''}</span>
+        {(filterStart || filterEnd) && (
+          <span className="text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] px-2.5 py-1 rounded-full border border-[#c7c4d8]">
+            Filtered by date range
+          </span>
+        )}
+      </div>
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-xs min-w-[600px]">
+          <thead>
+            <tr className="border-b border-[#e5e7f0] bg-[#f8f9ff]">
+              <th className="text-left py-3 px-4 font-black text-[#151c27] sticky left-0 bg-[#f8f9ff]">
+                <button className="flex items-center gap-1 hover:text-[#3525cd]" onClick={() => toggleSort('name')}>
+                  Employee <SortIcon col="name" />
+                </button>
+              </th>
+              {activePolicies.map(p => (
+                <th key={p.leave_type} className="text-center py-3 px-3 font-black text-[#464555]">
+                  <button className="flex items-center gap-1 mx-auto capitalize hover:text-[#3525cd]" onClick={() => toggleSort(p.leave_type)}>
+                    {p.leave_type} <SortIcon col={p.leave_type} />
+                  </button>
+                </th>
+              ))}
+              <th className="text-center py-3 px-3 font-black text-blue-700">
+                <button className="flex items-center gap-1 mx-auto hover:text-blue-900" onClick={() => toggleSort('wfh')}>
+                  WFH <SortIcon col="wfh" />
+                </button>
+              </th>
+              <th className="text-center py-3 px-3 font-black text-[#3525cd]">
+                <button className="flex items-center gap-1 mx-auto hover:text-[#1a0f8f]" onClick={() => toggleSort('total')}>
+                  Total <SortIcon col="total" />
+                </button>
+              </th>
+              <th className="text-center py-3 px-3 font-black text-amber-600">
+                <button className="flex items-center gap-1 mx-auto hover:text-amber-800" onClick={() => toggleSort('pending')}>
+                  Pending <SortIcon col="pending" />
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length === 0 ? (
+              <tr><td colSpan={activePolicies.length + 4} className="text-center py-8 text-[#9ca3af] text-xs">No employees found</td></tr>
+            ) : sorted.map(emp => (
+              <tr key={emp.id} className="border-b border-[#f0f3ff] hover:bg-[#f8f9ff] transition-colors">
+                <td className="py-3 px-4 sticky left-0 bg-white hover:bg-[#f8f9ff]">
+                  <div className="flex items-center gap-2">
+                    <Avatar name={emp.name} color={emp.avatar_color} size={28} />
+                    <span className="font-semibold text-[#151c27] whitespace-nowrap">{emp.name}</span>
+                  </div>
+                </td>
+                {activePolicies.map(p => (
+                  <td key={p.leave_type} className="text-center py-3 px-3">
+                    {emp.byType[p.leave_type] > 0
+                      ? <span className="font-bold text-[#151c27]">{emp.byType[p.leave_type]}</span>
+                      : <span className="text-[#d1d5db]">—</span>}
+                  </td>
+                ))}
+                <td className="text-center py-3 px-3">
+                  {emp.totalWfh > 0
+                    ? <span className="font-bold text-blue-600">{emp.totalWfh}</span>
+                    : <span className="text-[#d1d5db]">—</span>}
+                </td>
+                <td className="text-center py-3 px-3">
+                  {emp.totalApproved > 0
+                    ? <span className="font-black text-[#3525cd] bg-[#f0f3ff] px-2 py-0.5 rounded-full">{emp.totalApproved}</span>
+                    : <span className="text-[#d1d5db]">0</span>}
+                </td>
+                <td className="text-center py-3 px-3">
+                  {emp.totalPending > 0
+                    ? <span className="font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{emp.totalPending}</span>
+                    : <span className="text-[#d1d5db]">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          {sorted.length > 1 && (
+            <tfoot>
+              <tr className="border-t-2 border-[#c7c4d8] bg-[#f0f3ff]">
+                <td className="py-3 px-4 font-black text-[#151c27] text-xs sticky left-0 bg-[#f0f3ff]">Total ({sorted.length})</td>
+                {activePolicies.map(p => (
+                  <td key={p.leave_type} className="text-center py-3 px-3 font-black text-[#464555]">
+                    {totals.byType[p.leave_type] > 0 ? totals.byType[p.leave_type] : <span className="text-[#d1d5db]">—</span>}
+                  </td>
+                ))}
+                <td className="text-center py-3 px-3 font-black text-blue-700">{totals.wfh > 0 ? totals.wfh : <span className="text-[#d1d5db]">—</span>}</td>
+                <td className="text-center py-3 px-3"><span className="font-black text-[#3525cd]">{totals.total}</span></td>
+                <td className="text-center py-3 px-3">{totals.pending > 0 ? <span className="font-black text-amber-600">{totals.pending}</span> : <span className="text-[#d1d5db]">—</span>}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
   );
 }
