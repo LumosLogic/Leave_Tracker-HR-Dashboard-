@@ -1100,14 +1100,18 @@ app.post('/api/employees', auth, adminOnly, async (req, res) => {
     // Sync department junction table if department_ids provided
     const department_ids = req.body.department_ids;
     if (data && Array.isArray(department_ids) && department_ids.length > 0) {
-      await supabase.from('user_departments').insert(
-        department_ids.map(dId => ({ user_id: data.id, department_id: parseInt(dId), role_in_dept: 'Member', organization_id: orgId(req) }))
-      ).catch(() => {});
+      try {
+        await supabase.from('user_departments').insert(
+          department_ids.map(dId => ({ user_id: data.id, department_id: parseInt(dId), role_in_dept: 'Member', organization_id: orgId(req) }))
+        );
+      } catch (err) {}
     }
 
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
     // Log member added event
-    supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).catch(() => {});
+    Promise.resolve(
+      supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } })
+    ).catch(() => {});
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1159,7 +1163,11 @@ app.delete('/api/employees/:id', auth, adminOnly, async (req, res) => {
     const { data: emp } = await supabase.from('users').select('name, email').eq('id', req.params.id).maybeSingle();
     await supabase.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     // Log member removed event
-    if (emp) supabase.from('platform_activity').insert({ event_type: 'member_removed', organization_id: orgId(req), description: `Member removed: ${emp.name} (${emp.email})`, metadata: { name: emp.name, email: emp.email, org_id: orgId(req) } }).catch(() => {});
+    if (emp) {
+      Promise.resolve(
+        supabase.from('platform_activity').insert({ event_type: 'member_removed', organization_id: orgId(req), description: `Member removed: ${emp.name} (${emp.email})`, metadata: { name: emp.name, email: emp.email, org_id: orgId(req) } })
+      ).catch(() => {});
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
