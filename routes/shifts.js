@@ -21,10 +21,10 @@ router.post('/', async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { name, start_time, end_time, color, description } = req.body;
+    const { name, start_time, end_time, color, description, days_of_week } = req.body;
     if (!name || !start_time || !end_time) return res.status(400).json({ error: 'name, start_time and end_time required' });
     const { data, error } = await supabase.from('shifts')
-      .insert({ name, start_time, end_time, color: color || '#3525cd', description: description || '', organization_id: oId })
+      .insert({ name, start_time, end_time, color: color || '#3525cd', description: description || '', days_of_week: days_of_week || null, organization_id: oId })
       .select().single();
     if (error) throw error;
     res.json(data);
@@ -36,9 +36,9 @@ router.put('/:id', async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { name, start_time, end_time, color, description } = req.body;
+    const { name, start_time, end_time, color, description, days_of_week } = req.body;
     const { data, error } = await supabase.from('shifts')
-      .update({ name, start_time, end_time, color, description: description || '' })
+      .update({ name, start_time, end_time, color, description: description || '', days_of_week: days_of_week || null })
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);
