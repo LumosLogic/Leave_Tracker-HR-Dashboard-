@@ -7,7 +7,13 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
-import { MONTHS } from '@/lib/utils';
+import { MONTHS, DAYS } from '@/lib/utils';
+
+function fmtRosterDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()].slice(0,3)} ${d.getDate()}, ${d.getFullYear()}`;
+}
 
 function ShiftModal({ open, onClose, shift }) {
   const toast = useToast();
@@ -144,7 +150,7 @@ export default function Shifts() {
                             <Avatar name={a.user?.name || ''} color={a.user?.avatar_color} size={24} />
                             <span className="font-semibold text-[#151c27]">{a.user?.name}</span>
                           </td>
-                          <td className="px-4 py-3 text-[#464555]">{a.date}</td>
+                          <td className="px-4 py-3 text-[#464555]">{fmtRosterDate(a.date)}</td>
                           <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-[0.68rem] font-bold" style={{ background: (a.shift?.color || '#3525cd') + '20', color: a.shift?.color || '#3525cd' }}>{a.shift?.name}</span></td>
                           <td className="px-4 py-3 text-[#464555]">{a.shift?.start_time} – {a.shift?.end_time}</td>
                         </tr>

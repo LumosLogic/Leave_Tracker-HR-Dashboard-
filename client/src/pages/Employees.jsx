@@ -246,10 +246,12 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
   const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
 
   // Current month range for header stats
+  const empJoinDate   = emp.joining_date;
   const curRangeStart = `${curYear}-${String(curMonth).padStart(2,'0')}-01`;
   const curRangeEnd   = `${curYear}-${String(curMonth).padStart(2,'0')}-${new Date(curYear, curMonth, 0).getDate()}`;
   const curEffEnd     = today < curRangeEnd ? today : curRangeEnd;
-  const curWorkingDays  = countWorkingDaysInRange(curRangeStart, curEffEnd, activeWorkDays);
+  const curEffStart   = empJoinDate && empJoinDate > curRangeStart ? empJoinDate : curRangeStart;
+  const curWorkingDays  = countWorkingDaysInRange(curEffStart, curEffEnd, activeWorkDays);
   const curApproved     = curLeaves.filter(l => l.status === 'approved');
   const curLeaveCount   = curApproved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, curRangeStart, curRangeEnd, activeWorkDays), 0);
   const curHalfCount    = curApproved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, curRangeStart, curRangeEnd, activeWorkDays), 0);
@@ -270,9 +272,10 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
     rangeStart = customStart || today;
     rangeEnd   = customEnd   || today;
   }
-  const effectiveEnd = today < rangeEnd ? today : rangeEnd;
+  const effectiveEnd   = today < rangeEnd ? today : rangeEnd;
+  const effectiveStart = empJoinDate && empJoinDate > rangeStart ? empJoinDate : rangeStart;
 
-  const workingDays  = isCustomReady ? countWorkingDaysInRange(rangeStart, effectiveEnd, activeWorkDays) : 0;
+  const workingDays  = isCustomReady ? countWorkingDaysInRange(effectiveStart, effectiveEnd, activeWorkDays) : 0;
   const approved     = leaves.filter(l => l.status === 'approved');
   const onLeaveCount = approved.filter(l => l.leave_time === 'full').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
   const halfDayCount = approved.filter(l => l.leave_time === 'half').reduce((s, l) => s + countLeaveDaysInRange(l, rangeStart, rangeEnd, activeWorkDays), 0);
@@ -1313,6 +1316,7 @@ export default function Employees() {
   const { user } = useAuth();
   const toast    = useToast();
   const qc       = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL params
@@ -1322,11 +1326,17 @@ export default function Employees() {
 
   // Modal / profile state
   const [profileEmp,     setProfileEmp]     = useState(null);
+  const [cameFromUrl,    setCameFromUrl]    = useState(false);
   const [addOpen,        setAddOpen]        = useState(false);
   const [addDefaultRole, setAddDefaultRole] = useState('employee');
   const [editEmp,        setEditEmp]        = useState(null);
   const [editInitialTab, setEditInitialTab] = useState('personal');
   const [confirmDel,     setConfirmDel]     = useState(null);
+
+  function openProfile(emp, fromUrl = false) {
+    setProfileEmp(emp);
+    setCameFromUrl(fromUrl);
+  }
 
   function handleEdit(emp, tab = 'personal') {
     setEditInitialTab(tab);
@@ -1370,7 +1380,7 @@ export default function Employees() {
     if (viewParam && allEmployees.length > 0) {
       const emp = allEmployees.find(e => String(e.id) === String(viewParam));
       if (emp) {
-        setProfileEmp(emp);
+        openProfile(emp, true);
         setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('view'); return n; }, { replace: true });
       }
     }
@@ -1494,7 +1504,7 @@ export default function Employees() {
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfile emp={profileEmp} onBack={() => setProfileEmp(null)} onEdit={handleEdit} />
+        <EmployeeProfile emp={profileEmp} onBack={cameFromUrl ? () => navigate(-1) : () => setProfileEmp(null)} onEdit={handleEdit} />
         {editEmp && (
           <EmployeeFormModal open={!!editEmp} onClose={() => { setEditEmp(null); setEditInitialTab('personal'); }}
             employee={editEmp} departments={departments} initialTab={editInitialTab} />
@@ -1713,7 +1723,7 @@ export default function Employees() {
 
               {/* Header */}
               <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5 cursor-pointer"
-                onClick={() => setProfileEmp(emp)}>
+                onClick={() => openProfile(emp)}>
                 <Avatar name={emp.name} color={emp.avatar_color} size={50} className="ring-2 ring-white shadow-sm flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="font-black text-[#151c27] text-sm leading-tight truncate">{emp.name}</div>
@@ -1730,7 +1740,7 @@ export default function Employees() {
               </div>
 
               {/* Details */}
-              <div className="px-5 py-3 space-y-1.5 flex-1 cursor-pointer" onClick={() => setProfileEmp(emp)}>
+              <div className="px-5 py-3 space-y-1.5 flex-1 cursor-pointer" onClick={() => openProfile(emp)}>
                 {(emp.departments?.length > 0 || emp.department) && (
                   <div className="flex items-start gap-2">
                     <Building2 size={13} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
@@ -1762,7 +1772,7 @@ export default function Employees() {
               <div className="flex items-center gap-1.5 px-4 py-3 border-t border-[#e7eefe] bg-[#f9f9ff]" onClick={e => e.stopPropagation()}>
                 <button
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold text-[#464555] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/50 transition-all"
-                  onClick={() => setProfileEmp(emp)}>
+                  onClick={() => openProfile(emp)}>
                   <User size={12} /> View
                 </button>
                 <button
@@ -1831,7 +1841,7 @@ export default function Employees() {
                         {selected.has(emp.id) && <Check size={10} className="text-white" />}
                       </div>
                     </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => setProfileEmp(emp)}>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => openProfile(emp)}>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={emp.name} color={emp.avatar_color} size={32} />
                         <div>
@@ -1857,7 +1867,7 @@ export default function Employees() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setProfileEmp(emp)}
+                        <button onClick={() => openProfile(emp)}
                           className="p-1.5 rounded-lg text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="View Profile">
                           <User size={13} />
                         </button>
