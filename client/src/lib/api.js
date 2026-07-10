@@ -14,9 +14,13 @@ async function apiFetch(method, endpoint, body = null) {
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 401) {
-    // Token expired or invalid — signal auth context to logout
-    window.dispatchEvent(new CustomEvent('auth:expired'));
-    throw new Error('Session expired. Please log in again.');
+    if (token) {
+      // Token expired or invalid mid-session — signal auth context to logout
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+      throw new Error('Session expired. Please log in again.');
+    }
+    // No token means this is a login attempt — show the actual server error
+    throw new Error(data.error || 'Invalid email or password');
   }
 
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

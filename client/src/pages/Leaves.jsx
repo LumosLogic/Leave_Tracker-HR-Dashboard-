@@ -31,6 +31,7 @@ export default function Leaves() {
   const tabParam    = searchParams.get('tab');
   const dateParam   = searchParams.get('date');
   const statusParam = searchParams.get('status');
+  const typeParam   = searchParams.get('type');
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
@@ -45,8 +46,9 @@ export default function Leaves() {
     if (dateParam === 'today') return todayStr();
     return dateParam || '';
   });
-  const [filterEnd,   setFilterEnd]   = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
+  const [filterEnd,    setFilterEnd]    = useState('');
+  const [filterMonth,  setFilterMonth]  = useState('');
+  const [filterType,   setFilterType]   = useState(() => typeParam || '');
   const [applyModal, setApplyModal] = useState(false);
   const [editLeave,  setEditLeave]  = useState(null);
   const [confirmDel,    setConfirmDel]    = useState(null);
@@ -108,6 +110,7 @@ export default function Leaves() {
       return src;
     }
     src = src.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+    if (filterType) src = src.filter(l => l.leave_type === filterType);
     if (hasRange) src = src.filter(l => l.start_date <= e && l.end_date >= s);
     return src;
   })();
@@ -134,21 +137,36 @@ export default function Leaves() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         <div>
           {/* Active filter badges */}
-          {pendingOnly && (
+          {(pendingOnly || filterType) && (
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                <AlertTriangle size={11} /> Pending approvals only
-              </span>
-              <button className="text-xs text-[#3525cd] hover:underline font-semibold"
-                onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('status'); return n; }, { replace: true })}>
-                Clear filter
-              </button>
+              {pendingOnly && (
+                <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                  <AlertTriangle size={11} /> Pending approvals only
+                </span>
+              )}
+              {filterType && (
+                <span className="text-xs font-bold text-[#3525cd] bg-[#f0f3ff] border border-[#c7c4d8] px-2.5 py-1 rounded-full flex items-center gap-1.5 capitalize">
+                  <X size={11} className="cursor-pointer" onClick={() => setFilterType('')} />
+                  {filterType} leave
+                </span>
+              )}
+              {pendingOnly && (
+                <button className="text-xs text-[#3525cd] hover:underline font-semibold"
+                  onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('status'); return n; }, { replace: true })}>
+                  Clear filter
+                </button>
+              )}
             </div>
           )}
 
           {/* Date range filter */}
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <label className="text-xs font-semibold text-[#777587] flex items-center gap-1 shrink-0"><Calendar size={12} />Filter:</label>
+            <select className="form-control w-auto py-1.5 px-3 text-xs" value={filterType}
+              onChange={e => setFilterType(e.target.value)}>
+              <option value="">All Types</option>
+              {LEAVE_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            </select>
             <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterStart}
               onChange={e => { setFilterStart(e.target.value); setFilterMonth(''); }} />
             <span className="text-xs text-[#777587]">to</span>
@@ -170,8 +188,8 @@ export default function Leaves() {
                   setFilterEnd('');
                 }
               }} />
-            {(filterStart || filterEnd) && (
-              <button className="btn btn-ghost btn-sm text-xs" onClick={() => { setFilterStart(''); setFilterEnd(''); setFilterMonth(''); }}>
+            {(filterStart || filterEnd || filterType) && (
+              <button className="btn btn-ghost btn-sm text-xs" onClick={() => { setFilterStart(''); setFilterEnd(''); setFilterMonth(''); setFilterType(''); }}>
                 <X size={12} /> Clear
               </button>
             )}

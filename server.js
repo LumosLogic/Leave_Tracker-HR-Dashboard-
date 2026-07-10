@@ -197,6 +197,32 @@ async function getClockifyConfig(oId) {
   if (!data) return null;
   return { api_key: data.clockify_api_key, workspace_id: data.clockify_workspace_id, last_synced: data.clockify_last_synced };
 }
+
+// Helper: fetch all Clockify workspace members and return email→clockify_user_id map
+async function getClockifyMembersByEmail(config) {
+  try {
+    const resp = await axios.get(
+      `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/users`,
+      { headers: { 'X-Api-Key': config.api_key }, params: { memberships: 'WORKSPACE', 'page-size': 500 } }
+    );
+    const map = {};
+    for (const u of (resp.data || [])) {
+      if (u.email && u.id) map[u.email.toLowerCase()] = u.id;
+    }
+    return map;
+  } catch { return {}; }
+}
+
+// Auto-link a user's clockify_user_id by email if not already set
+async function autoLinkClockifyUser(userId, email, config) {
+  try {
+    const emailMap = await getClockifyMembersByEmail(config);
+    const clockifyId = emailMap[email?.toLowerCase()];
+    if (!clockifyId) return null;
+    await supabase.from('users').update({ clockify_user_id: clockifyId }).eq('id', userId);
+    return clockifyId;
+  } catch { return null; }
+}
 function toMinutes(t) {
   const [h, m] = (t || '00:00').split(':').map(Number);
   return h * 60 + m;
@@ -898,6 +924,21 @@ app.get('/api/dashboard', auth, async (req, res) => {
       try {
         const config = await getClockifyConfig(orgId(req));
         if (config?.api_key && config.api_key !== '' && config?.workspace_id) {
+          // Auto-link any employees missing their Clockify ID using email matching
+          const unlinked = allEmployees.filter(e => !e.clockify_user_id);
+          if (unlinked.length > 0) {
+            const emailMap = await getClockifyMembersByEmail(config);
+            const { data: unlinkedFull } = await supabase.from('users')
+              .select('id, email').in('id', unlinked.map(e => e.id));
+            await Promise.all((unlinkedFull || []).map(async u => {
+              const cId = emailMap[u.email?.toLowerCase()];
+              if (cId) {
+                await supabase.from('users').update({ clockify_user_id: cId }).eq('id', u.id);
+                const emp = allEmployees.find(e => e.id === u.id);
+                if (emp) emp.clockify_user_id = cId; // update in-memory for this request
+              }
+            }));
+          }
           await Promise.all(allEmployees.filter(e => e.clockify_user_id).map(async emp => {
             try {
               const resp = await axios.get(
@@ -1061,7 +1102,7 @@ app.get('/api/employees', auth, async (req, res) => {
     // root_admin sees all non-root users (HR admins + employees); others see only employees
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const { data: users } = await supabase.from('users')
-      .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date')
+      .select('id, name, email, role, department, position, avatar_color, date_of_birth, created_at, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date, clockify_user_id')
       .eq('organization_id', orgId(req))
       .in('role', roleFilter)
       .order('name');
@@ -1121,6 +1162,7 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
     const {
       name, email, role, department, position, avatar_color, password, date_of_birth, department_ids,
       phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date,
+      clockify_user_id,
     } = req.body;
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
@@ -1136,11 +1178,12 @@ app.put('/api/employees/:id', auth, adminOnly, async (req, res) => {
       employee_status:      employee_status      || null,
       ctc:                  ctc                  || null,
       salary_effective_date: salary_effective_date || null,
+      clockify_user_id:     clockify_user_id?.trim() || null,
     };
     if (password) update.password = bcrypt.hashSync(password, 10);
     const { data, error } = await supabase.from('users').update(update)
       .eq('id', req.params.id).eq('organization_id', orgId(req))
-      .select('id, name, email, role, department, position, avatar_color, date_of_birth, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date').single();
+      .select('id, name, email, role, department, position, avatar_color, date_of_birth, phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date, clockify_user_id').single();
     if (error) throw new Error(error.message);
 
     // Sync multi-department assignments if provided
@@ -1207,9 +1250,38 @@ app.get('/api/attendance', auth, async (req, res) => {
 app.get('/api/attendance/today', auth, async (req, res) => {
   try {
     const today = localDateStr();
-    const { data } = await supabase.from('attendance')
+    const { data: existing } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
-    res.json(data || null);
+
+    if (existing) return res.json(existing);
+
+    // No record yet — check if employee has an active Clockify timer and auto-create
+    try {
+      const config = await getClockifyConfig(orgId(req));
+      if (config?.api_key && config?.workspace_id) {
+        const { data: uRow } = await supabase.from('users')
+          .select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+        if (uRow?.clockify_user_id) {
+          const resp = await axios.get(
+            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
+            { headers: { 'X-Api-Key': config.api_key }, params: { 'in-progress': true, 'page-size': 1 } }
+          );
+          const active = (resp.data || []).find(e => !e.timeInterval?.end);
+          if (active?.timeInterval?.start) {
+            const d = new Date(active.timeInterval.start);
+            const checkInTime = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const settings = await getSettings(orgId(req));
+            const is_late = settings ? toMinutes(checkInTime) > toMinutes(settings.late_threshold) : false;
+            const { data: created } = await supabase.from('attendance')
+              .insert({ user_id: req.user.id, date: today, check_in: checkInTime, status: 'present', is_late, organization_id: orgId(req) })
+              .select().single();
+            return res.json(created || null);
+          }
+        }
+      }
+    } catch { /* Clockify check failed — fall through to null */ }
+
+    res.json(null);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1220,8 +1292,12 @@ app.get('/api/attendance/checkin-mode', auth, async (req, res) => {
     const has_clockify = !!(config?.api_key && config?.workspace_id);
     let user_clockify_id = null;
     if (has_clockify) {
-      const { data: u } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+      const { data: u } = await supabase.from('users').select('clockify_user_id, email').eq('id', req.user.id).maybeSingle();
       user_clockify_id = u?.clockify_user_id || null;
+      // Auto-link by email if not yet set
+      if (!user_clockify_id && u?.email) {
+        user_clockify_id = await autoLinkClockifyUser(req.user.id, u.email, config);
+      }
     }
     res.json({ has_clockify, user_clockify_id, syncs_clockify: has_clockify && !!user_clockify_id });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2159,11 +2235,18 @@ app.get('/api/my-clockify-hours', auth, async (req, res) => {
 
     for (const e of entries) {
       if (!e.timeInterval?.start) continue;
-      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(e.timeInterval.start));
-      const m = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-      if (!m) continue;
-      const sec = (parseInt(m[1]||0)*3600) + (parseInt(m[2]||0)*60) + parseInt(m[3]||0);
-      hours[dateStr] = Math.round(((hours[dateStr] || 0) + sec / 3600) * 100) / 100;
+      const startDate = new Date(e.timeInterval.start);
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(startDate);
+      let sec = 0;
+      if (e.timeInterval?.end) {
+        // Completed entry — use duration field
+        const m = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (m) sec = (parseInt(m[1]||0)*3600) + (parseInt(m[2]||0)*60) + parseInt(m[3]||0);
+      } else {
+        // Running entry — calculate elapsed from start until now
+        sec = Math.max(0, Math.floor((Date.now() - startDate.getTime()) / 1000));
+      }
+      if (sec > 0) hours[dateStr] = Math.round(((hours[dateStr] || 0) + sec / 3600) * 100) / 100;
     }
 
     res.json({ hours });
@@ -2713,19 +2796,39 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       attendanceTrend.push({ date: ds, pct: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0, present: e.present, total: e.total });
     }
 
-    // Department health
+    // Department health — use junction table for accurate dept assignment
+    const empIdList = (allEmployees || []).map(e => e.id);
+    let userDeptRows = [];
+    if (empIdList.length > 0) {
+      const { data: ud } = await supabase.from('user_departments')
+        .select('user_id, departments(name)')
+        .in('user_id', empIdList);
+      userDeptRows = ud || [];
+    }
     const deptMap = {};
+    // Primary: junction table assignments
+    for (const ud of userDeptRows) {
+      const dn = ud.departments?.name;
+      if (!dn) continue;
+      if (!deptMap[dn]) deptMap[dn] = { name: dn, empIdSet: new Set() };
+      deptMap[dn].empIdSet.add(ud.user_id);
+    }
+    // Fallback: employees with no junction entry use users.department
+    const junctionUserIds = new Set(userDeptRows.map(ud => ud.user_id));
     for (const emp of allEmployees || []) {
-      const dn = emp.department || 'General';
-      if (!deptMap[dn]) deptMap[dn] = { name: dn, empIds: [] };
-      deptMap[dn].empIds.push(emp.id);
+      if (!junctionUserIds.has(emp.id)) {
+        const dn = emp.department || 'General';
+        if (!deptMap[dn]) deptMap[dn] = { name: dn, empIdSet: new Set() };
+        deptMap[dn].empIdSet.add(emp.id);
+      }
     }
     const presentSet = new Set((todayAttendance || []).filter(a => ['present','wfh','half_day'].includes(a.status)).map(a => a.user_id));
     const onLeaveSet = new Set((todayAttendance || []).filter(a => a.status === 'on_leave').map(a => a.user_id));
     const departmentHealth = Object.values(deptMap).map(d => {
-      const tot = d.empIds.length;
-      const pre = d.empIds.filter(id => presentSet.has(id)).length;
-      const lv  = d.empIds.filter(id => onLeaveSet.has(id)).length;
+      const empIds = [...d.empIdSet];
+      const tot = empIds.length;
+      const pre = empIds.filter(id => presentSet.has(id)).length;
+      const lv  = empIds.filter(id => onLeaveSet.has(id)).length;
       const pct = tot > 0 ? Math.round((pre / tot) * 100) : 0;
       return { name: d.name, total: tot, present: pre, onLeave: lv, attendancePct: pct,
         productivity: pct >= 90 ? 'High' : pct >= 70 ? 'Medium' : 'Low' };
@@ -2973,6 +3076,22 @@ app.delete('/api/root/root-admins/:id', auth, rootAdminOnly, async (req, res) =>
       .eq('id', targetId).eq('organization_id', oid);
     if (updErr) throw updErr;
 
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Change password for another root admin
+app.put('/api/root/root-admins/:id/password', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const oid      = orgId(req);
+    if (targetId === req.user.id) return res.status(400).json({ error: 'Use your profile page to change your own password.' });
+    const { password } = req.body;
+    if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    const { data: target } = await supabase.from('users').select('id').eq('id', targetId).eq('role', 'root_admin').eq('organization_id', oid).maybeSingle();
+    if (!target) return res.status(404).json({ error: 'Root admin not found in this organisation.' });
+    const hashed = bcrypt.hashSync(password, 10);
+    await supabase.from('users').update({ password: hashed }).eq('id', targetId);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -24,6 +24,7 @@ import Settings         from '@/pages/Settings';
 import OrgSettings      from '@/pages/OrgSettings';
 import RootDashboard    from '@/pages/RootDashboard';
 import ManageHR         from '@/pages/ManageHR';
+import ManageRootAdmins from '@/pages/ManageRootAdmins';
 import Broadcast        from '@/pages/Broadcast';
 import MyProfile        from '@/pages/MyProfile';
 import Departments      from '@/pages/Departments';
@@ -156,7 +157,8 @@ function AppRoutes() {
         <Route path="/root/exit-management" element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
         <Route path="/root/notifications"   element={<NotificationCenter />} />
         <Route path="/root/settings"        element={<Settings />} />
-        <Route path="/root/manage-hr"       element={<ManageHR />} />
+        <Route path="/root/manage-hr"            element={<ManageHR />} />
+        <Route path="/root/manage-root-admins"  element={<ManageRootAdmins />} />
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
         <Route path="/root/org-settings"    element={<OrgSettings />} />

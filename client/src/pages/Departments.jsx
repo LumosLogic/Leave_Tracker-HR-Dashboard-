@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Building2, Users, ChevronRight } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -59,9 +60,18 @@ const DEPT_COLORS = ['#3525cd','#10B981','#F59E0B','#712ae2','#EF4444','#F97316'
 export default function Departments() {
   const toast = useToast();
   const qc    = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [addOpen,    setAddOpen]    = useState(false);
   const [editDept,   setEditDept]   = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'add') {
+      setAddOpen(true);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('action'); return n; }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: _dData, isLoading } = useQuery({ queryKey: ['departments'], queryFn: () => apiGet('/departments') });
   const { data: _eData }            = useQuery({ queryKey: ['employees'],   queryFn: () => apiGet('/employees') });

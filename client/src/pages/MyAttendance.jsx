@@ -137,9 +137,13 @@ function AttendanceCheckinCard({ onRefreshed }) {
             <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
               <Timer size={18} className="text-amber-500" />
             </div>
-          ) : (
+          ) : record?.check_out ? (
             <div className="w-10 h-10 rounded-full bg-[#f0f3ff] flex items-center justify-center shrink-0">
               <CheckCircle2 size={18} className="text-[#3525cd]" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+              <CheckCircle2 size={18} className="text-emerald-500" />
             </div>
           )}
           <div className="min-w-0">
@@ -171,12 +175,19 @@ function AttendanceCheckinCard({ onRefreshed }) {
                   {' · Click Resume to continue'}
                 </p>
               </>
-            ) : (
+            ) : record?.check_out ? (
               <>
                 <p className="text-sm font-bold text-[#151c27]">Work Complete</p>
                 <p className="text-xs text-[#777587]">
                   {fmtTime(record.check_in)} – {fmtTime(record.check_out)} · {fmtHours(record.work_hours)} worked
                   {record.status === 'half_day' && ' · Half Day'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-emerald-600">Checked In</p>
+                <p className="text-xs text-[#777587]">
+                  Since {fmtTime(record.check_in)}{elapsed ? ` · ${elapsed} elapsed` : ''}
                 </p>
               </>
             )}

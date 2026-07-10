@@ -944,6 +944,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     salary_effective_date:employee.salary_effective_date || '',
     role:                 employee.role,
     avatar_color:         employee.avatar_color    || '#3525cd',
+    clockify_user_id:     employee.clockify_user_id || '',
     password:             '',
   } : {
     name: '', email: '', password: '', department: '', position: '',
@@ -1210,6 +1211,17 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   </button>
                 </div>
               </div>
+              <div>
+                <label className="form-label">
+                  Clockify User ID
+                  <span className="font-normal text-[#777587] normal-case text-xs ml-1">(from Clockify workspace member settings)</span>
+                </label>
+                <input className="form-control" placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1"
+                  value={form.clockify_user_id} onChange={e => set('clockify_user_id', e.target.value)} />
+                {form.clockify_user_id && (
+                  <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold">Clockify sync will be enabled for this employee.</p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1320,9 +1332,10 @@ export default function Employees() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL params
-  const roleFilter  = searchParams.get('role');
-  const actionParam = searchParams.get('action');
-  const viewParam   = searchParams.get('view');
+  const roleFilter    = searchParams.get('role');
+  const actionParam   = searchParams.get('action');
+  const viewParam     = searchParams.get('view');
+  const joinedYmParam = searchParams.get('joined_ym'); // 'YYYY-MM' — filters to new joiners of that month
 
   // Modal / profile state
   const [profileEmp,     setProfileEmp]     = useState(null);
@@ -1397,7 +1410,7 @@ export default function Employees() {
 
   // Reset to page 1 when any filter / sort changes
   useEffect(() => { setPage(1); setSelected(new Set()); },
-    [search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter]);
+    [search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -1446,18 +1459,25 @@ export default function Employees() {
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
     if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
+    if (joinedYmParam) {
+      const [yr, mo] = joinedYmParam.split('-').map(Number);
+      rows = rows.filter(e => {
+        const d = new Date(e.created_at);
+        return d.getFullYear() === yr && d.getMonth() === mo - 1;
+      });
+    }
     return [...rows].sort((a, b) => {
       const av = (a[sortBy] || '').toString().toLowerCase();
       const bv = (b[sortBy] || '').toString().toLowerCase();
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [employees, search, deptFilter, statusFilter, typeFilter, sortBy, sortDir]);
+  }, [employees, search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const anyFilter  = search || deptFilter || statusFilter || typeFilter;
+  const anyFilter  = search || deptFilter || statusFilter || typeFilter || joinedYmParam;
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
   const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
@@ -1559,9 +1579,16 @@ export default function Employees() {
               </span>
             )}
           </div>
-          <div className="page-subtitle flex items-center gap-2">
+          <div className="page-subtitle flex items-center gap-2 flex-wrap">
             {filtered.length} of {employees.length} member{employees.length !== 1 ? 's' : ''}
             {anyFilter && <span className="text-[#3525cd] font-semibold">(filtered)</span>}
+            {joinedYmParam && (
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                New joiners: {new Date(joinedYmParam + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                <button onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('joined_ym'); return n; }, { replace: true })}
+                  className="hover:text-emerald-900">×</button>
+              </span>
+            )}
             {roleFilter === 'admin' && (
               <button onClick={() => setSearchParams({}, { replace: true })}
                 className="text-xs text-[#3525cd] hover:underline font-semibold">
@@ -1634,7 +1661,10 @@ export default function Employees() {
         </select>
 
         {anyFilter && (
-          <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+          <button onClick={() => {
+            setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter('');
+            if (joinedYmParam) setSearchParams(p => { const n = new URLSearchParams(p); n.delete('joined_ym'); return n; }, { replace: true });
+          }}
             className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
             <X size={12} /> Clear
           </button>

@@ -74,7 +74,7 @@ const PRIORITY_BADGE = {
 const QUICK_ACTIONS = [
   { label: 'Add Employee',   to: '/root/employees?action=add',   icon: <UserPlus size={11} />,     color: 'bg-[#f0f3ff] text-[#3525cd]' },
   { label: 'Manage Admins', to: '/root/manage-hr',              icon: <ShieldCheck size={11} />,  color: 'bg-purple-50 text-purple-600' },
-  { label: 'Add Department', to: '/root/departments',            icon: <Building2 size={11} />,    color: 'bg-sky-50 text-sky-600' },
+  { label: 'Add Department', to: '/root/departments?action=add', icon: <Building2 size={11} />,    color: 'bg-sky-50 text-sky-600' },
   { label: 'Add Holiday',    to: '/root/holidays',               icon: <CalendarDays size={11} />, color: 'bg-amber-50 text-amber-600' },
   { label: 'Manage Shifts',  to: '/root/shifts',                 icon: <Clock size={11} />,        color: 'bg-indigo-50 text-indigo-600' },
   { label: 'Broadcast',      to: '/root/broadcast',              icon: <Radio size={11} />,        color: 'bg-rose-50 text-rose-500' },
@@ -415,8 +415,18 @@ export default function RootDashboard() {
       x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 11 }, color: '#9ca3af' } },
       y: { grid: { color: '#f0f0f8' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af', maxTicksLimit: 5 } },
     },
-    onClick: () => navigate('/root/employees?role=employee'),
-    onHover: (event) => { const t = event.native?.target; if (t) t.style.cursor = 'pointer'; },
+    onClick: (event, elements) => {
+      const year = new Date().getFullYear();
+      if (elements.length > 0 && elements[0].datasetIndex === 1) {
+        // New Joiners dataset — filter employees by that specific month
+        const monthIdx = elements[0].index; // 0-based index in headSlice
+        const month = String(monthIdx + 1).padStart(2, '0');
+        navigate(`/root/employees?role=employee&joined_ym=${year}-${month}`);
+      } else {
+        navigate('/root/employees?role=employee');
+      }
+    },
+    onHover: hoverCursor,
   };
 
   // ── Department Health bar chart ───────────────────────────────────────────────
@@ -860,7 +870,7 @@ export default function RootDashboard() {
             <h2 className="text-sm font-black text-[#151c27]">Headcount Growth</h2>
             <span className="text-[0.68rem] text-[#9ca3af]">This Year</span>
           </div>
-          <p className="text-[0.68rem] text-[#9ca3af] mb-4">Cumulative employee count · Click to view all employees</p>
+          <p className="text-[0.68rem] text-[#9ca3af] mb-4">Cumulative employee count · Click New Joiners to filter by month</p>
           {headSlice.length > 0 ? (
             <div style={{ height: 180 }}>
               <Line data={headChartData} options={headOptions} />
