@@ -87,11 +87,21 @@ router.put('/:id/review', async (req, res) => {
     if (error) throw error;
 
     if (status === 'approved') {
+      const reg_check_in  = reg.requested_check_in  || null;
+      const reg_check_out = reg.requested_check_out || null;
+      let reg_work_hours  = 0;
+      if (reg_check_in && reg_check_out) {
+        const [h1, m1] = reg_check_in.split(':').map(Number);
+        const [h2, m2] = reg_check_out.split(':').map(Number);
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins > 0) reg_work_hours = Math.round((mins / 60) * 100) / 100;
+      }
       // Update/insert attendance record as present
       await supabase.from('attendance').upsert({
         user_id: reg.user_id, date: reg.date,
-        check_in: reg.requested_check_in || null,
-        check_out: reg.requested_check_out || null,
+        check_in: reg_check_in,
+        check_out: reg_check_out,
+        work_hours: reg_work_hours,
         status: 'present', organization_id: oId,
       }, { onConflict: 'user_id,date' });
 

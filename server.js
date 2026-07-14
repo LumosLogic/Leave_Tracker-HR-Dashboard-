@@ -2831,32 +2831,52 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       attendanceTrend.push({ date: ds, pct: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0, present: e.present, total: e.total });
     }
 
-    // Department health — use junction table for accurate dept assignment
+    // Department health — use org's departments table as source of truth to prevent cross-org contamination
     const empIdList = (allEmployees || []).map(e => e.id);
+
+    // Fetch only this org's departments
+    const { data: orgDepts } = await supabase.from('departments')
+      .select('id, name')
+      .eq('organization_id', oid);
+
+    // Initialize deptMap keyed by department ID so only org departments appear
+    const deptMap = {};
+    for (const dept of orgDepts || []) {
+      deptMap[dept.id] = { name: dept.name, empIdSet: new Set() };
+    }
+
+    // Build name→id lookup for fallback matching
+    const orgDeptNameToId = {};
+    for (const dept of orgDepts || []) {
+      orgDeptNameToId[dept.name] = dept.id;
+    }
+
+    // Primary: junction table assignments filtered by org
     let userDeptRows = [];
     if (empIdList.length > 0) {
       const { data: ud } = await supabase.from('user_departments')
-        .select('user_id, departments(name)')
-        .in('user_id', empIdList);
+        .select('user_id, department_id')
+        .in('user_id', empIdList)
+        .eq('organization_id', oid);
       userDeptRows = ud || [];
     }
-    const deptMap = {};
-    // Primary: junction table assignments
     for (const ud of userDeptRows) {
-      const dn = ud.departments?.name;
-      if (!dn) continue;
-      if (!deptMap[dn]) deptMap[dn] = { name: dn, empIdSet: new Set() };
-      deptMap[dn].empIdSet.add(ud.user_id);
+      if (deptMap[ud.department_id]) {
+        deptMap[ud.department_id].empIdSet.add(ud.user_id);
+      }
     }
-    // Fallback: employees with no junction entry use users.department
+
+    // Fallback: employees with no junction entry — match by users.department text field to org departments only
     const junctionUserIds = new Set(userDeptRows.map(ud => ud.user_id));
     for (const emp of allEmployees || []) {
       if (!junctionUserIds.has(emp.id)) {
-        const dn = emp.department || 'General';
-        if (!deptMap[dn]) deptMap[dn] = { name: dn, empIdSet: new Set() };
-        deptMap[dn].empIdSet.add(emp.id);
+        const deptId = orgDeptNameToId[emp.department];
+        if (deptId !== undefined && deptMap[deptId]) {
+          deptMap[deptId].empIdSet.add(emp.id);
+        }
       }
     }
+
     const presentSet = new Set((todayAttendance || []).filter(a => ['present','wfh','half_day'].includes(a.status)).map(a => a.user_id));
     const onLeaveSet = new Set((todayAttendance || []).filter(a => a.status === 'on_leave').map(a => a.user_id));
     const departmentHealth = Object.values(deptMap).map(d => {

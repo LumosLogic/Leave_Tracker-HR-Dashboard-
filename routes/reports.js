@@ -30,16 +30,28 @@ router.get('/attendance', async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
 
-    const rows = (data || []).map(r => ({
-      name:       r.users?.name || '',
-      department: r.users?.department || '',
-      position:   r.users?.position || '',
-      date:       r.date,
-      status:     r.status,
-      check_in:   r.check_in || '',
-      check_out:  r.check_out || '',
-      work_hours: r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0),
-    }));
+    const rows = (data || []).map(r => {
+      const check_in  = r.check_in  || '';
+      const check_out = r.check_out || '';
+      let work_hours  = r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0);
+      // Compute work_hours from check_in/check_out when both exist but hours are missing
+      if (work_hours === 0 && check_in && check_out) {
+        const [h1, m1] = check_in.split(':').map(Number);
+        const [h2, m2] = check_out.split(':').map(Number);
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins > 0) work_hours = Math.round((mins / 60) * 100) / 100;
+      }
+      return {
+        name:       r.users?.name || '',
+        department: r.users?.department || '',
+        position:   r.users?.position || '',
+        date:       r.date,
+        status:     r.status,
+        check_in,
+        check_out,
+        work_hours,
+      };
+    });
 
     if (format === 'csv') {
       const csv = toCSV(rows, [
