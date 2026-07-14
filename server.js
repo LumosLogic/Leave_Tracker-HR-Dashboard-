@@ -1719,21 +1719,54 @@ app.post('/api/leaves', auth, async (req, res) => {
 
     // Admin can apply leave on behalf of any employee
     const targetUserId = (isAdminRole(req.user.role) && user_id) ? parseInt(user_id) : req.user.id;
+    const isOnBehalf   = isAdminRole(req.user.role) && targetUserId !== req.user.id;
+
+    const insertPayload = {
+      user_id: targetUserId, start_date, end_date,
+      leave_type: leave_type||'casual', reason: reason||'',
+      leave_time: leave_time||'full',
+      half_type:  leave_time === 'half' ? (half_type||'first_half') : null,
+      organization_id: orgId(req),
+    };
+
+    // Auto-approve when admin creates leave on behalf of another employee
+    if (isOnBehalf) {
+      insertPayload.status      = 'approved';
+      insertPayload.approved_by = req.user.id;
+      insertPayload.approved_at = new Date().toISOString();
+    }
 
     const { data, error } = await supabase.from('leaves')
-      .insert({
-        user_id: targetUserId, start_date, end_date,
-        leave_type: leave_type||'casual', reason: reason||'',
-        leave_time: leave_time||'full',
-        half_type:  leave_time === 'half' ? (half_type||'first_half') : null,
-        organization_id: orgId(req),
-      })
+      .insert(insertPayload)
       .select('*, users!leaves_user_id_fkey(name, email, department)').single();
     if (error) throw new Error(error.message);
 
-    // Notify HR when employee applies leave, or when admin applies on behalf of another user
-    const isOnBehalf = isAdminRole(req.user.role) && targetUserId !== req.user.id;
-    if (req.user.role === 'employee' || isOnBehalf) {
+    // When auto-approving, create attendance records for the leave dates
+    if (isOnBehalf) {
+      const settings = await getSettings(orgId(req));
+      const start = new Date(start_date + 'T12:00:00');
+      const end   = new Date(end_date   + 'T12:00:00');
+      const upserts = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        const attStatus = leave_time === 'half' ? 'half_day' : (leave_time === 'wfh' || leave_type === 'wfh') ? 'wfh' : 'on_leave';
+        if (!settings || isWorkingDay(ds, settings)) {
+          upserts.push({ user_id: targetUserId, date: ds, status: attStatus, organization_id: orgId(req) });
+        }
+      }
+      if (upserts.length) {
+        await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date,organization_id' });
+      }
+      // Notify the employee about the approved leave
+      if (data.users?.email) {
+        sendMail({
+          to: data.users.email,
+          subject: `Leave Added — ${req.user.name || 'HR'}`,
+          html: leaveStatusHtml(data.users, data, 'approved', req.user.name),
+        });
+      }
+    } else if (req.user.role === 'employee') {
+      // Notify HR when employee applies leave
       const emp = data.users || {};
       const recipients = await getRecipients(orgId(req));
       if (recipients.length > 0) {
@@ -1747,7 +1780,6 @@ app.post('/api/leaves', auth, async (req, res) => {
         });
       }
     }
-
 
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2739,6 +2771,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       { data: upcomingEventsRaw },
       { count: pendingReg },
       { count: pendingExp },
+      { count: totalDepartments },
     ] = await Promise.all([
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', oid),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
@@ -2765,6 +2798,8 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
         .eq('status', 'pending').eq('organization_id', oid),
       supabase.from('expenses').select('*', { count: 'exact', head: true })
         .eq('status', 'pending').eq('organization_id', oid),
+      supabase.from('departments').select('*', { count: 'exact', head: true })
+        .eq('organization_id', oid),
     ]);
 
     // Attendance breakdown today
@@ -2832,7 +2867,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
       const pct = tot > 0 ? Math.round((pre / tot) * 100) : 0;
       return { name: d.name, total: tot, present: pre, onLeave: lv, attendancePct: pct,
         productivity: pct >= 90 ? 'High' : pct >= 70 ? 'Medium' : 'Low' };
-    }).sort((a, b) => b.total - a.total).slice(0, 6);
+    }).sort((a, b) => b.total - a.total);
 
     // Headcount growth (cumulative by month this year)
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -2901,6 +2936,7 @@ app.get('/api/root/dashboard', auth, rootAdminOnly, async (req, res) => {
 
     res.json({
       totalEmployees, totalHR, pendingLeaves, presentToday,
+      totalDepartments: totalDepartments || 0,
       recentLeaves:      flat(recentLeavesRaw),
       pendingLeavesData: flat(pendingLeavesRaw),
       attendanceBreakdown, leavesByType,

@@ -290,10 +290,10 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
   const absentRecords = attendance.filter(r => r.status === 'absent').sort((a, b) => b.date.localeCompare(a.date));
 
   // Leave balance computation
-  const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave (CL)', quota: 12 }, sick: { label: 'Sick Leave (SL)', quota: 10 }, earned: { label: 'Earned Leave (EL)', quota: 20 }, comp_off: { label: 'Comp Off (CO)', quota: 5 } };
-  const LEAVE_COLORS   = { casual: '#10B981', sick: '#3525cd', earned: '#F59E0B', comp_off: '#712ae2' };
+  const LEAVE_DEFAULTS = { casual: { label: 'Casual Leave', quota: 12 }, sick: { label: 'Sick Leave', quota: 10 }, annual: { label: 'Annual Leave', quota: 18 }, comp_off: { label: 'Comp Off', quota: 5 } };
+  const LEAVE_COLORS   = { casual: '#10B981', sick: '#3525cd', annual: '#F59E0B', earned: '#F59E0B', comp_off: '#712ae2', emergency: '#EF4444', maternity: '#EC4899', paternity: '#4f46e5', bereavement: '#94a3b8', unpaid: '#64748b' };
   const policyMap = {};
-  (leavePolicies || []).filter(p => p.leave_type !== 'wfh').forEach(p => { policyMap[p.leave_type] = { label: p.label, quota: p.annual_quota }; });
+  (leavePolicies || []).filter(p => p.leave_type !== 'wfh').forEach(p => { policyMap[p.leave_type] = { label: p.label || p.leave_type, quota: p.annual_quota }; });
   const allYearLeaves = useQuery({
     queryKey: ['emp-leaves-year', emp.id, curYear],
     queryFn:  () => apiGet('/leaves', { userId: emp.id, year: curYear }),
@@ -302,9 +302,15 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
   const yearLeaves = allYearLeaves.data || [];
   const usedByType = {};
   yearLeaves.filter(l => l.status === 'approved' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').forEach(l => {
-    usedByType[l.leave_type] = (usedByType[l.leave_type] || 0) + countLeaveDaysInRange(l, `${curYear}-01-01`, `${curYear}-12-31`, activeWorkDays);
+    if (l.leave_time === 'half') {
+      usedByType[l.leave_type] = (usedByType[l.leave_type] || 0) + 0.5;
+    } else {
+      usedByType[l.leave_type] = (usedByType[l.leave_type] || 0) + countLeaveDaysInRange(l, `${curYear}-01-01`, `${curYear}-12-31`, activeWorkDays);
+    }
   });
-  const leaveBalance = Object.entries({ ...LEAVE_DEFAULTS, ...policyMap }).slice(0, 4).map(([type, info]) => ({
+  // Use policyMap from DB when available; fall back to LEAVE_DEFAULTS only if no policies configured
+  const balanceSource = Object.keys(policyMap).length > 0 ? policyMap : LEAVE_DEFAULTS;
+  const leaveBalance = Object.entries(balanceSource).map(([type, info]) => ({
     type, label: info.label, used: usedByType[type] || 0, total: info.quota || 20, color: LEAVE_COLORS[type] || '#94a3b8',
   }));
 

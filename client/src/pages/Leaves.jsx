@@ -32,6 +32,7 @@ export default function Leaves() {
   const dateParam   = searchParams.get('date');
   const statusParam = searchParams.get('status');
   const typeParam   = searchParams.get('type');
+  const userIdParam = searchParams.get('userId');
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
@@ -55,8 +56,8 @@ export default function Leaves() {
   const [confirmRevert, setConfirmRevert] = useState(null);
 
   const { data: leaves = [], refetch: refetchLeaves } = useQuery({
-    queryKey: ['leaves'],
-    queryFn: () => apiGet('/leaves'),
+    queryKey: ['leaves', userIdParam],
+    queryFn: () => apiGet('/leaves', userIdParam ? { userId: userIdParam } : {}),
   });
 
   const { data: policies = [] } = useQuery({
@@ -130,15 +131,24 @@ export default function Leaves() {
           <div className="page-subtitle">Track and manage employee leaves</div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-primary" onClick={() => setApplyModal(true)}><Plus size={14} /> Apply Leave</button>
+          <button className="btn btn-primary" onClick={() => setApplyModal(true)}>
+            <Plus size={14} /> {isAdmin ? 'Add Employee Leave' : 'Apply Leave'}
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         <div>
           {/* Active filter badges */}
-          {(pendingOnly || filterType) && (
+          {(pendingOnly || filterType || userIdParam) && (
             <div className="flex items-center gap-2 mb-3 flex-wrap">
+              {userIdParam && (
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                  <Users size={11} />
+                  Filtered by employee
+                  <X size={11} className="cursor-pointer ml-0.5" onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('userId'); return n; }, { replace: true })} />
+                </span>
+              )}
               {pendingOnly && (
                 <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
                   <AlertTriangle size={11} /> Pending approvals only

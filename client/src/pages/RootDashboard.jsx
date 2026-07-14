@@ -75,7 +75,7 @@ const QUICK_ACTIONS = [
   { label: 'Add Employee',   to: '/root/employees?action=add',   icon: <UserPlus size={11} />,     color: 'bg-[#f0f3ff] text-[#3525cd]' },
   { label: 'Manage Admins', to: '/root/manage-hr',              icon: <ShieldCheck size={11} />,  color: 'bg-purple-50 text-purple-600' },
   { label: 'Add Department', to: '/root/departments?action=add', icon: <Building2 size={11} />,    color: 'bg-sky-50 text-sky-600' },
-  { label: 'Add Holiday',    to: '/root/holidays',               icon: <CalendarDays size={11} />, color: 'bg-amber-50 text-amber-600' },
+  { label: 'Add Holiday',    to: '/root/holidays?action=add',    icon: <CalendarDays size={11} />, color: 'bg-amber-50 text-amber-600' },
   { label: 'Manage Shifts',  to: '/root/shifts',                 icon: <Clock size={11} />,        color: 'bg-indigo-50 text-indigo-600' },
   { label: 'Broadcast',      to: '/root/broadcast',              icon: <Radio size={11} />,        color: 'bg-rose-50 text-rose-500' },
   { label: 'Payroll',        to: '/root/payroll',                icon: <DollarSign size={11} />,   color: 'bg-emerald-50 text-emerald-600' },
@@ -223,6 +223,7 @@ export default function RootDashboard() {
 
   const {
     totalEmployees = 0, totalHR = 0, pendingLeaves = 0, presentToday = 0,
+    totalDepartments = 0,
     pendingLeavesData = [], attendanceBreakdown = {}, leavesByType = {},
     attendanceTrend = [], departmentHealth = [], headcountGrowth = [],
     liveActivity = [], actionCenter = [], upcomingEvents = [],
@@ -492,7 +493,7 @@ export default function RootDashboard() {
       icon: <ShieldCheck size={16} />, iconBg: 'bg-purple-50 text-purple-600',
       tooltip: 'Number of HR administrators managing the organization. Click to manage HR access.',
       onClick: () => navigate('/root/manage-hr') },
-    { label: 'Departments', value: departmentHealth.length, sub: 'Active teams',
+    { label: 'Departments', value: totalDepartments, sub: 'Active teams',
       icon: <Building2 size={16} />, iconBg: 'bg-sky-50 text-sky-600',
       tooltip: 'Total active departments. Click to view and manage departments.',
       onClick: () => navigate('/root/departments') },

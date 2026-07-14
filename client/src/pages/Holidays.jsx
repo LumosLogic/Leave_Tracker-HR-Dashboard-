@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, CalendarDays, Globe, Star, PartyPopper, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
@@ -81,10 +82,19 @@ export default function HolidaysPage() {
   const toast = useToast();
   const qc    = useQueryClient();
   const now   = new Date();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [year,       setYear]       = useState(now.getFullYear());
   const [addOpen,    setAddOpen]    = useState(false);
   const [editH,      setEditH]      = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+
+  // Auto-open Add Holiday modal when navigated with ?action=add
+  useEffect(() => {
+    if (searchParams.get('action') === 'add') {
+      setAddOpen(true);
+      setSearchParams(p => { const n = new URLSearchParams(p); n.delete('action'); return n; }, { replace: true });
+    }
+  }, []);
 
   const { data: _hData, isLoading } = useQuery({ queryKey: ['holidays', year], queryFn: () => apiGet('/holidays', { year }) });
   const holidays = Array.isArray(_hData) ? _hData : [];

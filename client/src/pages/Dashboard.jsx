@@ -850,8 +850,8 @@ export default function Dashboard() {
                   onClick={() => setSelectedEmp(r)}>
                   <Avatar name={r.name} color={r.avatar_color} size={30} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-[#151c27]">{r.name}</div>
-                    <div className="text-[0.6rem] text-[#9ca3af]">{r.department}</div>
+                    <div className="text-xs font-bold text-[#151c27] truncate">{r.name}</div>
+                    <div className="text-[0.6rem] text-[#9ca3af] truncate">{r.department}</div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <StatusBadge status={r.status} />

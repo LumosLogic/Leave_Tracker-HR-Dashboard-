@@ -169,6 +169,11 @@ export default function EmployeeHome() {
   const teamOnLeave = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id);
   const teamWfh     = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id);
 
+  // Holiday/weekend detection for Team Status widget
+  const todayDow      = new Date().getDay(); // 0=Sun, 6=Sat
+  const isWeekend     = todayDow === 0 || todayDow === 6;
+  const todayHoliday  = allHolidays.find(h => h.date === today);
+
   const orgName   = user?.organization_name || user?.org_name || 'lumoslogic';
   const roleLabel = user?.position || 'Team Member';
 
@@ -259,6 +264,15 @@ export default function EmployeeHome() {
           <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2 mb-4">
             <Users size={13} className="text-[#3525cd]" /> Team Status Today
           </h2>
+          {(todayHoliday || isWeekend) ? (
+            <div className="flex flex-col items-center justify-center text-center py-3 gap-2">
+              <span className="text-3xl">{todayHoliday ? '🏖️' : '🌟'}</span>
+              <p className="text-sm font-black text-[#151c27]">
+                {todayHoliday ? todayHoliday.name : 'Weekend Holiday'}
+              </p>
+              <p className="text-[0.7rem] text-[#777587]">Attendance not applicable today</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-4 divide-x divide-[#f0f3ff]">
             {/* On Leave */}
             <div>
@@ -318,6 +332,7 @@ export default function EmployeeHome() {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* This Month KPIs */}
