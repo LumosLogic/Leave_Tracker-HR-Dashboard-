@@ -1393,12 +1393,22 @@ app.post('/api/attendance/checkout', auth, async (req, res) => {
     if (!record?.check_in) return res.status(400).json({ error: 'You have not checked in today' });
     if (record.check_out)  return res.status(400).json({ error: 'Already checked out today' });
 
-    const workHours    = Math.max(0, (toMinutes(timeStr) - toMinutes(record.check_in)) / 60);
+    const grossHours = Math.max(0, (toMinutes(timeStr) - toMinutes(record.check_in)) / 60);
+    // Auto-close any open break at checkout time
+    let totalBreakMins = record.total_break_minutes || 0;
+    const breakUpdateFields = {};
+    if (record.break_start && !record.break_end) {
+      const autoBreakMins = Math.max(0, toMinutes(timeStr) - toMinutes(record.break_start));
+      totalBreakMins += autoBreakMins;
+      breakUpdateFields.break_end = timeStr;
+      breakUpdateFields.total_break_minutes = totalBreakMins;
+    }
+    const effectiveHours = Math.max(0, grossHours - totalBreakMins / 60);
     const is_early_exit = toMinutes(timeStr) < toMinutes(settings.early_exit_threshold);
-    const status       = workHours < settings.half_day_hours ? 'half_day' : 'present';
+    const status        = effectiveHours < settings.half_day_hours ? 'half_day' : 'present';
 
     const { data: updated } = await supabase.from('attendance')
-      .update({ check_out: timeStr, work_hours: Math.round(workHours * 100) / 100, status, is_early_exit })
+      .update({ check_out: timeStr, gross_hours: Math.round(grossHours * 100) / 100, work_hours: Math.round(effectiveHours * 100) / 100, status, is_early_exit, ...breakUpdateFields })
       .eq('id', record.id).select().single();
 
     // Attempt Clockify sync: stop the running timer for this employee
@@ -1423,6 +1433,42 @@ app.post('/api/attendance/checkout', auth, async (req, res) => {
     if (status === 'half_day') msgs.push('Half day recorded');
     if (clockify_synced)       msgs.push('Synced to Clockify');
     res.json({ record: updated, clockify_synced, message: msgs.length ? msgs.join(' · ') : 'Checked out successfully' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Break In — employee starts a break (non-Clockify standalone mode)
+app.post('/api/attendance/break-in', auth, async (req, res) => {
+  try {
+    const today   = localDateStr();
+    const timeStr = localTimeStr();
+    const { data: record } = await supabase.from('attendance')
+      .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
+    if (!record?.check_in)                           return res.status(400).json({ error: 'You have not checked in today' });
+    if (record.check_out)                            return res.status(400).json({ error: 'You have already checked out today' });
+    if (record.break_start && !record.break_end)     return res.status(400).json({ error: 'You are already on a break' });
+    const { data: updated } = await supabase.from('attendance')
+      .update({ break_start: timeStr, break_end: null, total_break_minutes: 0 })
+      .eq('id', record.id).select().single();
+    res.json({ record: updated, message: 'Break started' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Break Out — employee ends a break
+app.post('/api/attendance/break-out', auth, async (req, res) => {
+  try {
+    const today   = localDateStr();
+    const timeStr = localTimeStr();
+    const { data: record } = await supabase.from('attendance')
+      .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
+    if (!record?.check_in)                    return res.status(400).json({ error: 'You have not checked in today' });
+    if (!record.break_start || record.break_end) return res.status(400).json({ error: 'No active break found' });
+    const breakMins = Math.max(0, toMinutes(timeStr) - toMinutes(record.break_start));
+    const { data: updated } = await supabase.from('attendance')
+      .update({ break_end: timeStr, total_break_minutes: breakMins })
+      .eq('id', record.id).select().single();
+    const hrs = Math.floor(breakMins / 60), mins = breakMins % 60;
+    const dur = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+    res.json({ record: updated, message: `Break ended · ${dur} break taken` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1868,7 +1914,8 @@ app.put('/api/leaves/:id/reject', auth, adminOnly, async (req, res) => {
       }
     }
 
-    await supabase.from('leaves').update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date().toISOString(), google_event_id: null }).eq('id', req.params.id);
+    const { remarks } = req.body || {};
+    await supabase.from('leaves').update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date().toISOString(), google_event_id: null, ...(remarks ? { remarks } : {}) }).eq('id', req.params.id);
     // Remove from Google Calendar if it was synced
     if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
     const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();

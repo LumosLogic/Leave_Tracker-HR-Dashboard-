@@ -118,8 +118,20 @@ export default function LeavePolicies() {
               </div>
             </div>
 
-            <div className="border-t border-[#f0f3ff] pt-4">
-              <label className="flex items-center gap-2 cursor-pointer text-sm mb-3">
+            <div className="border-t border-[#f0f3ff] pt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" className="w-4 h-4 accent-[#3525cd]" checked={!!p.requires_approval}
+                    onChange={e => update(i, 'requires_approval', e.target.checked)} />
+                  <span className="font-semibold text-[#151c27]">Requires Approval</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" className="w-4 h-4 accent-[#3525cd]" checked={!!p.require_document}
+                    onChange={e => update(i, 'require_document', e.target.checked)} />
+                  <span className="font-semibold text-[#151c27]">Document Required</span>
+                </label>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer text-sm">
                 <input type="checkbox" className="w-4 h-4 accent-[#3525cd]" checked={!!p.carry_forward}
                   onChange={e => update(i, 'carry_forward', e.target.checked)} />
                 <span className="font-semibold text-[#151c27]">Allow Carry Forward</span>
@@ -131,6 +143,12 @@ export default function LeavePolicies() {
                     onChange={e => update(i, 'max_carry_forward', Number(e.target.value))} />
                 </div>
               )}
+              <div>
+                <label className="form-label">Description <span className="text-[#777587] font-normal">(optional)</span></label>
+                <input type="text" className="form-control" value={p.description || ''}
+                  onChange={e => update(i, 'description', e.target.value)}
+                  placeholder="e.g. Up to 8 days per year, cannot carry forward" />
+              </div>
             </div>
           </div>
         ))}

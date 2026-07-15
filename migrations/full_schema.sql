@@ -153,19 +153,23 @@ CREATE TABLE IF NOT EXISTS clockify_config (
 -- ─────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS attendance (
-  id              BIGSERIAL PRIMARY KEY,
-  user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  date            TEXT NOT NULL,
-  check_in        TEXT,
-  check_out       TEXT,
-  status          TEXT DEFAULT 'present',
-  is_late         BOOLEAN DEFAULT FALSE,
-  is_early_exit   BOOLEAN DEFAULT FALSE,
-  work_hours      NUMERIC DEFAULT 0,
-  clockify_hours  NUMERIC DEFAULT 0,
-  notes           TEXT,
-  organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  id                   BIGSERIAL PRIMARY KEY,
+  user_id              BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date                 TEXT NOT NULL,
+  check_in             TEXT,
+  check_out            TEXT,
+  break_start          TEXT,
+  break_end            TEXT,
+  total_break_minutes  INTEGER DEFAULT 0,
+  gross_hours          NUMERIC DEFAULT 0,
+  status               TEXT DEFAULT 'present',
+  is_late              BOOLEAN DEFAULT FALSE,
+  is_early_exit        BOOLEAN DEFAULT FALSE,
+  work_hours           NUMERIC DEFAULT 0,
+  clockify_hours       NUMERIC DEFAULT 0,
+  notes                TEXT,
+  organization_id      BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, date, organization_id)
 );
 
@@ -198,6 +202,7 @@ CREATE TABLE IF NOT EXISTS leaves (
   leave_time      TEXT DEFAULT 'full',
   half_type       TEXT,
   reason          TEXT,
+  remarks         TEXT,
   status          TEXT DEFAULT 'pending',
   approved_by     BIGINT REFERENCES users(id),
   approved_at     TIMESTAMPTZ,
@@ -207,16 +212,22 @@ CREATE TABLE IF NOT EXISTS leaves (
 );
 
 CREATE TABLE IF NOT EXISTS leave_policies (
-  id                BIGSERIAL PRIMARY KEY,
-  leave_type        TEXT NOT NULL,
-  label             TEXT NOT NULL,
-  annual_quota      INTEGER DEFAULT 12,
-  carry_forward     BOOLEAN DEFAULT FALSE,
-  max_carry_forward INTEGER DEFAULT 0,
-  paid              BOOLEAN DEFAULT TRUE,
-  active            BOOLEAN DEFAULT TRUE,
-  organization_id   BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  created_at        TIMESTAMPTZ DEFAULT NOW()
+  id                   BIGSERIAL PRIMARY KEY,
+  leave_type           TEXT NOT NULL,
+  label                TEXT NOT NULL,
+  annual_quota         INTEGER DEFAULT 12,
+  carry_forward        BOOLEAN DEFAULT FALSE,
+  max_carry_forward    INTEGER DEFAULT 0,
+  paid                 BOOLEAN DEFAULT TRUE,
+  half_day_allowed     BOOLEAN DEFAULT TRUE,
+  requires_approval    BOOLEAN DEFAULT TRUE,
+  require_document     BOOLEAN DEFAULT FALSE,
+  min_notice_days      INTEGER DEFAULT 0,
+  max_consecutive_days INTEGER DEFAULT 0,
+  description          TEXT DEFAULT '',
+  active               BOOLEAN DEFAULT TRUE,
+  organization_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  created_at           TIMESTAMPTZ DEFAULT NOW()
 );
 
 

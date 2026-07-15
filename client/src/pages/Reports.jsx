@@ -262,17 +262,18 @@ export default function Reports() {
   // ── KPI cards per tab ─────────────────────────────────────────────────────────
   const kpiCards = useMemo(() => {
     if (active === 'attendance') {
-      const present  = attRows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status)).length;
-      const absent   = attRows.filter(r => r.status === 'absent').length;
-      const onLeave  = attRows.filter(r => r.status === 'on_leave').length;
-      const avgHrs   = attRows.length > 0
-        ? (attRows.reduce((s, r) => s + (Number(r.work_hours) || 0), 0) / attRows.filter(r => r.work_hours > 0).length || 0).toFixed(1)
-        : 0;
+      const present       = attRows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status)).length;
+      const absent        = attRows.filter(r => r.status === 'absent').length;
+      const onLeave       = attRows.filter(r => r.status === 'on_leave').length;
+      const noCheckout    = attRows.filter(r => r.check_in && !r.check_out && !r.is_live).length;
+      const completedRows = attRows.filter(r => (r.work_hours > 0) || (r.estimated_hours > 0));
+      const totalEffHrs   = completedRows.reduce((s, r) => s + (r.work_hours > 0 ? Number(r.work_hours) : Number(r.estimated_hours) || 0), 0);
+      const avgHrs        = completedRows.length > 0 ? (totalEffHrs / completedRows.length).toFixed(1) : 0;
       return [
-        { label: 'Total Records',    value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,        accent: 'border-t-[#3525cd]' },
-        { label: 'Present / WFH',   value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,          accent: 'border-t-emerald-500', onClick: () => setAttStatusFilter(attStatusFilter === 'present' ? '' : 'present') },
-        { label: 'Absent',           value: absent,          icon: <X size={18} className="text-rose-500" />,                    accent: 'border-t-rose-500',    onClick: () => setAttStatusFilter(attStatusFilter === 'absent' ? '' : 'absent') },
-        { label: 'On Leave',         value: onLeave,         icon: <Umbrella size={18} className="text-amber-500" />,             accent: 'border-t-amber-400',   onClick: () => setAttStatusFilter(attStatusFilter === 'on_leave' ? '' : 'on_leave') },
+        { label: 'Total Records',  value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,   accent: 'border-t-[#3525cd]' },
+        { label: 'Present / WFH', value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,    accent: 'border-t-emerald-500', onClick: () => setAttStatusFilter(attStatusFilter === 'present' ? '' : 'present') },
+        { label: 'Absent',        value: absent,           icon: <X size={18} className="text-rose-500" />,              accent: 'border-t-rose-500',    onClick: () => setAttStatusFilter(attStatusFilter === 'absent' ? '' : 'absent') },
+        { label: 'Avg Working Hrs', value: `${avgHrs}h`,  icon: <TrendingUp size={18} className="text-amber-500" />,     accent: 'border-t-amber-400',   sub: noCheckout > 0 ? `${noCheckout} missing checkout` : undefined },
       ];
     }
     if (active === 'leaves') {
@@ -488,7 +489,7 @@ export default function Reports() {
       {active === 'attendance' && (
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[860px]">
               <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
                 <tr>
                   <SortTh col="name"       sort={sort} onSort={toggleSort}>Employee</SortTh>
@@ -497,43 +498,118 @@ export default function Reports() {
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">Status</th>
                   <SortTh col="check_in"   sort={sort} onSort={toggleSort}>Check In</SortTh>
                   <SortTh col="check_out"  sort={sort} onSort={toggleSort}>Check Out</SortTh>
-                  <SortTh col="work_hours" sort={sort} onSort={toggleSort}>Hours</SortTh>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">Break</th>
+                  <SortTh col="gross_hours" sort={sort} onSort={toggleSort}>Gross Hrs</SortTh>
+                  <SortTh col="work_hours" sort={sort} onSort={toggleSort}>Working Hrs</SortTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f0f3ff]">
                 {attLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 7 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-[#f0f3ff] rounded w-full" /></td>
                       ))}
                     </tr>
                   ))
                 ) : displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-14 text-center">
+                    <td colSpan={9} className="py-14 text-center">
                       <CalendarDays size={32} className="text-[#c7c4d8] mx-auto mb-2" />
                       <p className="text-sm font-semibold text-[#464555]">No attendance records found</p>
                       <p className="text-xs text-[#9ca3af] mt-1">{anyFilter ? 'Try adjusting your filters.' : `No data for ${periodLabel}.`}</p>
                     </td>
                   </tr>
-                ) : displayRows.map((r, i) => (
-                  <tr key={i} className="hover:bg-[#f9f9ff] transition-colors">
-                    <td className="px-4 py-3 font-semibold text-[#151c27] whitespace-nowrap">{r.name}</td>
-                    <td className="px-4 py-3 text-[#464555] text-xs">{r.department || '—'}</td>
-                    <td className="px-4 py-3 text-[#464555] text-xs whitespace-nowrap">{r.date}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn('text-[0.68rem] font-bold px-2 py-0.5 rounded-full border capitalize', ATT_STATUS_STYLE[r.status] || 'bg-slate-50 text-slate-500 border-slate-200')}>
-                        {r.status?.replace('_', ' ') || '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[#464555] text-xs font-mono">{r.check_in || '—'}</td>
-                    <td className="px-4 py-3 text-[#464555] text-xs font-mono">{r.check_out || '—'}</td>
-                    <td className="px-4 py-3 text-[#464555] text-xs">{r.work_hours > 0 ? `${r.work_hours}h` : '—'}</td>
-                  </tr>
-                ))}
+                ) : displayRows.map((r, i) => {
+                  const fmtHrs = (h) => {
+                    if (!h || h <= 0) return null;
+                    const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60);
+                    return hrs > 0 ? `${hrs}h ${min}m` : `${min}m`;
+                  };
+                  const fmtBreak = (mins) => {
+                    if (!mins) return null;
+                    const h = Math.floor(mins / 60), m = mins % 60;
+                    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                  };
+                  const fmtTime = (t) => {
+                    if (!t) return null;
+                    const [h, m] = t.split(':').map(Number);
+                    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+                  };
+                  return (
+                    <tr key={i} className={cn('hover:bg-[#f9f9ff] transition-colors', r.is_live && 'bg-emerald-50/30')}>
+                      <td className="px-4 py-3 font-semibold text-[#151c27] whitespace-nowrap">{r.name}</td>
+                      <td className="px-4 py-3 text-[#464555] text-xs">{r.department || '—'}</td>
+                      <td className="px-4 py-3 text-[#464555] text-xs whitespace-nowrap">{r.date}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('text-[0.68rem] font-bold px-2 py-0.5 rounded-full border capitalize', ATT_STATUS_STYLE[r.status] || 'bg-slate-50 text-slate-500 border-slate-200')}>
+                            {r.status?.replace('_', ' ') || '—'}
+                          </span>
+                          {r.is_on_break && (
+                            <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                              On Break
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Check In */}
+                      <td className="px-4 py-3 text-xs font-mono">
+                        {r.check_in ? (
+                          <span className="text-[#151c27] font-semibold">{fmtTime(r.check_in)}</span>
+                        ) : '—'}
+                      </td>
+                      {/* Check Out */}
+                      <td className="px-4 py-3 text-xs font-mono">
+                        {r.check_out ? (
+                          <span className="text-[#151c27] font-semibold">{fmtTime(r.check_out)}</span>
+                        ) : r.is_live ? (
+                          <span className="flex items-center gap-1 text-emerald-700 font-bold text-[0.68rem]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                            In Progress
+                          </span>
+                        ) : r.check_in ? (
+                          <span className="text-amber-600 text-[0.68rem] font-semibold" title="Employee did not check out">
+                            Not checked out
+                          </span>
+                        ) : '—'}
+                      </td>
+                      {/* Break */}
+                      <td className="px-4 py-3 text-xs text-amber-600 font-semibold">
+                        {fmtBreak(r.total_break_minutes) || '—'}
+                      </td>
+                      {/* Gross Hours */}
+                      <td className="px-4 py-3 text-xs text-[#464555]">
+                        {r.gross_hours > 0 ? fmtHrs(r.gross_hours) : r.is_live && r.estimated_hours > 0 ? (
+                          <span className="text-emerald-700 font-semibold">{fmtHrs(r.estimated_hours)} <span className="text-[0.6rem] text-emerald-500">live</span></span>
+                        ) : '—'}
+                      </td>
+                      {/* Working (Effective) Hours */}
+                      <td className="px-4 py-3 text-xs font-semibold">
+                        {r.work_hours > 0 ? (
+                          <span className="text-[#151c27]">{fmtHrs(r.work_hours)}</span>
+                        ) : r.is_live && r.estimated_hours > 0 ? (
+                          <span className="text-emerald-700 font-semibold">{fmtHrs(r.estimated_hours)} <span className="text-[0.6rem] font-normal text-emerald-500">est.</span></span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+          {/* Legend */}
+          <div className="px-4 py-2.5 border-t border-[#f0f3ff] bg-[#fafaff] flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5 text-[0.65rem] text-[#777587]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+              In Progress = checked in today, not yet checked out
+            </div>
+            <div className="flex items-center gap-1.5 text-[0.65rem] text-amber-600">
+              <span className="font-bold">Not checked out</span> = employee forgot to check out
+            </div>
+            <div className="text-[0.65rem] text-[#777587]">
+              Working Hrs = Gross − Break time
+            </div>
           </div>
           {hasMore && (
             <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between">

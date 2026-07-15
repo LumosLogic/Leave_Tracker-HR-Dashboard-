@@ -1,19 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut, Timer, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut, Timer, Clock, Coffee, Play } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 
 function fmtTime(t) {
-  if (!t) return '';
+  if (!t) return '—';
   const [h, m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 function fmtHours(h) {
-  if (!h) return '0h 0m';
+  if (!h && h !== 0) return '—';
+  if (h === 0) return '0m';
   const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60);
   return hrs > 0 ? `${hrs}h ${min}m` : `${min}m`;
+}
+function fmtBreak(mins) {
+  if (!mins) return '—';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 function AttendanceCheckinCard({ onRefreshed }) {
@@ -22,6 +28,7 @@ function AttendanceCheckinCard({ onRefreshed }) {
   const [record, setRecord] = useState(null);
   const [elapsed, setElapsed] = useState('');
   const [busy, setBusy] = useState(false);
+  const [breakBusy, setBreakBusy] = useState(false);
 
   const { data: mode } = useQuery({
     queryKey: ['checkin-mode'],
@@ -30,7 +37,6 @@ function AttendanceCheckinCard({ onRefreshed }) {
   });
   const clockifySyncs = mode?.syncs_clockify ?? false;
 
-  // Fetch live Clockify total for today
   const nowDate = new Date();
   const todayISO = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')}`;
   const { data: clockifyData, refetch: refetchClockify } = useQuery({
@@ -46,14 +52,24 @@ function AttendanceCheckinCard({ onRefreshed }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Elapsed timer (pauses during break)
   useEffect(() => {
+    const isOnBreak = record?.break_start && !record?.break_end;
     if (!record?.check_in || record?.check_out) { setElapsed(''); return; }
     const tick = () => {
-      const [h, m] = record.check_in.split(':').map(Number);
-      const start = new Date(); start.setHours(h, m, 0, 0);
-      const total = Math.floor((Date.now() - start.getTime()) / 60000);
-      const hrs = Math.floor(total / 60); const min = total % 60;
-      setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
+      if (isOnBreak) {
+        const [bh, bm] = record.break_start.split(':').map(Number);
+        const breakStart = new Date(); breakStart.setHours(bh, bm, 0, 0);
+        const total = Math.floor((Date.now() - breakStart.getTime()) / 60000);
+        const hrs = Math.floor(total / 60); const min = total % 60;
+        setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
+      } else {
+        const [h, m] = record.check_in.split(':').map(Number);
+        const start = new Date(); start.setHours(h, m, 0, 0);
+        const totalMins = Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000) - (record.total_break_minutes || 0));
+        const hrs = Math.floor(totalMins / 60); const min = totalMins % 60;
+        setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
+      }
     };
     tick();
     const id = setInterval(tick, 30000);
@@ -86,12 +102,34 @@ function AttendanceCheckinCard({ onRefreshed }) {
     } catch (err) { toast(err.message, 'error'); }
     finally { setBusy(false); }
   }
+  async function breakIn() {
+    setBreakBusy(true);
+    try {
+      const { record: r, message } = await apiPost('/attendance/break-in', {});
+      setRecord(r);
+      toast(message || 'Break started', 'info');
+      qc.invalidateQueries(['my-attendance']);
+      onRefreshed?.();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setBreakBusy(false); }
+  }
+  async function breakOut() {
+    setBreakBusy(true);
+    try {
+      const { record: r, message } = await apiPost('/attendance/break-out', {});
+      setRecord(r);
+      toast(message || 'Break ended', 'success');
+      qc.invalidateQueries(['my-attendance']);
+      onRefreshed?.();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setBreakBusy(false); }
+  }
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // For Clockify mode: paused = check_out is set, running = check_in set and no check_out
-  const isClockifyPaused = clockifySyncs && record?.check_in && record?.check_out;
+  const isOnBreak       = !!(record?.break_start && !record?.break_end && !record?.check_out);
+  const isClockifyPaused  = clockifySyncs && record?.check_in && record?.check_out;
   const isClockifyRunning = clockifySyncs && record?.check_in && !record?.check_out;
 
   return (
@@ -128,6 +166,10 @@ function AttendanceCheckinCard({ onRefreshed }) {
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
               <LogIn size={18} className="text-slate-400" />
             </div>
+          ) : isOnBreak ? (
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+              <Coffee size={18} className="text-amber-500" />
+            </div>
           ) : isClockifyRunning ? (
             <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 relative">
               <CheckCircle2 size={18} className="text-emerald-500" />
@@ -152,6 +194,13 @@ function AttendanceCheckinCard({ onRefreshed }) {
                 <p className="text-sm font-bold text-[#151c27]">Not Checked In</p>
                 <p className="text-xs text-[#777587]">
                   {clockifySyncs ? 'Click Check In to start your Clockify timer' : 'Mark yourself present for today'}
+                </p>
+              </>
+            ) : isOnBreak ? (
+              <>
+                <p className="text-sm font-bold text-amber-600">On Break</p>
+                <p className="text-xs text-[#777587]">
+                  Break started at {fmtTime(record.break_start)}{elapsed ? ` · ${elapsed} elapsed` : ''}
                 </p>
               </>
             ) : isClockifyRunning ? (
@@ -179,50 +228,99 @@ function AttendanceCheckinCard({ onRefreshed }) {
               <>
                 <p className="text-sm font-bold text-[#151c27]">Work Complete</p>
                 <p className="text-xs text-[#777587]">
-                  {fmtTime(record.check_in)} – {fmtTime(record.check_out)} · {fmtHours(record.work_hours)} worked
+                  {fmtTime(record.check_in)} – {fmtTime(record.check_out)}
+                  {record.gross_hours ? ` · Gross: ${fmtHours(record.gross_hours)}` : ''}
+                  {record.work_hours  ? ` · Effective: ${fmtHours(record.work_hours)}` : ''}
                   {record.status === 'half_day' && ' · Half Day'}
                 </p>
+                {record.total_break_minutes > 0 && (
+                  <p className="text-xs text-amber-600">Break taken: {fmtBreak(record.total_break_minutes)}</p>
+                )}
               </>
             ) : (
               <>
                 <p className="text-sm font-bold text-emerald-600">Checked In</p>
                 <p className="text-xs text-[#777587]">
-                  Since {fmtTime(record.check_in)}{elapsed ? ` · ${elapsed} elapsed` : ''}
+                  Since {fmtTime(record.check_in)}{elapsed ? ` · ${elapsed} working` : ''}
+                  {record.total_break_minutes > 0 ? ` (${fmtBreak(record.total_break_minutes)} break)` : ''}
                 </p>
               </>
             )}
           </div>
         </div>
 
-        {/* Action button */}
-        <div className="shrink-0 flex gap-2">
-          {!record?.check_in ? (
-            <button onClick={checkIn} disabled={busy}
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogIn size={15} /> {busy ? 'Checking in…' : 'Check In'}
-            </button>
-          ) : isClockifyRunning ? (
-            <button onClick={checkOut} disabled={busy}
-              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogOut size={15} /> {busy ? 'Pausing…' : 'Go on Break'}
-            </button>
-          ) : isClockifyPaused ? (
-            <button onClick={checkIn} disabled={busy}
-              className="flex items-center gap-2 bg-[#3525cd] hover:bg-[#4f46e5] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogIn size={15} /> {busy ? 'Resuming…' : 'Resume Timer'}
-            </button>
-          ) : !record?.check_out ? (
-            <button onClick={checkOut} disabled={busy}
-              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogOut size={15} /> {busy ? 'Checking out…' : 'Check Out'}
-            </button>
+        {/* Action buttons */}
+        <div className="shrink-0 flex gap-2 flex-wrap">
+          {/* Clockify flow */}
+          {clockifySyncs ? (
+            !record?.check_in ? (
+              <button onClick={checkIn} disabled={busy}
+                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                <LogIn size={15} /> {busy ? 'Checking in…' : 'Check In'}
+              </button>
+            ) : isClockifyRunning ? (
+              <button onClick={checkOut} disabled={busy}
+                className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                <LogOut size={15} /> {busy ? 'Pausing…' : 'Go on Break'}
+              </button>
+            ) : isClockifyPaused ? (
+              <button onClick={checkIn} disabled={busy}
+                className="flex items-center gap-2 bg-[#3525cd] hover:bg-[#4f46e5] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                <Play size={15} /> {busy ? 'Resuming…' : 'Resume Timer'}
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-[#777587] bg-[#f0f3ff] px-4 py-2.5 rounded-xl border border-[#c7c4d8]">
+                <CheckCircle2 size={13} className="text-[#3525cd]" /> Day Complete
+              </div>
+            )
           ) : (
-            <div className="flex items-center gap-1.5 text-xs text-[#777587] bg-[#f0f3ff] px-4 py-2.5 rounded-xl border border-[#c7c4d8]">
-              <CheckCircle2 size={13} className="text-[#3525cd]" /> Day Complete
-            </div>
+            /* Standalone mode with break support */
+            !record?.check_in ? (
+              <button onClick={checkIn} disabled={busy}
+                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                <LogIn size={15} /> {busy ? 'Checking in…' : 'Check In'}
+              </button>
+            ) : isOnBreak ? (
+              <button onClick={breakOut} disabled={breakBusy}
+                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                <Play size={15} /> {breakBusy ? 'Ending…' : 'End Break'}
+              </button>
+            ) : record?.check_out ? (
+              <div className="flex items-center gap-1.5 text-xs text-[#777587] bg-[#f0f3ff] px-4 py-2.5 rounded-xl border border-[#c7c4d8]">
+                <CheckCircle2 size={13} className="text-[#3525cd]" /> Day Complete
+              </div>
+            ) : (
+              <>
+                <button onClick={breakIn} disabled={breakBusy || busy}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+                  <Coffee size={15} /> {breakBusy ? '…' : 'Break'}
+                </button>
+                <button onClick={checkOut} disabled={busy}
+                  className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all shadow-sm">
+                  <LogOut size={15} /> {busy ? 'Checking out…' : 'Check Out'}
+                </button>
+              </>
+            )
           )}
         </div>
       </div>
+
+      {/* Today's summary strip (only when checked out) */}
+      {record?.check_out && (
+        <div className="px-5 py-3 bg-[#fafaff] border-t border-[#f0f3ff] grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Check-In',       value: fmtTime(record.check_in)     },
+            { label: 'Check-Out',      value: fmtTime(record.check_out)    },
+            { label: 'Gross Hours',    value: record.gross_hours ? fmtHours(record.gross_hours) : '—' },
+            { label: 'Working Hours',  value: record.work_hours  ? fmtHours(record.work_hours)  : '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="text-center">
+              <p className="text-xs font-black text-[#151c27]">{value}</p>
+              <p className="text-[0.6rem] text-[#777587] mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -237,11 +335,8 @@ const STATUS_CONFIG = {
   absent:   { label:'Absent',   bg:'bg-rose-50',     text:'text-rose-700',     border:'border-rose-200',    dot:'bg-rose-500',    cellBg:'bg-rose-50',     showTag: false },
 };
 
-// Build YYYY-MM-DD date string from a Date object without timezone shifts
 function toDSString(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -250,101 +345,73 @@ export default function MyAttendance() {
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, refetch } = useQuery({
     queryKey: ['my-attendance', year, month],
     queryFn:  () => apiGet(`/attendance?year=${year}&month=${month}`),
   });
 
-  // Fetch approved leaves for this month to overlay missing/wrong attendance records
   const { data: allLeaves = [] } = useQuery({
     queryKey: ['my-leaves-att', year, month],
     queryFn:  () => apiGet(`/leaves?year=${year}&month=${month}`),
   });
 
   const { data: schedule } = useQuery({
-    queryKey: ['work-schedule'],
-    queryFn:  () => apiGet('/settings/schedule'),
-    staleTime: 300000,
+    queryKey: ['work-schedule'], queryFn: () => apiGet('/settings/schedule'), staleTime: 300000,
   });
   const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
 
-  // Fetch real-time Clockify hours directly for this employee
-  // This gives the accurate SUM of all sessions (start→stop→start→stop) with breaks excluded
   const { data: clockifyData } = useQuery({
     queryKey: ['my-clockify-hours', year, month],
     queryFn:  () => apiGet('/my-clockify-hours', { year, month }),
-    staleTime: 5 * 60 * 1000, // 5 min cache
+    staleTime: 5 * 60 * 1000,
   });
-  const clockifyHoursMap = clockifyData?.hours || {}; // { 'YYYY-MM-DD': X.XX }
+  const clockifyHoursMap = clockifyData?.hours || {};
 
-  function prevMonth() {
-    if (month === 1) { setMonth(12); setYear(y => y - 1); }
-    else setMonth(m => m - 1);
-  }
-  function nextMonth() {
-    if (month === 12) { setMonth(1); setYear(y => y + 1); }
-    else setMonth(m => m + 1);
-  }
+  function prevMonth() { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); }
+  function nextMonth() { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); }
 
-  // Build attendance map from actual records
   const attMap = {};
   records.forEach(r => { attMap[r.date] = r; });
 
-  // Overlay approved leaves: if a day has no attendance record or shows 'absent',
-  // synthesise the leave status so calendar and counts are accurate
   const approvedLeaves = allLeaves.filter(l => l.status === 'approved');
   const recMap = { ...attMap };
-
   approvedLeaves.forEach(l => {
     const start = new Date(l.start_date + 'T12:00:00');
     const end   = new Date(l.end_date   + 'T12:00:00');
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dow = d.getDay();
-      if (!activeWorkDays.includes(dow)) continue; // Skip non-working days based on company schedule settings
+      if (!activeWorkDays.includes(dow)) continue;
       const ds = toDSString(d);
-      // Only overlay if within the displayed month
       const [dy, dm] = ds.split('-').map(Number);
       if (dy !== year || dm !== month) continue;
       const existing = recMap[ds];
       const leaveStatus = (l.leave_time === 'wfh' || l.leave_type === 'wfh') ? 'wfh'
-                        : l.leave_time === 'half' ? 'half_day'
-                        : 'on_leave';
-      // Only apply leave status if the employee didn't actually clock in that day.
-      // A real check-in means they worked — don't hide that behind the leave badge.
+                        : l.leave_time === 'half' ? 'half_day' : 'on_leave';
       if (!existing || !existing.check_in) {
         recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: !existing };
       }
     }
   });
 
-  // Calendar grid
   const firstDay   = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayStr   = toDSString(new Date());
 
-  // Summary counts from merged map (excluding non-working days)
   const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
   Object.values(recMap).forEach(r => {
     const d = new Date(r.date + 'T12:00:00');
-    const dow = d.getDay();
-    if (activeWorkDays.includes(dow) && summary[r.status] !== undefined) {
-      summary[r.status]++;
-    }
+    if (activeWorkDays.includes(d.getDay()) && summary[r.status] !== undefined) summary[r.status]++;
   });
 
-
-
-  // Merged records array for the table (original only, no synthetics)
   const tableRecords = records.map(r => {
-    // If this record was 'absent' but an approved leave exists → use merged status
     const merged = recMap[r.date];
     return merged ? { ...r, status: merged.status } : r;
-  });
+  }).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div>
       {/* Check-in / Check-out */}
-      <AttendanceCheckinCard />
+      <AttendanceCheckinCard onRefreshed={refetch} />
 
       {/* Month nav */}
       <div className="flex justify-end mb-6">
@@ -389,35 +456,23 @@ export default function MyAttendance() {
             const ds  = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
             const rec = recMap[ds];
             const cfg = rec ? (STATUS_CONFIG[rec.status] || STATUS_CONFIG.present) : null;
-            const isToday  = ds === todayStr;
-            const dow      = new Date(ds + 'T12:00:00').getDay();
+            const isToday   = ds === todayStr;
+            const dow       = new Date(ds + 'T12:00:00').getDay();
             const isWeekend = dow === 0 || dow === 6;
-
             return (
               <div key={day}
                 className={`border-b border-r h-14 p-1.5 relative flex flex-col justify-between transition-colors
                   ${cfg ? cfg.cellBg : (isWeekend ? 'bg-slate-50' : 'bg-white')}
-                  ${isToday ? 'ring-2 ring-inset ring-[#3525cd]' : `border-[#f0f3ff]`}
-                `}
+                  ${isToday ? 'ring-2 ring-inset ring-[#3525cd]' : `border-[#f0f3ff]`}`}
               >
                 <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full flex-shrink-0
-                  ${isToday
-                    ? 'bg-[#3525cd] text-white'
-                    : isWeekend
-                      ? 'text-slate-400'
-                      : cfg
-                        ? `${cfg.text} font-black`
-                        : 'text-[#464555]'
-                  }
-                `}>{day}</span>
+                  ${isToday ? 'bg-[#3525cd] text-white' : isWeekend ? 'text-slate-400' : cfg ? `${cfg.text} font-black` : 'text-[#464555]'}`}>
+                  {day}
+                </span>
                 {rec && cfg && (
-                  cfg.showTag ? (
-                    <span className={`text-[0.55rem] font-black px-1 py-0.5 rounded leading-none ${cfg.bg} ${cfg.text} self-start`}>
-                      {cfg.tag}
-                    </span>
-                  ) : (
-                    <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} flex-shrink-0`} title={cfg.label} />
-                  )
+                  cfg.showTag
+                    ? <span className={`text-[0.55rem] font-black px-1 py-0.5 rounded leading-none ${cfg.bg} ${cfg.text} self-start`}>{cfg.tag}</span>
+                    : <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} flex-shrink-0`} title={cfg.label} />
                 )}
               </div>
             );
@@ -434,7 +489,7 @@ export default function MyAttendance() {
         ))}
       </div>
 
-      {/* Table — show merged records */}
+      {/* Table — enhanced with break/gross/effective columns */}
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="spinner w-6 h-6" /></div>
       ) : tableRecords.length === 0 && Object.keys(recMap).length === 0 ? (
@@ -444,44 +499,38 @@ export default function MyAttendance() {
       ) : (
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[640px]">
               <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
                 <tr>
-                  {['Date', 'Status', 'Total Working Hours'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">{h}</th>
+                  {['Date', 'Status', 'Check-In', 'Check-Out', 'Break', 'Gross Hours', 'Working Hours'].map(h => (
+                    <th key={h} className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f0f3ff]">
                 {tableRecords.map(r => {
                   const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
-                  // Priority: live Clockify fetch > synced clockify_hours > work_hours (span, includes break)
-                  const liveHours   = clockifyHoursMap[r.date];
-                  const totalHours  = liveHours > 0
-                    ? liveHours                                          // real-time from Clockify API ✅
-                    : r.clockify_hours > 0
-                      ? r.clockify_hours                                 // synced by admin ✅
-                      : r.work_hours || null;                            // manual check-in span fallback
-                  const isLive = liveHours > 0;
+                  const liveHours  = clockifyHoursMap[r.date];
+                  const grossH     = r.gross_hours > 0 ? r.gross_hours : (liveHours > 0 ? liveHours : r.work_hours || null);
+                  const effectiveH = r.work_hours > 0 ? r.work_hours : (liveHours > 0 ? liveHours : null);
+                  const isLive     = liveHours > 0;
                   return (
                     <tr key={r.id} className="hover:bg-[#f0f3ff] transition-colors">
-                      <td className="px-4 py-3 font-medium text-[#151c27]">{r.date}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 font-medium text-[#151c27] text-xs">{r.date}</td>
+                      <td className="px-3 py-3">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
                           {cfg.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        {totalHours ? (
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-semibold text-[#151c27]">{totalHours}h</span>
-                            {isLive && (
-                              <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Clockify
-                              </span>
-                            )}
-                          </span>
-                        ) : '—'}
+                      <td className="px-3 py-3 text-xs text-[#464555]">{r.check_in ? fmtTime(r.check_in) : '—'}</td>
+                      <td className="px-3 py-3 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
+                      <td className="px-3 py-3 text-xs text-amber-600">{r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '—'}</td>
+                      <td className="px-3 py-3 text-xs text-[#151c27]">
+                        {grossH ? fmtHours(grossH) : '—'}
+                        {isLive && <span className="ml-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Live</span>}
+                      </td>
+                      <td className="px-3 py-3 text-xs font-semibold text-[#151c27]">
+                        {effectiveH ? fmtHours(effectiveH) : '—'}
                       </td>
                     </tr>
                   );

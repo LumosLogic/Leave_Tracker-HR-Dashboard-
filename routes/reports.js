@@ -11,6 +11,16 @@ function toCSV(rows, cols) {
   return [header, ...lines].join('\n');
 }
 
+// Helper: convert "HH:MM" to minutes
+function toMins(t) { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+// Current IST time as "HH:MM"
+function nowIST() {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  return `${parts.find(p => p.type === 'hour').value.padStart(2,'0')}:${parts.find(p => p.type === 'minute').value.padStart(2,'0')}`;
+}
+// Current IST date as "YYYY-MM-DD"
+function todayIST() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); }
+
 // GET /api/reports/attendance?year=&month=&userId=&format=csv
 router.get('/attendance', async (req, res) => {
   try {
@@ -30,26 +40,59 @@ router.get('/attendance', async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
 
+    const today   = todayIST();
+    const timeNow = nowIST();
+
     const rows = (data || []).map(r => {
-      const check_in  = r.check_in  || '';
-      const check_out = r.check_out || '';
-      let work_hours  = r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0);
-      // Compute work_hours from check_in/check_out when both exist but hours are missing
-      if (work_hours === 0 && check_in && check_out) {
-        const [h1, m1] = check_in.split(':').map(Number);
-        const [h2, m2] = check_out.split(':').map(Number);
-        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins > 0) work_hours = Math.round((mins / 60) * 100) / 100;
+      const check_in            = r.check_in  || '';
+      const check_out           = r.check_out || '';
+      const total_break_minutes = r.total_break_minutes || 0;
+      const is_today            = r.date === today;
+      const is_live             = is_today && !!check_in && !check_out; // checked in, not yet checked out
+
+      // Gross hours: check_out - check_in (full span)
+      let gross_hours = r.gross_hours > 0 ? r.gross_hours : 0;
+      if (gross_hours === 0 && check_in && check_out) {
+        const mins = toMins(check_out) - toMins(check_in);
+        if (mins > 0) gross_hours = Math.round((mins / 60) * 100) / 100;
       }
+
+      // Effective (working) hours: gross - break
+      let work_hours = r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0);
+      if (work_hours === 0 && check_in && check_out) {
+        const grossMins = toMins(check_out) - toMins(check_in);
+        const effMins   = Math.max(0, grossMins - total_break_minutes);
+        if (effMins > 0) work_hours = Math.round((effMins / 60) * 100) / 100;
+      }
+
+      // For live employees (checked in today, no checkout): compute estimated hours so far
+      let estimated_hours = 0;
+      if (is_live && check_in) {
+        const elapsedMins = toMins(timeNow) - toMins(check_in);
+        // Subtract active break time if employee is currently on break
+        const breakMins = (r.break_start && !r.break_end)
+          ? Math.max(0, toMins(timeNow) - toMins(r.break_start))
+          : total_break_minutes;
+        const effMins = Math.max(0, elapsedMins - breakMins);
+        if (effMins > 0) estimated_hours = Math.round((effMins / 60) * 100) / 100;
+      }
+
       return {
-        name:       r.users?.name || '',
-        department: r.users?.department || '',
-        position:   r.users?.position || '',
-        date:       r.date,
-        status:     r.status,
+        name:                 r.users?.name || '',
+        department:           r.users?.department || '',
+        position:             r.users?.position || '',
+        date:                 r.date,
+        status:               r.status,
         check_in,
         check_out,
-        work_hours,
+        break_start:          r.break_start  || '',
+        break_end:            r.break_end    || '',
+        total_break_minutes,
+        gross_hours:          gross_hours    || 0,
+        work_hours:           work_hours     || 0,
+        estimated_hours,
+        is_live,
+        is_on_break:          !!(r.break_start && !r.break_end && !check_out),
       };
     });
 
@@ -61,7 +104,9 @@ router.get('/attendance', async (req, res) => {
         { key: 'status', label: 'Status' },
         { key: 'check_in', label: 'Check In' },
         { key: 'check_out', label: 'Check Out' },
-        { key: 'work_hours', label: 'Work Hours' },
+        { key: 'total_break_minutes', label: 'Break (min)' },
+        { key: 'gross_hours', label: 'Gross Hours' },
+        { key: 'work_hours', label: 'Working Hours' },
       ]);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="attendance_report_${year||'all'}_${month||'all'}.csv"`);
