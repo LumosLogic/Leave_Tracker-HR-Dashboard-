@@ -1253,7 +1253,73 @@ app.get('/api/attendance/today', auth, async (req, res) => {
     const { data: existing } = await supabase.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
-    if (existing) return res.json(existing);
+    if (existing) {
+      // For Clockify users, enrich the DB record with real-time session data from Clockify
+      // so the UI shows accurate gross/break/effective hours without waiting for the 10-min sync
+      try {
+        const config = await getClockifyConfig(orgId(req));
+        if (config?.api_key && config?.workspace_id) {
+          const { data: uRow } = await supabase.from('users')
+            .select('clockify_user_id').eq('id', req.user.id).maybeSingle();
+          if (uRow?.clockify_user_id) {
+            const startISO = today + 'T00:00:00+05:30';
+            const endISO   = today + 'T23:59:59+05:30';
+            const resp = await axios.get(
+              `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
+              { headers: { 'X-Api-Key': config.api_key }, params: { start: startISO, end: endISO, 'page-size': 50 } }
+            );
+            const entries = resp.data || [];
+            let totalSec = 0, firstStart = null, lastEnd = null, hasRunning = false;
+            let runningEntryStartISO = null; // ISO start of the currently-running entry
+            for (const e of entries) {
+              // Add duration of COMPLETED entries
+              const m = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+              if (m) totalSec += (parseInt(m[1]||0)*3600) + (parseInt(m[2]||0)*60) + parseInt(m[3]||0);
+              if (e.timeInterval?.start) {
+                const d = new Date(e.timeInterval.start);
+                const s = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                if (!firstStart || s < firstStart) firstStart = s;
+              }
+              if (e.timeInterval?.end) {
+                const d = new Date(e.timeInterval.end);
+                const s = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                if (!lastEnd || s > lastEnd) lastEnd = s;
+              } else {
+                hasRunning = true;
+                // Capture the ISO start of the running entry to compute its elapsed time
+                if (e.timeInterval?.start) runningEntryStartISO = e.timeInterval.start;
+              }
+            }
+
+            // CRITICAL FIX: Add the currently-running session's elapsed time to effective seconds.
+            // Without this, the running session time gets counted as "break" (gross - completed_only = inflated).
+            if (hasRunning && runningEntryStartISO) {
+              const runningElapsedMs = Date.now() - new Date(runningEntryStartISO).getTime();
+              if (runningElapsedMs > 0) totalSec += Math.floor(runningElapsedMs / 1000);
+            }
+
+            const eff = Math.round((totalSec / 3600) * 100) / 100;
+            // gross = full span from first check-in to now (includes all gaps)
+            // breaks = gross - eff = only actual idle gaps between sessions (correct now)
+            const now = localTimeStr();
+            const refEnd = (!hasRunning && lastEnd) ? lastEnd : now;
+            const gross  = firstStart ? Math.max(0, Math.round((toMinutes(refEnd) - toMinutes(firstStart)) / 60 * 100) / 100) : 0;
+            const breaks = Math.max(0, Math.round((gross - eff) * 60));
+            // Return enriched record without writing to DB (sync will persist every 10 min)
+            return res.json({
+              ...existing,
+              check_in:            firstStart || existing.check_in,
+              check_out:           (!hasRunning && lastEnd) ? lastEnd : null,
+              clockify_hours:      eff,
+              work_hours:          eff,
+              gross_hours:         gross,
+              total_break_minutes: breaks,
+            });
+          }
+        }
+      } catch { /* Clockify live enrich failed — return plain DB record */ }
+      return res.json(existing);
+    }
 
     // No record yet — check if employee has an active Clockify timer and auto-create
     try {
@@ -2122,43 +2188,88 @@ async function syncClockifyForDate(targetDate, config, settings) {
     );
     const entries = entriesResp?.data || entriesResp || [];
 
-    let totalSeconds = 0;
-    let firstStart   = null;
-    let lastEnd      = null;
+    let totalSeconds        = 0;
+    let firstStart          = null;
+    let lastEnd             = null;
+    let hasRunningTimer     = false; // true if any entry has no end (timer currently active)
+    let runningEntryStartISO = null; // ISO start of the currently-running entry
 
     for (const e of entries) {
+      // Sum effective seconds from COMPLETED entries (those with a duration field)
       const match = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
       if (match) totalSeconds += (parseInt(match[1]||0)*3600) + (parseInt(match[2]||0)*60) + parseInt(match[3]||0);
+
+      // Track earliest start across all entries → check-in time
       if (e.timeInterval?.start) {
         const d   = new Date(e.timeInterval.start);
         const str = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         if (!firstStart || str < firstStart) firstStart = str;
       }
+      // Track latest end from completed entries only → check-out time
       if (e.timeInterval?.end) {
         const d   = new Date(e.timeInterval.end);
         const str = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         if (!lastEnd || str > lastEnd) lastEnd = str;
+      } else {
+        hasRunningTimer = true;
+        if (e.timeInterval?.start) runningEntryStartISO = e.timeInterval.start;
       }
     }
+
+    // CRITICAL FIX: Add the elapsed time of the currently-running session to totalSeconds.
+    // Without this, break_time = gross - completed_only = includes running session = hugely inflated.
+    // With this fix: eff = completed + running, breaks = gross - eff = only real idle gaps.
+    if (hasRunningTimer && runningEntryStartISO) {
+      const runningElapsedMs = Date.now() - new Date(runningEntryStartISO).getTime();
+      if (runningElapsedMs > 0) totalSeconds += Math.floor(runningElapsedMs / 1000);
+    }
+
+    // clockify_hours = total effective working time (completed sessions + current running session)
     const clockify_hours = Math.round((totalSeconds / 3600) * 100) / 100;
+
+    // gross_hours = full day span from first start to last end/now (includes break gaps)
+    // total_break_minutes = gross - effective = only actual idle time between sessions
+    let gross_hours         = 0;
+    let total_break_minutes = 0;
+    if (firstStart && lastEnd && !hasRunningTimer) {
+      gross_hours         = Math.max(0, Math.round((toMinutes(lastEnd) - toMinutes(firstStart)) / 60 * 100) / 100);
+      total_break_minutes = Math.max(0, Math.round((gross_hours - clockify_hours) * 60));
+    } else if (firstStart && hasRunningTimer) {
+      const nowStr        = localTimeStr();
+      gross_hours         = Math.max(0, Math.round((toMinutes(nowStr) - toMinutes(firstStart)) / 60 * 100) / 100);
+      total_break_minutes = Math.max(0, Math.round((gross_hours - clockify_hours) * 60));
+    }
 
     const { data: existing } = await supabase.from('attendance')
       .select('id, check_in, check_out').eq('user_id', localUser.id).eq('date', targetDate).maybeSingle();
 
     if (existing) {
-      const upd = { clockify_hours };
-      if (!existing.check_in  && firstStart) { upd.check_in  = firstStart; upd.status = 'present'; }
-      if (!existing.check_out && lastEnd)    upd.check_out = lastEnd;
+      const upd = {
+        clockify_hours,
+        work_hours: Math.round(clockify_hours * 100) / 100, // effective = sum of Clockify sessions
+        gross_hours,
+        total_break_minutes,
+      };
+      // Always update check_in from Clockify (first timer start = true check-in time)
+      if (firstStart) { upd.check_in = firstStart; upd.status = 'present'; }
+      // check_out = last timer stop, but ONLY when no timer is running right now
+      // If timer is running (employee back from break / mid-session) → clear any stale check_out
+      if (!hasRunningTimer && lastEnd) upd.check_out = lastEnd;
+      if (hasRunningTimer)             upd.check_out = null;
       await supabase.from('attendance').update(upd).eq('id', existing.id);
     } else if (clockify_hours > 0 || firstStart) {
       const is_late = firstStart ? toMinutes(firstStart) > toMinutes(settings.late_threshold) : false;
-      const work_hours = firstStart && lastEnd
-        ? Math.max(0, Math.round((toMinutes(lastEnd) - toMinutes(firstStart)) / 60 * 100) / 100)
-        : clockify_hours;
       await supabase.from('attendance').insert({
-        user_id: localUser.id, date: targetDate, status: 'present',
-        check_in: firstStart, check_out: lastEnd || null,
-        is_late, work_hours, clockify_hours,
+        user_id:             localUser.id,
+        date:                targetDate,
+        status:              'present',
+        check_in:            firstStart,
+        check_out:           (!hasRunningTimer && lastEnd) ? lastEnd : null,
+        is_late,
+        work_hours:          clockify_hours,   // effective (NOT gross span)
+        gross_hours,
+        total_break_minutes,
+        clockify_hours,
       });
     }
     results.push({ user: localUser.name, clockify_hours });

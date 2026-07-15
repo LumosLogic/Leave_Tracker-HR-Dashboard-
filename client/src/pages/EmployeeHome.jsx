@@ -108,6 +108,13 @@ export default function EmployeeHome() {
   }, []);
   useEffect(() => { loadToday(); }, [loadToday]);
 
+  // For Clockify users: poll every 60s so dashboard reflects timer changes made directly in Clockify
+  useEffect(() => {
+    if (!clockifySyncs) return;
+    const id = setInterval(loadToday, 60 * 1000);
+    return () => clearInterval(id);
+  }, [clockifySyncs, loadToday]);
+
   // Elapsed timer — pauses when on break
   useEffect(() => {
     const isOnBreak = attRecord?.break_start && !attRecord?.break_end;
@@ -661,7 +668,14 @@ export default function EmployeeHome() {
                       <td className="px-4 py-2.5 text-xs text-[#464555]">{r.check_in ? fmtTime(r.check_in) : '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-amber-600">{r.total_break_minutes ? fmtBreakTime(r.total_break_minutes) : '—'}</td>
-                      <td className="px-4 py-2.5 text-xs font-semibold text-[#151c27]">{r.work_hours ? fmtHours(r.work_hours) : '—'}</td>
+                      <td className="px-4 py-2.5 text-xs font-semibold text-[#151c27]">
+                        {(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours) > 0
+                          ? <span className="flex items-center gap-1">
+                              {fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}
+                              {r.clockify_hours > 0 && <span className="text-[0.55rem] text-[#3525cd] font-bold">⏱</span>}
+                            </span>
+                          : '—'}
+                      </td>
                     </tr>
                   );
                 })}

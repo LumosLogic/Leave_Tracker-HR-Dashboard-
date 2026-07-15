@@ -195,7 +195,10 @@ function CheckinWidget({ onRefresh }) {
             <div>
               <p className="text-sm font-bold text-[#151c27]">Work Done</p>
               <p className="text-xs text-[#777587]">
-                {fmtTime(record.check_in)} – {fmtTime(record.check_out)} · {fmtHours(record.work_hours)}
+                {fmtTime(record.check_in)} – {fmtTime(record.check_out)}
+                {' · '}{fmtHours(record.clockify_hours > 0 ? record.clockify_hours : record.work_hours)}
+                {record.clockify_hours > 0 && <span className="text-[#3525cd] font-semibold ml-1">Clockify</span>}
+                {record.total_break_minutes > 0 && <span className="text-amber-600 ml-1">({record.total_break_minutes >= 60 ? `${Math.floor(record.total_break_minutes/60)}h ` : ''}{record.total_break_minutes % 60}m break)</span>}
               </p>
             </div>
           </div>
@@ -245,16 +248,34 @@ function EmployeeQuickView({ record: r, onClose }) {
                 <span className="text-sm font-bold text-[#151c27]">{fmtTime(r.check_in)}</span>
               </div>
             )}
-            {r.check_out && (
+            {r.check_out ? (
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-[#464555]"><LogOut size={13} className="text-rose-500" /> Check Out</div>
                 <span className="text-sm font-bold text-[#151c27]">{fmtTime(r.check_out)}</span>
               </div>
-            )}
+            ) : r.check_in ? (
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2 text-xs text-[#464555]"><LogOut size={13} className="text-emerald-500" /> Status</div>
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse inline-block" /> In Progress
+                </span>
+              </div>
+            ) : null}
             {(r.clockify_hours > 0 || r.work_hours > 0) && (
               <div className="flex items-center justify-between px-4 py-2.5">
-                <div className="flex items-center gap-2 text-xs text-[#464555]"><Timer size={13} className="text-[#4f46e5]" /> Work Hours</div>
+                <div className="flex items-center gap-2 text-xs text-[#464555]">
+                  <Timer size={13} className="text-[#4f46e5]" />
+                  {r.clockify_hours > 0 ? 'Working Hrs (Clockify)' : 'Working Hrs'}
+                </div>
                 <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}</span>
+              </div>
+            )}
+            {r.total_break_minutes > 0 && (
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2 text-xs text-[#464555]"><Timer size={13} className="text-amber-500" /> Break Time</div>
+                <span className="text-sm font-bold text-amber-600">
+                  {r.total_break_minutes >= 60 ? `${Math.floor(r.total_break_minutes/60)}h ` : ''}{r.total_break_minutes % 60}m
+                </span>
               </div>
             )}
             {!r.check_in && <div className="px-4 py-3 text-xs text-[#777587] text-center">No attendance recorded today</div>}

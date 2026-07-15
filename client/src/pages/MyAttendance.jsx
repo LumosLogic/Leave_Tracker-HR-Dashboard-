@@ -52,6 +52,14 @@ function AttendanceCheckinCard({ onRefreshed }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // For Clockify users: poll /attendance/today every 60s so the card stays in sync
+  // with any timer changes made directly in Clockify (start/stop from Clockify app/web)
+  useEffect(() => {
+    if (!clockifySyncs) return;
+    const id = setInterval(load, 60 * 1000);
+    return () => clearInterval(id);
+  }, [clockifySyncs, load]);
+
   // Elapsed timer (pauses during break)
   useEffect(() => {
     const isOnBreak = record?.break_start && !record?.break_end;

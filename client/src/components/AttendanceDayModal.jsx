@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserCheck, XCircle, Home, Timer } from 'lucide-react';
+import { UserCheck, XCircle, Home, Timer, Coffee, LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
@@ -8,6 +8,16 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { StatusBadge } from '@/components/ui/Badge';
 import { fmtTime, fmtHours, todayStr, statusLabel, MONTHS, DAYS_FULL } from '@/lib/utils';
+
+function fmtBreakMins(mins) {
+  if (!mins) return null;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+// Prefer Clockify effective hours, fall back to work_hours (manual/standalone)
+function effectiveHours(rec) {
+  return rec.clockify_hours > 0 ? rec.clockify_hours : (rec.work_hours || 0);
+}
 
 // Inline edit attendance sub-modal — stays within the dashboard context
 function EditAttSubModal({ record, onClose, onRefresh }) {
@@ -251,18 +261,35 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
                           {emp.department}{emp.position ? ` · ${emp.position}` : ''}
                         </div>
                         {rec && (
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            <StatusBadge status={rec.status} />
-                            {(rec.clockify_hours ?? rec.work_hours) > 0 && !rec._synthetic && (
-                              <span className="text-xs font-bold text-[#3525cd] flex items-center gap-1">
-                                <Timer size={11} /> {fmtHours(rec.clockify_hours ?? rec.work_hours)}
-                              </span>
-                            )}
-                            {rec.check_in && (
-                              <span className="text-[0.65rem] text-[#777587]">
-                                In: {fmtTime(rec.check_in)}
-                                {rec.check_out && ` · Out: ${fmtTime(rec.check_out)}`}
-                              </span>
+                          <div className="mt-1 flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <StatusBadge status={rec.status} />
+                              {rec.clockify_hours > 0 && (
+                                <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
+                                  style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+                                  <Timer size={9} /> Clockify
+                                </span>
+                              )}
+                            </div>
+                            {!rec._synthetic && rec.check_in && (
+                              <div className="flex items-center gap-2 flex-wrap text-[0.65rem] text-[#777587]">
+                                <span className="flex items-center gap-0.5"><LogIn size={10} className="text-emerald-500" /> {fmtTime(rec.check_in)}</span>
+                                {rec.check_out ? (
+                                  <span className="flex items-center gap-0.5"><LogOut size={10} className="text-rose-500" /> {fmtTime(rec.check_out)}</span>
+                                ) : dateStr === todayStr() ? (
+                                  <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" /> In Progress
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 font-semibold">No checkout</span>
+                                )}
+                                {fmtBreakMins(rec.total_break_minutes) && (
+                                  <span className="flex items-center gap-0.5 text-amber-600"><Coffee size={10} /> {fmtBreakMins(rec.total_break_minutes)} break</span>
+                                )}
+                                {effectiveHours(rec) > 0 && (
+                                  <span className="flex items-center gap-0.5 font-bold text-[#3525cd]"><Timer size={10} /> {fmtHours(effectiveHours(rec))}</span>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
