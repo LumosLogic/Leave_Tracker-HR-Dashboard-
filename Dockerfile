@@ -10,4 +10,4 @@ COPY . .
 # Cloud Run injects PORT env var (default 8080); app already reads process.env.PORT
 EXPOSE 8080
 
-CMD ["node", "server.js"]
+CMD ["node", "backend/src/server.js"]

@@ -1,0 +1,122 @@
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+process.env.TZ = process.env.TZ || 'Asia/Kolkata';
+
+const SERVER_VERSION = '3.0.0-restructured';
+const express  = require('express');
+const path     = require('path');
+
+const { seed }         = require('./config/db');
+const { ALLOWED_ORIGINS } = require('./middleware/auth');
+const { featureGate }  = require('./middleware/featureFlag');
+const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
+
+// ── Module routers (extracted from old server.js) ────────────────────────────
+const authRouter       = require('./modules/auth/auth.routes');
+const orgRouter        = require('./modules/org/org.routes');
+const platformRouter   = require('./modules/platform/platform.routes');
+const dashboardRouter  = require('./modules/dashboard/dashboard.routes');
+const employeesRouter  = require('./modules/employees/employees.routes');
+const attendanceRouter = require('./modules/attendance/attendance.routes');
+const leavesRouter     = require('./modules/leaves/leaves.routes');
+const pushRouter       = require('./modules/push/push.routes');
+const clockifyRouter   = require('./modules/clockify/clockify.routes');
+const calendarRouter   = require('./modules/calendar/calendar.routes');
+const archivesRouter   = require('./modules/archives/archives.routes');
+const settingsRouter   = require('./modules/settings/settings.routes');
+const analyticsRouter  = require('./modules/analytics/analytics.routes');
+const rootRouter       = require('./modules/root/root.routes');
+
+// ── Route-file routers (migrated from routes/) ───────────────────────────────
+const departmentsRouter    = require('./modules/departments/departments.routes');
+const designationsRouter   = require('./modules/designations/designations.routes');
+const holidaysRouter       = require('./modules/holidays/holidays.routes');
+const leavePoliciesRouter  = require('./modules/leave-policies/leavePolicies.routes');
+const regularizationRouter = require('./modules/regularization/regularization.routes');
+const notificationsRouter  = require('./modules/notifications/notifications.routes');
+const reportsRouter        = require('./modules/reports/reports.routes');
+const documentsRouter      = require('./modules/documents/documents.routes');
+const payrollRouter        = require('./modules/payroll/payroll.routes');
+const assetsRouter         = require('./modules/assets/assets.routes');
+const expensesRouter       = require('./modules/expenses/expenses.routes');
+const announcementsRouter  = require('./modules/announcements/announcements.routes');
+const shiftsRouter         = require('./modules/shifts/shifts.routes');
+const performanceRouter    = require('./modules/performance/performance.routes');
+const onboardingRouter     = require('./modules/onboarding/onboarding.routes');
+const exitRouter           = require('./modules/exit/exit.routes');
+
+const app  = express();
+const PORT = process.env.PORT || 3000;
+
+// ── Core middleware ───────────────────────────────────────────────────────────
+app.use(express.json());
+app.use(express.urlencoded({ extended: false })); // required for ZKTeco ADMS (biometric)
+app.use(express.static(path.join(__dirname, '../../public')));
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// ── Feature gate (runs before every /api route) ───────────────────────────────
+app.use('/api', featureGate);
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/api/auth',           authRouter);
+app.use('/api',                orgRouter);         // register-org + org/settings live at /api/register-org and /api/org/settings
+app.use('/api/platform',       platformRouter);
+app.use('/api/dashboard',      dashboardRouter);
+app.use('/api/employees',      employeesRouter);
+app.use('/api/attendance',     attendanceRouter);
+app.use('/api/leaves',         leavesRouter);
+app.use('/api/push',           pushRouter);
+app.use('/api/clockify',       clockifyRouter);
+app.use('/api/calendar',       calendarRouter);
+app.use('/api/admin',          archivesRouter);
+app.use('/api/settings',       settingsRouter);
+app.use('/api/analytics',      analyticsRouter);
+app.use('/api/root',           rootRouter);
+
+app.use('/api/departments',    departmentsRouter);
+app.use('/api/designations',   designationsRouter);
+app.use('/api/holidays',       holidaysRouter);
+app.use('/api/leave-policies', leavePoliciesRouter);
+app.use('/api/regularization', regularizationRouter);
+app.use('/api/notifications',  notificationsRouter);
+app.use('/api/reports',        reportsRouter);
+app.use('/api/documents',      documentsRouter);
+app.use('/api/payroll',        payrollRouter);
+app.use('/api/assets',         assetsRouter);
+app.use('/api/expenses',       expensesRouter);
+app.use('/api/announcements',  announcementsRouter);
+app.use('/api/shifts',         shiftsRouter);
+app.use('/api/performance',    performanceRouter);
+app.use('/api/onboarding',     onboardingRouter);
+app.use('/api/exit',           exitRouter);
+
+// ── Frontend fallback (SPA — must be last) ────────────────────────────────────
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../public', 'index.html'));
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+async function start() {
+  try {
+    await seed();
+    app.listen(PORT, () => {
+      console.log(`\n🚀 Lumos HRMS v${SERVER_VERSION} running at http://localhost:${PORT}\n`);
+    });
+    scheduleDailyAt(8, 0, runDailyNotifications);
+  } catch (err) {
+    console.error('Failed to start:', err.message);
+    process.exit(1);
+  }
+}
+
+start();

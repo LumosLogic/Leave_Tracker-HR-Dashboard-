@@ -20,5 +20,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Large media files
+*.mp4
+*.mov
+*.avi
+
 # Claude memory
 .claude/
