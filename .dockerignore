@@ -16,6 +16,7 @@ logs/
 
 # Build artifacts (built inside Docker, not needed here)
 client/dist
+platform-admin/dist
 public/js
 public/app.js
 public/app.css
