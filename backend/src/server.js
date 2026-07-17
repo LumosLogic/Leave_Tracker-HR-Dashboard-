@@ -54,7 +54,13 @@ const PORT = process.env.PORT || 3000;
 // ── Core middleware ───────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: false })); // required for ZKTeco ADMS (biometric)
-app.use(express.static(path.join(__dirname, '../../public')));
+app.use(express.static(path.join(__dirname, '../../public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+  },
+}));
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
