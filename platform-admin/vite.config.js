@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  base: '/admin/',
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
@@ -14,7 +15,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'https://leavetracker-874559728801.asia-south1.run.app',
+        target: 'http://localhost:3000',
         changeOrigin: true,
       },
     },

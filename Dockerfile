@@ -14,6 +14,20 @@ COPY client/ ./client/
 RUN cd client && npm run build
 # Output: /build/client/dist/
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1b — Build Platform Admin (Vite, served at /admin/)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS platform-builder
+
+WORKDIR /build
+
+COPY platform-admin/package*.json ./platform-admin/
+RUN cd platform-admin && npm ci
+
+COPY platform-admin/ ./platform-admin/
+RUN cd platform-admin && npm run build
+# Output: /build/platform-admin/dist/
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 — Production image (backend + built frontend)
@@ -31,6 +45,9 @@ COPY backend/ ./backend/
 
 # Copy built React app into public/ (served as SPA by Express)
 COPY --from=frontend-builder /build/client/dist/ ./public/
+
+# Copy built platform admin into public/admin/
+COPY --from=platform-builder /build/platform-admin/dist/ ./public/admin/
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./

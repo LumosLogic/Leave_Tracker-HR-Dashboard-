@@ -110,6 +110,10 @@ app.use('/api/biometric',      biometricRouter);
 app.post('/iclock/cdata',      biometricPush);
 app.get('/iclock/getrequest',  biometricHeartbeat);
 
+// ── Platform admin SPA (served at /admin/*) ───────────────────────────────────
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../../public/admin', 'index.html')));
+app.get('/admin/*', (req, res) => res.sendFile(path.join(__dirname, '../../public/admin', 'index.html')));
+
 // ── Frontend fallback (SPA — must be last) ────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../../public', 'index.html'));
