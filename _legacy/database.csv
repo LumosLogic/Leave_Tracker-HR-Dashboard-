@@ -77,6 +77,10 @@ CREATE TABLE public.attendance (
   created_at timestamp with time zone DEFAULT now(),
   organization_id bigint NOT NULL DEFAULT 1,
   clockify_entry_id text,
+  break_start text,
+  break_end text,
+  gross_hours numeric DEFAULT 0,
+  total_break_minutes integer DEFAULT 0,
   CONSTRAINT attendance_pkey PRIMARY KEY (id),
   CONSTRAINT attendance_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT attendance_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
@@ -96,6 +100,7 @@ CREATE TABLE public.leaves (
   half_type text,
   google_event_id text,
   organization_id bigint NOT NULL DEFAULT 1,
+  remarks text,
   CONSTRAINT leaves_pkey PRIMARY KEY (id),
   CONSTRAINT leaves_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT leaves_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id),
@@ -270,6 +275,8 @@ CREATE TABLE public.leave_policies (
   paid boolean DEFAULT true,
   active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
+  require_document boolean DEFAULT false,
+  description text DEFAULT ''::text,
   CONSTRAINT leave_policies_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.attendance_regularization (
@@ -444,6 +451,7 @@ CREATE TABLE public.shifts (
   description text DEFAULT ''::text,
   organization_id bigint,
   created_at timestamp with time zone DEFAULT now(),
+  days_of_week text,
   CONSTRAINT shifts_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.shift_assignments (
