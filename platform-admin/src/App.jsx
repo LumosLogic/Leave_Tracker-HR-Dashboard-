@@ -37,7 +37,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/admin">
       <PlatformAuthProvider>
         <AppRoutes />
       </PlatformAuthProvider>
