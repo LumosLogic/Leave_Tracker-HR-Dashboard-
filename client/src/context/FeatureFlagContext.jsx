@@ -11,7 +11,7 @@ export function FeatureFlagProvider({ children }) {
 
   const { data: flags = {} } = useQuery({
     queryKey:            ['org-features'],
-    queryFn:             () => apiGet('/org/features'),
+    queryFn:             () => apiGet('/features'),
     enabled:             !!token,
     staleTime:           0,               // always treat cached data as stale
     refetchInterval:     30 * 1000,       // poll every 30 s in background
