@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -952,11 +952,26 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     avatar_color:         employee.avatar_color    || '#3525cd',
     clockify_user_id:     employee.clockify_user_id || '',
     password:             '',
+    // Extended profile
+    salutation:           employee.salutation           || '',
+    middle_name:          employee.middle_name          || '',
+    surname:              employee.surname              || '',
+    branch_id:            employee.branch_id            || '',
+    grade:                employee.grade                || '',
+    division:             employee.division             || '',
+    sub_division:         employee.sub_division         || '',
+    device_enrollment_id: employee.device_enrollment_id || '',
+    weekly_off_day:       employee.weekly_off_day       || '',
+    work_hours_per_day:   employee.work_hours_per_day   || 8,
   } : {
     name: '', email: '', password: '', department: '', position: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
     phone: '', personal_email: '', joining_date: '', employment_type: 'full_time',
     work_mode: 'office', employee_status: 'active', ctc: '', salary_effective_date: '',
+    // Extended profile defaults
+    salutation: '', middle_name: '', surname: '', branch_id: '', grade: '',
+    division: '', sub_division: '', device_enrollment_id: '', weekly_off_day: '',
+    work_hours_per_day: 8,
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -999,10 +1014,18 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     onError: err => toast(err.message, 'error'),
   });
 
+  // Fetch branches for extended profile
+  const { data: _branchData = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => apiGet('/branches'),
+  });
+  const branches = Array.isArray(_branchData) ? _branchData : [];
+
   // Tab definitions (only for edit mode)
   const TABS = [
     { id: 'personal',   label: 'Personal'   },
     { id: 'employment', label: 'Employment' },
+    { id: 'extended',   label: 'Extended'   },
     { id: 'salary',     label: 'Salary'     },
     { id: 'documents',  label: 'Documents'  },
     { id: 'account',    label: 'Account'    },
@@ -1133,6 +1156,111 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     <option value="inactive">Inactive</option>
                     <option value="on_leave">On Leave</option>
                   </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Extended Profile ── */}
+          {tab === 'extended' && (
+            <div className="space-y-5">
+              <p className="text-xs text-[#777587] bg-[#f0f3ff] border border-[#e7eefe] rounded-lg px-3 py-2">
+                Extended profile fields used for statutory compliance and biometric device integration.
+              </p>
+
+              {/* Name fields */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Name Details</p>
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <label className="form-label">Salutation</label>
+                    <select className="form-control" value={form.salutation} onChange={e => set('salutation', e.target.value)}>
+                      <option value="">—</option>
+                      <option value="Mr">Mr</option>
+                      <option value="Mrs">Mrs</option>
+                      <option value="Ms">Ms</option>
+                      <option value="Dr">Dr</option>
+                    </select>
+                  </div>
+                  <div className="col-span-1">
+                    <label className="form-label">Middle Name</label>
+                    <input className="form-control" placeholder="Middle name" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="form-label">Surname / Last Name</label>
+                    <input className="form-control" placeholder="Surname" value={form.surname} onChange={e => set('surname', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Branch + Grade */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Organisation</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="form-label">Branch</label>
+                    <select className="form-control" value={form.branch_id} onChange={e => set('branch_id', e.target.value)}>
+                      <option value="">— No branch —</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Grade</label>
+                    <input className="form-control" placeholder="e.g. A" value={form.grade} onChange={e => set('grade', e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="form-label">Division</label>
+                    <input className="form-control" placeholder="e.g. Operations" value={form.division} onChange={e => set('division', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Sub Division</label>
+                    <input className="form-control" placeholder="e.g. Dispatch" value={form.sub_division} onChange={e => set('sub_division', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Biometric */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Biometric Device</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="form-label">Device Enrollment ID / PIN</label>
+                    <div className="relative">
+                      <Fingerprint size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                      <input className="form-control pl-8 font-mono" placeholder="e.g. 1001"
+                        value={form.device_enrollment_id} onChange={e => set('device_enrollment_id', e.target.value)} />
+                    </div>
+                    {form.device_enrollment_id && (
+                      <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                        <Fingerprint size={11} /> Biometric enrollment configured
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Work schedule */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Work Schedule</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="form-label">Weekly Off Day</label>
+                    <select className="form-control" value={form.weekly_off_day} onChange={e => set('weekly_off_day', e.target.value)}>
+                      <option value="">— Default —</option>
+                      {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Work Hours / Day</label>
+                    <input className="form-control" type="number" min={1} max={24} placeholder="8"
+                      value={form.work_hours_per_day} onChange={e => set('work_hours_per_day', e.target.value)} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1363,11 +1491,12 @@ export default function Employees() {
   }
 
   // Search / filter / sort / view / selection state
-  const [search,       setSearch]       = useState('');
-  const [deptFilter,   setDeptFilter]   = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter,   setTypeFilter]   = useState('');
-  const [sortBy,       setSortBy]       = useState('name');
+  const [search,        setSearch]       = useState('');
+  const [deptFilter,    setDeptFilter]   = useState('');
+  const [branchFilter,  setBranchFilter] = useState('');
+  const [statusFilter,  setStatusFilter] = useState('');
+  const [typeFilter,    setTypeFilter]   = useState('');
+  const [sortBy,        setSortBy]       = useState('name');
   const [sortDir,      setSortDir]      = useState('asc');
   const [viewMode,     setViewMode]     = useState('card');
   const [selected,     setSelected]     = useState(new Set());
@@ -1416,13 +1545,19 @@ export default function Employees() {
 
   // Reset to page 1 when any filter / sort changes
   useEffect(() => { setPage(1); setSelected(new Set()); },
-    [search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
+    [search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
     queryFn:  () => apiGet('/departments'),
   });
   const departments = Array.isArray(_dData) ? _dData : [];
+
+  const { data: _brData = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => apiGet('/branches'),
+  });
+  const branchList = Array.isArray(_brData) ? _brData : [];
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/employees/${id}`),
@@ -1463,6 +1598,7 @@ export default function Employees() {
     }
     if (deptFilter)   rows = rows.filter(e =>
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
+    if (branchFilter) rows = rows.filter(e => String(e.branch_id) === String(branchFilter));
     if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
     if (joinedYmParam) {
@@ -1478,12 +1614,12 @@ export default function Employees() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [employees, search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
+  }, [employees, search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const anyFilter  = search || deptFilter || statusFilter || typeFilter || joinedYmParam;
+  const anyFilter  = search || deptFilter || branchFilter || statusFilter || typeFilter || joinedYmParam;
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
   const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
@@ -1638,6 +1774,15 @@ export default function Employees() {
           {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
 
+        {/* Branch */}
+        {branchList.length > 0 && (
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            className="form-control w-auto text-xs py-1.5">
+            <option value="">All Branches</option>
+            {branchList.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        )}
+
         {/* Status */}
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="form-control w-auto text-xs py-1.5">
@@ -1668,7 +1813,7 @@ export default function Employees() {
 
         {anyFilter && (
           <button onClick={() => {
-            setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter('');
+            setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter('');
             if (joinedYmParam) setSearchParams(p => { const n = new URLSearchParams(p); n.delete('joined_ym'); return n; }, { replace: true });
           }}
             className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
@@ -1734,7 +1879,7 @@ export default function Employees() {
               : 'Add your first employee to get started.'}
           </p>
           {anyFilter && (
-            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+            <button onClick={() => { setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter(''); }}
               className="mt-3 text-xs font-bold text-[#3525cd] hover:underline">
               Clear all filters
             </button>
@@ -1769,6 +1914,12 @@ export default function Employees() {
                     {emp.employment_type && (
                       <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-white/70 text-[#464555] border border-[#c7c4d8] capitalize">
                         {emp.employment_type.replace('_', ' ')}
+                      </span>
+                    )}
+                    {emp.device_enrollment_id && (
+                      <span title={`Biometric PIN: ${emp.device_enrollment_id}`}
+                        className="w-4 h-4 rounded-full bg-[#3525cd]/10 flex items-center justify-center">
+                        <Fingerprint size={10} className="text-[#3525cd]" />
                       </span>
                     )}
                   </div>

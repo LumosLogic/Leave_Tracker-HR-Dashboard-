@@ -1,0 +1,408 @@
+/**
+ * db-pg-adapter.js
+ * Supabase-compatible chaining API backed by PostgreSQL via `pg`.
+ * Supports: select, insert, update, delete, upsert
+ * Filters:  eq, neq, gt, gte, lt, lte, like, ilike, is, in, not
+ * Modifiers: order, limit, range, single, maybeSingle, count
+ */
+
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host:     process.env.DB_HOST     || 'localhost',
+  port:     parseInt(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME     || 'lumos_hrms',
+  user:     process.env.DB_USER     || 'lumos_admin',
+  password: process.env.DB_PASSWORD,
+});
+
+pool.on('error', (err) => console.error('PG pool error:', err.message));
+
+// ─── Query builder ────────────────────────────────────────────────────────────
+
+function from(table) {
+  const state = {
+    table,
+    operation: null,   // 'select' | 'insert' | 'update' | 'delete' | 'upsert'
+    columns: '*',
+    countMode: false,  // true when head:true (count only)
+    countExact: false,
+    insertData: null,
+    updateData: null,
+    upsertData: null,
+    onConflict: null,
+    filters: [],       // [{ col, op, val }]
+    notNegate: false,  // tracks pending .not()
+    orderClauses: [],  // [{ col, asc }]
+    limitVal: null,
+    offsetVal: null,
+    singleRow: false,
+    maybeSingleRow: false,
+    params: [],        // accumulated parameterised values
+  };
+
+  // ── param helper ──────────────────────────────────────────────────────────
+  function addParam(val) {
+    state.params.push(val);
+    return `$${state.params.length}`;
+  }
+
+  // ── filter builder ────────────────────────────────────────────────────────
+  function buildWhere(tablePrefix) {
+    if (!state.filters.length) return '';
+    const prefix = tablePrefix ? `"${tablePrefix}".` : '';
+    const clauses = state.filters.map(f => {
+      // If col already has a table prefix (e.g. "table.col"), don't add another
+      const col = f.col.includes('.') ? f.col : `${prefix}"${f.col}"`;
+      switch (f.op) {
+        case 'eq':    return `${col} = ${addParam(f.val)}`;
+        case 'neq':   return `${col} <> ${addParam(f.val)}`;
+        case 'gt':    return `${col} > ${addParam(f.val)}`;
+        case 'gte':   return `${col} >= ${addParam(f.val)}`;
+        case 'lt':    return `${col} < ${addParam(f.val)}`;
+        case 'lte':   return `${col} <= ${addParam(f.val)}`;
+        case 'like':  return `${col} LIKE ${addParam(f.val)}`;
+        case 'ilike': return `${col} ILIKE ${addParam(f.val)}`;
+        case 'is':
+          if (f.val === null) return `${col} IS NULL`;
+          if (f.val === true) return `${col} IS TRUE`;
+          if (f.val === false) return `${col} IS FALSE`;
+          return `${col} IS ${addParam(f.val)}`;
+        case 'in': {
+          if (!Array.isArray(f.val) || f.val.length === 0) return 'FALSE';
+          const placeholders = f.val.map(v => addParam(v)).join(', ');
+          return `${col} IN (${placeholders})`;
+        }
+        case 'not_eq':   return `${col} <> ${addParam(f.val)}`;
+        default:         return `${col} = ${addParam(f.val)}`;
+      }
+    });
+    return 'WHERE ' + clauses.join(' AND ');
+  }
+
+  // ── FK join parser ────────────────────────────────────────────────────────
+  // Handles Supabase FK join syntax: alias:table!fkeyhint(col1, col2)
+  function parseJoinSelects(selectStr) {
+    if (!selectStr || selectStr === '*') return { baseSelect: `"${state.table}".*`, joins: [] };
+
+    const joins = [];
+    // Matches: [alias:]table[!fkeyHint](cols)
+    const joinRe = /(?:(\w+):)?(\w+)(?:!(\w+))?\(([^)]+)\)/g;
+    let baseSelect = selectStr;
+    let match;
+
+    while ((match = joinRe.exec(selectStr)) !== null) {
+      const [fullMatch, alias, table, fkeyHint, colsStr] = match;
+      const isInner = fkeyHint === 'inner';
+      const joinType = isInner ? 'INNER JOIN' : 'LEFT JOIN';
+      const resultAlias = alias || table;
+      const cols = colsStr.split(',').map(c => c.trim()).filter(Boolean);
+
+      // Determine the FK column on the main table
+      let fkCol;
+      if (fkeyHint && !isInner) {
+        // e.g. "leaves_user_id_fkey" with main table "leaves" → "user_id"
+        // e.g. "assets_assigned_to_fkey" with main table "assets" → "assigned_to"
+        const withoutFkey = fkeyHint.replace(/_fkey$/, '');
+        const prefix = state.table + '_';
+        fkCol = withoutFkey.startsWith(prefix)
+          ? withoutFkey.slice(prefix.length)
+          : withoutFkey.replace(/^\w+_/, ''); // strip first word
+      } else {
+        // Infer: organizations→organization_id, users→user_id, departments→department_id
+        fkCol = table.replace(/s$/, '') + '_id';
+      }
+
+      joins.push({ alias: resultAlias, table, fkCol, cols, joinType });
+      baseSelect = baseSelect.replace(fullMatch, '').replace(/,\s*,/g, ',').replace(/^[\s,]+/, '').replace(/[\s,]+$/, '').trim();
+    }
+
+    // Build final base select: prefix * with table name to avoid ambiguity
+    let finalBase;
+    if (!baseSelect || baseSelect === '*') {
+      finalBase = `"${state.table}".*`;
+    } else {
+      // Add table prefix to bare column names
+      finalBase = baseSelect.split(',').map(c => {
+        c = c.trim();
+        if (c === '*' || c.includes('.') || c.includes('(')) return c;
+        return `"${state.table}"."${c}"`;
+      }).join(', ');
+    }
+
+    return { baseSelect: finalBase, joins };
+  }
+
+  // ── execute ───────────────────────────────────────────────────────────────
+  async function execute() {
+    // Reset params for this execution (filters accumulate, params built during buildWhere)
+    state.params = [];
+
+    let sql = '';
+    let rows;
+
+    try {
+      if (state.operation === 'select') {
+        if (state.countMode) {
+          // COUNT query
+          const where = buildWhere(null);
+          sql = `SELECT COUNT(*) FROM "${state.table}" ${where}`;
+          const result = await pool.query(sql, state.params);
+          return { count: parseInt(result.rows[0].count, 10), data: null, error: null };
+        }
+
+        const { baseSelect, joins } = parseJoinSelects(state.columns);
+        // Prefix WHERE columns with main table name when JOINs are present to avoid ambiguity
+        const where = buildWhere(joins.length ? state.table : null);
+        const order = state.orderClauses.length
+          ? 'ORDER BY ' + state.orderClauses.map(o => `"${state.table}"."${o.col}" ${o.asc ? 'ASC' : 'DESC'}`).join(', ')
+          : '';
+        const limit  = state.limitVal  !== null ? `LIMIT ${parseInt(state.limitVal)}`   : '';
+        const offset = state.offsetVal !== null ? `OFFSET ${parseInt(state.offsetVal)}` : '';
+
+        // Build JOIN clauses and aliased column selects
+        // Use the result alias as SQL alias to handle the same table joined multiple times
+        const joinSql = joins.map(j =>
+          `${j.joinType} "${j.table}" AS "_jt_${j.alias}" ON "_jt_${j.alias}".id = "${state.table}"."${j.fkCol}"`
+        ).join(' ');
+
+        const joinCols = joins.flatMap(j =>
+          j.cols.map(c => `"_jt_${j.alias}"."${c}" AS "__join__${j.alias}__${c}"`)
+        ).join(', ');
+
+        const selectCols = joinCols ? `${baseSelect}, ${joinCols}` : baseSelect;
+
+        sql = `SELECT ${selectCols} FROM "${state.table}" ${joinSql} ${where} ${order} ${limit} ${offset}`
+          .trim().replace(/\s+/g, ' ');
+        const result = await pool.query(sql, state.params);
+
+        // Reconstruct nested objects from aliased join columns
+        rows = result.rows.map(row => {
+          if (!joins.length) return row;
+          const nested = {};
+          const clean = {};
+          for (const [key, val] of Object.entries(row)) {
+            const m = key.match(/^__join__(\w+)__(.+)$/);
+            if (m) {
+              if (!nested[m[1]]) nested[m[1]] = {};
+              nested[m[1]][m[2]] = val;
+            } else {
+              clean[key] = val;
+            }
+          }
+          return { ...clean, ...nested };
+        });
+
+        if (state.singleRow) {
+          if (!rows.length) return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
+          return { data: rows[0], error: null };
+        }
+        if (state.maybeSingleRow) {
+          return { data: rows[0] || null, error: null };
+        }
+        return { data: rows, error: null };
+      }
+
+      if (state.operation === 'insert') {
+        const items = Array.isArray(state.insertData) ? state.insertData : [state.insertData];
+        if (!items.length) return { data: [], error: null };
+
+        // All unique keys across all rows
+        const keys = [...new Set(items.flatMap(r => Object.keys(r)))];
+        const colList = keys.map(k => `"${k}"`).join(', ');
+        const valueSets = items.map(item => {
+          const vals = keys.map(k => (k in item ? addParam(item[k]) : 'DEFAULT'));
+          return `(${vals.join(', ')})`;
+        });
+        sql = `INSERT INTO "${state.table}" (${colList}) VALUES ${valueSets.join(', ')} RETURNING *`;
+        const result = await pool.query(sql, state.params);
+        rows = result.rows;
+
+        if (state.singleRow || state.maybeSingleRow) return { data: rows[0] || null, error: null };
+        return { data: rows, error: null };
+      }
+
+      if (state.operation === 'update') {
+        const keys = Object.keys(state.updateData);
+        if (!keys.length) return { data: null, error: { message: 'No fields to update' } };
+        const setClauses = keys.map(k => `"${k}" = ${addParam(state.updateData[k])}`).join(', ');
+        const where = buildWhere(null);
+        sql = `UPDATE "${state.table}" SET ${setClauses} ${where} RETURNING *`;
+        const result = await pool.query(sql, state.params);
+        rows = result.rows;
+
+        if (state.singleRow || state.maybeSingleRow) return { data: rows[0] || null, error: null };
+        return { data: rows, error: null };
+      }
+
+      if (state.operation === 'delete') {
+        const where = buildWhere(null);
+        sql = `DELETE FROM "${state.table}" ${where} RETURNING *`;
+        const result = await pool.query(sql, state.params);
+        return { data: result.rows, error: null };
+      }
+
+      if (state.operation === 'upsert') {
+        const items = Array.isArray(state.upsertData) ? state.upsertData : [state.upsertData];
+        if (!items.length) return { data: [], error: null };
+
+        const keys = [...new Set(items.flatMap(r => Object.keys(r)))];
+        const colList = keys.map(k => `"${k}"`).join(', ');
+        const valueSets = items.map(item => {
+          const vals = keys.map(k => (k in item ? addParam(item[k]) : 'DEFAULT'));
+          return `(${vals.join(', ')})`;
+        });
+
+        let conflictClause = 'DO NOTHING';
+        if (state.onConflict) {
+          const conflictCols = state.onConflict.split(',').map(c => `"${c.trim()}"`).join(', ');
+          const updateKeys = keys.filter(k => !state.onConflict.split(',').map(c => c.trim()).includes(k));
+          if (updateKeys.length) {
+            const updateSet = updateKeys.map(k => `"${k}" = EXCLUDED."${k}"`).join(', ');
+            conflictClause = `DO UPDATE SET ${updateSet}`;
+          }
+        }
+
+        sql = `INSERT INTO "${state.table}" (${colList}) VALUES ${valueSets.join(', ')} ON CONFLICT ${state.onConflict ? `("${state.onConflict.split(',').map(c => c.trim()).join('", "')}")` : ''} ${conflictClause} RETURNING *`;
+        const result = await pool.query(sql, state.params);
+        rows = result.rows;
+
+        if (state.singleRow || state.maybeSingleRow) return { data: rows[0] || null, error: null };
+        return { data: rows, error: null };
+      }
+
+      return { data: null, error: { message: 'No operation specified' } };
+    } catch (err) {
+      console.error(`[pg-adapter] ${state.operation?.toUpperCase()} "${state.table}" error:`, err.message);
+      // Map common PG error codes to Supabase-like error shapes
+      return { data: null, error: { message: err.message, code: err.code } };
+    }
+  }
+
+  // ── builder object ────────────────────────────────────────────────────────
+  const builder = {
+    // ── Operations ──────────────────────────────────────────────────────────
+    select(cols, options = {}) {
+      state.operation = 'select';
+      state.columns = cols || '*';
+      if (options.count === 'exact') state.countExact = true;
+      if (options.head === true)     state.countMode  = true;
+      return builder;
+    },
+
+    insert(data) {
+      state.operation = 'insert';
+      state.insertData = data;
+      return builder;
+    },
+
+    update(data) {
+      state.operation = 'update';
+      state.updateData = data;
+      return builder;
+    },
+
+    delete() {
+      state.operation = 'delete';
+      return builder;
+    },
+
+    upsert(data, options = {}) {
+      state.operation = 'upsert';
+      state.upsertData = data;
+      state.onConflict = options.onConflict || null;
+      return builder;
+    },
+
+    // ── Filters ──────────────────────────────────────────────────────────────
+    eq(col, val) {
+      state.filters.push({ col, op: state.notNegate ? 'neq' : 'eq', val });
+      state.notNegate = false;
+      return builder;
+    },
+    neq(col, val) {
+      state.filters.push({ col, op: 'neq', val });
+      return builder;
+    },
+    gt(col, val) {
+      state.filters.push({ col, op: 'gt', val });
+      return builder;
+    },
+    gte(col, val) {
+      state.filters.push({ col, op: 'gte', val });
+      return builder;
+    },
+    lt(col, val) {
+      state.filters.push({ col, op: 'lt', val });
+      return builder;
+    },
+    lte(col, val) {
+      state.filters.push({ col, op: 'lte', val });
+      return builder;
+    },
+    like(col, val) {
+      state.filters.push({ col, op: 'like', val });
+      return builder;
+    },
+    ilike(col, val) {
+      state.filters.push({ col, op: 'ilike', val });
+      return builder;
+    },
+    is(col, val) {
+      state.filters.push({ col, op: 'is', val });
+      return builder;
+    },
+    in(col, val) {
+      state.filters.push({ col, op: 'in', val });
+      return builder;
+    },
+    not(col, op, val) {
+      // supabase: .not('col', 'is', null) or .not('col', 'eq', val)
+      if (col && op && val !== undefined) {
+        state.filters.push({ col, op: `not_${op}`, val });
+      } else {
+        // chained form: .not().eq(...) — set negate flag
+        state.notNegate = true;
+      }
+      return builder;
+    },
+
+    // ── Modifiers ────────────────────────────────────────────────────────────
+    order(col, opts = {}) {
+      state.orderClauses.push({ col, asc: opts.ascending !== false });
+      return builder;
+    },
+    limit(n) {
+      state.limitVal = n;
+      return builder;
+    },
+    range(from, to) {
+      state.offsetVal = from;
+      state.limitVal  = to - from + 1;
+      return builder;
+    },
+    single() {
+      state.singleRow = true;
+      state.limitVal  = 1;
+      return execute();
+    },
+    maybeSingle() {
+      state.maybeSingleRow = true;
+      state.limitVal = 1;
+      return execute();
+    },
+
+    // ── Thenable (await builder without terminal modifier) ────────────────
+    then(resolve, reject) {
+      return execute().then(resolve, reject);
+    },
+  };
+
+  return builder;
+}
+
+// ── Supabase-compatible wrapper ────────────────────────────────────────────────
+// Exposed as `supabase = { from }` so routes work without changes.
+const supabaseCompat = { from };
+
+module.exports = { from, pool, supabase: supabaseCompat };

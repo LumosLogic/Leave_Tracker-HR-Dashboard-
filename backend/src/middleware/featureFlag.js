@@ -18,6 +18,8 @@ const FEATURE_ROUTE_MAP = {
   '/leave-policies':        'leave_policies',
   '/clockify':              'clockify',
   '/push':                  'push_notifications',
+  '/biometric':             'biometric',
+  '/branches':              'branches',
 };
 
 async function isFeatureEnabled(organizationId, featureKey) {

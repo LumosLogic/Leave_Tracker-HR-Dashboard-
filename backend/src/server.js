@@ -43,6 +43,10 @@ const shiftsRouter         = require('./modules/shifts/shifts.routes');
 const performanceRouter    = require('./modules/performance/performance.routes');
 const onboardingRouter     = require('./modules/onboarding/onboarding.routes');
 const exitRouter           = require('./modules/exit/exit.routes');
+const branchesRouter       = require('./modules/branches/branches.routes');
+const biometricRouter      = require('./modules/biometric/biometric.routes');
+const biometricPush        = require('./modules/biometric/biometricPush.handler');
+const biometricHeartbeat   = require('./modules/biometric/biometricHeartbeat.handler');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -99,6 +103,12 @@ app.use('/api/shifts',         shiftsRouter);
 app.use('/api/performance',    performanceRouter);
 app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/exit',           exitRouter);
+app.use('/api/branches',       branchesRouter);
+app.use('/api/biometric',      biometricRouter);
+
+// ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
+app.post('/iclock/cdata',      biometricPush);
+app.get('/iclock/getrequest',  biometricHeartbeat);
 
 // ── Frontend fallback (SPA — must be last) ────────────────────────────────────
 app.get('*', (req, res) => {

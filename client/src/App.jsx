@@ -42,6 +42,11 @@ import Performance      from '@/pages/Performance';
 import Onboarding       from '@/pages/Onboarding';
 import ExitManagement   from '@/pages/ExitManagement';
 import NotificationCenter from '@/pages/NotificationCenter';
+import Branches              from '@/pages/Branches';
+import BiometricDevices      from '@/pages/BiometricDevices';
+import BiometricPinMapping   from '@/pages/BiometricPinMapping';
+import BiometricLogs         from '@/pages/BiometricLogs';
+import BiometricSettings     from '@/pages/BiometricSettings';
 
 // ── Employee portal pages ──
 import EmployeeHome     from '@/pages/EmployeeHome';
@@ -133,6 +138,11 @@ function AppRoutes() {
         <Route path="/notifications"    element={<NotificationCenter />} />
         <Route path="/settings"         element={<Settings />} />
         <Route path="/profile"          element={<MyProfile />} />
+        <Route path="/branches"          element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
+        <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/biometric/settings" element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
       </Route>
 
       {/* ── Root Admin area (root_admin only) ── */}

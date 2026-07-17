@@ -51,4 +51,15 @@ router.put('/clockify', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Settings: Biometric Config ───────────────────────────────────────────────
+router.get('/biometric-config', auth, adminOnly, (req, res) => {
+  const ip   = process.env.BIOMETRIC_SERVER_IP   || '';
+  const port = process.env.BIOMETRIC_SERVER_PORT  || '8080';
+  res.json({
+    server_ip:   ip,
+    server_port: port,
+    adms_url:    ip ? `http://${ip}:${port}/iclock` : '',
+  });
+});
+
 module.exports = router;

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
-  Bell,
+  Bell, Fingerprint, Link2, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -21,6 +21,7 @@ const OVERVIEW_ITEMS = [
 const EMPLOYEE_MGMT_ITEMS = [
   { to: '/employees',       label: 'Employees',       Icon: Users,      adminOnly: true },
   { to: '/departments',     label: 'Departments',     Icon: Building2,  adminOnly: true },
+  { to: '/branches',        label: 'Branches',        Icon: Building2,  adminOnly: true, featureKey: 'branches' },
   { to: '/onboarding',      label: 'Onboarding',      Icon: UserCheck,  adminOnly: true, featureKey: 'onboarding' },
   { to: '/exit-management', label: 'Exit Management', Icon: Exit,       adminOnly: true, featureKey: 'exit_management' },
 ];
@@ -32,6 +33,12 @@ const ATTENDANCE_ITEMS = [
   { to: '/holidays',       label: 'Holidays',        Icon: CalendarDays, adminOnly: true },
   { to: '/leave-policies', label: 'Leave Policies',  Icon: Shield,        adminOnly: true, featureKey: 'leave_policies' },
   { to: '/shifts',         label: 'Shifts & Roster', Icon: Clock,         adminOnly: true, featureKey: 'shifts' },
+];
+
+const BIOMETRIC_ITEMS = [
+  { to: '/biometric/devices', label: 'Devices',    Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
 ];
 
 const FINANCE_ITEMS = [
@@ -141,6 +148,9 @@ export function Sidebar({ onClose, prefix = '' }) {
         </div>
         <div id="tour-nav-attendance">
           <NavSection title="Attendance & Leave" items={ATTENDANCE_ITEMS} {...sharedProps} />
+        </div>
+        <div id="tour-nav-biometric">
+          <NavSection title="Biometric" items={BIOMETRIC_ITEMS} {...sharedProps} />
         </div>
         <div id="tour-nav-finance">
           <NavSection title="Finance" items={FINANCE_ITEMS} {...sharedProps} />
