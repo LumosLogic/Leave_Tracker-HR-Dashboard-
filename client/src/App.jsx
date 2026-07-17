@@ -172,6 +172,9 @@ function AppRoutes() {
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
         <Route path="/root/org-settings"    element={<OrgSettings />} />
+        <Route path="/root/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/root/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/root/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
       </Route>
 
       {/* ── Employee portal (employee only) ── */}
