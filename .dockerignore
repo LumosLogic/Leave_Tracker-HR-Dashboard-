@@ -1,14 +1,43 @@
-node_modules
-.env
-service-account.json
-client/
-*.log
+# Git
 .git
 .gitignore
-.claude
-stitch_modern_hrms_saas_dashboard
+.github
+
+# Dev / local
+.env
+*.env.local
+node_modules
+backend/node_modules
+client/node_modules
+
+# Logs
+*.log
+logs/
+
+# Build artifacts (built inside Docker, not needed here)
+client/dist
+public/js
+public/app.js
+public/app.css
+
+# Secrets / credentials (pass via env vars on server)
+service-account.json
+
+# Docs / non-production
+docs/
+_legacy/
+.claude/
+progress*.md
+README.md
+
+# CI / deployment tools (not needed inside container)
+fly.toml
+.firebaserc
+firebase.json
+.gcloudignore
+supabase/
+
+# Dev scripts
 check-users.js
 create-root-admin.js
-README.md
-supabase_multiorg_migration.sql
-fly.toml
+platform-admin/node_modules

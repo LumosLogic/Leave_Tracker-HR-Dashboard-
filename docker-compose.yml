@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+
+  # ── App — frontend + backend in one container ──────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lumos-hrms:latest
+    container_name: lumos_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env           # all secrets come from .env on the VPS
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_TYPE: postgres
+      DB_HOST: postgres      # Docker service name — resolves inside the network
+      TZ: Asia/Kolkata
+    ports:
+      - "3000:3000"
+    networks:
+      - lumos_net
+
+  # ── PostgreSQL — dedicated container with persistent volume ─────
+  postgres:
+    image: postgres:17-alpine
+    container_name: lumos_postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${DB_NAME:-lumos_hrms}
+      POSTGRES_USER: ${DB_USER:-lumos_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Kolkata
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # data persists across restarts
+    ports:
+      - "127.0.0.1:5432:5432"   # VPS-only — never open to public internet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lumos_admin} -d ${DB_NAME:-lumos_hrms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lumos_net
+
+volumes:
+  pgdata:
+
+networks:
+  lumos_net:
+    driver: bridge

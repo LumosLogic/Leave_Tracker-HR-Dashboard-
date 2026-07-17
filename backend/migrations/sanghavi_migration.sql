@@ -290,13 +290,21 @@ CREATE INDEX IF NOT EXISTS idx_emp_exp_user ON employee_experiences(user_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- PART 4: FEATURE FLAGS SEED
--- (biometric enabled for Sanghavi org — org_id = 1 by default)
--- Adjust org_id after creating the org via platform admin
+-- Only inserts if org_id=1 already exists (safe for fresh installs).
+-- Run manually after creating the Sanghavi org via platform admin:
+--   INSERT INTO organization_features (organization_id, feature_key, enabled)
+--   VALUES (<org_id>,'biometric',true),(<org_id>,'branches',true),(<org_id>,'statutory',true)
+--   ON CONFLICT (organization_id, feature_key) DO UPDATE SET enabled = true;
 -- ─────────────────────────────────────────────────────────────
 
-INSERT INTO organization_features (organization_id, feature_key, enabled)
-VALUES
-  (1, 'biometric', true),
-  (1, 'branches',  true),
-  (1, 'statutory', true)
-ON CONFLICT (organization_id, feature_key) DO UPDATE SET enabled = EXCLUDED.enabled;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM organizations WHERE id = 1) THEN
+    INSERT INTO organization_features (organization_id, feature_key, enabled)
+    VALUES (1, 'biometric', true), (1, 'branches', true), (1, 'statutory', true)
+    ON CONFLICT (organization_id, feature_key) DO UPDATE SET enabled = EXCLUDED.enabled;
+    RAISE NOTICE 'Feature flags set for org_id=1';
+  ELSE
+    RAISE NOTICE 'Org id=1 not found — set feature flags manually after org setup';
+  END IF;
+END $$;
