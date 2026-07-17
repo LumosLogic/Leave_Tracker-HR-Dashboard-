@@ -79,7 +79,11 @@ router.get('/stats', platformAdminAuth, async (req, res) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
-      const count = (allOrgs || []).filter(o => o.created_at && o.created_at.startsWith(`${y}-${m}`)).length;
+      const count = (allOrgs || []).filter(o => {
+        if (!o.created_at) return false;
+        const d = new Date(o.created_at);
+        return d.getFullYear() === y && d.getMonth() + 1 === parseInt(m, 10);
+      }).length;
       monthlyGrowth.push({ label, count });
     }
 
