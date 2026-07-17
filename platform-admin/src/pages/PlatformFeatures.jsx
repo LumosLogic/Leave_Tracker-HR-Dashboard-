@@ -4,7 +4,7 @@ import {
   Zap, Building2, DollarSign, Receipt, Monitor, BarChart3,
   Target, FolderOpen, UserCheck, LogOut, Megaphone, ClipboardList,
   Shield, Clock, Timer, Bell, Calendar, ChevronDown, CheckCircle2,
-  XCircle, Layers,
+  XCircle, Layers, Fingerprint, GitBranch, ScrollText,
 } from 'lucide-react';
 import { paGet, paPut } from '@/lib/platformApi';
 
@@ -30,15 +30,20 @@ const FEATURES = [
   { key: 'google_calendar', label: 'Google Calendar',   desc: 'Sync approved leaves and events to Google Calendar',          category: 'Integration', Icon: Calendar },
   // System
   { key: 'push_notifications', label: 'Push Notifications', desc: 'Browser push alerts for leave updates and HR events',    category: 'System',      Icon: Bell },
+  // Biometric
+  { key: 'biometric', label: 'Biometric',  desc: 'ZKTeco device integration, punch logs, and biometric attendance', category: 'Biometric', Icon: Fingerprint },
+  { key: 'branches',  label: 'Branches',   desc: 'Multi-branch organization structure and branch-level reporting',   category: 'Biometric', Icon: GitBranch },
+  { key: 'statutory', label: 'Statutory',  desc: 'Statutory compliance fields — PF, ESI, UAN, PAN for employees',   category: 'Biometric', Icon: ScrollText },
 ];
 
-const CATEGORY_ORDER = ['HR', 'Finance', 'People', 'Integration', 'System'];
+const CATEGORY_ORDER = ['HR', 'Finance', 'People', 'Integration', 'System', 'Biometric'];
 const CATEGORY_COLORS = {
   HR:          { bg: 'bg-[#f0f3ff]', text: 'text-[#3525cd]', border: 'border-[#c7c4d8]' },
   Finance:     { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
   People:      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
   Integration: { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200' },
   System:      { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' },
+  Biometric:   { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200' },
 };
 
 // ── Toggle Switch ─────────────────────────────────────────────────────────────

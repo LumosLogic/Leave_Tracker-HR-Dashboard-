@@ -11,6 +11,7 @@ const ALL_FEATURE_KEYS = [
   'announcements','regularization','leave_policies','shifts','onboarding',
   'exit_management','payroll','expenses','assets','reports',
   'performance','documents','clockify','google_calendar','push_notifications',
+  'biometric','branches','statutory',
 ];
 
 // Plan → feature preset map
