@@ -283,7 +283,10 @@ function from(table) {
   const builder = {
     // ── Operations ──────────────────────────────────────────────────────────
     select(cols, options = {}) {
-      state.operation = 'select';
+      // When chained after insert/update/delete, .select() in Supabase just means
+      // "return the affected rows" — our adapter already uses RETURNING *, so keep
+      // the existing operation and ignore this call.
+      if (!state.operation) state.operation = 'select';
       state.columns = cols || '*';
       if (options.count === 'exact') state.countExact = true;
       if (options.head === true)     state.countMode  = true;
