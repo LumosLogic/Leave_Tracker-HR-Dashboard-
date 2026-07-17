@@ -6,7 +6,7 @@ import {
   AtSign, Calendar, Mail, Briefcase, CheckCircle2, XCircle,
   Crown, Zap, Megaphone, DollarSign, Receipt, Monitor, BarChart3,
   Target, FolderOpen, UserCheck, LogOut, Shield, Timer, Bell,
-  Layers, Activity, UserPlus, UserMinus,
+  Layers, Activity, UserPlus, UserMinus, Fingerprint, GitBranch, ScrollText,
 } from 'lucide-react';
 import { paGet, paPut, paPatch } from '@/lib/platformApi';
 
@@ -78,6 +78,9 @@ const FEATURES = [
   { key: 'clockify',           label: 'Clockify',            category: 'Integration', Icon: Timer },
   { key: 'google_calendar',    label: 'Google Calendar',     category: 'Integration', Icon: Calendar },
   { key: 'push_notifications', label: 'Push Notifications',  category: 'System',      Icon: Bell },
+  { key: 'biometric',          label: 'Biometric',           category: 'Biometric',   Icon: Fingerprint },
+  { key: 'branches',           label: 'Branches',            category: 'Biometric',   Icon: GitBranch },
+  { key: 'statutory',          label: 'Statutory',           category: 'Biometric',   Icon: ScrollText },
 ];
 
 const CAT_COLORS = {
@@ -86,6 +89,7 @@ const CAT_COLORS = {
   People:      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
   Integration: { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200' },
   System:      { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' },
+  Biometric:   { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200' },
 };
 
 // ── Plan definitions (Items 4) ─────────────────────────────────────────────────
