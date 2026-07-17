@@ -75,7 +75,6 @@ const FEATURES = [
   { key: 'reports',            label: 'Reports',             category: 'Finance',     Icon: BarChart3 },
   { key: 'performance',        label: 'Performance',         category: 'People',      Icon: Target },
   { key: 'documents',          label: 'Documents',           category: 'People',      Icon: FolderOpen },
-  { key: 'clockify',           label: 'Clockify',            category: 'Integration', Icon: Timer },
   { key: 'google_calendar',    label: 'Google Calendar',     category: 'Integration', Icon: Calendar },
   { key: 'push_notifications', label: 'Push Notifications',  category: 'System',      Icon: Bell },
   { key: 'biometric',          label: 'Biometric',           category: 'Biometric',   Icon: Fingerprint },

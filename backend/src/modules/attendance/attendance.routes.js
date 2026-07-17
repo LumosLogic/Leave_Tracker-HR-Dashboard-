@@ -1,35 +1,8 @@
 const express = require('express');
 const router  = express.Router();
-const axios    = require('axios');
 const { supabase } = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { localDateStr, localTimeStr, flat, orgId, toMinutes, getSettings, isWorkingDay } = require('../../utils/helpers');
-
-// ─── Clockify config helper (local) ───────────────────────────────────────────
-async function getClockifyConfig(oId) {
-  const { data } = await supabase.from('organizations')
-    .select('clockify_api_key, clockify_workspace_id, clockify_last_synced')
-    .eq('id', oId || 1).maybeSingle();
-  if (!data) return null;
-  return { api_key: data.clockify_api_key, workspace_id: data.clockify_workspace_id, last_synced: data.clockify_last_synced };
-}
-
-async function autoLinkClockifyUser(userId, email, config) {
-  try {
-    const resp = await axios.get(
-      `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/users`,
-      { headers: { 'X-Api-Key': config.api_key }, params: { memberships: 'WORKSPACE', 'page-size': 500 } }
-    );
-    const map = {};
-    for (const u of (resp.data || [])) {
-      if (u.email && u.id) map[u.email.toLowerCase()] = u.id;
-    }
-    const clockifyId = map[email?.toLowerCase()];
-    if (!clockifyId) return null;
-    await supabase.from('users').update({ clockify_user_id: clockifyId }).eq('id', userId);
-    return clockifyId;
-  } catch { return null; }
-}
 
 // ─── Attendance: List ─────────────────────────────────────────────────────────
 router.get('/', auth, async (req, res) => {
@@ -63,128 +36,18 @@ router.get('/', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Attendance: Today (for current user, with Clockify enrichment) ───────────
+// ─── Attendance: Today (current user) ─────────────────────────────────────────
 router.get('/today', auth, async (req, res) => {
   try {
-    const today = localDateStr();
-    const { data: existing } = await supabase.from('attendance')
-      .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
-
-    if (existing) {
-      // For Clockify users, enrich the DB record with real-time session data from Clockify
-      // so the UI shows accurate gross/break/effective hours without waiting for the 10-min sync
-      try {
-        const config = await getClockifyConfig(orgId(req));
-        if (config?.api_key && config?.workspace_id) {
-          const { data: uRow } = await supabase.from('users')
-            .select('clockify_user_id').eq('id', req.user.id).maybeSingle();
-          if (uRow?.clockify_user_id) {
-            const startISO = today + 'T00:00:00+05:30';
-            const endISO   = today + 'T23:59:59+05:30';
-            const resp = await axios.get(
-              `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
-              { headers: { 'X-Api-Key': config.api_key }, params: { start: startISO, end: endISO, 'page-size': 50 } }
-            );
-            const entries = resp.data || [];
-            let totalSec = 0, firstStart = null, lastEnd = null, hasRunning = false;
-            let runningEntryStartISO = null; // ISO start of the currently-running entry
-            for (const e of entries) {
-              // Add duration of COMPLETED entries
-              const m = (e.timeInterval?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-              if (m) totalSec += (parseInt(m[1]||0)*3600) + (parseInt(m[2]||0)*60) + parseInt(m[3]||0);
-              if (e.timeInterval?.start) {
-                const d = new Date(e.timeInterval.start);
-                const s = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-                if (!firstStart || s < firstStart) firstStart = s;
-              }
-              if (e.timeInterval?.end) {
-                const d = new Date(e.timeInterval.end);
-                const s = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-                if (!lastEnd || s > lastEnd) lastEnd = s;
-              } else {
-                hasRunning = true;
-                // Capture the ISO start of the running entry to compute its elapsed time
-                if (e.timeInterval?.start) runningEntryStartISO = e.timeInterval.start;
-              }
-            }
-
-            // CRITICAL FIX: Add the currently-running session's elapsed time to effective seconds.
-            // Without this, the running session time gets counted as "break" (gross - completed_only = inflated).
-            if (hasRunning && runningEntryStartISO) {
-              const runningElapsedMs = Date.now() - new Date(runningEntryStartISO).getTime();
-              if (runningElapsedMs > 0) totalSec += Math.floor(runningElapsedMs / 1000);
-            }
-
-            const eff = Math.round((totalSec / 3600) * 100) / 100;
-            // gross = full span from first check-in to now (includes all gaps)
-            // breaks = gross - eff = only actual idle gaps between sessions (correct now)
-            const now = localTimeStr();
-            const refEnd = (!hasRunning && lastEnd) ? lastEnd : now;
-            const gross  = firstStart ? Math.max(0, Math.round((toMinutes(refEnd) - toMinutes(firstStart)) / 60 * 100) / 100) : 0;
-            const breaks = Math.max(0, Math.round((gross - eff) * 60));
-            // Return enriched record without writing to DB (sync will persist every 10 min)
-            return res.json({
-              ...existing,
-              check_in:            firstStart || existing.check_in,
-              check_out:           (!hasRunning && lastEnd) ? lastEnd : null,
-              clockify_hours:      eff,
-              work_hours:          eff,
-              gross_hours:         gross,
-              total_break_minutes: breaks,
-            });
-          }
-        }
-      } catch { /* Clockify live enrich failed — return plain DB record */ }
-      return res.json(existing);
-    }
-
-    // No record yet — check if employee has an active Clockify timer and auto-create
-    try {
-      const config = await getClockifyConfig(orgId(req));
-      if (config?.api_key && config?.workspace_id) {
-        const { data: uRow } = await supabase.from('users')
-          .select('clockify_user_id').eq('id', req.user.id).maybeSingle();
-        if (uRow?.clockify_user_id) {
-          const resp = await axios.get(
-            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
-            { headers: { 'X-Api-Key': config.api_key }, params: { 'in-progress': true, 'page-size': 1 } }
-          );
-          const active = (resp.data || []).find(e => !e.timeInterval?.end);
-          if (active?.timeInterval?.start) {
-            const d = new Date(active.timeInterval.start);
-            const checkInTime = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-            const settings = await getSettings(orgId(req));
-            const is_late = settings ? toMinutes(checkInTime) > toMinutes(settings.late_threshold) : false;
-            const { data: created } = await supabase.from('attendance')
-              .insert({ user_id: req.user.id, date: today, check_in: checkInTime, status: 'present', is_late, organization_id: orgId(req) })
-              .select().single();
-            return res.json(created || null);
-          }
-        }
-      }
-    } catch { /* Clockify check failed — fall through to null */ }
-
-    res.json(null);
+    const { data } = await supabase.from('attendance')
+      .select('*').eq('user_id', req.user.id).eq('date', localDateStr()).maybeSingle();
+    res.json(data || null);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Attendance: Check-in Mode (does this org use Clockify?) ─────────────────
-// Returns whether the org has Clockify configured and if this employee is linked
+// ─── Attendance: Check-in Mode (manual only) ──────────────────────────────────
 router.get('/checkin-mode', auth, async (req, res) => {
-  try {
-    const config = await getClockifyConfig(orgId(req));
-    const has_clockify = !!(config?.api_key && config?.workspace_id);
-    let user_clockify_id = null;
-    if (has_clockify) {
-      const { data: u } = await supabase.from('users').select('clockify_user_id, email').eq('id', req.user.id).maybeSingle();
-      user_clockify_id = u?.clockify_user_id || null;
-      // Auto-link by email if not yet set
-      if (!user_clockify_id && u?.email) {
-        user_clockify_id = await autoLinkClockifyUser(req.user.id, u.email, config);
-      }
-    }
-    res.json({ has_clockify, user_clockify_id, syncs_clockify: has_clockify && !!user_clockify_id });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  res.json({ has_clockify: false, user_clockify_id: null, syncs_clockify: false });
 });
 
 // ─── Attendance: Check-in ─────────────────────────────────────────────────────
@@ -198,32 +61,7 @@ router.post('/checkin', auth, async (req, res) => {
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
     if (existing?.check_in && !existing?.check_out) return res.status(400).json({ error: 'Already checked in today' });
-
-    // Clockify re-checkin: allow resuming after a break (check_in + check_out both set)
-    if (existing?.check_in && existing?.check_out) {
-      const config = await getClockifyConfig(orgId(req));
-      const { data: uRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
-      const isClockifyUser = !!(config?.api_key && config?.workspace_id && uRow?.clockify_user_id);
-      if (!isClockifyUser) return res.status(400).json({ error: 'You have already checked out today' });
-
-      let clockify_synced = false;
-      let entryId = null;
-      try {
-        const resp = await axios.post(
-          `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${uRow.clockify_user_id}/time-entries`,
-          { start: new Date().toISOString(), description: '' },
-          { headers: { 'X-Api-Key': config.api_key } }
-        );
-        if (resp.data?.id) entryId = resp.data.id;
-        clockify_synced = true;
-      } catch { /* Clockify unavailable */ }
-
-      const updateFields = { check_out: null };
-      if (entryId) updateFields.clockify_entry_id = entryId;
-      const { data: resumed } = await supabase.from('attendance')
-        .update(updateFields).eq('id', existing.id).select().single();
-      return res.json({ record: resumed, clockify_synced, message: clockify_synced ? 'Timer resumed in Clockify' : 'Resumed working today' });
-    }
+    if (existing?.check_in && existing?.check_out)  return res.status(400).json({ error: 'You have already checked out today' });
 
     const is_late = toMinutes(timeStr) > toMinutes(settings.late_threshold);
 
@@ -240,29 +78,7 @@ router.post('/checkin', auth, async (req, res) => {
       record = data;
     }
 
-    // Attempt Clockify sync: start a timer for this employee if Clockify is configured
-    let clockify_synced = false;
-    try {
-      const config = await getClockifyConfig(orgId(req));
-      if (config?.api_key && config?.workspace_id) {
-        const { data: userRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
-        if (userRow?.clockify_user_id) {
-          const resp = await axios.post(
-            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
-            { start: new Date().toISOString(), description: '' },
-            { headers: { 'X-Api-Key': config.api_key } }
-          );
-          if (resp.data?.id) {
-            await supabase.from('attendance').update({ clockify_entry_id: resp.data.id }).eq('id', record.id);
-            record = { ...record, clockify_entry_id: resp.data.id };
-          }
-          clockify_synced = true;
-        }
-      }
-    } catch { /* Clockify unavailable — standalone attendance saved */ }
-
-    const baseMsg = is_late ? 'Checked in (Late)' : 'Checked in successfully';
-    res.json({ record, clockify_synced, message: clockify_synced ? `${baseMsg} · Synced to Clockify` : baseMsg });
+    res.json({ record, message: is_late ? 'Checked in (Late)' : 'Checked in successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -297,33 +113,14 @@ router.post('/checkout', auth, async (req, res) => {
       .update({ check_out: timeStr, gross_hours: Math.round(grossHours * 100) / 100, work_hours: Math.round(effectiveHours * 100) / 100, status, is_early_exit, ...breakUpdateFields })
       .eq('id', record.id).select().single();
 
-    // Attempt Clockify sync: stop the running timer for this employee
-    let clockify_synced = false;
-    try {
-      const config = await getClockifyConfig(orgId(req));
-      if (config?.api_key && config?.workspace_id) {
-        const { data: userRow } = await supabase.from('users').select('clockify_user_id').eq('id', req.user.id).maybeSingle();
-        if (userRow?.clockify_user_id) {
-          await axios.patch(
-            `https://api.clockify.me/api/v1/workspaces/${config.workspace_id}/user/${userRow.clockify_user_id}/time-entries`,
-            { end: new Date().toISOString() },
-            { headers: { 'X-Api-Key': config.api_key } }
-          );
-          clockify_synced = true;
-        }
-      }
-    } catch { /* Clockify unavailable — local checkout saved */ }
-
     const msgs = [];
-    if (is_early_exit)        msgs.push('Early exit noted');
+    if (is_early_exit)         msgs.push('Early exit noted');
     if (status === 'half_day') msgs.push('Half day recorded');
-    if (clockify_synced)       msgs.push('Synced to Clockify');
-    res.json({ record: updated, clockify_synced, message: msgs.length ? msgs.join(' · ') : 'Checked out successfully' });
+    res.json({ record: updated, message: msgs.length ? msgs.join(' · ') : 'Checked out successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Attendance: Break In ─────────────────────────────────────────────────────
-// Break In — employee starts a break (non-Clockify standalone mode)
 router.post('/break-in', auth, async (req, res) => {
   try {
     const today   = localDateStr();

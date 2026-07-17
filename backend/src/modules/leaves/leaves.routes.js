@@ -13,14 +13,26 @@ router.get('/date-check', auth, async (req, res) => {
     const { startDate, endDate } = req.query;
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate required' });
 
-    // Check for existing pending/approved leaves on the selected dates for this user
-    const { data: conflicts } = await supabase.from('leaves')
+    // Check for existing pending/approved leaves on the selected dates for this user.
+    // WFH is allowed to coexist with a half-day leave on the same date (different dimensions).
+    const { data: rawConflicts } = await supabase.from('leaves')
       .select('id, leave_type, leave_time, status, start_date, end_date')
       .eq('user_id', req.user.id)
       .eq('organization_id', orgId(req))
       .in('status', ['pending', 'approved'])
       .lte('start_date', endDate)
       .gte('end_date', startDate);
+
+    const { leave_time: newLeaveTime, leave_type: newLeaveType } = req.query;
+    const newIsWfh  = newLeaveType === 'wfh' || newLeaveTime === 'wfh';
+    const newIsHalf = newLeaveTime === 'half';
+    const conflicts = (rawConflicts || []).filter(c => {
+      const cIsWfh = c.leave_type === 'wfh' || c.leave_time === 'wfh';
+      // Allow: existing WFH + new half-day, or existing half-day + new WFH
+      if (cIsWfh && newIsHalf) return false;
+      if (!cIsWfh && c.leave_time === 'half' && newIsWfh) return false;
+      return true;
+    });
 
     // Check for Clockify attendance on those dates
     const { data: attendanceRecs } = await supabase.from('attendance')

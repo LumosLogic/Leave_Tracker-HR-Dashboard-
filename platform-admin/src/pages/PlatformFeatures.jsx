@@ -26,7 +26,6 @@ const FEATURES = [
   { key: 'performance',     label: 'Performance',       desc: 'Performance reviews, goal tracking, and appraisals',          category: 'People',      Icon: Target },
   { key: 'documents',       label: 'Documents',         desc: 'Employee document upload, storage, and access management',    category: 'People',      Icon: FolderOpen },
   // Integrations
-  { key: 'clockify',        label: 'Clockify',          desc: 'Time tracking integration with Clockify API',                 category: 'Integration', Icon: Timer },
   { key: 'google_calendar', label: 'Google Calendar',   desc: 'Sync approved leaves and events to Google Calendar',          category: 'Integration', Icon: Calendar },
   // System
   { key: 'push_notifications', label: 'Push Notifications', desc: 'Browser push alerts for leave updates and HR events',    category: 'System',      Icon: Bell },

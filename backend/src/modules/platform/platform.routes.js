@@ -10,15 +10,15 @@ const { sendMail, orgApprovedHtml, orgRejectedHtml } = require('../../services/e
 const ALL_FEATURE_KEYS = [
   'announcements','regularization','leave_policies','shifts','onboarding',
   'exit_management','payroll','expenses','assets','reports',
-  'performance','documents','clockify','google_calendar','push_notifications',
+  'performance','documents','google_calendar','push_notifications',
   'biometric','branches','statutory',
 ];
 
 // Plan → feature preset map
 const PLAN_FEATURES = {
-  free:     { announcements: true, documents: true, regularization: false, leave_policies: false, shifts: false, onboarding: false, exit_management: false, payroll: false, expenses: false, assets: false, reports: false, performance: false, clockify: false, google_calendar: false, push_notifications: false },
-  gold:     { announcements: true, documents: true, regularization: true, leave_policies: true, shifts: true, reports: true, performance: true, payroll: true, onboarding: false, exit_management: false, expenses: false, assets: false, clockify: false, google_calendar: false, push_notifications: false },
-  platinum: Object.fromEntries(['announcements','regularization','leave_policies','shifts','onboarding','exit_management','payroll','expenses','assets','reports','performance','documents','clockify','google_calendar','push_notifications'].map(k => [k, true])),
+  free:     { announcements: true, documents: true, regularization: false, leave_policies: false, shifts: false, onboarding: false, exit_management: false, payroll: false, expenses: false, assets: false, reports: false, performance: false, google_calendar: false, push_notifications: false },
+  gold:     { announcements: true, documents: true, regularization: true, leave_policies: true, shifts: true, reports: true, performance: true, payroll: true, onboarding: false, exit_management: false, expenses: false, assets: false, google_calendar: false, push_notifications: false },
+  platinum: Object.fromEntries(['announcements','regularization','leave_policies','shifts','onboarding','exit_management','payroll','expenses','assets','reports','performance','documents','google_calendar','push_notifications'].map(k => [k, true])),
 };
 
 // ─── Platform Admin: Login ────────────────────────────────────────────────────
