@@ -62,9 +62,9 @@ Your administrator account will be shared separately via secure message.
 
 ---
 
-## 3. Your ZKTeco Devices
+## 3. Your ZKTeco Devices — Registered in System
 
-All 7 of your biometric devices are configured in the system. Once your IT team points the devices to our server, they will appear in the HRMS dashboard under **Biometric → Devices**.
+All 7 of your biometric devices are **registered in the HRMS**. You can view them under **Biometric → Devices** in the admin dashboard.
 
 | # | Serial Number | Device Name | Location | Device IP | Last Known Status |
 |---|--------------|-------------|----------|-----------|------------------|
@@ -224,7 +224,7 @@ Please provide the following for go-live:
 - [x] ADMS receiver endpoint live at `/iclock/cdata`
 - [x] Device heartbeat endpoint live at `/iclock/getrequest`
 - [x] Extended employee profile (PF, ESI, UAN, OT, branch fields) ready
-- [ ] All 7 ZKTeco devices registered in system *(pending next deployment)*
+- [x] All 7 ZKTeco devices registered in system
 - [ ] Employee data imported *(pending data from client)*
 - [ ] ZKTeco PIN → Employee mapping completed *(pending PIN export from client)*
 - [ ] Branches configured *(pending branch list from client)*
