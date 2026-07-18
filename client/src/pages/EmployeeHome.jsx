@@ -86,6 +86,9 @@ export default function EmployeeHome() {
   const [checkBusy, setCheckBusy]     = useState(false);
   const [breakBusy, setBreakBusy]     = useState(false);
 
+  const clockifySyncs = false;
+  const clockifyTodayHours = 0;
+
   const nowDate = new Date();
 
   const loadToday = useCallback(async () => {
