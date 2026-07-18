@@ -5,7 +5,7 @@
  * Run on VPS inside Docker:
  *   docker exec lumos_app node backend/scripts/migrate-from-supabase.js
  */
-require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env'), override: true });
 
 const { createClient } = require('@supabase/supabase-js');
 const { Pool }         = require('pg');
