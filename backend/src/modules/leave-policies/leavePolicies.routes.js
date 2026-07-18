@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth } = require('../../middleware/auth');
 
 const DEFAULT_POLICIES = [
   { leave_type: 'annual',    label: 'Annual Leave',    annual_quota: 18, carry_forward: true,  max_carry_forward: 5,  paid: true },
@@ -13,7 +14,7 @@ const DEFAULT_POLICIES = [
 ];
 
 // GET /api/leave-policies
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data, error } = await supabase.from('leave_policies')
@@ -28,7 +29,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/leave-policies — upsert all policies at once
-router.post('/', async (req, res) => {
+router.post('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { policies } = req.body;
@@ -44,7 +45,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/leave-policies/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const fields = req.body;

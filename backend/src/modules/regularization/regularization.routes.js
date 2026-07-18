@@ -1,11 +1,12 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // GET /api/regularization
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const uid = req.user.id;
@@ -43,7 +44,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/regularization
-router.post('/', async (req, res) => {
+router.post('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { date, requested_check_in, requested_check_out, reason } = req.body;
@@ -70,7 +71,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/regularization/:id/review
-router.put('/:id/review', async (req, res) => {
+router.put('/:id/review', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const oId = req.user.organization_id;

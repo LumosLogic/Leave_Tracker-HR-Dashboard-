@@ -1,9 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth } = require('../../middleware/auth');
 
 // GET /api/notifications — user's own notifications
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const { data, error } = await supabase.from('notifications')
       .select('*').eq('user_id', req.user.id)
@@ -14,7 +15,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/notifications/unread-count
-router.get('/unread-count', async (req, res) => {
+router.get('/unread-count', auth, async (req, res) => {
   try {
     const { count, error } = await supabase.from('notifications')
       .select('id', { count: 'exact', head: true })
@@ -25,7 +26,7 @@ router.get('/unread-count', async (req, res) => {
 });
 
 // PUT /api/notifications/:id/read
-router.put('/:id/read', async (req, res) => {
+router.put('/:id/read', auth, async (req, res) => {
   try {
     const { error } = await supabase.from('notifications')
       .update({ is_read: true }).eq('id', req.params.id).eq('user_id', req.user.id);
@@ -35,7 +36,7 @@ router.put('/:id/read', async (req, res) => {
 });
 
 // PUT /api/notifications/mark-all-read
-router.put('/mark-all-read', async (req, res) => {
+router.put('/mark-all-read', auth, async (req, res) => {
   try {
     const { error } = await supabase.from('notifications')
       .update({ is_read: true }).eq('user_id', req.user.id).eq('is_read', false);
@@ -45,7 +46,7 @@ router.put('/mark-all-read', async (req, res) => {
 });
 
 // DELETE /api/notifications/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const { error } = await supabase.from('notifications')
       .delete().eq('id', req.params.id).eq('user_id', req.user.id);
