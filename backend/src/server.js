@@ -84,6 +84,24 @@ app.use('/api/dashboard',      dashboardRouter);
 app.use('/api/employees',      employeesRouter);
 app.use('/api/attendance',     attendanceRouter);
 app.use('/api/leaves',         leavesRouter);
+
+// ── Route aliases (frontend uses short paths, routers are mounted with prefixes) ──
+app.use('/api/team-leaves', (req, res, next) => {
+  req.url = '/team' + (Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '');
+  leavesRouter(req, res, next);
+});
+app.use('/api/culture', (req, res, next) => {
+  req.url = '/culture' + (Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '');
+  calendarRouter(req, res, next);
+});
+app.use('/api/my-stats', (req, res, next) => {
+  req.url = '/my-stats' + (Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '');
+  analyticsRouter(req, res, next);
+});
+app.use('/api/new-joiners', (req, res, next) => {
+  req.url = '/new-joiners' + (Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '');
+  analyticsRouter(req, res, next);
+});
 app.use('/api/push',           pushRouter);
 app.use('/api/calendar',       calendarRouter);
 app.use('/api/admin',          archivesRouter);
