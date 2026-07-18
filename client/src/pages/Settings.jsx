@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { RoleBadge } from '@/components/ui/Badge';
 import { todayStr, initials } from '@/lib/utils';
 import { usePushNotification } from '@/hooks/usePushNotification';
@@ -249,6 +250,7 @@ function NotificationRecipientsCard() {
   const [newEmail, setNewEmail] = useState('');
   const [newName,  setNewName]  = useState('');
   const [adding,   setAdding]   = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
   const { data: recipients = [], isLoading } = useQuery({
     queryKey: ['notify-recipients'],
@@ -275,13 +277,13 @@ function NotificationRecipientsCard() {
     } catch (err) { toast(err.message, 'error'); }
   }
 
-  async function removeRecipient(id) {
-    if (!confirm('Remove this recipient?')) return;
+  async function doRemoveRecipient(id) {
     try {
       await apiDelete(`/root/notify-recipients/${id}`);
       qc.invalidateQueries({ queryKey: ['notify-recipients'] });
       toast('Recipient removed', 'success');
     } catch (err) { toast(err.message, 'error'); }
+    setConfirmRemove(null);
   }
 
   return (
@@ -329,13 +331,23 @@ function NotificationRecipientsCard() {
               <button onClick={() => toggleActive(r)} className="p-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors text-[#464555]">
                 {r.active ? <ToggleRight size={16} className="text-emerald-600" /> : <ToggleLeft size={16} />}
               </button>
-              <button onClick={() => removeRecipient(r.id)} className="p-1.5 rounded-lg hover:bg-rose-50 transition-colors text-rose-400 hover:text-rose-600">
+              <button onClick={() => setConfirmRemove(r)} className="p-1.5 rounded-lg hover:bg-rose-50 transition-colors text-rose-400 hover:text-rose-600">
                 <Trash2 size={15} />
               </button>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmRemove}
+        title="Remove Recipient"
+        message={`Remove ${confirmRemove?.name || confirmRemove?.email} from notification recipients?`}
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={() => doRemoveRecipient(confirmRemove.id)}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }

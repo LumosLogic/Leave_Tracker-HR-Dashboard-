@@ -6,6 +6,7 @@ import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { StatusBadge } from '@/components/ui/Badge';
 import { fmtTime, fmtHours, todayStr, statusLabel, MONTHS, DAYS_FULL } from '@/lib/utils';
 
@@ -89,6 +90,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(initialTab || 'all');
   const [editRec, setEditRec] = useState(null);
+  const [confirmAbsent, setConfirmAbsent] = useState(null);
 
   const d = new Date(dateStr + 'T12:00:00');
   const year  = d.getFullYear();
@@ -162,13 +164,13 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
         return true;
       });
 
-  async function markAbsent(emp) {
-    if (!window.confirm(`Mark ${emp.name} as absent for ${dateStr}?`)) return;
+  async function doMarkAbsent(emp) {
     try {
       await apiPost('/attendance/mark-absent', { user_id: emp.id, date: dateStr });
       toast('Marked absent', 'success');
       refetchAtt();
     } catch (err) { toast(err.message, 'error'); }
+    setConfirmAbsent(null);
   }
 
   function handleAttRefresh() {
@@ -305,7 +307,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
                           )}
                           {!rec && dateStr <= todayStr() && (
                             <button className="btn btn-danger btn-sm text-xs py-1 px-2"
-                              onClick={() => markAbsent(emp)}>
+                              onClick={() => setConfirmAbsent(emp)}>
                               Absent
                             </button>
                           )}
@@ -333,6 +335,16 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
           onRefresh={handleAttRefresh}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmAbsent}
+        title="Mark Absent"
+        message={`Mark ${confirmAbsent?.name} as absent for ${dateStr}?`}
+        confirmLabel="Mark Absent"
+        variant="danger"
+        onConfirm={() => doMarkAbsent(confirmAbsent)}
+        onCancel={() => setConfirmAbsent(null)}
+      />
     </>
   );
 }
