@@ -21,6 +21,7 @@ const pool = new Pool({
 const MIGRATIONS = [
   'backend/migrations/full_schema.sql',
   'backend/migrations/sanghavi_migration.sql',
+  'backend/migrations/seed_sanghavi_data.sql',
 ];
 
 async function run() {
