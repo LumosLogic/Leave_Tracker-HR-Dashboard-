@@ -103,11 +103,7 @@ async function run() {
         department, position, avatar_color,
         date_of_birth, phone, date_of_joining,
         employee_id, status, gender,
-        emergency_contact_name, emergency_contact_phone,
-        address, city, state, pincode,
-        pan_number, aadhaar_number, uf_number,
-        bank_name, bank_account_number, bank_ifsc,
-        force_password_change
+        address
       `)
       .eq('organization_id', OLD_ORG_ID);
 
@@ -136,32 +132,20 @@ async function run() {
           department, position, avatar_color,
           date_of_birth, phone, date_of_joining,
           employee_id, status, gender,
-          emergency_contact_name, emergency_contact_phone,
-          address, city, state, pincode,
-          pan_number, aadhaar_number, uf_number,
-          bank_name, bank_account_number, bank_ifsc,
-          force_password_change, created_at
+          address, created_at
         ) VALUES (
           $1,$2,$3,$4,$5,
           $6,$7,$8,
           $9,$10,$11,
           $12,$13,$14,
-          $15,$16,
-          $17,$18,$19,$20,
-          $21,$22,$23,
-          $24,$25,$26,
-          $27, NOW()
+          $15, NOW()
         ) RETURNING id`,
         [
           u.name, u.email, u.password, u.role || 'employee', newOrgId,
           u.department || null, u.position || null, u.avatar_color || '#3525cd',
           u.date_of_birth || null, u.phone || null, u.date_of_joining || null,
           u.employee_id || null, u.status || 'active', u.gender || null,
-          u.emergency_contact_name || null, u.emergency_contact_phone || null,
-          u.address || null, u.city || null, u.state || null, u.pincode || null,
-          u.pan_number || null, u.aadhaar_number || null, u.uf_number || null,
-          u.bank_name || null, u.bank_account_number || null, u.bank_ifsc || null,
-          u.force_password_change || false,
+          u.address || null,
         ]
       );
 
