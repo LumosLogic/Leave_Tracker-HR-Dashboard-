@@ -487,6 +487,7 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
       });
 
   return (
+    <>
     <Modal open onClose={onClose} title="" size="lg">
       {{
         body: (
@@ -639,6 +640,7 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
       onConfirm={() => doMarkAbsent(confirmAbsent)}
       onCancel={() => setConfirmAbsent(null)}
     />
+    </>
   );
 }
 
