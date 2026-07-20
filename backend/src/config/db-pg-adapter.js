@@ -6,7 +6,12 @@
  * Modifiers: order, limit, range, single, maybeSingle, count
  */
 
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Return DATE columns as plain "YYYY-MM-DD" strings instead of JS Date objects.
+// Without this, pg converts DATE to a JS Date using local timezone (IST = UTC+5:30),
+// which shifts 2026-01-01 IST → 2025-12-31T18:30:00Z, corrupting all date fields.
+types.setTypeParser(1082, val => val); // 1082 = DATE OID
 
 const pool = new Pool({
   host:     process.env.DB_HOST     || 'localhost',

@@ -8,7 +8,9 @@ export function cn(...inputs) {
 // ── Date / Time Formatters ─────────────────────────────────────────────────────
 export function fmtDate(dateStr) {
   if (!dateStr) return '—';
-  const d = new Date(dateStr + 'T12:00:00');
+  // Slice to YYYY-MM-DD to handle both plain dates and ISO timestamps safely
+  const datePart = String(dateStr).slice(0, 10);
+  const d = new Date(datePart + 'T12:00:00');
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
