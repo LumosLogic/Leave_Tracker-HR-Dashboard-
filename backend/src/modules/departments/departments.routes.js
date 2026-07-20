@@ -1,9 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 // GET /api/departments
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data, error } = await supabase
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/departments
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, description, head_user_id } = req.body;
@@ -47,7 +48,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/departments/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, description, head_user_id } = req.body;
@@ -62,7 +63,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/departments/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { error } = await supabase.from('departments')
