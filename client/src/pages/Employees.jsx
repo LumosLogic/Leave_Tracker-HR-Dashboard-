@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { useFeature } from '@/context/FeatureFlagContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -919,10 +920,11 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee', initialTab = 'personal' }) {
-  const isEdit          = !!employee;
-  const toast           = useToast();
-  const { isRootAdmin } = useAuth();
-  const qc              = useQueryClient();
+  const isEdit            = !!employee;
+  const toast             = useToast();
+  const { isRootAdmin }   = useAuth();
+  const qc                = useQueryClient();
+  const hasBiometric      = useFeature('biometric');
   const navigate        = useNavigate();
   const location        = useLocation();
   const employeesBase   = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
@@ -1223,25 +1225,27 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 </div>
               </div>
 
-              {/* Biometric */}
-              <div>
-                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Biometric Device</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="form-label">Device Enrollment ID / PIN</label>
-                    <div className="relative">
-                      <Fingerprint size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                      <input className="form-control pl-8 font-mono" placeholder="e.g. 1001"
-                        value={form.device_enrollment_id} onChange={e => set('device_enrollment_id', e.target.value)} />
+              {/* Biometric — only shown if org has biometric feature enabled */}
+              {hasBiometric && (
+                <div>
+                  <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Biometric Device</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="form-label">Device Enrollment ID / PIN</label>
+                      <div className="relative">
+                        <Fingerprint size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                        <input className="form-control pl-8 font-mono" placeholder="e.g. 1001"
+                          value={form.device_enrollment_id} onChange={e => set('device_enrollment_id', e.target.value)} />
+                      </div>
+                      {form.device_enrollment_id && (
+                        <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                          <Fingerprint size={11} /> Biometric enrollment configured
+                        </p>
+                      )}
                     </div>
-                    {form.device_enrollment_id && (
-                      <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
-                        <Fingerprint size={11} /> Biometric enrollment configured
-                      </p>
-                    )}
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Work schedule */}
               <div>

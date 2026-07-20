@@ -185,14 +185,14 @@ Please provide the following for go-live:
 
 | # | Item | Purpose | Priority |
 |---|------|---------|---------|
-| 1 | **Employee list export from ZKTeco WDMS** (PIN + Name) | To map device PIN → HRMS employee | **Critical** |
-| 2 | **Current ADMS server URL on devices** (IP + Port currently configured) | To confirm what to replace | High |
-| 3 | **List of branches / office locations** | To set up Branch records in HRMS | High |
-| 4 | **Employee master data** (if migration from old system is needed) | To create employee profiles | High |
-| 5 | **Leave policy rules** (annual leave days, sick leave days, etc.) | To configure leave policies per type | Medium |
-| 6 | **Holiday list for 2026** | To configure public/company holidays | Medium |
-| 7 | **Work shift timings** (start time, end time, late threshold) | To configure work schedule | Medium |
-| 8 | **Department list** | To create department structure | Medium |
+| 1 | **Employee list export from ZKTeco WDMS** (PIN + Name) | To create employee accounts and map PINs | **Critical** |
+| 2 | **Employee master data** (name, designation, department, joining date, contact) | To complete employee profiles | **Critical** |
+| 3 | **Leave policy rules** (annual leave days, sick leave days, etc.) | To configure leave policies per type | Medium |
+| 4 | **Holiday list for 2026** | To configure public/company holidays | Medium |
+| 5 | **Work shift timings** (start time, end time, late threshold) | To configure work schedule | Medium |
+| 6 | **Department list** | To create department structure | Medium |
+
+> **Note:** Branches and office locations are already configured in the system (Main Area, Dalal, Third Floor, CG Road, Bapunagar, Bhuj, Insurance Bhuj).
 
 ---
 
@@ -221,9 +221,10 @@ Please provide the following for go-live:
 - [x] Extended employee profile (PF, ESI, UAN, OT, branch fields) ready
 - [x] All 7 ZKTeco devices registered in system
 - [x] Domain live — `https://hrms.lumoslogic.com` active with SSL
-- [ ] Employee data imported *(pending data from client)*
+- [x] All 7 branch locations configured (Main Area, Dalal, Third Floor, CG Road, Bapunagar, Bhuj, Insurance Bhuj)
+- [x] End-to-end biometric test passed — simulated ZKTeco punch received, attendance auto-created correctly
+- [ ] Employee data imported *(pending employee list from client)*
 - [ ] ZKTeco PIN → Employee mapping completed *(pending PIN export from client)*
-- [ ] Branches configured *(pending branch list from client)*
 - [ ] Leave policies configured *(pending policy rules from client)*
 - [ ] Work schedule configured *(pending shift timings from client)*
 - [ ] Holidays configured *(pending holiday list from client)*
@@ -248,7 +249,63 @@ We recommend running both your old system and the new HRMS simultaneously for **
 
 ---
 
-## 11. Technical Reference
+## 11. Biometric Dashboard — Screen Guide
+
+All biometric management is accessible from the left sidebar under the **BIOMETRIC** section after logging in as Root Admin or HR Admin.
+
+---
+
+### 11.1 Biometric Devices
+
+**URL:** https://hrms.lumoslogic.com/biometric/devices
+
+This screen shows all 7 registered ZKTeco devices. Each card displays:
+- **Device name and serial number**
+- **Location and branch**
+- **Last seen timestamp** — updates in real time every time the device sends a heartbeat
+- **Online / Offline status** — a device turns green (Online) within 1–2 minutes of being pointed to our server; it turns Offline if no heartbeat is received for more than 5 minutes
+- **View Logs** — click to jump directly to punch logs filtered by that device
+
+> Once your IT team updates the ADMS server URL on each device, you will see them flip to Online one by one on this screen.
+
+*(Screenshot — Biometric Devices page)*
+
+---
+
+### 11.2 Employee PIN Mapping
+
+**URL:** https://hrms.lumoslogic.com/biometric/mapping
+
+This screen links each ZKTeco device PIN (enrollment number) to an employee account in the HRMS. This mapping is what allows the system to know which employee made a punch.
+
+- Each row shows the **Device PIN**, **Employee Name**, **Department**, and **Enrollment ID**
+- Use **+ Add Mapping** to manually map a PIN to an employee
+- Use **Reprocess Logs** after completing all mappings — this retroactively processes any punch logs that arrived before the mapping was set up, so no attendance data is lost
+
+> This screen will be populated once you share the employee PIN export from ZKTeco WDMS.
+
+*(Screenshot — Employee PIN Mapping page)*
+
+---
+
+### 11.3 Punch Logs
+
+**URL:** https://hrms.lumoslogic.com/biometric/logs
+
+This is the full audit trail of every punch received from any ZKTeco device. Every scan is permanently logged here regardless of whether it was processed into an attendance record.
+
+- Filter by **date range**, **device**, **employee PIN**, or **processed status**
+- Each row shows: punch time, employee PIN, employee name (once mapped), device name, punch type (Check-In / Check-Out), and whether it was processed into attendance
+- **Processed = Yes** means the punch was successfully converted into an attendance record
+- **Processed = No** means the employee PIN is not yet mapped — use Reprocess Logs after mapping to fix this
+
+> This screen is your ground truth for all biometric activity. If there is ever a dispute about an employee's attendance, this log is the permanent record.
+
+*(Screenshot — Punch Logs page)*
+
+---
+
+## 12. Technical Reference
 
 ### ADMS Endpoints (For IT Reference)
 
@@ -291,6 +348,7 @@ We recommend running both your old system and the new HRMS simultaneously for **
 
 ## 13. Frequently Asked Questions
 
+
 **Q: What happens if the internet goes down and a device cannot push punches?**
 A: ZKTeco devices store punches locally. When connectivity is restored, the device automatically retries and sends all stored punches. Our system handles these late-arriving punches correctly — no data is lost.
 
@@ -314,30 +372,6 @@ A: Yes — employees can log in to the portal (`/portal/home`) and see their own
 
 ---
 
-## 14. Message Template for Your IT Team
-
-Send this to whoever manages your ZKTeco devices:
-
----
-
-*Subject: ZKTeco ADMS Server URL Update Required*
-
-Please update the ADMS Server settings on all ZKTeco biometric devices as follows:
-
-**New Server Address:** `https://hrms.lumoslogic.com`
-
-*(Fallback direct IP if needed: `http://187.127.146.194:3005`)*
-
-Steps to update:
-1. Open ZKTeco WDMS → Device Management
-2. Select each device
-3. Go to ADMS / Cloud Server settings
-4. Replace the current server IP and port with the new one above
-5. Apply and save
-
-Please update all 5 online devices (Main Area, Dalal, Third Floor, CG Road, Bapunagar) first. Confirm once done.
-
----
 
 *End of Delivery Document*
 
