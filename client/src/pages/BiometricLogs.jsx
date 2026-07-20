@@ -56,11 +56,11 @@ export default function BiometricLogs() {
   const params = {
     page,
     limit: PAGE_SIZE,
-    ...(dateFrom  ? { date_from: dateFrom }   : {}),
-    ...(dateTo    ? { date_to: dateTo }       : {}),
-    ...(device    ? { device }                : {}),
-    ...(pin       ? { pin }                   : {}),
-    ...(processed !== '' ? { processed }      : {}),
+    ...(dateFrom  ? { date_from: dateFrom }        : {}),
+    ...(dateTo    ? { date_to: dateTo }            : {}),
+    ...(device    ? { device_serial: device }      : {}),
+    ...(pin       ? { employee_pin: pin }          : {}),
+    ...(processed !== '' ? { processed }           : {}),
   };
 
   const { data: _res, isLoading } = useQuery({
