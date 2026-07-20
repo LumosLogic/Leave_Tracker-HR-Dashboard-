@@ -74,7 +74,7 @@ export default function BiometricLogs() {
     queryFn:  () => apiGet('/biometric/devices'),
   });
 
-  const logs        = Array.isArray(_res?.logs)   ? _res.logs   : Array.isArray(_res) ? _res : [];
+  const logs        = Array.isArray(_res?.data) ? _res.data : Array.isArray(_res?.logs) ? _res.logs : Array.isArray(_res) ? _res : [];
   const total       = _res?.total ?? logs.length;
   const totalPages  = Math.ceil(total / PAGE_SIZE);
   const devices     = Array.isArray(_devices) ? _devices : [];

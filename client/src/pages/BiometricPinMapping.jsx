@@ -114,7 +114,7 @@ export default function BiometricPinMapping() {
 
   const mappings  = Array.isArray(_map)  ? _map  : [];
   const employees = Array.isArray(_emps) ? _emps : [];
-  const existingPins = mappings.map(m => String(m.pin));
+  const existingPins = mappings.map(m => String(m.employee_pin));
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/biometric/employee-map/${id}`),
@@ -190,7 +190,7 @@ export default function BiometricPinMapping() {
                   <tr key={m.id} className="hover:bg-[#f9f9ff] transition-colors">
                     <td className="px-5 py-3.5">
                       <span className="font-mono text-sm font-bold bg-[#f0f3ff] text-[#3525cd] px-2.5 py-1 rounded-lg">
-                        {m.pin}
+                        {m.employee_pin}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
@@ -213,7 +213,7 @@ export default function BiometricPinMapping() {
                     </td>
                     {isAdmin && (
                       <td className="px-5 py-3.5">
-                        <button onClick={() => setConfirmDel({ id: m.id, pin: m.pin })}
+                        <button onClick={() => setConfirmDel({ id: m.id, pin: m.employee_pin })}
                           className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-colors" title="Delete">
                           <Trash2 size={13} />
                         </button>
