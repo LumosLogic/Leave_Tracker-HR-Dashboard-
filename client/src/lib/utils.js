@@ -47,6 +47,7 @@ export function todayStr() {
 
 // ── String / Avatar Helpers ───────────────────────────────────────────────────
 export function initials(name = '') {
+  if (!name) return '';
   return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 }
 
