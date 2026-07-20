@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -28,7 +29,7 @@ const DEFAULT_TASKS = [
 ];
 
 // GET /api/onboarding
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId } = req.query;
@@ -41,7 +42,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/onboarding/overview
-router.get('/overview', async (req, res) => {
+router.get('/overview', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -71,7 +72,7 @@ router.get('/overview', async (req, res) => {
 });
 
 // POST /api/onboarding/init/:userId
-router.post('/init/:userId', async (req, res) => {
+router.post('/init/:userId', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -87,7 +88,7 @@ router.post('/init/:userId', async (req, res) => {
 });
 
 // POST /api/onboarding
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -101,7 +102,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/onboarding/:id/complete
-router.put('/:id/complete', async (req, res) => {
+router.put('/:id/complete', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { completed } = req.body;
@@ -128,7 +129,7 @@ router.put('/:id/complete', async (req, res) => {
 });
 
 // DELETE /api/onboarding/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;

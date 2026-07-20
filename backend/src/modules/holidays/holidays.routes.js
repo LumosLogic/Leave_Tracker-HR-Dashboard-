@@ -1,9 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 // GET /api/holidays
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { year } = req.query;
@@ -16,7 +17,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/holidays
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, date, type, description, specific_msg } = req.body;
@@ -30,7 +31,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/holidays/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, date, type, description, specific_msg } = req.body;
@@ -44,7 +45,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/holidays/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { error } = await supabase.from('holidays')
@@ -55,7 +56,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // POST /api/holidays/bulk — import multiple holidays
-router.post('/bulk', async (req, res) => {
+router.post('/bulk', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { holidays } = req.body;

@@ -539,6 +539,15 @@ CREATE TABLE IF NOT EXISTS employee_documents (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS document_shares (
+  id                   BIGSERIAL PRIMARY KEY,
+  document_id          BIGINT NOT NULL REFERENCES employee_documents(id) ON DELETE CASCADE,
+  shared_with_user_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  organization_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(document_id, shared_with_user_id)
+);
+
 
 -- ─────────────────────────────────────────────────────────────
 -- 16. FEATURE FLAGS  (Platform Admin controlled per-org)

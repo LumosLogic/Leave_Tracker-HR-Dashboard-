@@ -1,13 +1,14 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // ─── Shift Definitions ────────────────────────────────────────────────────────
 
 // GET /api/shifts
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data, error } = await supabase.from('shifts').select('*').eq('organization_id', oId).order('name');
@@ -17,7 +18,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/shifts
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -32,7 +33,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/shifts/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -46,7 +47,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/shifts/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -59,7 +60,7 @@ router.delete('/:id', async (req, res) => {
 // ─── Shift Assignments ────────────────────────────────────────────────────────
 
 // GET /api/shifts/assignments?month=YYYY-MM
-router.get('/assignments', async (req, res) => {
+router.get('/assignments', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { month, userId } = req.query;
@@ -77,7 +78,7 @@ router.get('/assignments', async (req, res) => {
 });
 
 // POST /api/shifts/assignments/bulk — assign shifts to multiple employees
-router.post('/assignments/bulk', async (req, res) => {
+router.post('/assignments/bulk', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -92,7 +93,7 @@ router.post('/assignments/bulk', async (req, res) => {
 });
 
 // DELETE /api/shifts/assignments/:id
-router.delete('/assignments/:id', async (req, res) => {
+router.delete('/assignments/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const { error } = await supabase.from('shift_assignments').delete().eq('id', req.params.id);

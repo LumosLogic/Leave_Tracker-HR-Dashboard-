@@ -1,11 +1,12 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // GET /api/exit
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     let q = supabase.from('exit_requests').select('*').eq('organization_id', oId).order('created_at', { ascending: false });
@@ -32,7 +33,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/exit
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { resignation_date, reason, notice_period_days } = req.body;
@@ -60,7 +61,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/exit/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;

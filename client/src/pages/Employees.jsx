@@ -43,7 +43,7 @@ function AttendanceDayTimeline({ empId, date, totalHours }) {
   const timeline = [];
   entries.forEach((e, i) => {
     timeline.push({ type: 'work', start: e.start, end: e.end, durationMin: e.durationMin, desc: e.description });
-    if (i < entries.length - 1 && e.end) {
+    if (i < entries.length - 1 && e.end && entries[i + 1].start) {
       const [eh, em] = e.end.split(':').map(Number);
       const [nh, nm] = entries[i + 1].start.split(':').map(Number);
       const breakMin = (nh * 60 + nm) - (eh * 60 + em);
@@ -457,7 +457,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 <div className="flex items-center gap-1.5">
                   <Calendar size={12} className="text-[#777587]" />
                   <p className="text-sm font-semibold text-[#151c27]">
-                    {emp.joining_date ? fmtDate(emp.joining_date) : (emp.created_at ? fmtDate(emp.created_at.split('T')[0]) : '—')}
+                    {emp.joining_date ? fmtDate(emp.joining_date) : (emp.created_at ? fmtDate(emp.created_at.slice(0, 10)) : '—')}
                   </p>
                 </div>
               </div>

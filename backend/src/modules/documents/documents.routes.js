@@ -1,6 +1,7 @@
 const express    = require('express');
 const router     = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
 
@@ -17,10 +18,10 @@ function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 const SELECT_FIELDS = `*,
   uploaded_by_user:users!employee_documents_uploaded_by_fkey(name),
   owner:users!employee_documents_user_id_fkey(name, avatar_color, department),
-  document_shares(shared_with_user_id)`;
+  document_shares!document_shares_document_id_fkey(shared_with_user_id)`;
 
 // GET /api/documents/colleagues — lightweight employee list for sharing picker
-router.get('/colleagues', async (req, res) => {
+router.get('/colleagues', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data, error } = await supabase
@@ -36,7 +37,7 @@ router.get('/colleagues', async (req, res) => {
 });
 
 // GET /api/documents
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId } = req.query;
@@ -145,7 +146,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // PATCH /api/documents/:id/shares — update visibility and shared recipients (admin only)
-router.patch('/:id/shares', async (req, res) => {
+router.patch('/:id/shares', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const oId = req.user.organization_id;
@@ -178,7 +179,7 @@ router.patch('/:id/shares', async (req, res) => {
 });
 
 // PATCH /api/documents/:id/status — admin only
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const { status } = req.body;
@@ -287,7 +288,7 @@ router.patch('/:id', upload.single('file'), async (req, res) => {
 });
 
 // DELETE /api/documents/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: doc } = await supabase.from('employee_documents')

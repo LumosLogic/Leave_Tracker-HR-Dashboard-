@@ -1,13 +1,14 @@
 const express    = require('express');
 const router     = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // ─── Payroll Structures ───────────────────────────────────────────────────────
 
 // GET /api/payroll/structure?userId=
-router.get('/structure', async (req, res) => {
+router.get('/structure', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId } = req.query;
@@ -22,7 +23,7 @@ router.get('/structure', async (req, res) => {
 });
 
 // POST /api/payroll/structure
-router.post('/structure', async (req, res) => {
+router.post('/structure', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -35,7 +36,7 @@ router.post('/structure', async (req, res) => {
 });
 
 // PUT /api/payroll/structure/:id
-router.put('/structure/:id', async (req, res) => {
+router.put('/structure/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -51,7 +52,7 @@ router.put('/structure/:id', async (req, res) => {
 // ─── Payslips ─────────────────────────────────────────────────────────────────
 
 // GET /api/payroll/payslips?userId=&year=
-router.get('/payslips', async (req, res) => {
+router.get('/payslips', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId, year } = req.query;
@@ -70,7 +71,7 @@ router.get('/payslips', async (req, res) => {
 });
 
 // GET /api/payroll/payslips/all — admin: all employees for a period
-router.get('/payslips/all', async (req, res) => {
+router.get('/payslips/all', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -88,7 +89,7 @@ router.get('/payslips/all', async (req, res) => {
 });
 
 // POST /api/payroll/payslips/generate — generate payslip for a user+month
-router.post('/payslips/generate', async (req, res) => {
+router.post('/payslips/generate', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -184,7 +185,7 @@ router.post('/payslips/generate', async (req, res) => {
 });
 
 // PUT /api/payroll/payslips/:id/publish
-router.put('/payslips/:id/publish', async (req, res) => {
+router.put('/payslips/:id/publish', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const { error } = await supabase.from('payslips')

@@ -1,6 +1,7 @@
 const express    = require('express');
 const router     = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
 
@@ -14,7 +15,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // GET /api/expenses
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { status } = req.query;
@@ -43,7 +44,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/expenses
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { title, category, amount, expense_date, description, receipt_url } = req.body;
@@ -81,7 +82,7 @@ router.post('/upload-receipt', upload.single('file'), async (req, res) => {
 });
 
 // PUT /api/expenses/:id/review
-router.put('/:id/review', async (req, res) => {
+router.put('/:id/review', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const { status, reviewer_notes } = req.body;
@@ -104,7 +105,7 @@ router.put('/:id/review', async (req, res) => {
 });
 
 // PUT /api/expenses/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: exp } = await supabase.from('expenses').select('user_id, status').eq('id', req.params.id).single();
@@ -120,7 +121,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/expenses/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: exp } = await supabase.from('expenses').select('user_id, status').eq('id', req.params.id).single();

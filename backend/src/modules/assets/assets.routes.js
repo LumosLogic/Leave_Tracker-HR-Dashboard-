@@ -1,11 +1,12 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
 // GET /api/assets
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId, status } = req.query;
@@ -22,7 +23,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/assets
-router.post('/', async (req, res) => {
+router.post('/', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -35,7 +36,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/assets/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -60,7 +61,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/assets/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;

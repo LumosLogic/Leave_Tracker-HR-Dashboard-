@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
+const { auth, adminOnly } = require('../../middleware/auth');
 
 function toCSV(rows, cols) {
   const header = cols.map(c => c.label).join(',');
@@ -22,7 +23,7 @@ function nowIST() {
 function todayIST() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); }
 
 // GET /api/reports/attendance?year=&month=&userId=&format=csv
-router.get('/attendance', async (req, res) => {
+router.get('/attendance', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { year, month, userId, format } = req.query;
@@ -117,7 +118,7 @@ router.get('/attendance', async (req, res) => {
 });
 
 // GET /api/reports/leaves?year=&month=&format=csv
-router.get('/leaves', async (req, res) => {
+router.get('/leaves', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { year, month, format, status } = req.query;
@@ -168,7 +169,7 @@ router.get('/leaves', async (req, res) => {
 });
 
 // GET /api/reports/headcount — summary stats (role-scoped)
-router.get('/headcount', async (req, res) => {
+router.get('/headcount', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     // root_admin sees HR admins + employees; HR admin sees employees only
@@ -189,7 +190,7 @@ router.get('/headcount', async (req, res) => {
 });
 
 // GET /api/reports/employees?format=csv
-router.get('/employees', async (req, res) => {
+router.get('/employees', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { format } = req.query;
