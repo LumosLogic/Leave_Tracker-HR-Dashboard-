@@ -48,8 +48,6 @@ Sanghavi Association has been provisioned on the **Lumos Logic HRMS platform** �
 https://hrms.lumoslogic.com
 ```
 
-*(Domain connection in progress — currently accessible at http://187.127.146.194:3005)*
-
 ### Login Credentials
 
 Your administrator account will be shared separately via secure message.
@@ -120,13 +118,10 @@ Employee Scans Finger / Face on ZKTeco Device
 **Configure each ZKTeco device with this ADMS Server URL:**
 
 ```
-http://187.127.146.194:3005
-```
-
-**Once domain is live (recommended):**
-```
 https://hrms.lumoslogic.com
 ```
+
+> Fallback (direct IP, if domain is unreachable): `http://187.127.146.194:3005`
 
 ### Step 2: How to Configure Each Device
 
@@ -137,9 +132,9 @@ On each ZKTeco device or via ZKTeco WDMS software:
 3. Go to **ADMS** or **Cloud Server** settings
 4. Update the **Server Address** field to:
    ```
-   http://187.127.146.194:3005
+   hrms.lumoslogic.com
    ```
-5. Set **Server Port** to: `3005`
+5. Set **Server Port** to: `443` (HTTPS) or `80` (HTTP fallback)
 6. Save and apply to device
 
 **OR** — if configuring directly on the device screen:
@@ -225,6 +220,7 @@ Please provide the following for go-live:
 - [x] Device heartbeat endpoint live at `/iclock/getrequest`
 - [x] Extended employee profile (PF, ESI, UAN, OT, branch fields) ready
 - [x] All 7 ZKTeco devices registered in system
+- [x] Domain live — `https://hrms.lumoslogic.com` active with SSL
 - [ ] Employee data imported *(pending data from client)*
 - [ ] ZKTeco PIN → Employee mapping completed *(pending PIN export from client)*
 - [ ] Branches configured *(pending branch list from client)*
@@ -269,7 +265,7 @@ We recommend running both your old system and the new HRMS simultaneously for **
 |----------|-------|
 | Server IP | 187.127.146.194 |
 | Port | 3005 |
-| Production Domain | hrms.lumoslogic.com (pending DNS) |
+| Production Domain | https://hrms.lumoslogic.com (Live) |
 | Database | PostgreSQL 15 (isolated for Sanghavi) |
 | Hosting | VPS (Ubuntu 24.04, Docker) |
 | Backup | Daily automated database backup |
@@ -328,8 +324,9 @@ Send this to whoever manages your ZKTeco devices:
 
 Please update the ADMS Server settings on all ZKTeco biometric devices as follows:
 
-**New Server Address:** `http://187.127.146.194:3005`
-*(Will change to `https://hrms.lumoslogic.com` once domain is active — we will inform you)*
+**New Server Address:** `https://hrms.lumoslogic.com`
+
+*(Fallback direct IP if needed: `http://187.127.146.194:3005`)*
 
 Steps to update:
 1. Open ZKTeco WDMS → Device Management
