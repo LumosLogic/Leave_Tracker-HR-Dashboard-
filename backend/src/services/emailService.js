@@ -247,7 +247,7 @@ function orgApprovedHtml(req, orgSlug, tempPassword) {
       <p style="margin:0 0 16px;">Great news! Your organization <strong>${req.company_name}</strong> has been approved and is now active on LeaveTracker.</p>
       <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
         <p style="margin:0 0 10px;font-size:13px;color:#1e40af;font-weight:bold;">Your Login Credentials</p>
-        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Login URL:</span> &nbsp;<a href="https://leavetrackerbylumos.web.app/login" style="color:#3525cd;">leavetrackerbylumos.web.app/login</a></p>
+        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Login URL:</span> &nbsp;<a href="https://hrms.lumoslogic.com/login" style="color:#3525cd;">hrms.lumoslogic.com/login</a></p>
         <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Organization Slug:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${orgSlug}</code></p>
         <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span> &nbsp;<strong>${req.email}</strong></p>
         <p style="margin:0;font-size:14px;"><span style="color:#64748b;">Temporary Password:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${tempPassword}</code></p>

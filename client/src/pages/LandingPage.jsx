@@ -129,7 +129,7 @@ function HeroSection() {
                   <div className="w-3 h-3 rounded-full bg-emerald-400" />
                 </div>
                 <div className="flex-1 mx-3 bg-[#f0f3ff] rounded-lg px-3 py-1 text-xs text-[#777587] font-mono text-left">
-                  leavetrackerbylumos.web.app/dashboard
+                  hrms.lumoslogic.com/dashboard
                 </div>
               </div>
               {/* Dashboard mockup */}

@@ -117,7 +117,7 @@ router.post('/forgot-password', async (req, res) => {
       password_reset_expires: expires,
     }).eq('id', user.id);
 
-    const baseUrl   = process.env.FRONTEND_URL || 'https://leavetrackerbylumos.web.app';
+    const baseUrl   = process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com';
     const resetLink = `${baseUrl}/reset-password?token=${token}`;
 
     sendMail({

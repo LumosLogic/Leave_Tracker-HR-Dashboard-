@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'leave-tracker-secret-2026';
 
 const ALLOWED_ORIGINS = [
+  'https://hrms.lumoslogic.com',
   'https://leavetrackerbylumos.web.app',
   'https://leavetrackerbylumos.firebaseapp.com',
   'https://leavetracker-platform-admin.web.app',
