@@ -18,13 +18,9 @@ import {
 
 const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
-// ── Clockify Day Timeline ──────────────────────────────────────────────────────
-function AttendanceDayTimeline({ empId, date, totalHours }) {
-  const [open,    setOpen]    = useState(false);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const loaded = useRef(false);
-
+/* Clockify AttendanceDayTimeline component removed */
+function _attendanceDayTimelineRemoved() { return null; }
+function _deadCodeBlock() {
   async function toggle() {
     if (open) { setOpen(false); return; }
     if (!loaded.current) {
@@ -821,7 +817,6 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                               </div>
                             </div>
                           </div>
-                          <AttendanceDayTimeline empId={emp.id} date={r.date} totalHours={totalHours} />
                         </div>
                       );
                     })}

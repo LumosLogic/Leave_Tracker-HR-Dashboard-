@@ -378,70 +378,6 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
   );
 }
 
-// ── Clockify Timeline Row ─────────────────────────────────────────────────────
-function ClockifyTimeline({ userId, dateStr }) {
-  const [open,    setOpen]    = useState(false);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  async function load() {
-    if (open) { setOpen(false); return; }
-    setLoading(true);
-    try {
-      const { entries: e } = await apiGet('/clockify/user-entries', { userId, date: dateStr });
-      setEntries(e || []);
-    } catch { setEntries([]); }
-    finally { setLoading(false); setOpen(true); }
-  }
-
-  const ICONS = [<Play size={11} />, <Pause size={11} />, <Play size={11} />, <Square size={11} />];
-
-  return (
-    <div className="mt-1.5 w-full">
-      <button
-        onClick={load}
-        className="flex items-center gap-1 text-[0.68rem] font-bold text-[#3525cd] hover:text-[#4f46e5] transition-colors"
-      >
-        <Timer size={11} />
-        {loading ? 'Loading…' : open ? <><ChevronUp size={11} /> Hide Timeline</> : <><ChevronDown size={11} /> View Clockify Timeline</>}
-      </button>
-      {open && (
-        <div className="mt-1.5 rounded-lg border border-[#c7c4d8] overflow-hidden bg-[#f9f9ff]">
-          {entries.length === 0 ? (
-            <p className="text-[0.68rem] text-[#777587] px-3 py-2 text-center italic">No Clockify entries found for this date</p>
-          ) : (
-            <div className="divide-y divide-[#f0f3ff]">
-              {entries.map((e, i) => (
-                <div key={e.id} className="flex items-center gap-2 px-3 py-2">
-                  <span className="text-[#3525cd] flex-shrink-0">{ICONS[Math.min(i, ICONS.length - 1)]}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[0.68rem] font-bold text-[#151c27]">{e.start}</span>
-                    {e.end && <span className="text-[0.65rem] text-[#777587]"> → {e.end}</span>}
-                    {e.description && <span className="text-[0.63rem] text-[#777587] ml-1.5 truncate">· {e.description}</span>}
-                  </div>
-                  {e.durationMin > 0 && (
-                    <span className="text-[0.65rem] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                      {e.durationMin >= 60 ? `${Math.floor(e.durationMin/60)}h ${e.durationMin%60}m` : `${e.durationMin}m`}
-                    </span>
-                  )}
-                </div>
-              ))}
-              <div className="flex items-center justify-between px-3 py-2 bg-[#f0f3ff]">
-                <span className="text-[0.68rem] font-bold text-[#464555]">Total Work</span>
-                <span className="text-[0.7rem] font-black text-[#3525cd]">
-                  {(() => {
-                    const total = entries.reduce((s, e) => s + (e.durationMin || 0), 0);
-                    return total >= 60 ? `${Math.floor(total/60)}h ${total%60}m` : `${total}m`;
-                  })()}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Day Modal ─────────────────────────────────────────────────────────────────
 function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditAtt, onRefresh, getLeaveForDate, initialTab }) {
@@ -599,9 +535,6 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                               </div>
                             )}
                           </div>
-                          {rec.status === 'present' && !rec._synthetic && (
-                            <ClockifyTimeline userId={rec.user_id} dateStr={dateStr} />
-                          )}
                         </div>
                       )}
                       {!rec && <span className="text-xs text-[#777587] italic">No record yet</span>}
