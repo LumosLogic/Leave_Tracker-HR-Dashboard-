@@ -93,19 +93,19 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
     clearTimeout(checkTimer.current);
     setChecking(true);
     checkTimer.current = setTimeout(async () => {
-      try { setCheck(await apiGet('/leaves/date-check', { startDate: form.start_date, endDate: form.end_date })); }
+      try { setCheck(await apiGet('/leaves/date-check', { startDate: form.start_date, endDate: form.end_date, leave_type: form.leave_type, leave_time: form.leave_time })); }
       catch { setCheck(null); }
       finally { setChecking(false); }
     }, 400);
     return () => clearTimeout(checkTimer.current);
-  }, [form.start_date, form.end_date, form.request_type]);
+  }, [form.start_date, form.end_date, form.request_type, form.leave_time]);
 
   useEffect(() => {
     if (form.request_type !== 'wfh' || !form.wfh_date) { setWfhCheck(null); return; }
     clearTimeout(wfhCheckTimer.current);
     setWfhChecking(true);
     wfhCheckTimer.current = setTimeout(async () => {
-      try { setWfhCheck(await apiGet('/leaves/date-check', { startDate: form.wfh_date, endDate: form.wfh_date })); }
+      try { setWfhCheck(await apiGet('/leaves/date-check', { startDate: form.wfh_date, endDate: form.wfh_date, leave_type: 'wfh', leave_time: 'wfh' })); }
       catch { setWfhCheck(null); }
       finally { setWfhChecking(false); }
     }, 400);
