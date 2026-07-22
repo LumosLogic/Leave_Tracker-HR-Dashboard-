@@ -14,11 +14,15 @@ const { Pool, types } = require('pg');
 types.setTypeParser(1082, val => val); // 1082 = DATE OID
 
 const pool = new Pool({
-  host:     process.env.DB_HOST     || 'localhost',
-  port:     parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME     || 'lumos_hrms',
-  user:     process.env.DB_USER     || 'lumos_admin',
-  password: process.env.DB_PASSWORD,
+  host:                    process.env.DB_HOST     || 'localhost',
+  port:                    parseInt(process.env.DB_PORT) || 5432,
+  database:                process.env.DB_NAME     || 'lumos_hrms',
+  user:                    process.env.DB_USER     || 'lumos_admin',
+  password:                process.env.DB_PASSWORD,
+  max:                     20,       // max concurrent connections
+  idleTimeoutMillis:       30000,    // close idle connections after 30s
+  connectionTimeoutMillis: 5000,     // fail fast if no connection in 5s
+  statement_timeout:       30000,    // cancel queries exceeding 30s
 });
 
 pool.on('error', (err) => console.error('PG pool error:', err.message));

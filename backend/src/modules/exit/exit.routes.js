@@ -9,8 +9,10 @@ function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
+    const { userId } = req.query;
     let q = supabase.from('exit_requests').select('*').eq('organization_id', oId).order('created_at', { ascending: false });
     if (!isAdmin(req.user.role)) q = q.eq('user_id', req.user.id);
+    else if (userId) q = q.eq('user_id', parseInt(userId));
     const { data, error } = await q;
     if (error) throw error;
 

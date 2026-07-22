@@ -33,6 +33,25 @@ function rootAdminOnly(req, res, next) {
 
 function isAdminRole(role) { return role === 'admin' || role === 'root_admin'; }
 
+// Allows: admins (full access) OR the employee editing their own profile (restricted fields only)
+function selfOrAdmin(allowedSelfFields = []) {
+  return (req, res, next) => {
+    const isAdmin = isAdminRole(req.user.role);
+    const isSelf  = req.user.id === parseInt(req.params.id);
+
+    if (!isAdmin && !isSelf)
+      return res.status(403).json({ error: 'Access denied' });
+
+    // Employee editing their own profile — restrict to allowed fields
+    if (!isAdmin && isSelf && req.method !== 'GET') {
+      const forbidden = Object.keys(req.body || {}).filter(f => !allowedSelfFields.includes(f));
+      if (forbidden.length)
+        return res.status(403).json({ error: 'Cannot edit these fields', forbidden_fields: forbidden });
+    }
+    next();
+  };
+}
+
 function platformAdminAuth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
@@ -44,4 +63,4 @@ function platformAdminAuth(req, res, next) {
   } catch { return res.status(401).json({ error: 'Invalid token' }); }
 }
 
-module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth };
+module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth, selfOrAdmin };
