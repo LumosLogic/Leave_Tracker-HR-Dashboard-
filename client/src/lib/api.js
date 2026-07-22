@@ -33,4 +33,5 @@ export const apiGet    = (ep, qs = {}) => {
 };
 export const apiPost   = (ep, body) => apiFetch('POST',   ep, body);
 export const apiPut    = (ep, body) => apiFetch('PUT',    ep, body);
+export const apiPatch  = (ep, body) => apiFetch('PATCH',  ep, body);
 export const apiDelete = (ep)       => apiFetch('DELETE', ep);

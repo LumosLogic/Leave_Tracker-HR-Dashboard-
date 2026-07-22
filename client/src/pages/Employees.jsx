@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useFeature } from '@/context/FeatureFlagContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import EmployeeProfileV2 from '@/components/EmployeeProfileV2';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
@@ -1662,7 +1663,7 @@ export default function Employees() {
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfile emp={profileEmp} onBack={cameFromUrl ? () => navigate(-1) : () => setProfileEmp(null)} onEdit={handleEdit} />
+        <EmployeeProfileV2 emp={profileEmp} onBack={cameFromUrl ? () => navigate(-1) : () => setProfileEmp(null)} onEdit={handleEdit} />
         {editEmp && (
           <EmployeeFormModal open={!!editEmp} onClose={() => { setEditEmp(null); setEditInitialTab('personal'); }}
             employee={editEmp} departments={departments} initialTab={editInitialTab} />
