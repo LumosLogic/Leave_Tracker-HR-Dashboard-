@@ -63,6 +63,7 @@ const profileImmigration   = require('./modules/employee-profile/immigration.rou
 const profileStatutory     = require('./modules/employee-profile/statutory.routes');
 const profileHealth        = require('./modules/employee-profile/health.routes');
 const profileTraining      = require('./modules/employee-profile/training.routes');
+const profileCerts         = require('./modules/employee-profile/certifications.routes');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -161,6 +162,7 @@ app.use('/api/profile',        profileImmigration);
 app.use('/api/profile',        profileStatutory);
 app.use('/api/profile',        profileHealth);
 app.use('/api/profile',        profileTraining);
+app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
 app.post('/iclock/cdata',      biometricPush);

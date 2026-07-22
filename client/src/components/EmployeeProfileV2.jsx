@@ -90,6 +90,7 @@ const TABS_ALL = [
   { id: 'compliance',   label: 'Compliance',   icon: Shield,    adminOnly: true },
   { id: 'work',         label: 'Work',         icon: Clock },
   { id: 'performance',  label: 'Performance',  icon: Activity },
+  { id: 'system',       label: 'System',       icon: Settings,  rootOnly: true },
 ];
 
 // ─── Section: Personal Tab ───────────────────────────────────────────────────
@@ -100,6 +101,7 @@ function PersonalTab({ empId, isAdmin }) {
   const [editModal, setEditModal]   = useState(null); // 'basic'|'address'|'emergency'|'health'
   const [form, setForm]             = useState({});
   const [ecModal, setEcModal]       = useState(null); // null | record (for edit)
+  const [familyModal, setFamilyModal] = useState(null); // null | record (for edit)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: personal = {}, isLoading: pLoad } = useQuery({
@@ -113,6 +115,10 @@ function PersonalTab({ empId, isAdmin }) {
   const { data: health = {} } = useQuery({
     queryKey: ['epv2-health', empId],
     queryFn: () => apiGet(`/profile/${empId}/health`),
+  });
+  const { data: family = [] } = useQuery({
+    queryKey: ['epv2-family', empId],
+    queryFn: () => apiGet(`/profile/${empId}/family`),
   });
 
   const saveMut = useMutation({
@@ -135,6 +141,16 @@ function PersonalTab({ empId, isAdmin }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['epv2-emergency', empId] }); },
     onError: e => toast(e.message, 'error'),
   });
+  const familyMut = useMutation({
+    mutationFn: (body) => familyModal?.id ? apiPut(`/profile/${empId}/family/${familyModal.id}`, body) : apiPost(`/profile/${empId}/family`, body),
+    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-family', empId] }); setFamilyModal(null); },
+    onError: e => toast(e.message, 'error'),
+  });
+  const delFamilyMut = useMutation({
+    mutationFn: (id) => apiDelete(`/profile/${empId}/family/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['epv2-family', empId] }),
+    onError: e => toast(e.message, 'error'),
+  });
 
   if (pLoad) return <LoadingSection />;
 
@@ -142,6 +158,14 @@ function PersonalTab({ empId, isAdmin }) {
   const openAddress = () => { setForm({ ...personal }); setEditModal('address'); };
   const openHealth = () => { setForm({ ...health }); setEditModal('health'); };
   const openEc = (rec = {}) => { setForm({ contact_name: rec.contact_name || '', relationship: rec.relationship || '', mobile_number: rec.mobile_number || '', alternate_number: rec.alternate_number || '', email: rec.email || '', address: rec.address || '', is_primary: rec.is_primary || false }); setEcModal(rec); };
+  const openFamily = (rec = {}) => { setForm({ relationship: rec.relationship||'', name: rec.name||'', date_of_birth: rec.date_of_birth||'', gender: rec.gender||'', occupation: rec.occupation||'', contact_number: rec.contact_number||'', dependent: rec.dependent||false }); setFamilyModal(rec); };
+
+  const REL_ORDER = ['father','mother','spouse','child','sibling','other'];
+  const groupedFamily = REL_ORDER.reduce((acc, rel) => {
+    const members = family.filter(f => f.relationship === rel);
+    if (members.length) acc[rel] = members;
+    return acc;
+  }, {});
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -227,6 +251,65 @@ function PersonalTab({ empId, isAdmin }) {
           ))
         }
       </SectionCard>
+
+      {/* Family Members */}
+      <SectionCard title="Family Members" icon={Users}
+        action={isAdmin && <AdminBtn onClick={() => openFamily()} label="Add" />}>
+        {family.length === 0 ? <EmptyState icon={Users} text="No family members added" /> : (
+          <div className="space-y-4">
+            {Object.entries(groupedFamily).map(([rel, members]) => (
+              <div key={rel}>
+                <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider mb-2">
+                  {rel === 'child' ? 'Children' : rel.charAt(0).toUpperCase() + rel.slice(1)}
+                </p>
+                {members.map(m => (
+                  <div key={m.id} className="flex items-start justify-between py-2.5 border-b border-[#f0f3ff] last:border-0">
+                    <div>
+                      <p className="text-sm font-bold text-[#151c27]">{m.name}</p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        {m.date_of_birth && <span className="text-xs text-[#777587]">{fmtDate(m.date_of_birth)}</span>}
+                        {m.occupation    && <span className="text-xs text-[#777587]">{m.occupation}</span>}
+                        {m.contact_number && <span className="text-xs text-[#464555]">{m.contact_number}</span>}
+                        {m.dependent && <span className="text-[0.6rem] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">Dependent</span>}
+                      </div>
+                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-1">
+                        <button onClick={() => openFamily(m)} className="p-1.5 rounded hover:bg-[#f0f3ff] text-[#3525cd]"><Pencil size={12}/></button>
+                        <button onClick={() => delFamilyMut.mutate(m.id)} className="p-1.5 rounded hover:bg-rose-50 text-rose-500"><Trash2 size={12}/></button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Family Member Modal */}
+      <Modal open={familyModal !== null} onClose={() => setFamilyModal(null)}
+        title={familyModal?.id ? 'Edit Family Member' : 'Add Family Member'} size="md"
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setFamilyModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => familyMut.mutate(form)} disabled={familyMut.isPending}>{familyMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label className="form-label">Relationship *</label>
+            <select className="form-control" value={form.relationship||''} onChange={e=>set('relationship',e.target.value)}>
+              <option value="">— Select —</option>
+              {['father','mother','spouse','child','sibling','other'].map(r=>(
+                <option key={r} value={r}>{r.charAt(0).toUpperCase()+r.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          {[['name','Full Name *'],['date_of_birth','Date of Birth','date'],['gender','Gender'],['occupation','Occupation'],['contact_number','Contact Number']].map(([k,l,t])=>(
+            <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
+          ))}
+          <label className="flex items-center gap-2 text-sm col-span-2">
+            <input type="checkbox" checked={form.dependent||false} onChange={e=>set('dependent',e.target.checked)} className="accent-[#3525cd]"/>
+            Financially dependent
+          </label>
+        </div>
+      </Modal>
 
       {/* Edit Basic Modal */}
       <Modal open={editModal === 'basic'} onClose={() => setEditModal(null)} title="Edit Basic Information" size="lg"
@@ -993,6 +1076,66 @@ function PerformanceTab({ empId }) {
   );
 }
 
+// ─── Section: System Tab ─────────────────────────────────────────────────────
+// Visible only to root_admin — login info, roles, internal settings
+
+function SystemTab({ emp, onEdit }) {
+  return (
+    <div className="space-y-5">
+      {/* Login Information */}
+      <SectionCard title="Login Information" icon={Key}>
+        <InfoRow label="Company Email"   value={emp.email}           icon={Mail} />
+        <InfoRow label="Role"            value={emp.role}            icon={Shield} />
+        <InfoRow label="Employee ID"     value={emp.employee_id}     icon={Fingerprint} />
+        <InfoRow label="Employee Status" value={emp.employee_status} />
+        <InfoRow label="Account Created" value={emp.created_at ? fmtDate(emp.created_at) : null} />
+      </SectionCard>
+
+      {/* Account Actions */}
+      <SectionCard title="Account Actions" icon={Settings}>
+        <div className="space-y-1">
+          {[
+            ['Reset Password',         'Send a password reset to the employee\'s company email', 'account', Key],
+            ['Edit Role & Status',     'Change role, employment status, avatar colour',          'account', Pencil],
+            ['Biometric / RFID',       'Update device enrollment PIN or RFID card number',      'extended', Fingerprint],
+          ].map(([label, desc, tab, Icon]) => (
+            <div key={label} className="flex items-center justify-between py-3 border-b border-[#f0f3ff] last:border-0">
+              <div>
+                <p className="text-sm font-semibold text-[#151c27]">{label}</p>
+                <p className="text-xs text-[#777587]">{desc}</p>
+              </div>
+              <button onClick={() => onEdit(emp, tab)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+                <Icon size={12}/> Manage
+              </button>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* Internal Settings */}
+      <SectionCard title="Internal Settings" icon={Settings}>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6">
+          {[
+            ['Salary On',        emp.salary_on],
+            ['Salary Structure', emp.salary_structure],
+            ['Work Hours / Day', emp.work_hours_per_day ? `${emp.work_hours_per_day}h` : null],
+            ['Weekly Off',       emp.weekly_off_day],
+            ['Device PIN',       emp.device_pin],
+            ['Avatar Colour',    emp.avatar_color],
+          ].map(([l,v]) => <InfoRow key={l} label={l} value={v} />)}
+        </div>
+        <div className="mt-3 pt-3 border-t border-[#f0f3ff]">
+          <button onClick={() => onEdit(emp, 'extended')}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+            <Pencil size={12}/> Edit Internal Settings
+          </button>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
@@ -1033,7 +1176,8 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const deptLabel = emp.departments?.length > 0 ? emp.departments.map(d => d.name).join(', ') : emp.department || '—';
   const statusCls = emp.employee_status === 'inactive' ? 'bg-rose-100 text-rose-700' : emp.employee_status === 'on_leave' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
 
-  const TABS = TABS_ALL.filter(t => !t.adminOnly || isAdmin);
+  const isRoot = user.role === 'root_admin';
+  const TABS   = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
 
   return (
     <div className="space-y-4">
@@ -1173,6 +1317,7 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
           {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
           {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
           {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
+          {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
         </div>
       </div>
     </div>
