@@ -47,6 +47,23 @@ const biometricRouter      = require('./modules/biometric/biometric.routes');
 const biometricPush        = require('./modules/biometric/biometricPush.handler');
 const biometricHeartbeat   = require('./modules/biometric/biometricHeartbeat.handler');
 
+// ── Employee Profile V2 ───────────────────────────────────────────────────────
+const profileOverview      = require('./modules/employee-profile/overview.routes');
+const profilePersonal      = require('./modules/employee-profile/personal.routes');
+const profileProfessional  = require('./modules/employee-profile/professional.routes');
+const profileFamily        = require('./modules/employee-profile/family.routes');
+const profileEmergency     = require('./modules/employee-profile/emergency-contacts.routes');
+const profileEducation     = require('./modules/employee-profile/education.routes');
+const profileExperience    = require('./modules/employee-profile/experience.routes');
+const profileSkills        = require('./modules/employee-profile/skills.routes');
+const profileBanking       = require('./modules/employee-profile/banking.routes');
+const profileNominees      = require('./modules/employee-profile/nominees.routes');
+const profileGovDocs       = require('./modules/employee-profile/government-docs.routes');
+const profileImmigration   = require('./modules/employee-profile/immigration.routes');
+const profileStatutory     = require('./modules/employee-profile/statutory.routes');
+const profileHealth        = require('./modules/employee-profile/health.routes');
+const profileTraining      = require('./modules/employee-profile/training.routes');
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -127,6 +144,23 @@ app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/exit',           exitRouter);
 app.use('/api/branches',       branchesRouter);
 app.use('/api/biometric',      biometricRouter);
+
+// ── Employee Profile V2 routes ────────────────────────────────────────────────
+app.use('/api/profile',        profileOverview);
+app.use('/api/profile',        profilePersonal);
+app.use('/api/profile',        profileProfessional);
+app.use('/api/profile',        profileFamily);
+app.use('/api/profile',        profileEmergency);
+app.use('/api/profile',        profileEducation);
+app.use('/api/profile',        profileExperience);
+app.use('/api/profile',        profileSkills);
+app.use('/api/profile',        profileBanking);
+app.use('/api/profile',        profileNominees);
+app.use('/api/profile',        profileGovDocs);
+app.use('/api/profile',        profileImmigration);
+app.use('/api/profile',        profileStatutory);
+app.use('/api/profile',        profileHealth);
+app.use('/api/profile',        profileTraining);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
 app.post('/iclock/cdata',      biometricPush);
