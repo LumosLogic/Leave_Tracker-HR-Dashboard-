@@ -82,6 +82,7 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
   const wfhCheckTimer = useRef(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const today = new Date().toISOString().split('T')[0];
 
   function handleStartDate(val) {
     set('start_date', val);
@@ -157,9 +158,12 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
     ? (form.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(form.start_date, form.end_date))
     : 0;
 
+  const isPastDate    = !isWFH && !!form.start_date && form.start_date < today;
+  const wfhIsPastDate = isWFH  && !!form.wfh_date   && form.wfh_date  < today;
+
   const canSubmit = isWFH
-    ? !!form.wfh_date && !submitting && !wfhHasConflict
-    : !!form.start_date && !!form.end_date && !submitting;
+    ? !!form.wfh_date && !submitting && !wfhHasConflict && !wfhIsPastDate
+    : !!form.start_date && !!form.end_date && !submitting && !isPastDate;
 
   function handleSubmit() {
     if (isWFH) {
@@ -255,11 +259,11 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
 
               <div>
                 <label className="form-label">From Date</label>
-                <input type="date" className="form-control" value={form.start_date} onChange={e => handleStartDate(e.target.value)} />
+                <input type="date" className="form-control" min={today} value={form.start_date} onChange={e => handleStartDate(e.target.value)} />
               </div>
               <div>
                 <label className="form-label">To Date</label>
-                <input type="date" className="form-control" value={form.end_date} min={form.start_date} onChange={e => set('end_date', e.target.value)} />
+                <input type="date" className="form-control" value={form.end_date} min={form.start_date || today} onChange={e => set('end_date', e.target.value)} />
               </div>
 
               {/* Days count + balance info */}
@@ -287,6 +291,13 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
               {/* Conflict checks */}
               {form.start_date && form.end_date && (
                 <>
+                  {isPastDate ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 flex items-start gap-2">
+                      <AlertTriangle size={13} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-[0.72rem] text-rose-700 font-semibold">You cannot apply leave for a past date. Please select today or a future date.</p>
+                    </div>
+                  ) : (
+                  <>
                   {checking && (
                     <div className="flex items-center gap-2 text-xs text-[#777587] bg-[#f0f3ff] rounded-xl px-4 py-3">
                       <Loader2 size={13} className="animate-spin" /> Checking selected dates…
@@ -328,6 +339,8 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
                       <p className="text-[0.72rem] text-amber-700">You have attendance recorded on the selected dates. HR will still review your request.</p>
                     </div>
                   )}
+                  </>
+                  )}
                 </>
               )}
 
@@ -344,10 +357,17 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
             <>
               <div>
                 <label className="form-label">WFH Date</label>
-                <input type="date" className="form-control" value={form.wfh_date} onChange={e => set('wfh_date', e.target.value)} />
+                <input type="date" className="form-control" min={today} value={form.wfh_date} onChange={e => set('wfh_date', e.target.value)} />
               </div>
               {form.wfh_date && (
                 <>
+                  {wfhIsPastDate ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 flex items-start gap-2">
+                      <AlertTriangle size={13} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-[0.72rem] text-rose-700 font-semibold">You cannot apply WFH for a past date. Please select today or a future date.</p>
+                    </div>
+                  ) : (
+                  <>
                   {wfhChecking && (
                     <div className="flex items-center gap-2 text-xs text-[#777587] bg-[#f0f3ff] rounded-xl px-4 py-3">
                       <Loader2 size={13} className="animate-spin" /> Checking selected date…
@@ -387,6 +407,8 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
                     <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
                       <CheckCircle2 size={13} className="flex-shrink-0" /> Date is available — no existing requests on this day
                     </div>
+                  )}
+                  </>
                   )}
                 </>
               )}
