@@ -798,7 +798,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 ) : (
                   <div className="flex flex-col gap-3">
                     {presentRecords.map(r => {
-                      const totalHours = r.clockify_hours > 0 ? r.clockify_hours : r.work_hours;
+                      const totalHours = r.work_hours;
                       const dow    = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
                       const dayNum = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                       return (
@@ -816,9 +816,6 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                                     <span className="flex items-center gap-1 text-xs font-black text-[#3525cd]">
                                       <Timer size={12} /> {totalHours}h
                                     </span>
-                                  )}
-                                  {r.clockify_hours > 0 && (
-                                    <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">Clockify</span>
                                   )}
                                 </div>
                               </div>

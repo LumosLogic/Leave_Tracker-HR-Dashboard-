@@ -34,9 +34,9 @@ router.get('/date-check', auth, async (req, res) => {
       return true;
     });
 
-    // Check for Clockify attendance on those dates
+    // Check for attendance on those dates
     const { data: attendanceRecs } = await supabase.from('attendance')
-      .select('date, clockify_hours, work_hours')
+      .select('date, work_hours')
       .eq('user_id', req.user.id)
       .eq('organization_id', orgId(req))
       .gte('date', startDate)

@@ -59,7 +59,7 @@ router.get('/attendance', auth, async (req, res) => {
       }
 
       // Effective (working) hours: gross - break
-      let work_hours = r.clockify_hours > 0 ? r.clockify_hours : (r.work_hours || 0);
+      let work_hours = r.work_hours || 0;
       if (work_hours === 0 && check_in && check_out) {
         const grossMins = toMins(check_out) - toMins(check_in);
         const effMins   = Math.max(0, grossMins - total_break_minutes);

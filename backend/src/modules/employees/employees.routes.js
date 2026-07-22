@@ -11,7 +11,6 @@ const EMPLOYEE_PUBLIC_COLS = [
   'id', 'name', 'email', 'role', 'department', 'position', 'avatar_color',
   'date_of_birth', 'created_at', 'phone', 'personal_email', 'joining_date',
   'employment_type', 'work_mode', 'employee_status', 'ctc', 'salary_effective_date',
-  'clockify_user_id',
   // new HRMS columns
   'device_enrollment_id', 'branch_id', 'grade', 'division', 'sub_division',
   'salutation', 'middle_name', 'surname', 'location', 'pay_cadre',
@@ -115,7 +114,6 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
     const {
       name, email, role, department, position, avatar_color, password, date_of_birth, department_ids,
       phone, personal_email, joining_date, employment_type, work_mode, employee_status, ctc, salary_effective_date,
-      clockify_user_id,
       // new HRMS columns
       device_enrollment_id, branch_id, grade, division, sub_division,
       salutation, middle_name, surname, location, pay_cadre,
@@ -135,7 +133,6 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       employee_status:      employee_status      || null,
       ctc:                  ctc                  || null,
       salary_effective_date: salary_effective_date || null,
-      clockify_user_id:     clockify_user_id?.trim() || null,
       // new HRMS columns
       device_enrollment_id: device_enrollment_id || null,
       branch_id:            branch_id            || null,

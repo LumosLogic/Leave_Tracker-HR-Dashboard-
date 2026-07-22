@@ -301,8 +301,7 @@ function AdminCellContent({ ds, records, total }) {
 function EmpCellContent({ records, userId }) {
   const my = records.find(r => r.user_id === userId);
   if (!my) return null;
-  // Prefer Clockify effective hours, fall back to work_hours
-  const effHours = my.clockify_hours > 0 ? my.clockify_hours : my.work_hours;
+  const effHours = my.work_hours;
   return (
     <div className="flex flex-col gap-0.5">
       <span className={cn('text-[0.64rem] font-black px-1.5 py-0.5 rounded capitalize',
@@ -358,11 +357,8 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
                       {r.status === 'wfh' && (
                         <div className="text-[0.58rem] text-[#3525cd] font-medium">WFH</div>
                       )}
-                      {(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours) > 0 && r.status === 'present' && (
-                        <div className="text-[0.58rem] text-[#777587]">
-                          {fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}
-                          {r.clockify_hours > 0 && <span className="ml-0.5 text-[#3525cd]">⏱</span>}
-                        </div>
+                      {r.work_hours > 0 && r.status === 'present' && (
+                        <div className="text-[0.58rem] text-[#777587]">{fmtHours(r.work_hours)}</div>
                       )}
                     </div>
                   </div>
@@ -582,10 +578,9 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                                 {leave.leave_type} leave
                               </span>
                             )}
-                            {(rec.clockify_hours > 0 ? rec.clockify_hours : rec.work_hours) > 0 && !rec._synthetic && (
+                            {rec.work_hours > 0 && !rec._synthetic && (
                               <span className="text-xs font-bold text-[#3525cd] flex items-center gap-1">
-                                <Timer size={11} /> {fmtHours(rec.clockify_hours > 0 ? rec.clockify_hours : rec.work_hours)}
-                                {rec.clockify_hours > 0 && <span className="text-[0.6rem] font-normal text-[#777587]">(Clockify)</span>}
+                                <Timer size={11} /> {fmtHours(rec.work_hours)}
                               </span>
                             )}
                             {/* Check-in / Check-out / Break row */}

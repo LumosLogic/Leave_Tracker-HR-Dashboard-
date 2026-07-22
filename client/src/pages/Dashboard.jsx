@@ -255,13 +255,13 @@ function EmployeeQuickView({ record: r, onClose }) {
                 </span>
               </div>
             ) : null}
-            {(r.clockify_hours > 0 || r.work_hours > 0) && (
+            {r.work_hours > 0 && (
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-[#464555]">
                   <Timer size={13} className="text-[#4f46e5]" />
-                  {r.clockify_hours > 0 ? 'Working Hrs (Clockify)' : 'Working Hrs'}
+                  Working Hrs
                 </div>
-                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}</span>
+                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.work_hours)}</span>
               </div>
             )}
             {r.total_break_minutes > 0 && (
@@ -870,12 +870,6 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <StatusBadge status={r.status} />
-                    {r.clockify_live && (
-                      <span className="text-[0.6rem] font-bold px-1 py-0.5 rounded text-white flex items-center gap-0.5"
-                        style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                        <Timer size={8} /> CW
-                      </span>
-                    )}
                   </div>
                   <div className="text-right shrink-0">
                     {r.check_in && <div className="text-[0.65rem] font-bold text-[#151c27]">{fmtTime(r.check_in)}</div>}

@@ -15,9 +15,8 @@ function fmtBreakMins(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-// Prefer Clockify effective hours, fall back to work_hours (manual/standalone)
 function effectiveHours(rec) {
-  return rec.clockify_hours > 0 ? rec.clockify_hours : (rec.work_hours || 0);
+  return rec.work_hours || 0;
 }
 
 // Inline edit attendance sub-modal — stays within the dashboard context
@@ -266,12 +265,6 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
                           <div className="mt-1 flex flex-col gap-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <StatusBadge status={rec.status} />
-                              {rec.clockify_hours > 0 && (
-                                <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
-                                  style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                                  <Timer size={9} /> Clockify
-                                </span>
-                              )}
                             </div>
                             {!rec._synthetic && rec.check_in && (
                               <div className="flex items-center gap-2 flex-wrap text-[0.65rem] text-[#777587]">
