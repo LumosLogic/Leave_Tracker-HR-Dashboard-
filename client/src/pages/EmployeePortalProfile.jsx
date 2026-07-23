@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, UserCircle, Users, BookOpen, Briefcase, Zap, CreditCard, Heart, Shield,
   Clock, Umbrella, BarChart3, FileText, Star, Settings, Lock, ExternalLink,
   Plus, Pencil, Trash2, X, Check, Eye, EyeOff, Save, AlertTriangle,
-  ShieldCheck, ShieldAlert, Mail, ChevronRight,
+  ShieldCheck, ShieldAlert, Mail, ChevronRight, Building2, MapPin, Phone,
+  CheckCircle2, Download, MoreHorizontal, Calendar, TrendingUp, Activity,
+  Layers, BadgeCheck, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -13,13 +15,26 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { fmtDate, initials } from '@/lib/utils';
+import { fmtDate, fmtTime, initials } from '@/lib/utils';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
   '#3525cd','#4f46e5','#712ae2','#8a4cfc','#10B981','#EC4899','#F59E0B','#EF4444','#F97316',
 ];
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+const TABS = [
+  { key: 'overview',     label: 'Overview' },
+  { key: 'personal',     label: 'Personal' },
+  { key: 'professional', label: 'Professional' },
+  { key: 'documents',    label: 'Documents' },
+  { key: 'work',         label: 'Work' },
+  { key: 'payroll',      label: 'Payroll' },
+  { key: 'performance',  label: 'Performance' },
+  { key: 'account',      label: 'Account' },
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function maskAccount(num) {
   if (!num) return '—';
@@ -29,10 +44,10 @@ function maskAccount(num) {
 
 function proficiencyColor(level) {
   const map = {
-    beginner: 'bg-slate-100 text-slate-700',
+    beginner:     'bg-slate-100 text-slate-700',
     intermediate: 'bg-blue-100 text-blue-700',
-    advanced: 'bg-emerald-100 text-emerald-700',
-    expert: 'bg-purple-100 text-purple-700',
+    advanced:     'bg-emerald-100 text-emerald-700',
+    expert:       'bg-purple-100 text-purple-700',
   };
   return map[level] || 'bg-slate-100 text-slate-700';
 }
@@ -45,6 +60,30 @@ function relationshipColor(rel) {
   if (r === 'father' || r === 'mother' || r === 'parent') return 'bg-blue-50 text-blue-700';
   return 'bg-[#f0f3ff] text-[#3525cd]';
 }
+
+function calcExperience(joiningDate) {
+  if (!joiningDate) return '—';
+  const diff = Date.now() - new Date(joiningDate).getTime();
+  const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30.44));
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  if (years === 0) return `${rem} Month${rem !== 1 ? 's' : ''}`;
+  if (rem === 0) return `${years} Year${years !== 1 ? 's' : ''}`;
+  return `${years} Year${years !== 1 ? 's' : ''} ${rem} Month${rem !== 1 ? 's' : ''}`;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+// ─── Shared UI Atoms ──────────────────────────────────────────────────────────
 
 function SectionHeader({ children }) {
   return (
@@ -77,170 +116,417 @@ function Spinner() {
   );
 }
 
-// ─── Sidebar nav definition ──────────────────────────────────────────────────
+function InfoPill({ icon: Icon, text }) {
+  if (!text) return null;
+  return (
+    <span className="flex items-center gap-1 text-xs text-[#464555]">
+      {Icon && <Icon size={13} className="text-[#777587]" />}
+      {text}
+    </span>
+  );
+}
 
-const MY_PROFILE_SECTIONS = [
-  { key: 'overview',    icon: User,       label: 'Overview' },
-  { key: 'personal',   icon: UserCircle, label: 'Personal Info' },
-  { key: 'family',     icon: Users,      label: 'Family' },
-  { key: 'education',  icon: BookOpen,   label: 'Education' },
-  { key: 'experience', icon: Briefcase,  label: 'Experience' },
-  { key: 'skills',     icon: Zap,        label: 'Skills' },
-  { key: 'banking',    icon: CreditCard, label: 'Banking' },
-  { key: 'health',     icon: Heart,      label: 'Health' },
-  { key: 'nominees',   icon: Shield,     label: 'Nominees' },
-];
+// ─── PROFILE HEADER CARD ─────────────────────────────────────────────────────
 
-const WORKPLACE_LINKS = [
-  { label: 'Attendance', icon: Clock,    path: '/portal/attendance' },
-  { label: 'Leave',      icon: Umbrella, path: '/portal/leaves' },
-  { label: 'Payroll',    icon: BarChart3,path: '/portal/payslips' },
-  { label: 'Documents',  icon: FileText, path: '/portal/documents' },
-  { label: 'Performance',icon: Star,     path: '/portal/performance' },
-];
-
-const ACCOUNT_SECTIONS = [
-  { key: 'account', icon: Settings, label: 'Account Settings' },
-  { key: 'privacy', icon: Lock,     label: 'Privacy & Security' },
-];
-
-// ─── OVERVIEW SECTION ────────────────────────────────────────────────────────
-
-function OverviewSection({ empId, onNavigate }) {
+function ProfileHeaderCard({ empId }) {
   const { data, isLoading } = useQuery({
     queryKey: ['profile-overview', empId],
     queryFn: () => apiGet(`/profile/${empId}/overview`),
     enabled: !!empId,
   });
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-6 animate-pulse h-36" />;
   if (!data) return null;
 
-  const completion = data.completionPercentage || data.completion_percentage || 0;
-  const counts = data.sectionCounts || data.section_counts || {};
+  const name = data.name || data.full_name || '—';
+  const position = data.position || data.designation || '—';
+  const empNo = data.employee_id || data.employeeId || '—';
+  const department = data.department || '—';
+  const branchName = data.branch?.name || data.branch || '—';
+  const employmentType = data.employment_type || 'Full Time';
+  const managerName = data.manager?.name || data.manager_name || null;
+  const managerPos = data.manager?.position || null;
+  const joiningDate = data.joining_date;
+  const experience = calcExperience(joiningDate);
+  const phone = data.phone || '—';
+  const email = data.email || '—';
+  const status = data.employee_status || data.status || 'active';
+  const avatarColor = data.avatar_color || '#3525cd';
+  const profilePhoto = data.profile_photo_url || null;
 
-  const sectionStatus = [
-    { label: 'Family',     done: (counts.family || 0) > 0 },
-    { label: 'Education',  done: (counts.education || 0) > 0 },
-    { label: 'Experience', done: (counts.experience || 0) > 0 },
-    { label: 'Skills',     done: (counts.skills || 0) > 0 },
-    { label: 'Banking',    done: (counts.banking || 0) > 0 },
-    { label: 'Nominees',   done: (counts.nominees || 0) > 0 },
-  ];
+  const workLocation = [data.current_city, data.current_state].filter(Boolean).join(', ') || branchName;
 
   return (
-    <div className="space-y-5">
-      {/* Hero card */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-        <div className="flex items-start gap-5">
-          {/* Avatar with completion ring */}
-          <div className="relative flex-shrink-0">
-            <div style={{ width: 80, height: 80 }}>
-              <svg width="80" height="80" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="36" fill="none" stroke="#e8e6f4" strokeWidth="5" />
-                <circle
-                  cx="40" cy="40" r="36" fill="none"
-                  stroke="#3525cd" strokeWidth="5"
-                  strokeDasharray={`${2 * Math.PI * 36 * completion / 100} ${2 * Math.PI * 36}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-black text-xl"
-                  style={{ background: '#3525cd' }}>
-                  {initials(data.name || data.full_name || '')}
-                </div>
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
+      <div className="flex flex-col sm:flex-row items-start gap-5">
+        {/* Left: status + avatar + info */}
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          {/* Active badge stacked above avatar */}
+          <div className="flex flex-col items-center gap-2 flex-shrink-0">
+            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-2 py-0.5 rounded-full capitalize">
+              {status}
+            </span>
+            {profilePhoto ? (
+              <img
+                src={profilePhoto}
+                alt={name}
+                className="w-20 h-20 rounded-full object-cover border-2 border-[#c7c4d8] shadow"
+              />
+            ) : (
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-black border-2 border-white shadow-md"
+                style={{ background: avatarColor }}
+              >
+                {initials(name)}
               </div>
-            </div>
-            <div className="absolute -bottom-1 -right-1 bg-white rounded-full px-1.5 py-0.5 text-[10px] font-black text-[#3525cd] border border-[#c7c4d8] shadow-sm">
-              {completion}%
-            </div>
+            )}
           </div>
 
+          {/* Name / position / pills */}
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-black text-[#151c27] truncate">{data.name || data.full_name || '—'}</h2>
-            <p className="text-sm text-[#464555]">{data.position || data.designation || '—'}</p>
-            <p className="text-xs text-[#777587] mt-0.5">{data.department || '—'} {data.branch ? `· ${data.branch}` : ''}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="text-xl font-black text-[#151c27]">{name}</h1>
+              <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />
+            </div>
+            <p className="text-sm text-[#464555] mt-0.5">{position}</p>
 
-            <div className="flex flex-wrap gap-2 mt-3">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] font-semibold border border-[#c7c4d8]">
-                {data.employee_id || data.employeeId || 'EMP—'}
-              </span>
-              {data.employment_type && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                  {data.employment_type}
-                </span>
-              )}
-              {data.status && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
-                  data.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'
-                }`}>
-                  {data.status}
-                </span>
-              )}
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              <InfoPill icon={Building2} text={empNo} />
+              <InfoPill icon={Layers} text={department} />
+              <InfoPill icon={MapPin} text={branchName} />
+              <InfoPill icon={Clock} text={employmentType} />
             </div>
 
-            <div className="flex flex-wrap gap-4 mt-3 text-xs text-[#777587]">
-              {data.joining_date && <span>Joined: <strong className="text-[#464555]">{fmtDate(data.joining_date)}</strong></span>}
-              {data.manager_name && <span>Manager: <strong className="text-[#464555]">{data.manager_name}</strong></span>}
-            </div>
+            {managerName && (
+              <p className="text-xs text-[#777587] mt-2">
+                Reporting To: <span className="font-semibold text-[#464555]">{managerName}{managerPos ? ` (${managerPos})` : ''}</span>
+              </p>
+            )}
+
+            {joiningDate && (
+              <p className="text-xs text-[#777587] mt-1">
+                Joined on {fmtDate(joiningDate)}
+                {experience && experience !== '—' ? <span className="ml-1">• {experience}</span> : null}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Completion bar */}
-        <div className="mt-5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-bold text-[#151c27]">Profile Completion</span>
-            <span className="text-xs font-black text-[#3525cd]">{completion}%</span>
+        {/* Right: 2x2 contact grid */}
+        <div className="sm:w-64 flex-shrink-0 grid grid-cols-1 gap-1.5 w-full sm:self-start">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-[#f8f9ff] border border-[#f0f3ff]">
+            <Mail size={13} className="text-[#3525cd] flex-shrink-0" />
+            <span className="text-xs text-[#464555] truncate">{email}</span>
+            <Check size={11} className="text-emerald-500 ml-auto flex-shrink-0" />
           </div>
-          <div className="h-2 bg-[#f0f3ff] rounded-full overflow-hidden">
-            <div className="h-full bg-[#3525cd] rounded-full transition-all duration-500"
-              style={{ width: `${completion}%` }} />
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-[#f8f9ff] border border-[#f0f3ff]">
+            <Phone size={13} className="text-[#3525cd] flex-shrink-0" />
+            <span className="text-xs text-[#464555] truncate">{phone}</span>
+            <Check size={11} className="text-emerald-500 ml-auto flex-shrink-0" />
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-[#f8f9ff] border border-[#f0f3ff]">
+            <MapPin size={13} className="text-[#3525cd] flex-shrink-0" />
+            <span className="text-xs text-[#464555] truncate">{workLocation}</span>
+            <Check size={11} className="text-emerald-500 ml-auto flex-shrink-0" />
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-[#f8f9ff] border border-[#f0f3ff]">
+            <BadgeCheck size={13} className="text-[#3525cd] flex-shrink-0" />
+            <span className="text-xs text-[#464555] truncate">
+              {employmentType === 'Full Time' ? 'Permanent' : employmentType}
+            </span>
+            <Check size={11} className="text-emerald-500 ml-auto flex-shrink-0" />
           </div>
         </div>
       </div>
 
-      {/* Section completion */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-        <SectionHeader>Section Completion</SectionHeader>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
-          {sectionStatus.map(s => (
-            <div key={s.label} className={`flex items-center gap-2 p-2.5 rounded-lg border ${
-              s.done ? 'bg-emerald-50 border-emerald-200' : 'bg-[#f8f9ff] border-[#e8e6f4]'
-            }`}>
-              {s.done
-                ? <Check size={14} className="text-emerald-600 flex-shrink-0" />
-                : <div className="w-3.5 h-3.5 rounded-full border-2 border-[#c7c4d8] flex-shrink-0" />}
-              <span className={`text-xs font-semibold ${s.done ? 'text-emerald-700' : 'text-[#777587]'}`}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-        <SectionHeader>Quick Actions</SectionHeader>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <button onClick={() => onNavigate('personal')} className="btn btn-outline btn-sm flex items-center gap-1.5">
-            <Pencil size={13} /> Edit Personal Info
-          </button>
-          <button onClick={() => onNavigate('family')} className="btn btn-outline btn-sm flex items-center gap-1.5">
-            <Plus size={13} /> Add Family
-          </button>
-          <button onClick={() => onNavigate('skills')} className="btn btn-outline btn-sm flex items-center gap-1.5">
-            <Plus size={13} /> Add Skills
-          </button>
-          <button onClick={() => onNavigate('banking')} className="btn btn-outline btn-sm flex items-center gap-1.5">
-            <Plus size={13} /> Add Bank Account
-          </button>
-        </div>
+      {/* Actions row */}
+      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f0f3ff]">
+        <button className="btn btn-primary btn-sm flex items-center gap-1.5">
+          <Pencil size={13} /> Edit Profile
+        </button>
+        <button className="btn btn-outline btn-sm flex items-center gap-1.5">
+          <Download size={13} /> Download Profile
+        </button>
+        <button className="btn btn-ghost btn-icon btn-sm text-[#777587] ml-auto">
+          <MoreHorizontal size={16} />
+        </button>
       </div>
     </div>
   );
 }
 
-// ─── PERSONAL INFO SECTION ───────────────────────────────────────────────────
+// ─── OVERVIEW TAB ────────────────────────────────────────────────────────────
+
+function OverviewTab({ empId }) {
+  const { data: overview, isLoading: ovLoading } = useQuery({
+    queryKey: ['profile-overview', empId],
+    queryFn: () => apiGet(`/profile/${empId}/overview`),
+    enabled: !!empId,
+  });
+
+  const { data: leaves = [] } = useQuery({
+    queryKey: ['leaves'],
+    queryFn: () => apiGet('/leaves'),
+  });
+
+  const { data: policies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn: () => apiGet('/leave-policies'),
+  });
+
+  if (ovLoading) return <Spinner />;
+  if (!overview) return null;
+
+  const joiningDate = overview.joining_date;
+  const experience = calcExperience(joiningDate);
+  const managerName = overview.manager?.name || overview.manager_name || '—';
+
+  // Leave balance calculation
+  const myLeaves = leaves.filter(l => l.status === 'approved');
+  const totalUsed = myLeaves.reduce((acc, l) => {
+    const start = new Date(l.start_date);
+    const end = new Date(l.end_date);
+    const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    return acc + days;
+  }, 0);
+  const totalAlloc = policies.reduce((acc, p) => acc + (p.days_allowed || 0), 0);
+  const leaveBalance = Math.max(0, totalAlloc - totalUsed);
+
+  // Today's attendance from overview
+  const todayAtt = overview.todayAttendance || null;
+  const attStatus = todayAtt?.status || null;
+  const checkInTime = todayAtt?.check_in ? fmtTime(todayAtt.check_in.slice(0, 5)) : null;
+
+  // Recent activity synthesis
+  const recentLeaves = [...leaves]
+    .sort((a, b) => new Date(b.created_at || b.start_date) - new Date(a.created_at || a.start_date))
+    .slice(0, 3);
+
+  const activities = [
+    todayAtt && {
+      icon: Clock,
+      color: 'bg-emerald-50 text-emerald-600',
+      title: attStatus === 'present' ? 'Checked In' : attStatus === 'absent' ? 'Marked Absent' : 'Attendance Recorded',
+      desc: checkInTime ? `Check-in at ${checkInTime}` : 'Today',
+      time: 'Today',
+    },
+    ...recentLeaves.map(l => ({
+      icon: Umbrella,
+      color: 'bg-[#f0f3ff] text-[#3525cd]',
+      title: `Leave ${l.status === 'approved' ? 'Approved' : l.status === 'rejected' ? 'Rejected' : 'Applied'}`,
+      desc: `${fmtDate(l.start_date)} – ${fmtDate(l.end_date)}`,
+      time: timeAgo(l.created_at || l.start_date),
+    })),
+  ].filter(Boolean).slice(0, 4);
+
+  const summaryCards = [
+    { label: 'Employee ID',       value: overview.employee_id || overview.employeeId || '—', icon: BadgeCheck },
+    { label: 'Department',        value: overview.department || '—',                          icon: Layers },
+    { label: 'Designation',       value: overview.position || overview.designation || '—',    icon: Briefcase },
+    { label: 'Joining Date',      value: joiningDate ? fmtDate(joiningDate) : '—',            icon: Calendar },
+    { label: 'Experience',        value: experience,                                           icon: TrendingUp },
+    { label: 'Reporting Manager', value: managerName,                                          icon: User },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Employee Summary Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {summaryCards.map(card => (
+          <div key={card.label} className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 mb-1">
+              <card.icon size={13} className="text-[#3525cd]" />
+              <span className="text-[10px] font-bold text-[#777587] uppercase tracking-wide">{card.label}</span>
+            </div>
+            <span className="text-sm font-black text-[#151c27] leading-tight">{card.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column: Snapshot + Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Today's Snapshot */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
+          <div className="p-5 border-b border-[#f0f3ff]">
+            <SectionHeader>Today's Snapshot</SectionHeader>
+          </div>
+          <div className="p-4 grid grid-cols-2 gap-3">
+            {/* Attendance */}
+            <div className="border border-[#e8e6f4] rounded-xl p-4 bg-[#fafbff]">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Clock size={13} className="text-[#3525cd]" />
+                <span className="text-xs font-bold text-[#777587] uppercase tracking-wide">Attendance</span>
+              </div>
+              {attStatus ? (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${
+                  attStatus === 'present' ? 'bg-emerald-50 text-emerald-700' :
+                  attStatus === 'absent'  ? 'bg-rose-50 text-rose-700' :
+                  'bg-amber-50 text-amber-700'
+                }`}>{attStatus.replace('_', ' ')}</span>
+              ) : (
+                <span className="text-xs font-bold text-[#777587]">Not recorded</span>
+              )}
+              {checkInTime && <p className="text-xs text-[#464555] mt-1">In: {checkInTime}</p>}
+              <Link to="/portal/attendance" className="text-xs text-[#3525cd] font-semibold mt-2 flex items-center gap-0.5 hover:underline">
+                View Attendance <ChevronRight size={11} />
+              </Link>
+            </div>
+
+            {/* Leave Balance */}
+            <div className="border border-[#e8e6f4] rounded-xl p-4 bg-[#fafbff]">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Umbrella size={13} className="text-[#3525cd]" />
+                <span className="text-xs font-bold text-[#777587] uppercase tracking-wide">Leave Balance</span>
+              </div>
+              <p className="text-2xl font-black text-[#151c27]">{leaveBalance} <span className="text-sm font-semibold text-[#777587]">Days</span></p>
+              <p className="text-xs text-[#777587]">Total Alloc: {totalAlloc}</p>
+              <Link to="/portal/leaves" className="text-xs text-[#3525cd] font-semibold mt-2 flex items-center gap-0.5 hover:underline">
+                View Leave <ChevronRight size={11} />
+              </Link>
+            </div>
+
+            {/* Current Shift */}
+            <div className="border border-[#e8e6f4] rounded-xl p-4 bg-[#fafbff]">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Activity size={13} className="text-[#3525cd]" />
+                <span className="text-xs font-bold text-[#777587] uppercase tracking-wide">Current Shift</span>
+              </div>
+              <p className="text-sm font-bold text-[#151c27]">General Shift</p>
+              <p className="text-xs text-[#777587]">09:00 AM – 06:00 PM</p>
+              <Link to="/portal/attendance" className="text-xs text-[#3525cd] font-semibold mt-2 flex items-center gap-0.5 hover:underline">
+                View Schedule <ChevronRight size={11} />
+              </Link>
+            </div>
+
+            {/* Performance */}
+            <div className="border border-[#e8e6f4] rounded-xl p-4 bg-[#fafbff]">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Star size={13} className="text-[#3525cd]" />
+                <span className="text-xs font-bold text-[#777587] uppercase tracking-wide">Performance</span>
+              </div>
+              <p className="text-lg font-black text-[#151c27]">4.6 <span className="text-sm font-semibold text-[#777587]">/ 5</span></p>
+              <div className="flex gap-0.5 mt-0.5">
+                {[1,2,3,4,5].map(i => (
+                  <Star key={i} size={10} className={i <= 4 ? 'text-amber-400 fill-amber-400' : 'text-[#c7c4d8]'} />
+                ))}
+              </div>
+              <Link to="/portal/performance" className="text-xs text-[#3525cd] font-semibold mt-2 flex items-center gap-0.5 hover:underline">
+                View Performance <ChevronRight size={11} />
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
+          <div className="flex items-center justify-between p-5 border-b border-[#f0f3ff]">
+            <SectionHeader>Recent Activity</SectionHeader>
+            <Link to="/portal/attendance" className="text-xs text-[#3525cd] font-semibold hover:underline">View All</Link>
+          </div>
+          <div className="p-4 space-y-3">
+            {activities.length === 0 ? (
+              <p className="text-sm text-[#777587] text-center py-4">No recent activity</p>
+            ) : (
+              activities.map((act, idx) => (
+                <div key={idx} className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${act.color}`}>
+                    <act.icon size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#151c27]">{act.title}</p>
+                    <p className="text-xs text-[#777587] truncate">{act.desc}</p>
+                  </div>
+                  <span className="text-xs text-[#c7c4d8] flex-shrink-0">{act.time}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Two-column: Personal Info + Contact & Address */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <PersonalInfoReadCard empId={empId} />
+        <ContactAddressReadCard empId={empId} />
+      </div>
+    </div>
+  );
+}
+
+// Overview read-only cards
+
+function PersonalInfoReadCard({ empId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['profile-personal', empId],
+    queryFn: () => apiGet(`/profile/${empId}/personal`),
+    enabled: !!empId,
+  });
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
+      <div className="flex items-center justify-between p-5 border-b border-[#f0f3ff]">
+        <SectionHeader>Personal Information</SectionHeader>
+      </div>
+      {isLoading ? <Spinner /> : (
+        <div className="p-5 grid grid-cols-2 gap-4">
+          {[
+            { label: 'Full Name',     value: data?.full_name || data?.name },
+            { label: 'Date of Birth', value: data?.date_of_birth ? fmtDate(data.date_of_birth) : null },
+            { label: 'Gender',        value: data?.gender },
+            { label: 'Blood Group',   value: data?.blood_group },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <p className="text-xs text-[#777587] mb-0.5">{label}</p>
+              <p className="text-sm font-semibold text-[#151c27]">{value || '—'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContactAddressReadCard({ empId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['profile-personal', empId],
+    queryFn: () => apiGet(`/profile/${empId}/personal`),
+    enabled: !!empId,
+  });
+
+  const currentAddr = [
+    data?.current_address_line1,
+    data?.current_address_line2,
+    data?.current_city,
+    data?.current_state,
+    data?.current_country,
+    data?.current_postal_code,
+  ].filter(Boolean).join(', ');
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
+      <div className="flex items-center justify-between p-5 border-b border-[#f0f3ff]">
+        <SectionHeader>Contact &amp; Address</SectionHeader>
+      </div>
+      {isLoading ? <Spinner /> : (
+        <div className="p-5 space-y-3">
+          {[
+            { label: 'Phone',             value: data?.phone },
+            { label: 'Personal Email',    value: data?.personal_email },
+            { label: 'Current Address',   value: currentAddr },
+            { label: 'Permanent Address', value: data?.permanent_address },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <p className="text-xs text-[#777587] mb-0.5">{label}</p>
+              <p className="text-sm font-semibold text-[#151c27]">{value || '—'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PERSONAL TAB ────────────────────────────────────────────────────────────
 
 function PersonalSection({ empId }) {
   const toast = useToast();
@@ -349,13 +635,13 @@ function PersonalSection({ empId }) {
         <div className="p-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { label: 'Full Name',        val: data?.full_name || data?.name },
-              { label: 'Gender',           val: data?.gender },
-              { label: 'Date of Birth',    val: data?.date_of_birth ? fmtDate(data.date_of_birth) : null },
-              { label: 'Blood Group',      val: data?.blood_group },
-              { label: 'Marital Status',   val: data?.marital_status },
-              { label: 'Nationality',      val: data?.nationality },
-              { label: 'Religion',         val: data?.religion },
+              { label: 'Full Name',      val: data?.full_name || data?.name },
+              { label: 'Gender',         val: data?.gender },
+              { label: 'Date of Birth',  val: data?.date_of_birth ? fmtDate(data.date_of_birth) : null },
+              { label: 'Blood Group',    val: data?.blood_group },
+              { label: 'Marital Status', val: data?.marital_status },
+              { label: 'Nationality',    val: data?.nationality },
+              { label: 'Religion',       val: data?.religion },
             ].map(({ label, val }) => (
               <div key={label}>
                 <label className="form-label">{label}</label>
@@ -411,7 +697,11 @@ function FamilySection({ empId }) {
   });
 
   function openAdd() { setEditing(null); setForm(FAMILY_BLANK); setModalOpen(true); }
-  function openEdit(m) { setEditing(m); setForm({ relationship: m.relationship || '', name: m.name || '', date_of_birth: m.date_of_birth || '', gender: m.gender || '', occupation: m.occupation || '', contact_number: m.contact_number || '', dependent: m.dependent || false }); setModalOpen(true); }
+  function openEdit(m) {
+    setEditing(m);
+    setForm({ relationship: m.relationship || '', name: m.name || '', date_of_birth: m.date_of_birth || '', gender: m.gender || '', occupation: m.occupation || '', contact_number: m.contact_number || '', dependent: m.dependent || false });
+    setModalOpen(true);
+  }
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   if (isLoading) return <Spinner />;
@@ -998,7 +1288,6 @@ function BankingSection({ empId }) {
         </button>
       </div>
 
-      {/* Notice */}
       <div className="mx-5 mt-4 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
         <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-amber-800">Banking changes require HR verification. New accounts will be reviewed before use for payroll.</p>
@@ -1559,33 +1848,97 @@ function PrivacySection() {
   );
 }
 
-// ─── WORKPLACE LINK SECTION ──────────────────────────────────────────────────
+// ─── DOCUMENTS / PAYROLL / PERFORMANCE REDIRECT CARDS ────────────────────────
 
-function WorkplaceLinkSection({ link }) {
+function ExternalLinkCard({ to, icon: Icon, title, description, buttonLabel }) {
   const navigate = useNavigate();
-  const descriptions = {
-    '/portal/attendance': 'View your attendance records, check-in/out history, and working hours.',
-    '/portal/leaves':     'Apply for leaves, view your leave balance, and track leave requests.',
-    '/portal/payslips':   'Download payslips, view salary structure and payment history.',
-    '/portal/documents':  'Access your offer letter, contracts, and other HR documents.',
-    '/portal/performance':'View your performance reviews, goals, and feedback.',
-  };
   return (
-    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-6">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center text-[#3525cd]">
-          <link.icon size={20} />
+          <Icon size={20} />
         </div>
-        <div>
-          <SectionHeader>{link.label}</SectionHeader>
-        </div>
+        <SectionHeader>{title}</SectionHeader>
       </div>
-      <p className="text-sm text-[#464555] mb-4">{descriptions[link.path]}</p>
-      <button onClick={() => navigate(link.path)} className="btn btn-primary btn-sm flex items-center gap-2">
-        Go to {link.label} <ExternalLink size={13} />
+      <p className="text-sm text-[#464555] mb-4">{description}</p>
+      <button onClick={() => navigate(to)} className="btn btn-primary btn-sm flex items-center gap-2">
+        {buttonLabel} <ExternalLink size={13} />
       </button>
     </div>
   );
+}
+
+// ─── TAB CONTENT RENDERER ────────────────────────────────────────────────────
+
+function TabContent({ tab, empId }) {
+  switch (tab) {
+    case 'overview':
+      return <OverviewTab empId={empId} />;
+
+    case 'personal':
+      return <PersonalSection empId={empId} />;
+
+    case 'professional':
+      return (
+        <div className="space-y-5">
+          <FamilySection empId={empId} />
+          <ExperienceSection empId={empId} />
+          <EducationSection empId={empId} />
+        </div>
+      );
+
+    case 'documents':
+      return (
+        <ExternalLinkCard
+          to="/portal/documents"
+          icon={FileText}
+          title="Documents"
+          description="Access your offer letter, contracts, and other HR documents."
+          buttonLabel="Go to Documents"
+        />
+      );
+
+    case 'work':
+      return (
+        <div className="space-y-5">
+          <SkillsSection empId={empId} />
+          <BankingSection empId={empId} />
+        </div>
+      );
+
+    case 'payroll':
+      return (
+        <ExternalLinkCard
+          to="/portal/payslips"
+          icon={BarChart3}
+          title="Payroll"
+          description="Download payslips, view salary structure and payment history."
+          buttonLabel="Go to Payroll"
+        />
+      );
+
+    case 'performance':
+      return (
+        <ExternalLinkCard
+          to="/portal/performance"
+          icon={Star}
+          title="Performance"
+          description="View your performance reviews, goals, and feedback."
+          buttonLabel="Go to Performance"
+        />
+      );
+
+    case 'account':
+      return (
+        <div className="space-y-5">
+          <AccountSection />
+          <PrivacySection />
+        </div>
+      );
+
+    default:
+      return null;
+  }
 }
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
@@ -1593,95 +1946,34 @@ function WorkplaceLinkSection({ link }) {
 export default function EmployeePortalProfile() {
   const { user } = useAuth();
   const empId = user?.id;
-  const [section, setSection] = useState('overview');
-
-  const workplaceLink = WORKPLACE_LINKS.find(l => l.label.toLowerCase() === section.toLowerCase());
-
-  function renderContent() {
-    switch (section) {
-      case 'overview':    return <OverviewSection empId={empId} onNavigate={setSection} />;
-      case 'personal':    return <PersonalSection empId={empId} />;
-      case 'family':      return <FamilySection empId={empId} />;
-      case 'education':   return <EducationSection empId={empId} />;
-      case 'experience':  return <ExperienceSection empId={empId} />;
-      case 'skills':      return <SkillsSection empId={empId} />;
-      case 'banking':     return <BankingSection empId={empId} />;
-      case 'health':      return <HealthSection empId={empId} />;
-      case 'nominees':    return <NomineesSection empId={empId} />;
-      case 'account':     return <AccountSection />;
-      case 'privacy':     return <PrivacySection />;
-      default:
-        if (workplaceLink) return <WorkplaceLinkSection link={workplaceLink} />;
-        return null;
-    }
-  }
-
-  function NavItem({ item, active, onClick }) {
-    return (
-      <button
-        onClick={onClick}
-        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm transition-all ${
-          active
-            ? 'bg-[#f0f3ff] text-[#3525cd] font-black'
-            : 'text-[#464555] hover:bg-[#f8f9ff] hover:text-[#151c27] font-medium'
-        }`}
-      >
-        <item.icon size={15} className={active ? 'text-[#3525cd]' : 'text-[#777587]'} />
-        <span className="flex-1 truncate">{item.label}</span>
-        {item.external && <ExternalLink size={11} className="text-[#c7c4d8] flex-shrink-0" />}
-      </button>
-    );
-  }
+  const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="flex gap-6 min-h-[calc(100vh-120px)] max-w-6xl mx-auto">
-      {/* Sidebar */}
-      <div className="w-[220px] flex-shrink-0">
-        <div className="sticky top-6 space-y-1">
-          {/* Avatar + name */}
-          <div className="flex items-center gap-2.5 px-3 py-3 mb-2">
-            <Avatar name={user?.name || ''} color={user?.avatar_color || '#3525cd'} size={36} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-black text-[#151c27] truncate">{user?.name || '—'}</p>
-              <p className="text-xs text-[#777587] truncate">{user?.position || user?.role || ''}</p>
-            </div>
-          </div>
+    <div className="max-w-6xl mx-auto space-y-5 pb-10">
+      {/* Profile Header Card — always visible */}
+      <ProfileHeaderCard empId={empId} />
 
-          {/* My Profile group */}
-          <div>
-            <p className="text-[10px] font-black text-[#c7c4d8] uppercase tracking-widest px-3 mb-1">My Profile</p>
-            {MY_PROFILE_SECTIONS.map(item => (
-              <NavItem key={item.key} item={item} active={section === item.key} onClick={() => setSection(item.key)} />
-            ))}
-          </div>
-
-          {/* Workplace group */}
-          <div className="pt-2">
-            <p className="text-[10px] font-black text-[#c7c4d8] uppercase tracking-widest px-3 mb-1">Workplace</p>
-            {WORKPLACE_LINKS.map(link => (
-              <NavItem
-                key={link.path}
-                item={{ ...link, key: link.label.toLowerCase(), external: true }}
-                active={section === link.label.toLowerCase()}
-                onClick={() => setSection(link.label.toLowerCase())}
-              />
-            ))}
-          </div>
-
-          {/* Account group */}
-          <div className="pt-2">
-            <p className="text-[10px] font-black text-[#c7c4d8] uppercase tracking-widest px-3 mb-1">Account</p>
-            {ACCOUNT_SECTIONS.map(item => (
-              <NavItem key={item.key} item={item} active={section === item.key} onClick={() => setSection(item.key)} />
-            ))}
-          </div>
+      {/* Horizontal Tab Navigation */}
+      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-x-auto">
+        <div className="flex min-w-max">
+          {TABS.map((tab, idx) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-5 py-3.5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${
+                activeTab === tab.key
+                  ? 'text-[#3525cd] border-[#3525cd] font-black bg-[#f8f9ff]'
+                  : 'text-[#777587] border-transparent hover:text-[#464555] hover:bg-[#f8f9ff]'
+              } ${idx === 0 ? 'rounded-tl-xl' : ''} ${idx === TABS.length - 1 ? 'rounded-tr-xl' : ''}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 min-w-0">
-        {renderContent()}
-      </div>
+      {/* Tab Content */}
+      <TabContent tab={activeTab} empId={empId} />
     </div>
   );
 }
