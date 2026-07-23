@@ -488,7 +488,15 @@ export default function RootDashboard() {
       icon: <ClipboardList size={16} />,
       iconBg: pendingLeaves > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
       tooltip: 'Leave requests awaiting your approval.',
-      alert: pendingLeaves > 0, onClick: () => navigate('/root/leaves?tab=all&status=pending') },
+      alert: pendingLeaves > 0, onClick: () => {
+        const wfhPending   = pendingLeavesData.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
+        const leavePending = pendingLeavesData.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+        if (wfhPending.length > 0 && leavePending.length === 0) {
+          navigate('/root/leaves?tab=wfh&status=pending');
+        } else {
+          navigate('/root/leaves?tab=all&status=pending');
+        }
+      } },
     { label: 'HR Admins', value: totalHR, sub: 'Active admins',
       icon: <ShieldCheck size={16} />, iconBg: 'bg-purple-50 text-purple-600',
       tooltip: 'Number of HR administrators managing the organization. Click to manage HR access.',
@@ -1027,7 +1035,7 @@ export default function RootDashboard() {
                 <div className="flex gap-1 flex-shrink-0">
                   <button onClick={() => approveMut.mutate(l.id)} disabled={isBusy}
                     className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all disabled:opacity-40">
-                    <Check size={9} /> OK
+                    <Check size={9} /> Approve
                   </button>
                   <button onClick={() => rejectMut.mutate(l.id)} disabled={isBusy}
                     className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-40">
