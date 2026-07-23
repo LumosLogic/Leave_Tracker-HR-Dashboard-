@@ -439,19 +439,6 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
                 <textarea className="form-control resize-none" rows={3} value={form.reason}
                   onChange={e => set('reason', e.target.value)} placeholder="Briefly describe why you need to work from home…" />
               </div>
-              <div>
-                <label className="form-label flex items-center gap-1.5">
-                  <MapPin size={13} className="text-[#777587]" /> Work Location <span className="text-[#777587] font-normal">(optional)</span>
-                </label>
-                <input type="text" className="form-control" value={form.work_location}
-                  onChange={e => set('work_location', e.target.value)} placeholder="e.g. Home, Client Office…" />
-              </div>
-              <div>
-                <label className="form-label flex items-center gap-1.5">
-                  <Phone size={13} className="text-[#777587]" /> Contact Number <span className="text-[#777587] font-normal">(optional)</span>
-                </label>
-                <input type="tel" className="form-control" value={form.contact_number}
-                  onChange={e => set('contact_number', e.target.value)} placeholder="Your reachable number during WFH…" />
               </div>
             </>
           )}

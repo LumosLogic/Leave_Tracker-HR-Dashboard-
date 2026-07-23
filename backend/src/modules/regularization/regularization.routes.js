@@ -90,21 +90,46 @@ router.put('/:id/review', auth, async (req, res) => {
     if (status === 'approved') {
       const reg_check_in  = reg.requested_check_in  || null;
       const reg_check_out = reg.requested_check_out || null;
-      let reg_work_hours  = 0;
-      if (reg_check_in && reg_check_out) {
-        const [h1, m1] = reg_check_in.split(':').map(Number);
-        const [h2, m2] = reg_check_out.split(':').map(Number);
+
+      // Fetch existing attendance record for that date
+      const { data: existingAtt } = await supabase.from('attendance')
+        .select('*').eq('user_id', reg.user_id).eq('date', reg.date).eq('organization_id', oId).maybeSingle();
+
+      // Determine final check_in / check_out (merge: regularization overrides, existing fills gaps)
+      const final_check_in  = reg_check_in  || (existingAtt?.check_in  || null);
+      const final_check_out = reg_check_out || (existingAtt?.check_out || null);
+
+      let reg_work_hours = existingAtt?.work_hours || 0;
+      if (final_check_in && final_check_out) {
+        const [h1, m1] = final_check_in.split(':').map(Number);
+        const [h2, m2] = final_check_out.split(':').map(Number);
         const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins > 0) reg_work_hours = Math.round((mins / 60) * 100) / 100;
+        if (mins > 0) {
+          const breakMins = existingAtt?.total_break_minutes || 0;
+          const effectiveMins = Math.max(0, mins - breakMins);
+          reg_work_hours = Math.round((effectiveMins / 60) * 100) / 100;
+        }
       }
-      // Update/insert attendance record as present
-      await supabase.from('attendance').upsert({
-        user_id: reg.user_id, date: reg.date,
-        check_in: reg_check_in,
-        check_out: reg_check_out,
+
+      const attRecord = {
+        user_id: reg.user_id, date: reg.date, organization_id: oId,
+        check_in:  final_check_in,
+        check_out: final_check_out,
         work_hours: reg_work_hours,
-        status: 'present', organization_id: oId,
-      }, { onConflict: 'user_id,date' });
+        gross_hours: final_check_in && final_check_out ? (() => {
+          const [h1,m1] = final_check_in.split(':').map(Number);
+          const [h2,m2] = final_check_out.split(':').map(Number);
+          const mins = (h2*60+m2)-(h1*60+m1);
+          return mins > 0 ? Math.round((mins/60)*100)/100 : 0;
+        })() : (existingAtt?.gross_hours || 0),
+        status: 'present',
+      };
+
+      if (existingAtt) {
+        await supabase.from('attendance').update(attRecord).eq('user_id', reg.user_id).eq('date', reg.date).eq('organization_id', oId);
+      } else {
+        await supabase.from('attendance').insert(attRecord);
+      }
 
       // Revert any approved leave that overlaps this date and restore the balance
       const { data: overlappingLeaves } = await supabase.from('leaves')

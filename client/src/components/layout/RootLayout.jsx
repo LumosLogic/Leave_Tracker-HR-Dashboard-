@@ -4,17 +4,17 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
-  Radio, Fingerprint, Link2, ScrollText,
+  Radio, Fingerprint, Link2, ScrollText, Menu, Search,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
 import { Header } from './Header';
-import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
 import { useTour } from '@/hooks/useTour';
 import { rootAdminTourSteps } from '@/lib/tours';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
+import { GlobalSearchModal } from '@/components/ui/GlobalSearchModal';
 
 const NAV_SECTIONS = [
   { id: 'tour-nav-overview', title: 'Overview', items: [
@@ -62,10 +62,11 @@ const NAV_SECTIONS = [
   ]},
 ];
 
-function RootSidebar({ onClose }) {
+function RootSidebar({ onClose, onMenuClick }) {
   const { user, logout, organization } = useAuth();
   const featureFlags = React.useContext(FeatureFlagContext);
   const navigate = useNavigate();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: countData } = useQuery({
     queryKey: ['notif-count-root'],
@@ -78,15 +79,34 @@ function RootSidebar({ onClose }) {
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">
-      {/* Brand */}
+      {/* Brand + mobile menu toggle */}
       <div className="px-4 py-4 border-b border-[#e7eefe]">
         <div className="flex items-center gap-3">
-          <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-9 h-9 flex-shrink-0" />
+          <button
+            onClick={onMenuClick}
+            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0"
+          >
+            <Menu size={16} className="text-[#464555]" />
+          </button>
+          <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-9 h-9 flex-shrink-0 hidden md:block" />
           <div>
             <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight truncate">{organization?.name || 'LeaveTracker'}</h2>
             <p className="text-[0.65rem] text-[#777587] mt-0.5 tracking-wide">Root Admin Console</p>
           </div>
         </div>
+      </div>
+
+      {/* Search trigger */}
+      <div className="px-3 py-2 border-b border-[#e7eefe]">
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"
+        >
+          <Search size={13} className="text-[#3525cd]" />
+          <span>Search...</span>
+          <span className="ml-auto text-[0.6rem] text-[#b0aec8] font-medium">Ctrl K</span>
+        </button>
+        <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       </div>
 
       {/* Nav */}
@@ -154,7 +174,6 @@ function RootSidebar({ onClose }) {
 
 export function RootLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { title, subtitle } = usePageMeta();
   const { user } = useAuth();
   useTour(rootAdminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_root_${user.id}` : null);
 
@@ -170,12 +189,15 @@ export function RootLayout() {
       {/* Sidebar */}
       <div className={`fixed md:relative z-[500] md:z-auto h-full transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <RootSidebar onClose={() => setSidebarOpen(false)} />
+        <RootSidebar
+          onClose={() => setSidebarOpen(false)}
+          onMenuClick={() => setSidebarOpen(o => !o)}
+        />
       </div>
 
-      {/* Main */}
+      {/* Main — headless Header registers Ctrl+K only, no visible bar */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header title={title} subtitle={subtitle} onMenuClick={() => setSidebarOpen(o => !o)} />
+        <Header />
         <main id="tour-main-content" className="flex-1 overflow-y-auto p-7">
           <Outlet />
         </main>

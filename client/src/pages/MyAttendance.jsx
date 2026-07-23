@@ -327,53 +327,6 @@ export default function MyAttendance() {
         })}
       </div>
 
-      {/* Calendar */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-card overflow-hidden mb-6">
-        <div className="grid grid-cols-7 bg-[#f0f3ff] border-b border-[#c7c4d8]">
-          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-            <div key={d} className="py-2.5 text-center text-xs font-bold text-[#777587] uppercase tracking-wide">{d}</div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7">
-          {Array.from({ length: firstDay }).map((_, i) => (
-            <div key={`e${i}`} className="border-b border-r border-[#f0f3ff] h-14" />
-          ))}
-          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-            const ds  = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            const rec = recMap[ds];
-            const cfg = rec ? (STATUS_CONFIG[rec.status] || STATUS_CONFIG.present) : null;
-            const isToday   = ds === todayStr;
-            const dow       = new Date(ds + 'T12:00:00').getDay();
-            const isWeekend = dow === 0 || dow === 6;
-            return (
-              <div key={day}
-                className={`border-b border-r h-14 p-1.5 relative flex flex-col justify-between transition-colors
-                  ${cfg ? cfg.cellBg : (isWeekend ? 'bg-slate-50' : 'bg-white')}
-                  ${isToday ? 'ring-2 ring-inset ring-[#3525cd]' : `border-[#f0f3ff]`}`}
-              >
-                <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full flex-shrink-0
-                  ${isToday ? 'bg-[#3525cd] text-white' : isWeekend ? 'text-slate-400' : cfg ? `${cfg.text} font-black` : 'text-[#464555]'}`}>
-                  {day}
-                </span>
-                {rec && cfg && (
-                  cfg.showTag
-                    ? <span className={`text-[0.55rem] font-black px-1 py-0.5 rounded leading-none ${cfg.bg} ${cfg.text} self-start`}>{cfg.tag}</span>
-                    : <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} flex-shrink-0`} title={cfg.label} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        {Object.entries(STATUS_CONFIG).map(([, cfg]) => (
-          <div key={cfg.label} className="flex items-center gap-1.5 text-xs text-[#464455]">
-            <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />{cfg.label}
-          </div>
-        ))}
-      </div>
 
       {/* Table — enhanced with break/gross/effective columns */}
       {isLoading ? (

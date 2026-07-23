@@ -15,10 +15,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
-const SELECT_FIELDS = `*,
-  uploaded_by_user:users!employee_documents_uploaded_by_fkey(name),
-  owner:users!employee_documents_user_id_fkey(name, avatar_color, department),
-  document_shares!document_shares_document_id_fkey(shared_with_user_id)`;
+const SELECT_FIELDS = `*, document_shares(shared_with_user_id)`;
 
 // GET /api/documents/colleagues — lightweight employee list for sharing picker
 router.get('/colleagues', auth, async (req, res) => {
@@ -81,7 +78,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/documents/upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', auth, upload.single('file'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });

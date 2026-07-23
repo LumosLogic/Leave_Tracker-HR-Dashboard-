@@ -315,9 +315,60 @@ function PersonalTab({ empId, isAdmin }) {
       <Modal open={editModal === 'basic'} onClose={() => setEditModal(null)} title="Edit Basic Information" size="lg"
         footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
-          {[['salutation','Salutation'],['name','First Name'],['middle_name','Middle Name'],['surname','Last Name'],['phone','Mobile'],['personal_email','Personal Email'],['date_of_birth','Date of Birth','date'],['gender','Gender'],['blood_group','Blood Group'],['marital_status','Marital Status'],['nationality','Nationality'],['religion','Religion'],['citizenship','Citizenship'],['height','Height'],['weight','Weight']].map(([k,l,t]) => (
-            <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-          ))}
+          {/* Salutation */}
+          <div><label className="form-label">Salutation</label>
+            <select className="form-control" value={form.salutation||''} onChange={e=>set('salutation',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Mr.','Mrs.','Ms.','Miss','Dr.','Prof.'].map(s=><option key={s} value={s}>{s}</option>)}
+            </select></div>
+          {/* First Name */}
+          <div><label className="form-label">First Name</label><input className="form-control" value={form.name||''} onChange={e=>set('name',e.target.value)}/></div>
+          {/* Middle Name */}
+          <div><label className="form-label">Middle Name</label><input className="form-control" value={form.middle_name||''} onChange={e=>set('middle_name',e.target.value)}/></div>
+          {/* Last Name / Surname */}
+          <div><label className="form-label">Last Name</label><input className="form-control" value={form.surname||''} onChange={e=>set('surname',e.target.value)}/></div>
+          {/* Mobile */}
+          <div><label className="form-label">Mobile</label><input className="form-control" type="tel" value={form.phone||''} onChange={e=>set('phone',e.target.value)}/></div>
+          {/* Personal Email */}
+          <div><label className="form-label">Personal Email</label><input className="form-control" type="email" value={form.personal_email||''} onChange={e=>set('personal_email',e.target.value)}/></div>
+          {/* Date of Birth */}
+          <div><label className="form-label">Date of Birth</label><input className="form-control" type="date" value={form.date_of_birth||''} onChange={e=>set('date_of_birth',e.target.value)}/></div>
+          {/* Gender */}
+          <div><label className="form-label">Gender</label>
+            <select className="form-control" value={form.gender||''} onChange={e=>set('gender',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Male','Female','Other','Prefer not to say'].map(g=><option key={g} value={g}>{g}</option>)}
+            </select></div>
+          {/* Blood Group */}
+          <div><label className="form-label">Blood Group</label>
+            <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
+              <option value="">— Select —</option>
+              {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
+            </select></div>
+          {/* Marital Status */}
+          <div><label className="form-label">Marital Status</label>
+            <select className="form-control" value={form.marital_status||''} onChange={e=>set('marital_status',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Single','Married','Divorced','Widowed','Separated'].map(m=><option key={m} value={m}>{m}</option>)}
+            </select></div>
+          {/* Nationality */}
+          <div><label className="form-label">Nationality</label>
+            <input className="form-control" list="nationality-list" value={form.nationality||''} onChange={e=>set('nationality',e.target.value)}/>
+            <datalist id="nationality-list">
+              {['Indian','American','British','Canadian','Australian','Other'].map(n=><option key={n} value={n}/>)}
+            </datalist></div>
+          {/* Religion */}
+          <div><label className="form-label">Religion</label>
+            <select className="form-control" value={form.religion||''} onChange={e=>set('religion',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Hindu','Muslim','Christian','Sikh','Buddhist','Jain','Parsi','Jewish','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+            </select></div>
+          {/* Citizenship */}
+          <div><label className="form-label">Citizenship</label><input className="form-control" value={form.citizenship||''} onChange={e=>set('citizenship',e.target.value)}/></div>
+          {/* Height */}
+          <div><label className="form-label">Height (cm)</label><input className="form-control" type="number" min="0" step="0.1" value={form.height||''} onChange={e=>set('height',e.target.value)}/></div>
+          {/* Weight */}
+          <div><label className="form-label">Weight (kg)</label><input className="form-control" type="number" min="0" step="0.1" value={form.weight||''} onChange={e=>set('weight',e.target.value)}/></div>
         </div>
       </Modal>
 

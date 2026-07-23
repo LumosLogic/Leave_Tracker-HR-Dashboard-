@@ -1,16 +1,17 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
-  Bell, Fingerprint, Link2, ScrollText,
+  Bell, Fingerprint, Link2, ScrollText, Menu, Search,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { initials, cn } from '@/lib/utils';
+import { GlobalSearchModal } from '@/components/ui/GlobalSearchModal';
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
@@ -108,9 +109,10 @@ function NavSection({ title, items, onClose, isAdmin, prefix = '', unreadCount =
   );
 }
 
-export function Sidebar({ onClose, prefix = '' }) {
+export function Sidebar({ onClose, prefix = '', onMenuClick }) {
   const { user, logout, isAdmin, isRootAdmin } = useAuth();
   const navigate = useNavigate();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: countData } = useQuery({
     queryKey: ['notif-count'],
@@ -125,10 +127,16 @@ export function Sidebar({ onClose, prefix = '' }) {
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">
-      {/* Header */}
+      {/* Brand + mobile menu toggle */}
       <div className="px-4 py-4 border-b border-[#e7eefe]">
         <div className="flex items-center gap-3">
-          <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="w-9 h-9 flex-shrink-0" />
+          <button
+            onClick={onMenuClick}
+            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0"
+          >
+            <Menu size={16} className="text-[#464555]" />
+          </button>
+          <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="w-9 h-9 flex-shrink-0 hidden md:block" />
           <div>
             <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight">Lumos Logic</h2>
             <p className="text-[0.65rem] text-[#777587] mt-0.5 tracking-wide">
@@ -136,6 +144,19 @@ export function Sidebar({ onClose, prefix = '' }) {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Search trigger */}
+      <div className="px-3 py-2 border-b border-[#e7eefe]">
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"
+        >
+          <Search size={13} className="text-[#3525cd]" />
+          <span>Search...</span>
+          <span className="ml-auto text-[0.6rem] text-[#b0aec8] font-medium">Ctrl K</span>
+        </button>
+        <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       </div>
 
       {/* Nav */}
