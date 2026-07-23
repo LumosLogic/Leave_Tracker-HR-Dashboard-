@@ -8,7 +8,7 @@ const { orgId }                 = require('../../utils/helpers');
 router.get('/:id/skills', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
     const { data, error } = await supabase.from('employee_skills')
@@ -25,7 +25,7 @@ router.get('/:id/skills', auth, async (req, res) => {
 router.post('/:id/skills', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
     if (!skill_name) return res.status(400).json({ error: 'skill_name is required' });
@@ -53,7 +53,7 @@ router.put('/:id/skills/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
 
@@ -74,7 +74,7 @@ router.put('/:id/skills/:recordId', auth, async (req, res) => {
 router.delete('/:id/skills/:recordId', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_skills')
       .delete().eq('id', parseInt(req.params.recordId))

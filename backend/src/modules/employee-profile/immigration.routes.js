@@ -8,7 +8,7 @@ const { orgId }                 = require('../../utils/helpers');
 router.get('/:id/immigration', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
     const { data, error } = await supabase.from('employee_immigration')

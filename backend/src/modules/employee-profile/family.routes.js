@@ -28,7 +28,7 @@ router.get('/:id/family', auth, async (req, res) => {
 router.post('/:id/family', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
     if (!relationship || !name) return res.status(400).json({ error: 'relationship and name are required' });
@@ -51,7 +51,7 @@ router.put('/:id/family/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
 
@@ -72,7 +72,7 @@ router.delete('/:id/family/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_family_members')
       .delete().eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req));

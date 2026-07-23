@@ -8,7 +8,7 @@ const { orgId }                 = require('../../utils/helpers');
 router.get('/:id/nominees', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
     const { data, error } = await supabase.from('employee_nominees')
@@ -25,7 +25,7 @@ router.get('/:id/nominees', auth, async (req, res) => {
 router.post('/:id/nominees', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { nominee_name, relationship, date_of_birth, percentage_share, address, contact_number, is_primary } = req.body;
     if (!nominee_name || !relationship) return res.status(400).json({ error: 'nominee_name and relationship are required' });
@@ -58,7 +58,7 @@ router.put('/:id/nominees/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { nominee_name, relationship, date_of_birth, percentage_share, address, contact_number, is_primary } = req.body;
 
@@ -79,7 +79,7 @@ router.put('/:id/nominees/:recordId', auth, async (req, res) => {
 router.delete('/:id/nominees/:recordId', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_nominees')
       .delete().eq('id', parseInt(req.params.recordId))

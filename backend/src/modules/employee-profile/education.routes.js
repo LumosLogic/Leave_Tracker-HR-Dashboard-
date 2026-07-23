@@ -8,7 +8,7 @@ const { orgId }                 = require('../../utils/helpers');
 router.get('/:id/education', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
     const { data, error } = await supabase.from('employee_qualifications')
@@ -25,7 +25,7 @@ router.get('/:id/education', auth, async (req, res) => {
 router.post('/:id/education', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const {
       degree_level, institution, board_university, specialization,
@@ -55,7 +55,7 @@ router.put('/:id/education/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const {
       degree_level, institution, board_university, specialization,
@@ -81,7 +81,7 @@ router.put('/:id/education/:recordId', auth, async (req, res) => {
 router.delete('/:id/education/:recordId', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
-    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+    if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_qualifications')
       .delete().eq('id', parseInt(req.params.recordId))
