@@ -36,7 +36,11 @@ export default function Leaves() {
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
-    if (statusParam === 'pending') return 'all';
+    if (statusParam === 'pending') {
+      // Respect explicit tabParam even when filtering by pending status
+      if (tabParam === 'wfh') return 'wfh';
+      return 'all';
+    }
     if (tabParam === 'all' || tabParam === 'wfh') return tabParam;
     if (tabParam === 'mine' && !isAdmin) return 'mine';
     return isAdmin ? 'all' : 'mine';
