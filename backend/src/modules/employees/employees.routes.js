@@ -15,6 +15,9 @@ const EMPLOYEE_PUBLIC_COLS = [
   'device_enrollment_id', 'branch_id', 'grade', 'division', 'sub_division',
   'salutation', 'middle_name', 'surname', 'location', 'pay_cadre',
   'weekly_off_day', 'work_hours_per_day',
+  // personal profile fields
+  'gender', 'blood_group', 'marital_status', 'nationality', 'religion',
+  'citizenship', 'height', 'weight',
 ].join(', ');
 
 // Sensitive statutory fields — admin only
@@ -118,6 +121,9 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       device_enrollment_id, branch_id, grade, division, sub_division,
       salutation, middle_name, surname, location, pay_cadre,
       weekly_off_day, work_hours_per_day,
+      // personal profile fields
+      gender, blood_group, marital_status, nationality, religion,
+      citizenship, height, weight,
     } = req.body;
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
@@ -146,6 +152,15 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       pay_cadre:            pay_cadre            || null,
       weekly_off_day:       weekly_off_day       || null,
       work_hours_per_day:   work_hours_per_day   || null,
+      // personal profile fields
+      gender:               gender               || null,
+      blood_group:          blood_group          || null,
+      marital_status:       marital_status       || null,
+      nationality:          nationality          || null,
+      religion:             religion             || null,
+      citizenship:          citizenship          || null,
+      height:               height               || null,
+      weight:               weight               || null,
     };
     if (password) update.password = bcrypt.hashSync(password, 10);
     const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;

@@ -121,6 +121,7 @@ function AppRoutes() {
         <Route path="/leaves"           element={<Leaves />} />
 
         <Route path="/employees"        element={<Employees />} />
+        <Route path="/employees/:id"    element={<Employees />} />
         <Route path="/departments"      element={<Departments />} />
         <Route path="/holidays"         element={<HolidaysPage />} />
         <Route path="/leave-policies"   element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
@@ -151,6 +152,7 @@ function AppRoutes() {
         <Route path="/root/calendar"        element={<Calendar />} />
         <Route path="/root/leaves"          element={<Leaves />} />
         <Route path="/root/employees"       element={<Employees />} />
+        <Route path="/root/employees/:id"   element={<Employees />} />
         <Route path="/root/departments"     element={<Departments />} />
         <Route path="/root/holidays"        element={<HolidaysPage />} />
         <Route path="/root/leave-policies"  element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />

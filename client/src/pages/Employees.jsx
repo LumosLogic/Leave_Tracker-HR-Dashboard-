@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -958,6 +958,15 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     device_enrollment_id: employee.device_enrollment_id || '',
     weekly_off_day:       employee.weekly_off_day       || '',
     work_hours_per_day:   employee.work_hours_per_day   || 8,
+    // Personal profile fields
+    gender:               employee.gender               || '',
+    blood_group:          employee.blood_group          || '',
+    marital_status:       employee.marital_status       || '',
+    nationality:          employee.nationality          || '',
+    religion:             employee.religion             || '',
+    citizenship:          employee.citizenship          || '',
+    height:               employee.height               || '',
+    weight:               employee.weight               || '',
   } : {
     name: '', email: '', password: '', department: '', position: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
@@ -967,6 +976,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     salutation: '', middle_name: '', surname: '', branch_id: '', grade: '',
     division: '', sub_division: '', device_enrollment_id: '', weekly_off_day: '',
     work_hours_per_day: 8,
+    // Personal profile fields defaults
+    gender: '', blood_group: '', marital_status: '', nationality: '',
+    religion: '', citizenship: '', height: '', weight: '',
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1067,33 +1079,158 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
 
           {/* ── Personal ── */}
           {tab === 'personal' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
-                  <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+            <div className="space-y-5">
+
+              {/* Name Details */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Name Details</p>
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Salutation</label>
+                    <select className="form-control" value={form.salutation} onChange={e => set('salutation', e.target.value)}>
+                      <option value="">—</option>
+                      <option value="Mr">Mr.</option>
+                      <option value="Mrs">Mrs.</option>
+                      <option value="Ms">Ms.</option>
+                      <option value="Miss">Miss</option>
+                      <option value="Dr">Dr.</option>
+                      <option value="Prof">Prof.</option>
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
+                    <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <label className="form-label">Phone</label>
-                  <input className="form-control" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Middle Name</label>
+                    <input className="form-control" placeholder="Middle name" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Last Name / Surname</label>
+                    <input className="form-control" placeholder="Surname" value={form.surname} onChange={e => set('surname', e.target.value)} />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Personal Email</label>
-                  <input className="form-control" type="email" placeholder="personal@gmail.com" value={form.personal_email} onChange={e => set('personal_email', e.target.value)} />
+
+              {/* Contact */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Contact</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Mobile</label>
+                    <input className="form-control" type="tel" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Personal Email</label>
+                    <input className="form-control" type="email" placeholder="personal@gmail.com" value={form.personal_email} onChange={e => set('personal_email', e.target.value)} />
+                  </div>
                 </div>
                 <div>
                   <label className="form-label">Company Email <span className="text-rose-500">*</span></label>
                   <input className="form-control" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Date of Birth</label>
-                  <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+
+              {/* Personal Information */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Personal Information</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Date of Birth</label>
+                    <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Gender</label>
+                    <select className="form-control" value={form.gender} onChange={e => set('gender', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Blood Group</label>
+                    <select className="form-control" value={form.blood_group} onChange={e => set('blood_group', e.target.value)}>
+                      <option value="">— Select —</option>
+                      {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Marital Status</label>
+                    <select className="form-control" value={form.marital_status} onChange={e => set('marital_status', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Divorced">Divorced</option>
+                      <option value="Widowed">Widowed</option>
+                      <option value="Separated">Separated</option>
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Background */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Background</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Nationality</label>
+                    <input className="form-control" list="nationality-list" placeholder="e.g. Indian" value={form.nationality} onChange={e => set('nationality', e.target.value)} />
+                    <datalist id="nationality-list">
+                      {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Italian','Spanish','Russian','Brazilian','Pakistani','Bangladeshi','Sri Lankan','Nepali','Maldivian','Bhutanese','South African','Other'].map(n => <option key={n} value={n} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="form-label">Religion</label>
+                    <select className="form-control" value={form.religion} onChange={e => set('religion', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Hindu">Hindu</option>
+                      <option value="Muslim">Muslim</option>
+                      <option value="Christian">Christian</option>
+                      <option value="Sikh">Sikh</option>
+                      <option value="Buddhist">Buddhist</option>
+                      <option value="Jain">Jain</option>
+                      <option value="Parsi">Parsi (Zoroastrian)</option>
+                      <option value="Jewish">Jewish</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label">Citizenship</label>
+                  <input className="form-control" list="citizenship-list" placeholder="e.g. Indian" value={form.citizenship} onChange={e => set('citizenship', e.target.value)} />
+                  <datalist id="citizenship-list">
+                    {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Other'].map(n => <option key={n} value={n} />)}
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Physical */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Physical Measurements</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Height</label>
+                    <div className="relative">
+                      <input className="form-control pr-10" type="number" step="0.01" min="0" placeholder="e.g. 170" value={form.height} onChange={e => set('height', e.target.value)} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.7rem] font-semibold text-[#777587]">cm</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Weight</label>
+                    <div className="relative">
+                      <input className="form-control pr-10" type="number" step="0.1" min="0" placeholder="e.g. 65" value={form.weight} onChange={e => set('weight', e.target.value)} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.7rem] font-semibold text-[#777587]">kg</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -1162,31 +1299,6 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               <p className="text-xs text-[#777587] bg-[#f0f3ff] border border-[#e7eefe] rounded-lg px-3 py-2">
                 Extended profile fields used for statutory compliance and biometric device integration.
               </p>
-
-              {/* Name fields */}
-              <div>
-                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Name Details</p>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label className="form-label">Salutation</label>
-                    <select className="form-control" value={form.salutation} onChange={e => set('salutation', e.target.value)}>
-                      <option value="">—</option>
-                      <option value="Mr">Mr</option>
-                      <option value="Mrs">Mrs</option>
-                      <option value="Ms">Ms</option>
-                      <option value="Dr">Dr</option>
-                    </select>
-                  </div>
-                  <div className="col-span-1">
-                    <label className="form-label">Middle Name</label>
-                    <input className="form-control" placeholder="Middle name" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="form-label">Surname / Last Name</label>
-                    <input className="form-control" placeholder="Surname" value={form.surname} onChange={e => set('surname', e.target.value)} />
-                  </div>
-                </div>
-              </div>
 
               {/* Branch + Grade */}
               <div>
@@ -1460,7 +1572,10 @@ export default function Employees() {
   const toast    = useToast();
   const qc       = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { id: routeId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const employeesBase = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
 
   // URL params
   const roleFilter    = searchParams.get('role');
@@ -1477,9 +1592,9 @@ export default function Employees() {
   const [editInitialTab, setEditInitialTab] = useState('personal');
   const [confirmDel,     setConfirmDel]     = useState(null);
 
-  function openProfile(emp, fromUrl = false) {
+  function openProfile(emp) {
+    navigate(`${employeesBase}/${emp.id}`);
     setProfileEmp(emp);
-    setCameFromUrl(fromUrl);
   }
 
   function handleEdit(emp, tab = 'personal') {
@@ -1525,12 +1640,27 @@ export default function Employees() {
     if (viewParam && allEmployees.length > 0) {
       const emp = allEmployees.find(e => String(e.id) === String(viewParam));
       if (emp) {
-        openProfile(emp, true);
+        navigate(`${employeesBase}/${emp.id}`, { replace: true });
+        setProfileEmp(emp);
         setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('view'); return n; }, { replace: true });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewParam, allEmployees]);
+
+  // Auto-open profile from URL :id param (handles refresh / direct links)
+  useEffect(() => {
+    if (!routeId || allEmployees.length === 0) return;
+    const emp = allEmployees.find(e => String(e.id) === String(routeId));
+    if (emp && (!profileEmp || String(profileEmp.id) !== String(routeId))) setProfileEmp(emp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, allEmployees]);
+
+  // Close profile when URL no longer has :id (browser back button)
+  useEffect(() => {
+    if (!routeId && profileEmp) setProfileEmp(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
 
   useEffect(() => {
     if (profileEmp && allEmployees.length > 0) {
@@ -1663,7 +1793,7 @@ export default function Employees() {
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfileV2 emp={profileEmp} onBack={cameFromUrl ? () => navigate(-1) : () => setProfileEmp(null)} onEdit={handleEdit} />
+        <EmployeeProfileV2 emp={profileEmp} onBack={() => { setProfileEmp(null); navigate(employeesBase); }} onEdit={handleEdit} />
         {editEmp && (
           <EmployeeFormModal open={!!editEmp} onClose={() => { setEditEmp(null); setEditInitialTab('personal'); }}
             employee={editEmp} departments={departments} initialTab={editInitialTab} />
