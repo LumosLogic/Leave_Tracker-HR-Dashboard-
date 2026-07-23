@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase }              = require('../../config/db');
-const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
 function checkAccess(req, empId) {
@@ -25,9 +25,11 @@ router.get('/:id/family', auth, async (req, res) => {
 });
 
 // POST /api/profile/:id/family
-router.post('/:id/family', auth, adminOnly, async (req, res) => {
+router.post('/:id/family', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
     if (!relationship || !name) return res.status(400).json({ error: 'relationship and name are required' });
 
@@ -45,10 +47,12 @@ router.post('/:id/family', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/profile/:id/family/:recordId
-router.put('/:id/family/:recordId', auth, adminOnly, async (req, res) => {
+router.put('/:id/family/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
 
     const { data, error } = await supabase.from('employee_family_members').update({
@@ -64,10 +68,12 @@ router.put('/:id/family/:recordId', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/profile/:id/family/:recordId
-router.delete('/:id/family/:recordId', auth, adminOnly, async (req, res) => {
+router.delete('/:id/family/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_family_members')
       .delete().eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;

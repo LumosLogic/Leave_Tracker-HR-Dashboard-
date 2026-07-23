@@ -42,6 +42,9 @@ router.post('/:id/banking', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) =
         .update({ is_primary: false }).eq('employee_id', empId).eq('organization_id', orgId(req));
     }
 
+    // Admin-added accounts are auto-verified; employee-added require HR review
+    const isAdmin = isAdminRole(req.user.role);
+
     const { data, error } = await supabase.from('employee_bank_accounts').insert({
       employee_id: empId, organization_id: orgId(req),
       bank_name, branch_name, branch_code, account_number,
@@ -52,6 +55,9 @@ router.post('/:id/banking', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) =
       is_primary: is_primary || false,
       is_salary_account: is_salary_account !== false,
       is_active: true,
+      hr_verified: isAdmin,
+      hr_verified_by: isAdmin ? req.user.id : null,
+      hr_verified_at: isAdmin ? new Date().toISOString() : null,
       created_by: req.user.id, updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw error;
@@ -90,7 +96,26 @@ router.put('/:id/banking/:recordId', auth, selfOrAdmin(SELF_EDITABLE), async (re
   }
 });
 
-// DELETE /api/profile/:id/banking/:recordId  — soft delete
+// PUT /api/profile/:id/banking/:recordId/verify  — HR only: mark account as verified
+router.put('/:id/banking/:recordId/verify', auth, adminOnly, async (req, res) => {
+  try {
+    const empId    = parseInt(req.params.id);
+    const recordId = parseInt(req.params.recordId);
+
+    const { data, error } = await supabase.from('employee_bank_accounts').update({
+      hr_verified: true,
+      hr_verified_by: req.user.id,
+      hr_verified_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(), updated_by: req.user.id,
+    }).eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req)).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/profile/:id/banking/:recordId  — soft delete (admin only)
 router.delete('/:id/banking/:recordId', auth, adminOnly, async (req, res) => {
   try {
     const { error } = await supabase.from('employee_bank_accounts')

@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase }              = require('../../config/db');
-const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
 // GET /api/profile/:id/skills
@@ -22,9 +22,11 @@ router.get('/:id/skills', auth, async (req, res) => {
 });
 
 // POST /api/profile/:id/skills
-router.post('/:id/skills', auth, adminOnly, async (req, res) => {
+router.post('/:id/skills', auth, async (req, res) => {
   try {
     const empId = parseInt(req.params.id);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
     if (!skill_name) return res.status(400).json({ error: 'skill_name is required' });
 
@@ -47,10 +49,12 @@ router.post('/:id/skills', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/profile/:id/skills/:recordId
-router.put('/:id/skills/:recordId', auth, adminOnly, async (req, res) => {
+router.put('/:id/skills/:recordId', auth, async (req, res) => {
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
 
     const { data, error } = await supabase.from('employee_skills').update({
@@ -67,11 +71,14 @@ router.put('/:id/skills/:recordId', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/profile/:id/skills/:recordId
-router.delete('/:id/skills/:recordId', auth, adminOnly, async (req, res) => {
+router.delete('/:id/skills/:recordId', auth, async (req, res) => {
   try {
+    const empId = parseInt(req.params.id);
+    if (!isAdminRole(req.user.role) && req.user.id !== empId)
+      return res.status(403).json({ error: 'Access denied' });
     const { error } = await supabase.from('employee_skills')
       .delete().eq('id', parseInt(req.params.recordId))
-      .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
+      .eq('employee_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {

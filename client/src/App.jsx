@@ -49,10 +49,11 @@ import BiometricLogs         from '@/pages/BiometricLogs';
 import BiometricSettings     from '@/pages/BiometricSettings';
 
 // ── Employee portal pages ──
-import EmployeeHome     from '@/pages/EmployeeHome';
-import MyLeaves         from '@/pages/MyLeaves';
-import MyAttendance     from '@/pages/MyAttendance';
-import TeamCalendar     from '@/pages/TeamCalendar';
+import EmployeeHome            from '@/pages/EmployeeHome';
+import MyLeaves                from '@/pages/MyLeaves';
+import MyAttendance            from '@/pages/MyAttendance';
+import TeamCalendar            from '@/pages/TeamCalendar';
+import EmployeePortalProfile   from '@/pages/EmployeePortalProfile';
 
 // Shows a locked screen when a feature is disabled for the org
 function FeatureRoute({ featureKey, children }) {
@@ -194,7 +195,7 @@ function AppRoutes() {
         <Route path="/portal/regularization" element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/portal/notifications"  element={<NotificationCenter />} />
         <Route path="/portal/announcements"  element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
-        <Route path="/portal/profile"        element={<MyProfile />} />
+        <Route path="/portal/profile"        element={<EmployeePortalProfile />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? home : '/'} replace />} />
