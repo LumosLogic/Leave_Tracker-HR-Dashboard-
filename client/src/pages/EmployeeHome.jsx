@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays, Umbrella, TrendingUp, Cake, PartyPopper,
   Home, Users, ChevronLeft, ChevronRight,
   CheckCircle2, LogIn, LogOut, Timer, UserPlus,
   Coffee, Play, Bell, ClipboardList, Clock, AlertTriangle,
-  BookOpen,
+  BookOpen, FileText, CreditCard, Download, FolderOpen,
+  Target, User, Zap, ArrowRight,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -14,19 +15,21 @@ import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { todayStr, fmtDate, fmtTime, fmtHours, countWorkingDaysInRange } from '@/lib/utils';
 
+/* ─── constants ──────────────────────────────────────────────────────────── */
+
 const LEAVE_ICONS = {
-  casual:      { emoji: '🌂', bg: 'bg-amber-50',   border: 'border-amber-100'  },
-  sick:        { emoji: '🤒', bg: 'bg-rose-50',    border: 'border-rose-100'   },
-  annual:      { emoji: '🏖️', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]' },
-  earned:      { emoji: '🏖️', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]' },
-  emergency:   { emoji: '🚨', bg: 'bg-rose-50',    border: 'border-rose-100'   },
-  maternity:   { emoji: '👶', bg: 'bg-pink-50',    border: 'border-pink-100'   },
-  paternity:   { emoji: '👨‍👧', bg: 'bg-blue-50',   border: 'border-blue-100'   },
-  bereavement: { emoji: '🕊️', bg: 'bg-slate-50',   border: 'border-slate-100'  },
-  unpaid:      { emoji: '📋', bg: 'bg-slate-50',   border: 'border-slate-100'  },
-  comp_off:    { emoji: '⏱️', bg: 'bg-purple-50',  border: 'border-purple-100' },
-  other:       { emoji: '📋', bg: 'bg-slate-50',   border: 'border-slate-100'  },
-  wfh:         { emoji: '🏠', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]' },
+  casual:      { emoji: '🌂', bg: 'bg-amber-50',   border: 'border-amber-100',  bar: '#f59e0b' },
+  sick:        { emoji: '🤒', bg: 'bg-rose-50',    border: 'border-rose-100',   bar: '#ef4444' },
+  annual:      { emoji: '🏖️', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]', bar: '#4f46e5' },
+  earned:      { emoji: '🏖️', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]', bar: '#4f46e5' },
+  emergency:   { emoji: '🚨', bg: 'bg-rose-50',    border: 'border-rose-100',   bar: '#ef4444' },
+  maternity:   { emoji: '👶', bg: 'bg-pink-50',    border: 'border-pink-100',   bar: '#ec4899' },
+  paternity:   { emoji: '👨‍👧', bg: 'bg-blue-50',  border: 'border-blue-100',   bar: '#3b82f6' },
+  bereavement: { emoji: '🕊️', bg: 'bg-slate-50',  border: 'border-slate-100',  bar: '#64748b' },
+  unpaid:      { emoji: '📋', bg: 'bg-slate-50',   border: 'border-slate-100',  bar: '#94a3b8' },
+  comp_off:    { emoji: '⏱️', bg: 'bg-purple-50',  border: 'border-purple-100', bar: '#a855f7' },
+  other:       { emoji: '📋', bg: 'bg-slate-50',   border: 'border-slate-100',  bar: '#64748b' },
+  wfh:         { emoji: '🏠', bg: 'bg-[#f0f3ff]', border: 'border-[#e7eefe]', bar: '#06b6d4' },
 };
 
 const LEAVE_LABELS = {
@@ -48,12 +51,16 @@ const STATUS_BADGE = {
 };
 
 const ATT_STATUS_CONFIG = {
-  present:  { label: 'Present',  dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
-  half_day: { label: 'Half Day', dot: 'bg-amber-500',   text: 'text-amber-700',   bg: 'bg-amber-50'   },
-  on_leave: { label: 'On Leave', dot: 'bg-[#3525cd]',   text: 'text-[#3525cd]',   bg: 'bg-[#f0f3ff]'  },
-  wfh:      { label: 'WFH',      dot: 'bg-cyan-500',    text: 'text-cyan-700',     bg: 'bg-cyan-50'    },
-  absent:   { label: 'Absent',   dot: 'bg-rose-500',    text: 'text-rose-700',     bg: 'bg-rose-50'    },
+  present:  { label: 'Present',  dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200' },
+  half_day: { label: 'Half Day', dot: 'bg-amber-500',   text: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200'   },
+  on_leave: { label: 'On Leave', dot: 'bg-[#3525cd]',   text: 'text-[#3525cd]',   bg: 'bg-[#f0f3ff]',  border: 'border-[#e7eefe]'   },
+  wfh:      { label: 'WFH',      dot: 'bg-cyan-500',    text: 'text-cyan-700',     bg: 'bg-cyan-50',     border: 'border-cyan-200'    },
+  absent:   { label: 'Absent',   dot: 'bg-rose-500',    text: 'text-rose-700',     bg: 'bg-rose-50',     border: 'border-rose-200'    },
 };
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/* ─── helpers ────────────────────────────────────────────────────────────── */
 
 function fmtLeaveDate(start, end) {
   const opts = { day: '2-digit', month: 'short', year: 'numeric' };
@@ -74,30 +81,209 @@ function fmtDateShort(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+function parseWorkMins(timeStr) {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+/* ─── sub-components ─────────────────────────────────────────────────────── */
+
+function WeekBarChart({ recentAttendance, today }) {
+  // Build Mon–Sun of the current week
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dow + 6) % 7));
+
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const rec = recentAttendance.find(r => r.date === dateStr);
+    const hours = rec?.work_hours ?? 0;
+    return { label: DAY_LABELS[(d.getDay())], dateStr, hours, isToday: dateStr === today, isFuture: dateStr > today };
+  });
+
+  const maxH = 8; // target workday hours
+
+  const presentDays  = weekDays.filter(d => !d.isFuture && d.hours > 0).length;
+  const avgHours     = presentDays > 0
+    ? (weekDays.filter(d => d.hours > 0).reduce((s, d) => s + d.hours, 0) / presentDays).toFixed(1)
+    : '0.0';
+  const attendancePct = Math.round((presentDays / 5) * 100); // out of 5 weekdays
+
+  return (
+    <div>
+      {/* bars */}
+      <div className="flex items-end gap-2 h-28 mb-2">
+        {weekDays.map((d, i) => {
+          const pct    = Math.min(100, (d.hours / maxH) * 100);
+          const isWknd = i === 5 || i === 6; // Sat/Sun
+          let barColor = '#e0e7ff';
+          if (!d.isFuture && !isWknd && d.hours > 0) {
+            barColor = d.hours >= 8 ? '#10b981' : d.hours >= 6 ? '#f59e0b' : '#ef4444';
+          }
+          if (d.isToday && d.hours === 0 && !isWknd) barColor = '#c7c4d8';
+
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+              {/* tooltip */}
+              {!d.isFuture && d.hours > 0 && (
+                <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 bg-[#151c27] text-white text-[0.6rem] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {d.hours.toFixed(1)}h
+                </div>
+              )}
+              <div className="w-full flex flex-col justify-end" style={{ height: '100%' }}>
+                <div
+                  className="rounded-t-md transition-all duration-300"
+                  style={{
+                    height: d.isFuture || d.hours === 0 ? '6px' : `${Math.max(6, pct)}%`,
+                    background: barColor,
+                    opacity: d.isFuture ? 0.35 : 1,
+                  }}
+                />
+              </div>
+              <span className={`text-[0.6rem] font-bold ${d.isToday ? 'text-[#3525cd]' : 'text-[#9ca3af]'}`}>
+                {d.label}
+              </span>
+              {d.isToday && <div className="w-1 h-1 rounded-full bg-[#3525cd]" />}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* legend */}
+      <div className="flex gap-2 flex-wrap mb-3">
+        {[
+          { color: '#10b981', label: '≥ 8h' },
+          { color: '#f59e0b', label: '6–8h' },
+          { color: '#ef4444', label: '< 6h' },
+          { color: '#e0e7ff', label: 'Weekend / No data' },
+        ].map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+            <span className="text-[0.58rem] text-[#777587]">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* stats strip */}
+      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#f0f3ff]">
+        {[
+          { label: 'Attendance', value: `${attendancePct}%` },
+          { label: 'Avg Hours',  value: `${avgHours}h`      },
+        ].map(({ label, value }) => (
+          <div key={label} className="text-center py-2 rounded-lg bg-[#f9f9ff]">
+            <p className="text-sm font-black text-[#151c27]">{value}</p>
+            <p className="text-[0.6rem] font-semibold text-[#777587] uppercase tracking-wide">{label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TeamDonut({ todayTeamLeaves, user }) {
+  const isWFHLeave  = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
+  const onLeave     = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id).length;
+  const onWfh       = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id).length;
+  const total       = todayTeamLeaves.length || 1;
+
+  const segments = [
+    { label: 'On Leave', count: onLeave, color: '#4f46e5', pct: (onLeave / total) * 100 },
+    { label: 'WFH',      count: onWfh,   color: '#06b6d4', pct: (onWfh   / total) * 100 },
+  ];
+
+  // Simple SVG donut
+  const r = 36; const cx = 44; const cy = 44; const stroke = 12;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+
+  const arcs = segments.map(seg => {
+    const dash  = (seg.pct / 100) * circumference;
+    const arc   = { ...seg, dash, offset };
+    offset += dash;
+    return arc;
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4">
+        <svg width="88" height="88" viewBox="0 0 88 88" className="shrink-0">
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0f3ff" strokeWidth={stroke} />
+          {arcs.map((arc, i) => (
+            <circle
+              key={i}
+              cx={cx} cy={cy} r={r}
+              fill="none"
+              stroke={arc.color}
+              strokeWidth={stroke}
+              strokeDasharray={`${arc.dash} ${circumference}`}
+              strokeDashoffset={-arc.offset}
+              strokeLinecap="round"
+              style={{ transform: 'rotate(-90deg)', transformOrigin: `${cx}px ${cy}px` }}
+            />
+          ))}
+          <text x={cx} y={cy - 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="#151c27">{total}</text>
+          <text x={cx} y={cy + 9} textAnchor="middle" fontSize="8" fill="#777587">members</text>
+        </svg>
+        <div className="space-y-2 flex-1">
+          {segments.map(seg => (
+            <div key={seg.label} className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full" style={{ background: seg.color }} />
+                <span className="text-xs text-[#464555]">{seg.label}</span>
+              </div>
+              <span className="text-xs font-bold text-[#151c27]">{seg.count}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#f0f3ff] border border-[#c7c4d8]" />
+              <span className="text-xs text-[#464555]">In Office</span>
+            </div>
+            <span className="text-xs font-bold text-[#151c27]">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── main component ─────────────────────────────────────────────────────── */
+
 const PER_PAGE = 3;
 
 export default function EmployeeHome() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const toast = useToast();
+  const navigate  = useNavigate();
+  const toast     = useToast();
   const [holidayPage, setHolidayPage] = useState(0);
   const [attRecord, setAttRecord]     = useState(null);
-  const [elapsed, setElapsed]         = useState('');
+  const [elapsed,   setElapsed]       = useState('');
   const [checkBusy, setCheckBusy]     = useState(false);
   const [breakBusy, setBreakBusy]     = useState(false);
 
-  const clockifySyncs = false;
+  const clockifySyncs      = false;
   const clockifyTodayHours = 0;
 
   const nowDate = new Date();
 
+  /* ── load today's attendance ── */
   const loadToday = useCallback(async () => {
     try { setAttRecord(await apiGet('/attendance/today')); } catch { /* silent */ }
   }, []);
   useEffect(() => { loadToday(); }, [loadToday]);
 
-
-  // Elapsed timer — pauses when on break
+  /* ── elapsed timer (pauses on break) ── */
   useEffect(() => {
     const isOnBreak = attRecord?.break_start && !attRecord?.break_end;
     if (!attRecord?.check_in || attRecord?.check_out) { setElapsed(''); return; }
@@ -121,6 +307,7 @@ export default function EmployeeHome() {
     return () => clearInterval(id);
   }, [attRecord]);
 
+  /* ── check-in / out / break actions ── */
   async function checkIn() {
     setCheckBusy(true);
     try {
@@ -158,6 +345,7 @@ export default function EmployeeHome() {
     finally { setBreakBusy(false); }
   }
 
+  /* ── queries ── */
   const { data: myStats } = useQuery({ queryKey: ['my-stats'], queryFn: () => apiGet('/my-stats') });
   const { data: myLeaves = [] } = useQuery({ queryKey: ['my-leaves-recent'], queryFn: () => apiGet('/leaves') });
   const { data: culture } = useQuery({
@@ -186,7 +374,7 @@ export default function EmployeeHome() {
     queryKey: ['leave-policies'], queryFn: () => apiGet('/leave-policies'), staleTime: 5 * 60 * 1000,
   });
 
-  const recentLeaves    = myLeaves.slice(0, 4);
+  /* ── derived data ── */
   const allHolidays     = culture?.holidays || [];
   const totalPages      = Math.max(1, Math.ceil(allHolidays.length / PER_PAGE));
   const visibleHolidays = allHolidays.slice(holidayPage * PER_PAGE, (holidayPage + 1) * PER_PAGE);
@@ -194,9 +382,10 @@ export default function EmployeeHome() {
   const upcomingBdays   = culture?.upcomingBirthdays || [];
   const upcomingEvents  = (culture?.events || []).slice(0, 4);
 
-  const isWFHLeave  = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
-  const teamOnLeave = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id);
-  const teamWfh     = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id);
+  const isWFHRecord  = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
+  const isWFHLeave   = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
+  const teamOnLeave  = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id);
+  const teamWfh      = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id);
 
   const todayDow      = new Date().getDay();
   const isWeekend     = todayDow === 0 || todayDow === 6;
@@ -205,124 +394,205 @@ export default function EmployeeHome() {
   const orgName   = user?.organization_name || user?.org_name || 'lumoslogic';
   const roleLabel = user?.position || 'Team Member';
 
-  // Break state helpers
   const isOnBreak    = !!(attRecord?.break_start && !attRecord?.break_end && !attRecord?.check_out);
   const hasBreakDone = !!(attRecord?.break_end && !attRecord?.check_out);
 
-  // Recent attendance: last 7 days, sorted desc
   const last7Days = recentAttendance
     .filter(r => r.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 7);
 
-  // Pending regularization count
-  const pendingReg = regularizations.filter(r => r.status === 'pending');
-
-  // Latest announcements
-  const latestAnnouncements = announcements.slice(0, 3);
-
-  // Leave balance from policies
-  const isWFHRecord = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
-  const activePolicies = leavePolicies.filter(p => p.active && p.annual_quota > 0);
-
-  // Upcoming approved leaves
+  const pendingReg    = regularizations.filter(r => r.status === 'pending');
+  const pendingLeaves = myLeaves.filter(l => l.status === 'pending' && !isWFHRecord(l));
+  const recentLeaves  = myLeaves.slice(0, 4);
   const upcomingLeaves = myLeaves
     .filter(l => l.status === 'approved' && l.start_date >= today && !isWFHRecord(l))
     .slice(0, 3);
+  const activePolicies = leavePolicies.filter(p => p.active && p.annual_quota > 0);
+  const latestAnnouncements = announcements.slice(0, 3);
 
-  // Pending leave requests
-  const pendingLeaves = myLeaves.filter(l => l.status === 'pending' && !isWFHRecord(l));
+  /* hero stat chips derived values */
+  const checkedInTime = attRecord?.check_in ? fmtTime(attRecord.check_in) : null;
+  const workingMins   = attRecord?.check_in && !attRecord?.check_out
+    ? (() => {
+        const [h, m] = attRecord.check_in.split(':').map(Number);
+        const start = new Date(); start.setHours(h, m, 0, 0);
+        return Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000) - (attRecord.total_break_minutes || 0));
+      })()
+    : attRecord?.work_hours
+      ? Math.round(attRecord.work_hours * 60)
+      : 0;
+  const remainingMins = Math.max(0, 480 - workingMins); // 8h = 480 min
+  const fmtMins = (mins) => {
+    const h = Math.floor(mins / 60); const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
 
+  /* recent activity: synthesize from attendance + leaves */
+  const recentActivity = [
+    ...recentAttendance.slice(0, 3).map(r => ({
+      id: `att-${r.id}`,
+      icon: r.check_in ? '✅' : '❌',
+      text: r.check_in
+        ? `Checked in at ${fmtTime(r.check_in)}${r.check_out ? ` · out at ${fmtTime(r.check_out)}` : ''}`
+        : 'Absent',
+      date: r.date,
+    })),
+    ...myLeaves.slice(0, 3).map(l => ({
+      id: `leave-${l.id}`,
+      icon: l.status === 'approved' ? '✅' : l.status === 'rejected' ? '❌' : '⏳',
+      text: `${leaveLabel(l.leave_type)} — ${l.status.charAt(0).toUpperCase() + l.status.slice(1)}`,
+      date: l.created_at?.split('T')[0] || l.start_date,
+    })),
+  ]
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, 5);
+
+  /* ── pending actions count ── */
+  const pendingExpenses = 0; // placeholder — connect when expenses query exists
+
+  /* ── quick action items ── */
+  const quickActions = [
+    { icon: <Umbrella size={18} />,   label: 'Apply Leave',             to: '/portal/leaves',         color: 'bg-[#f0f3ff] text-[#3525cd]' },
+    { icon: <ClipboardList size={18}/>,label: 'Attendance Correction',   to: '/portal/regularization', color: 'bg-amber-50 text-amber-600'   },
+    { icon: <CreditCard size={18} />, label: 'Expense Claim',            to: '/portal/expenses',       color: 'bg-emerald-50 text-emerald-600'},
+    { icon: <Download size={18} />,   label: 'Download Payslip',         to: '/portal/payslips',       color: 'bg-rose-50 text-rose-600'     },
+    { icon: <FolderOpen size={18} />, label: 'My Documents',             to: '/portal/documents',      color: 'bg-purple-50 text-purple-600' },
+    { icon: <CalendarDays size={18}/>, label: 'Attendance History',      to: '/portal/attendance',     color: 'bg-cyan-50 text-cyan-600'     },
+    { icon: <User size={18} />,        label: 'My Profile',              to: '/portal/profile',        color: 'bg-pink-50 text-pink-600'     },
+    { icon: <Target size={18} />,      label: 'Goals & Tasks',           to: '/portal/performance',    color: 'bg-orange-50 text-orange-600' },
+  ];
+
+  /* ── upcoming schedule items (holidays + birthdays + announcements) ── */
+  const upcomingSchedule = [
+    ...allHolidays.slice(0, 3).map(h => ({ type: 'holiday',  emoji: '🏖️', label: h.name,              sub: fmtDate(h.date) })),
+    ...upcomingBdays.slice(0, 2).map(b => ({ type: 'birthday', emoji: '🎂', label: `${b.name}'s Birthday`, sub: `In ${b.days_until} day${b.days_until !== 1 ? 's' : ''}` })),
+    ...latestAnnouncements.slice(0, 2).map(a => ({ type: 'announcement', emoji: '📢', label: a.title, sub: fmtDate(a.created_at?.split('T')[0]) })),
+  ].slice(0, 6);
+
+  /* ────────────────────────────────────────────────────────────────────────
+     RENDER
+  ─────────────────────────────────────────────────────────────────────── */
   return (
     <div className="space-y-5">
 
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <div className="rounded-2xl relative overflow-hidden shadow-md"
-        style={{ background: 'linear-gradient(135deg, #3525cd 0%, #4f46e5 55%, #712ae2 100%)' }}>
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(circle at 75% 50%, rgba(255,255,255,.12) 0%, transparent 55%)' }} />
-        <div className="relative px-6 py-4">
-          {/* Top row: greeting + avatar + buttons */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 rounded-full border-2 border-white/40 flex items-center justify-center shrink-0"
-                style={{ background: user?.avatar_color || '#4f46e5' }}>
-                <span className="text-white font-black text-base select-none">
-                  {user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
-                </span>
+      {/* ═══════════════════════════════════════════════════════════════════
+          1. HERO HEADER CARD
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div
+        className="rounded-2xl relative overflow-hidden shadow-lg"
+        style={{ background: 'linear-gradient(135deg, #3525cd 0%, #4f46e5 50%, #712ae2 100%)' }}
+      >
+        {/* decorative glows */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,.13) 0%, transparent 50%), radial-gradient(circle at 20% 80%, rgba(113,42,226,.4) 0%, transparent 50%)',
+        }} />
+
+        <div className="relative px-6 pt-6 pb-5">
+          {/* greeting */}
+          <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+            {getGreeting()}, {user?.name?.split(' ')[0] || 'there'}! 👋
+          </h1>
+          <p className="text-white/60 text-sm mt-1">Have a productive and amazing day ahead.</p>
+
+          {/* stat chips */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {[
+              {
+                icon: <LogIn size={13} />,
+                label: 'Checked In',
+                value: checkedInTime || 'Not Checked In',
+              },
+              {
+                icon: <Timer size={13} />,
+                label: 'Working Time',
+                value: workingMins > 0 ? fmtMins(workingMins) : '—',
+              },
+              {
+                icon: <Clock size={13} />,
+                label: 'Remaining',
+                value: attRecord?.check_out ? 'Done' : workingMins > 0 ? fmtMins(remainingMins) : '—',
+              },
+              {
+                icon: <CalendarDays size={13} />,
+                label: "Today's Shift",
+                value: '09:30 AM – 06:30 PM',
+              },
+            ].map(({ icon, label, value }) => (
+              <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-2">
+                <span className="text-white/60">{icon}</span>
+                <div>
+                  <p className="text-[0.58rem] font-semibold text-white/50 uppercase tracking-wide leading-none mb-0.5">{label}</p>
+                  <p className="text-xs font-black text-white leading-none">{value}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h1 className="text-xl font-black text-white leading-tight">Hello, {user?.name?.split(' ')[0]}! 👋</h1>
-                <p className="text-white/60 text-xs mt-0.5 truncate">{orgName} · {roleLabel}</p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {clockifySyncs && (
-                <span className="hidden sm:flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white bg-white/15 border border-white/20">
-                  <Timer size={9} /> Clockify
-                </span>
-              )}
-
-              {/* Clockify mode: use existing Check In / Go on Break / Resume flow */}
-              {clockifySyncs ? (
-                !attRecord?.check_in ? (
-                  <button onClick={checkIn} disabled={checkBusy}
-                    className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                    <LogIn size={13} /> {checkBusy ? 'Checking in…' : 'Check In'}
-                  </button>
-                ) : !attRecord?.check_out ? (
-                  <button onClick={checkOut} disabled={checkBusy}
-                    className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                    <LogOut size={13} /> {checkBusy ? 'Pausing…' : 'Go on Break'}
-                  </button>
-                ) : (
-                  <button onClick={checkIn} disabled={checkBusy}
-                    className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all disabled:opacity-60 border border-white/30">
-                    <Play size={13} /> {checkBusy ? 'Resuming…' : 'Resume Timer'}
-                  </button>
-                )
-              ) : (
-                /* Standalone mode: Check In → Break In + Check Out → End Break → Check Out */
-                !attRecord?.check_in ? (
-                  <button onClick={checkIn} disabled={checkBusy}
-                    className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                    <LogIn size={13} /> {checkBusy ? 'Checking in…' : 'Check In'}
-                  </button>
-                ) : isOnBreak ? (
-                  <button onClick={breakOut} disabled={breakBusy}
-                    className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                    <Play size={13} /> {breakBusy ? 'Ending…' : 'End Break'}
-                  </button>
-                ) : attRecord?.check_out ? (
-                  <span className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white/15 text-white/80 border border-white/20">
-                    <CheckCircle2 size={13} /> Day Complete
-                  </span>
-                ) : (
-                  <>
-                    <button onClick={breakIn} disabled={breakBusy || checkBusy}
-                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-amber-500/80 hover:bg-amber-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                      <Coffee size={13} /> {breakBusy ? '…' : 'Break'}
-                    </button>
-                    <button onClick={checkOut} disabled={checkBusy}
-                      className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white transition-all disabled:opacity-60 shadow-sm">
-                      <LogOut size={13} /> {checkBusy ? 'Checking out…' : 'Check Out'}
-                    </button>
-                  </>
-                )
-              )}
-
-              <button onClick={() => navigate('/portal/attendance')}
-                className="text-xs text-white/60 hover:text-white px-2.5 py-2 rounded-xl hover:bg-white/10 transition-all whitespace-nowrap">
-                View →
-              </button>
-            </div>
+            ))}
           </div>
 
-          {/* Status strip */}
+          {/* action buttons */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {/* primary: check-in/out */}
+            {clockifySyncs ? (
+              !attRecord?.check_in ? (
+                <button onClick={checkIn} disabled={checkBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                  <LogIn size={15} /> {checkBusy ? 'Checking in…' : 'Check In'}
+                </button>
+              ) : !attRecord?.check_out ? (
+                <button onClick={checkOut} disabled={checkBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                  <LogOut size={15} /> {checkBusy ? 'Pausing…' : 'Go on Break'}
+                </button>
+              ) : (
+                <button onClick={checkIn} disabled={checkBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white/20 border border-white/30 text-white hover:bg-white/30 transition-all disabled:opacity-60">
+                  <Play size={15} /> {checkBusy ? 'Resuming…' : 'Resume Timer'}
+                </button>
+              )
+            ) : (
+              /* Standalone mode */
+              attRecord?.check_out ? (
+                <span className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white/15 text-white/80 border border-white/20">
+                  <CheckCircle2 size={15} /> Day Complete
+                </span>
+              ) : isOnBreak ? (
+                <button onClick={breakOut} disabled={breakBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-amber-600 hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                  <Play size={15} /> {breakBusy ? 'Ending…' : 'End Break'}
+                </button>
+              ) : !attRecord?.check_in ? (
+                <button onClick={checkIn} disabled={checkBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                  <LogIn size={15} /> {checkBusy ? 'Checking in…' : 'Check In'}
+                </button>
+              ) : (
+                <>
+                  <button onClick={breakIn} disabled={breakBusy || checkBusy}
+                    className="flex items-center gap-2 text-sm font-bold px-4 py-2.5 rounded-xl bg-white/15 border border-white/30 text-white hover:bg-white/25 transition-all disabled:opacity-60">
+                    <Coffee size={15} /> {breakBusy ? '…' : 'Break'}
+                  </button>
+                  <button onClick={checkOut} disabled={checkBusy}
+                    className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                    <LogOut size={15} /> {checkBusy ? 'Checking out…' : 'Check Out'}
+                  </button>
+                </>
+              )
+            )}
+
+            {/* secondary buttons */}
+            <Link to="/portal/leaves"
+              className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
+              <Umbrella size={15} /> Apply Leave
+            </Link>
+            <Link to="/portal/regularization"
+              className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
+              <ClipboardList size={15} /> Attendance Correction
+            </Link>
+          </div>
+
+          {/* status strip */}
           {attRecord?.check_in && (
-            <div className="mt-3 pt-3 border-t border-white/10">
+            <div className="mt-4 pt-4 border-t border-white/10">
               {isOnBreak ? (
                 <span className="text-xs text-amber-300 flex items-center gap-1.5">
                   <Coffee size={12} /> On break since {fmtTime(attRecord.break_start)}{elapsed ? ` · ${elapsed} elapsed` : ''}
@@ -330,10 +600,8 @@ export default function EmployeeHome() {
               ) : attRecord.check_out ? (
                 <span className="text-xs text-white/75 flex items-center gap-1.5">
                   <CheckCircle2 size={12} className="text-emerald-300" />
-                  {clockifySyncs && clockifyTodayHours > 0
-                    ? <><strong className="text-white">{fmtHours(clockifyTodayHours)}</strong> worked today · <span className="text-white/50">timer paused</span></>
-                    : <>{fmtTime(attRecord.check_in)} – {fmtTime(attRecord.check_out)}{attRecord.work_hours ? ` · ${fmtHours(attRecord.work_hours)} effective` : ''}</>
-                  }
+                  {fmtTime(attRecord.check_in)} – {fmtTime(attRecord.check_out)}
+                  {attRecord.work_hours ? ` · ${fmtHours(attRecord.work_hours)} effective` : ''}
                 </span>
               ) : (
                 <span className="text-xs text-emerald-300 flex items-center gap-1.5">
@@ -345,402 +613,365 @@ export default function EmployeeHome() {
         </div>
       </div>
 
-      {/* ── Today's Attendance Summary ─────────────────────────────────────── */}
-      {attRecord?.check_in && (
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="px-5 py-3 bg-[#fafaff] border-b border-[#f0f3ff] flex items-center justify-between">
-            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <Clock size={13} className="text-[#3525cd]" /> Today's Attendance Summary
-            </h2>
-            {attRecord.status && (
-              <span className={`text-[0.65rem] font-bold px-2.5 py-0.5 rounded-full capitalize ${
-                ATT_STATUS_CONFIG[attRecord.status]?.bg || 'bg-[#f0f3ff]'} ${ATT_STATUS_CONFIG[attRecord.status]?.text || 'text-[#464555]'}`}>
-                {ATT_STATUS_CONFIG[attRecord.status]?.label || attRecord.status}
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 divide-x divide-[#f0f3ff]">
-            {[
-              { label: 'Check-In', value: attRecord.check_in ? fmtTime(attRecord.check_in) : '—', color: 'text-emerald-600', icon: <LogIn size={14} className="text-emerald-500" /> },
-              { label: 'Break Time', value: fmtBreakTime(attRecord.total_break_minutes), color: 'text-amber-600', icon: <Coffee size={14} className="text-amber-500" /> },
-              { label: 'Check-Out', value: attRecord.check_out ? fmtTime(attRecord.check_out) : '—', color: 'text-rose-600', icon: <LogOut size={14} className="text-rose-500" /> },
-              { label: 'Gross Hours', value: attRecord.gross_hours ? fmtHours(attRecord.gross_hours) : (attRecord.check_in && !attRecord.check_out ? 'In progress' : '—'), color: 'text-[#3525cd]', icon: <Timer size={14} className="text-[#3525cd]" /> },
-              { label: 'Effective Hours', value: attRecord.work_hours ? fmtHours(attRecord.work_hours) : '—', color: 'text-[#151c27]', icon: <CheckCircle2 size={14} className="text-emerald-600" /> },
-            ].map(({ label, value, color, icon }) => (
-              <div key={label} className="px-4 py-4 flex flex-col gap-1.5 text-center items-center">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#f0f3ff]">{icon}</div>
-                <p className={`text-base font-black ${color} leading-tight`}>{value}</p>
-                <p className="text-[0.6rem] font-semibold text-[#777587] uppercase tracking-wide">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── 3-column row ──────────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          2. THREE-COLUMN INFO SECTION
+      ═══════════════════════════════════════════════════════════════════ */}
       <div className="grid lg:grid-cols-3 gap-5">
 
-        {/* Team Status Today */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-          <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2 mb-4">
-            <Users size={13} className="text-[#3525cd]" /> Team Status Today
-          </h2>
-          {(todayHoliday || isWeekend) ? (
-            <div className="flex flex-col items-center justify-center text-center py-3 gap-2">
-              <span className="text-3xl">{todayHoliday ? '🏖️' : '🌟'}</span>
-              <p className="text-sm font-black text-[#151c27]">{todayHoliday ? todayHoliday.name : 'Weekend Holiday'}</p>
-              <p className="text-[0.7rem] text-[#777587]">Attendance not applicable today</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 divide-x divide-[#f0f3ff]">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <Umbrella size={12} className="text-amber-500" />
-                    <span className="text-xs font-bold text-amber-600">On Leave</span>
-                  </div>
-                  <span className="text-lg font-black text-amber-600 leading-none">{teamOnLeave.length}</span>
-                </div>
-                {teamOnLeave.length === 0 ? (
-                  <p className="text-[0.7rem] text-[#9ca3af] italic">Everyone's in today</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {teamOnLeave.slice(0, 3).map(l => (
-                      <div key={l.id} className="flex items-center gap-2.5">
-                        <Avatar name={l.name} color={l.avatar_color} size={26} />
-                        <div className="min-w-0">
-                          <p className="text-[0.72rem] font-semibold text-[#151c27] truncate leading-tight">{l.name}</p>
-                          <p className="text-[0.62rem] text-[#9ca3af] truncate">{l.department || orgName}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {teamOnLeave.length > 3 && <p className="text-[0.65rem] text-[#777587] font-medium">+{teamOnLeave.length - 3} more</p>}
-                  </div>
-                )}
-              </div>
-              <div className="pl-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <Home size={12} className="text-[#3525cd]" />
-                    <span className="text-[0.7rem] font-bold text-[#3525cd] leading-tight">WFH</span>
-                  </div>
-                  <span className="text-lg font-black text-[#3525cd] leading-none">{teamWfh.length}</span>
-                </div>
-                {teamWfh.length === 0 ? (
-                  <p className="text-[0.7rem] text-[#9ca3af] italic">No WFH today</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {teamWfh.slice(0, 3).map(l => (
-                      <div key={l.id} className="flex items-center gap-2.5">
-                        <Avatar name={l.name} color={l.avatar_color} size={26} />
-                        <div className="min-w-0">
-                          <p className="text-[0.72rem] font-semibold text-[#151c27] truncate leading-tight">{l.name}</p>
-                          <p className="text-[0.62rem] text-[#9ca3af] truncate">{l.department || orgName}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {teamWfh.length > 3 && <p className="text-[0.65rem] text-[#777587] font-medium">+{teamWfh.length - 3} more</p>}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* This Month KPIs */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-          <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2 mb-4">
-            <TrendingUp size={13} className="text-emerald-600" /> This Month
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Days Present',  value: myStats?.presentCount ?? 0, color: 'text-emerald-600', bg: 'bg-emerald-50',  border: 'border-emerald-100' },
-              { label: 'Leaves Taken',  value: myStats?.leavesCount  ?? 0, color: 'text-[#3525cd]',   bg: 'bg-[#f0f3ff]',  border: 'border-[#e7eefe]'  },
-              { label: 'Late Arrivals', value: myStats?.lateCount    ?? 0, color: 'text-amber-600',   bg: 'bg-amber-50',   border: 'border-amber-100'  },
-            ].map(({ label, value, color, bg, border }) => (
-              <div key={label} className={`${bg} border ${border} rounded-xl p-3.5 flex flex-col items-center justify-center text-center min-h-[80px]`}>
-                <p className={`text-[1.75rem] font-black leading-none ${color}`}>{value}</p>
-                <p className="text-[0.6rem] font-semibold text-[#464555] mt-1.5 leading-tight">{label}</p>
-              </div>
-            ))}
-          </div>
-          {pendingLeaves.length > 0 && (
-            <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
-              <AlertTriangle size={11} className="text-amber-600 shrink-0" />
-              <span className="text-[0.65rem] text-amber-700 font-semibold">
-                {pendingLeaves.length} leave request{pendingLeaves.length > 1 ? 's' : ''} pending approval
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Upcoming Holidays */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
-          <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2 mb-4">
-            <CalendarDays size={13} className="text-rose-500" /> Upcoming Holidays
-          </h2>
-          {allHolidays.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[80px] text-center">
-              <p className="text-xs text-[#9ca3af]">No upcoming holidays</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setHolidayPage(p => Math.max(0, p - 1))} disabled={holidayPage === 0}
-                  className="w-8 h-8 rounded-full border border-[#c7c4d8] flex items-center justify-center text-[#777587] disabled:opacity-30 hover:enabled:border-[#3525cd] hover:enabled:text-[#3525cd] transition-colors shrink-0">
-                  <ChevronLeft size={14} />
-                </button>
-                <div className="flex-1 grid grid-cols-3 gap-2">
-                  {visibleHolidays.map(h => (
-                    <div key={h.id} className="rounded-xl border border-[#e7eefe] bg-[#fafaff] p-2.5 text-center">
-                      <p className="text-[0.68rem] font-bold text-[#151c27] leading-tight line-clamp-2 mb-1">{h.name}</p>
-                      <p className="text-[0.58rem] text-[#777587]">{fmtDate(h.date)}</p>
-                    </div>
-                  ))}
-                  {visibleHolidays.length < PER_PAGE && Array.from({ length: PER_PAGE - visibleHolidays.length }).map((_, i) => (
-                    <div key={`ph-${i}`} />
-                  ))}
-                </div>
-                <button onClick={() => setHolidayPage(p => Math.min(totalPages - 1, p + 1))} disabled={holidayPage >= totalPages - 1}
-                  className="w-8 h-8 rounded-full border border-[#c7c4d8] flex items-center justify-center text-[#777587] disabled:opacity-30 hover:enabled:border-[#3525cd] hover:enabled:text-[#3525cd] transition-colors shrink-0">
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-              {totalPages > 1 && (
-                <div className="flex justify-center gap-1.5 mt-3">
-                  {Array.from({ length: totalPages }).map((_, i) => (
-                    <button key={i} onClick={() => setHolidayPage(i)}
-                      className={`h-1.5 rounded-full transition-all duration-300 ${i === holidayPage ? 'bg-[#3525cd] w-4' : 'bg-[#c7c4d8] w-1.5'}`} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Announcements + Regularization ────────────────────────────────── */}
-      <div className="grid lg:grid-cols-2 gap-5">
-
-        {/* Announcements */}
+        {/* ── Col 1: Today's Overview ── */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
             <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <Bell size={13} className="text-amber-500" /> Announcements
+              <Clock size={13} className="text-[#3525cd]" /> Today's Overview
             </h2>
-            <button onClick={() => navigate('/portal/announcements')} className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
-              View All
-            </button>
-          </div>
-          {latestAnnouncements.length === 0 ? (
-            <div className="py-8 flex flex-col items-center justify-center gap-2 text-center px-5">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-xl">📢</div>
-              <p className="text-sm font-semibold text-[#464555]">No announcements</p>
-              <p className="text-xs text-[#9ca3af]">Company announcements will appear here.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-[#f9f9ff]">
-              {latestAnnouncements.map(a => (
-                <div key={a.id} className="px-5 py-3.5 hover:bg-[#fafaff] transition-colors">
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-lg shrink-0 mt-0.5">{a.type === 'urgent' ? '🚨' : a.pinned ? '📌' : '📢'}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <p className="text-sm font-bold text-[#151c27] leading-tight line-clamp-1">{a.title}</p>
-                        {a.priority === 'high' && (
-                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 shrink-0">High</span>
-                        )}
-                      </div>
-                      <p className="text-[0.72rem] text-[#777587] line-clamp-2">{a.content}</p>
-                      <p className="text-[0.62rem] text-[#9ca3af] mt-1">{fmtDate(a.created_at?.split('T')[0])}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Regularization */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
-            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <ClipboardList size={13} className="text-[#3525cd]" /> Attendance Regularization
-            </h2>
-            <button onClick={() => navigate('/portal/regularization')}
-              className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
-              Apply / View
-            </button>
-          </div>
-          <div className="p-5">
-            {pendingReg.length > 0 && (
-              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 mb-4">
-                <AlertTriangle size={13} className="text-amber-600 shrink-0" />
-                <span className="text-xs font-bold text-amber-700">
-                  {pendingReg.length} pending request{pendingReg.length > 1 ? 's' : ''} awaiting approval
+            {attRecord?.status && (() => {
+              const cfg = ATT_STATUS_CONFIG[attRecord.status];
+              return (
+                <span className={`text-[0.65rem] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${cfg?.bg} ${cfg?.text} border ${cfg?.border}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg?.dot}`} />
+                  {cfg?.label || attRecord.status}
                 </span>
-              </div>
-            )}
-            {regularizations.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 text-center py-4">
-                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center text-xl">🗂️</div>
-                <p className="text-sm font-semibold text-[#464555]">No regularization requests</p>
-                <p className="text-xs text-[#9ca3af]">Submit a request if your attendance needs correction.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {regularizations.slice(0, 3).map(r => (
-                  <div key={r.id} className="flex items-center justify-between py-2 border-b border-[#f9f9ff] last:border-0">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#151c27]">{fmtDate(r.date)}</p>
-                      <p className="text-[0.65rem] text-[#777587] truncate">{r.reason}</p>
+              );
+            })()}
+          </div>
+          <div className="p-5 space-y-3">
+            {attRecord?.check_in ? (
+              <>
+                {[
+                  { label: 'Check In',      value: fmtTime(attRecord.check_in),               icon: <LogIn size={13} className="text-emerald-500" /> },
+                  attRecord?.is_late && { label: 'Late By',         value: attRecord.late_by_minutes ? `${attRecord.late_by_minutes} min late` : 'Late', icon: <AlertTriangle size={13} className="text-amber-500" /> },
+                  { label: 'Break Time',    value: fmtBreakTime(attRecord.total_break_minutes), icon: <Coffee size={13} className="text-amber-500" />  },
+                  { label: 'Working Time',  value: workingMins > 0 ? fmtMins(workingMins) : '—', icon: <Timer size={13} className="text-[#3525cd]" /> },
+                  { label: 'Remaining',     value: attRecord?.check_out ? 'Done' : fmtMins(remainingMins), icon: <Clock size={13} className="text-rose-500" /> },
+                ].filter(Boolean).map(({ label, value, icon }) => (
+                  <div key={label} className="flex items-center justify-between py-1 border-b border-[#f9f9ff] last:border-0">
+                    <div className="flex items-center gap-2 text-[#777587]">
+                      {icon}
+                      <span className="text-xs font-medium text-[#464555]">{label}</span>
                     </div>
-                    <span className={`ml-2 text-[0.65rem] font-bold px-2 py-0.5 rounded-full capitalize shrink-0 ${
-                      r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : r.status === 'rejected' ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}>{r.status}</span>
+                    <span className="text-xs font-bold text-[#151c27]">{value}</span>
                   </div>
                 ))}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center text-xl">🕐</div>
+                <p className="text-sm font-semibold text-[#464555]">Not checked in yet</p>
+                <p className="text-xs text-[#9ca3af]">Your attendance details will appear here.</p>
               </div>
             )}
-            <button onClick={() => navigate('/portal/regularization')}
-              className="w-full mt-3 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl py-2 hover:bg-[#f0f3ff] transition-colors">
-              + Apply Attendance Correction
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* ── Recent Attendance (Last 7 Days) ───────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
-          <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-            <CalendarDays size={13} className="text-[#3525cd]" /> Recent Attendance
-          </h2>
-          <button onClick={() => navigate('/portal/attendance')} className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
-            Full History
-          </button>
+        {/* ── Col 2: My Pending Actions ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <Zap size={13} className="text-amber-500" /> My Pending Actions
+            </h2>
+            {(pendingLeaves.length + pendingReg.length + pendingExpenses) > 0 && (
+              <span className="text-[0.6rem] font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                {pendingLeaves.length + pendingReg.length + pendingExpenses}
+              </span>
+            )}
+          </div>
+          <div className="p-5 space-y-2.5">
+            {[
+              {
+                label: 'Pending Leave Requests',
+                count: pendingLeaves.length,
+                to: '/portal/leaves',
+                icon: <Umbrella size={14} className="text-[#3525cd]" />,
+                bg: 'bg-[#f0f3ff]',
+              },
+              {
+                label: 'Pending Regularization',
+                count: pendingReg.length,
+                to: '/portal/regularization',
+                icon: <ClipboardList size={14} className="text-amber-500" />,
+                bg: 'bg-amber-50',
+              },
+              {
+                label: 'Pending Expenses',
+                count: pendingExpenses,
+                to: '/portal/expenses',
+                icon: <CreditCard size={14} className="text-emerald-500" />,
+                bg: 'bg-emerald-50',
+              },
+            ].map(({ label, count, to, icon, bg }) => (
+              <Link key={label} to={to}
+                className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] transition-colors group">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>{icon}</div>
+                  <span className="text-xs font-semibold text-[#464555]">{label}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {count > 0 && (
+                    <span className="text-[0.6rem] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white min-w-[18px] text-center">
+                      {count}
+                    </span>
+                  )}
+                  <ArrowRight size={12} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
+                </div>
+              </Link>
+            ))}
+
+            <Link to="/portal/leaves"
+              className="flex items-center gap-1.5 text-xs font-bold text-[#3525cd] hover:underline mt-1 pt-2">
+              View All Actions <ArrowRight size={12} />
+            </Link>
+          </div>
         </div>
-        {last7Days.length === 0 ? (
-          <div className="py-8 text-center">
-            <p className="text-sm text-[#9ca3af]">No attendance records this month yet.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
-                <tr>
-                  {['Date', 'Status', 'Check-In', 'Check-Out', 'Break', 'Hours'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[0.62rem] font-bold text-[#464555] uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f9f9ff]">
-                {last7Days.map(r => {
-                  const cfg = ATT_STATUS_CONFIG[r.status] || ATT_STATUS_CONFIG.present;
-                  return (
-                    <tr key={r.id} className="hover:bg-[#fafaff] transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-[#151c27] text-xs">{fmtDateShort(r.date)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-[#464555]">{r.check_in ? fmtTime(r.check_in) : '—'}</td>
-                      <td className="px-4 py-2.5 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
-                      <td className="px-4 py-2.5 text-xs text-amber-600">{r.total_break_minutes ? fmtBreakTime(r.total_break_minutes) : '—'}</td>
-                      <td className="px-4 py-2.5 text-xs font-semibold text-[#151c27]">
-                        {r.work_hours > 0 ? <span>{fmtHours(r.work_hours)}</span> : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
-      {/* ── Leave Balance + Upcoming Approved ────────────────────────────── */}
-      {(activePolicies.length > 0 || upcomingLeaves.length > 0) && (
-        <div className="grid lg:grid-cols-2 gap-5">
-          {/* Leave Balance */}
-          {activePolicies.length > 0 && (
-            <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
-                <BookOpen size={13} className="text-[#3525cd]" />
-                <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest">Leave Balance</h2>
+        {/* ── Col 3: Leave Balance ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <BookOpen size={13} className="text-[#3525cd]" /> Leave Balance
+            </h2>
+            <Link to="/portal/leaves" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
+              View All
+            </Link>
+          </div>
+          <div className="p-5">
+            {activePolicies.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center text-xl">📋</div>
+                <p className="text-xs text-[#9ca3af]">No leave policies found.</p>
               </div>
-              <div className="p-4 space-y-0">
-                {activePolicies.map(p => {
+            ) : (
+              <div className="space-y-3">
+                {activePolicies.slice(0, 4).map(p => {
                   const used = myLeaves
                     .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
                     .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
                   const total     = p.annual_quota;
                   const remaining = Math.max(0, total - used);
                   const pct       = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+                  const icon      = LEAVE_ICONS[p.leave_type] || LEAVE_ICONS.other;
+                  const barColor  = pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : icon.bar || '#10b981';
+
                   return (
-                    <div key={p.leave_type} className="py-2.5 border-b border-[#f0f3ff] last:border-0">
+                    <div key={p.leave_type}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-[#151c27]">{p.label}</span>
-                        <span className="text-xs font-black text-[#3525cd]">{remaining} <span className="font-normal text-[#777587]">/ {total} days</span></span>
+                        <span className="text-xs font-bold text-[#151c27]">
+                          {icon.emoji} {p.label}
+                        </span>
+                        <span className="text-[0.65rem] font-bold text-[#3525cd]">
+                          {remaining} <span className="font-normal text-[#9ca3af]">remaining</span>
+                        </span>
                       </div>
                       <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#10b981' }} />
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
                       </div>
-                    </div>
-                  );
-                })}
-                <button onClick={() => navigate('/portal/leaves')} className="w-full mt-2 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl py-2 hover:bg-[#f0f3ff] transition-colors">
-                  Apply Leave →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Upcoming Approved Leaves */}
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
-              <Umbrella size={13} className="text-emerald-500" />
-              <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest">Upcoming Approved Leaves</h2>
-            </div>
-            {upcomingLeaves.length === 0 ? (
-              <div className="py-8 text-center px-5">
-                <p className="text-sm font-semibold text-[#464555]">No upcoming leaves</p>
-                <p className="text-xs text-[#9ca3af] mt-1">Your approved upcoming leaves will show here.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-[#f9f9ff]">
-                {upcomingLeaves.map(l => {
-                  const lt = LEAVE_ICONS[l.leave_type] || LEAVE_ICONS.other;
-                  return (
-                    <div key={l.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
-                      <div className={`w-8 h-8 rounded-lg ${lt.bg} border ${lt.border} flex items-center justify-center text-sm shrink-0`}>{lt.emoji}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#151c27] leading-tight">{leaveLabel(l.leave_type)}</p>
-                        <p className="text-xs text-[#777587]">{fmtLeaveDate(l.start_date, l.end_date)}</p>
-                      </div>
-                      <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">Approved</span>
                     </div>
                   );
                 })}
               </div>
             )}
-            <div className="px-5 py-3 border-t border-[#f0f3ff]">
-              <button onClick={() => navigate('/portal/leaves')} className="text-xs font-bold text-[#3525cd] hover:underline">
-                View All Leaves →
-              </button>
-            </div>
+            <button onClick={() => navigate('/portal/leaves')}
+              className="w-full mt-4 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl py-2.5 hover:bg-[#f0f3ff] transition-colors">
+              Apply Leave →
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── My Recent Leaves ──────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          3. ATTENDANCE CHART + UPCOMING SCHEDULE
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5">
+
+        {/* ── Left: Attendance This Week ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <TrendingUp size={13} className="text-[#3525cd]" /> Attendance This Week
+            </h2>
+            <Link to="/portal/attendance" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
+              Full History
+            </Link>
+          </div>
+          <div className="p-5">
+            <WeekBarChart recentAttendance={recentAttendance} today={today} />
+          </div>
+        </div>
+
+        {/* ── Right: Upcoming Schedule ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <CalendarDays size={13} className="text-rose-500" /> Upcoming Schedule
+            </h2>
+            <Link to="/portal/team-calendar" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
+              View Calendar →
+            </Link>
+          </div>
+          <div className="divide-y divide-[#f9f9ff]">
+            {upcomingSchedule.length === 0 ? (
+              <div className="py-10 flex flex-col items-center gap-2 text-center px-5">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-xl">📅</div>
+                <p className="text-sm font-semibold text-[#464555]">Nothing upcoming</p>
+                <p className="text-xs text-[#9ca3af]">Holidays, birthdays & events will appear here.</p>
+              </div>
+            ) : (
+              upcomingSchedule.map((item, i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 ${
+                    item.type === 'holiday' ? 'bg-rose-50 border border-rose-100'
+                    : item.type === 'birthday' ? 'bg-pink-50 border border-pink-100'
+                    : 'bg-amber-50 border border-amber-100'
+                  }`}>
+                    {item.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-[#151c27] truncate leading-tight">{item.label}</p>
+                    <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">{item.sub}</p>
+                  </div>
+                  <span className={`text-[0.58rem] font-bold px-1.5 py-0.5 rounded capitalize shrink-0 ${
+                    item.type === 'holiday' ? 'bg-rose-50 text-rose-600'
+                    : item.type === 'birthday' ? 'bg-pink-50 text-pink-600'
+                    : 'bg-amber-50 text-amber-600'
+                  }`}>
+                    {item.type}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          4. RECENT ACTIVITY + TEAM STATUS
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5">
+
+        {/* ── Left: My Recent Activity ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <Bell size={13} className="text-amber-500" /> My Recent Activity
+            </h2>
+            <Link to="/portal/attendance" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
+              View All
+            </Link>
+          </div>
+          <div className="divide-y divide-[#f9f9ff]">
+            {recentActivity.length === 0 ? (
+              <div className="py-10 text-center px-5">
+                <p className="text-sm text-[#9ca3af]">No recent activity found.</p>
+              </div>
+            ) : (
+              recentActivity.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-[#fafaff] transition-colors">
+                  <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center text-sm shrink-0 mt-0.5">
+                    {item.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-[#151c27] leading-snug">{item.text}</p>
+                    <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">{item.date ? fmtDateShort(item.date) : ''}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ── Right: My Team Status ── */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <Users size={13} className="text-[#3525cd]" /> My Team Status
+            </h2>
+          </div>
+          <div className="p-5">
+            {(todayHoliday || isWeekend) ? (
+              <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
+                <span className="text-3xl">{todayHoliday ? '🏖️' : '🌟'}</span>
+                <p className="text-sm font-black text-[#151c27]">{todayHoliday ? todayHoliday.name : 'Weekend'}</p>
+                <p className="text-[0.7rem] text-[#777587]">Attendance not applicable today</p>
+              </div>
+            ) : (
+              <>
+                <TeamDonut todayTeamLeaves={todayTeamLeaves} user={user} />
+
+                {/* member lists */}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[0.6rem] font-black text-amber-600 uppercase tracking-wider mb-2">
+                      On Leave ({teamOnLeave.length})
+                    </p>
+                    {teamOnLeave.length === 0 ? (
+                      <p className="text-[0.7rem] text-[#9ca3af] italic">Everyone's in</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {teamOnLeave.slice(0, 3).map(l => (
+                          <div key={l.id} className="flex items-center gap-1.5">
+                            <Avatar name={l.name} color={l.avatar_color} size={22} />
+                            <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
+                          </div>
+                        ))}
+                        {teamOnLeave.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamOnLeave.length - 3} more</p>}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] font-black text-cyan-600 uppercase tracking-wider mb-2">
+                      WFH ({teamWfh.length})
+                    </p>
+                    {teamWfh.length === 0 ? (
+                      <p className="text-[0.7rem] text-[#9ca3af] italic">No WFH today</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {teamWfh.slice(0, 3).map(l => (
+                          <div key={l.id} className="flex items-center gap-1.5">
+                            <Avatar name={l.name} color={l.avatar_color} size={22} />
+                            <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
+                          </div>
+                        ))}
+                        {teamWfh.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamWfh.length - 3} more</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          5. QUICK ACTIONS GRID
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#f0f3ff]">
+          <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+            <Zap size={13} className="text-[#3525cd]" /> Quick Actions
+          </h2>
+        </div>
+        <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {quickActions.map(({ icon, label, to, color }) => (
+            <Link key={label} to={to}
+              className="flex flex-col items-center gap-2.5 p-4 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:shadow-sm transition-all group text-center">
+              <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                {icon}
+              </div>
+              <span className="text-[0.72rem] font-semibold text-[#464555] leading-tight">{label}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          BONUS: My Recent Leaves (keep existing)
+      ═══════════════════════════════════════════════════════════════════ */}
       <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
           <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
             <Umbrella size={13} className="text-[#3525cd]" /> My Recent Leaves
           </h2>
-          <button onClick={() => navigate('/portal/leaves')} className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">View All</button>
+          <Link to="/portal/leaves" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">View All</Link>
         </div>
 
         {recentLeaves.length === 0 ? (
@@ -748,10 +979,10 @@ export default function EmployeeHome() {
             <div className="w-12 h-12 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-2xl">🗓️</div>
             <p className="text-sm font-semibold text-[#464555]">No leave requests yet</p>
             <p className="text-xs text-[#9ca3af]">You haven't applied for any leave yet.</p>
-            <button onClick={() => navigate('/portal/leaves')}
+            <Link to="/portal/leaves"
               className="mt-2 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl px-4 py-2 hover:bg-[#f0f3ff] transition-colors">
               Apply Leave →
-            </button>
+            </Link>
           </div>
         ) : (
           <div>
@@ -781,7 +1012,9 @@ export default function EmployeeHome() {
         )}
       </div>
 
-      {/* ── New Joiners ───────────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          BONUS: New Joiners
+      ═══════════════════════════════════════════════════════════════════ */}
       {newJoiners.length > 0 && (
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
@@ -809,7 +1042,9 @@ export default function EmployeeHome() {
         </div>
       )}
 
-      {/* ── Birthdays + Upcoming Events ───────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          BONUS: Birthdays + Upcoming Events
+      ═══════════════════════════════════════════════════════════════════ */}
       <div className="grid md:grid-cols-2 gap-5">
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-[#f0f3ff]">
@@ -898,6 +1133,7 @@ export default function EmployeeHome() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }
