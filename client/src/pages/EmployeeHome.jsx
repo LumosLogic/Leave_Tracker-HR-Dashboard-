@@ -108,7 +108,7 @@ function WeekBarChart({ recentAttendance, today }) {
     d.setDate(monday.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
     const rec = recentAttendance.find(r => r.date === dateStr);
-    const hours = rec?.work_hours ?? 0;
+    const hours = parseFloat(rec?.work_hours ?? 0) || 0;
     return { label: DAY_LABELS[(d.getDay())], dateStr, hours, isToday: dateStr === today, isFuture: dateStr > today };
   });
 
