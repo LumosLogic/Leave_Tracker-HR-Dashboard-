@@ -162,13 +162,19 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
   const wfhIsPastDate = isWFH  && !!form.wfh_date   && form.wfh_date  < today;
 
   const canSubmit = isWFH
-    ? !!form.wfh_date && !submitting && !wfhHasConflict && !wfhIsPastDate
-    : !!form.start_date && !!form.end_date && !submitting && !isPastDate;
+    ? !!form.wfh_date && !submitting && !wfhHasConflict && !wfhIsPastDate && !!form.reason.trim()
+    : !!form.start_date && !!form.end_date && !submitting && !isPastDate && !!form.reason.trim();
 
   function handleSubmit() {
     if (isWFH) {
       const reasonParts = [form.reason, form.work_location ? `Work Location: ${form.work_location}` : '', form.contact_number ? `Contact: ${form.contact_number}` : ''].filter(Boolean);
-      onSubmit({ leave_type: 'wfh', leave_time: 'wfh', start_date: form.wfh_date, end_date: form.wfh_date, reason: reasonParts.join(' | ') });
+      onSubmit({
+        leave_type: 'wfh',
+        leave_time: form.leave_time === 'half' ? 'half' : 'wfh',
+        half_type:  form.leave_time === 'half' ? form.half_type : undefined,
+        start_date: form.wfh_date, end_date: form.wfh_date,
+        reason: reasonParts.join(' | '),
+      });
     } else {
       onSubmit({ leave_type: form.leave_type, leave_time: form.leave_time, start_date: form.start_date, end_date: form.end_date, reason: form.reason, half_type: form.leave_time === 'half' ? form.half_type : undefined });
     }
@@ -345,7 +351,7 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
               )}
 
               <div>
-                <label className="form-label">Reason <span className="text-[#777587] font-normal">(optional)</span></label>
+                <label className="form-label">Reason <span className="text-rose-500">*</span></label>
                 <textarea className="form-control resize-none" rows={3} value={form.reason}
                   onChange={e => set('reason', e.target.value)} placeholder="Briefly describe the reason for your leave…" />
               </div>
@@ -419,8 +425,17 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
                   <SegBtn value="half" current={form.leave_time} onChange={v => set('leave_time', v)}>Half Day</SegBtn>
                 </div>
               </div>
+              {form.leave_time === 'half' && (
+                <div>
+                  <label className="form-label">Which Half</label>
+                  <div className="flex gap-2 p-1 bg-[#f0f3ff] rounded-xl border border-[#c7c4d8]">
+                    <SegBtn value="first_half"  current={form.half_type} onChange={v => set('half_type', v)}>First Half (Morning)</SegBtn>
+                    <SegBtn value="second_half" current={form.half_type} onChange={v => set('half_type', v)}>Second Half (Afternoon)</SegBtn>
+                  </div>
+                </div>
+              )}
               <div>
-                <label className="form-label">Reason <span className="text-[#777587] font-normal">(optional)</span></label>
+                <label className="form-label">Reason <span className="text-rose-500">*</span></label>
                 <textarea className="form-control resize-none" rows={3} value={form.reason}
                   onChange={e => set('reason', e.target.value)} placeholder="Briefly describe why you need to work from home…" />
               </div>
