@@ -39,10 +39,9 @@ const NAV_SECTIONS = [
   ]},
 ];
 
-function EmployeeSidebar({ onClose, onMenuClick }) {
+function EmployeeSidebar({ onClose, onMenuClick, onSearchOpen }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: countData } = useQuery({
     queryKey: ['notif-count'],
@@ -75,14 +74,12 @@ function EmployeeSidebar({ onClose, onMenuClick }) {
       {/* Search trigger */}
       <div className="px-3 py-2 border-b border-[#e7eefe]">
         <button
-          onClick={() => setSearchOpen(true)}
+          onClick={onSearchOpen}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"
         >
           <Search size={13} className="text-[#3525cd]" />
           <span>Search...</span>
-          <span className="ml-auto text-[0.6rem] text-[#b0aec8] font-medium">Ctrl K</span>
         </button>
-        <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       </div>
 
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
@@ -144,6 +141,7 @@ function EmployeeSidebar({ onClose, onMenuClick }) {
 
 export function EmployeeLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen,  setSearchOpen]  = useState(false);
   const { user } = useAuth();
   useTour(employeeTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_emp_${user.id}` : null);
 
@@ -161,6 +159,7 @@ export function EmployeeLayout() {
         <EmployeeSidebar
           onClose={() => setSidebarOpen(false)}
           onMenuClick={() => setSidebarOpen(o => !o)}
+          onSearchOpen={() => setSearchOpen(true)}
         />
       </div>
 
@@ -171,6 +170,9 @@ export function EmployeeLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* GlobalSearchModal rendered at root level to avoid sidebar stacking-context clipping */}
+      <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { GlobalSearchModal } from '@/components/ui/GlobalSearchModal';
 import { useAuth } from '@/context/AuthContext';
 import { useTour } from '@/hooks/useTour';
 import { hrAdminTourSteps } from '@/lib/tours';
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen,  setSearchOpen]  = useState(false);
   const { user } = useAuth();
   useTour(hrAdminTourSteps, (user?.id && !user?.force_password_change) ? `lt_tour_hr_${user.id}` : null);
 
@@ -29,6 +31,7 @@ export function AppLayout() {
         <Sidebar
           onClose={() => setSidebarOpen(false)}
           onMenuClick={() => setSidebarOpen(o => !o)}
+          onSearchOpen={() => setSearchOpen(true)}
         />
       </div>
 
@@ -39,6 +42,9 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* GlobalSearchModal at root level to avoid sidebar stacking-context clipping */}
+      <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

@@ -109,10 +109,9 @@ function NavSection({ title, items, onClose, isAdmin, prefix = '', unreadCount =
   );
 }
 
-export function Sidebar({ onClose, prefix = '', onMenuClick }) {
+export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
   const { user, logout, isAdmin, isRootAdmin } = useAuth();
   const navigate = useNavigate();
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const { data: countData } = useQuery({
     queryKey: ['notif-count'],
@@ -149,14 +148,12 @@ export function Sidebar({ onClose, prefix = '', onMenuClick }) {
       {/* Search trigger */}
       <div className="px-3 py-2 border-b border-[#e7eefe]">
         <button
-          onClick={() => setSearchOpen(true)}
+          onClick={onSearchOpen}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"
         >
           <Search size={13} className="text-[#3525cd]" />
           <span>Search...</span>
-          <span className="ml-auto text-[0.6rem] text-[#b0aec8] font-medium">Ctrl K</span>
         </button>
-        <GlobalSearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       </div>
 
       {/* Nav */}
