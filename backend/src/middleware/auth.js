@@ -38,7 +38,7 @@ function isAdminRole(role) { return role === 'admin' || role === 'root_admin'; }
 function selfOrAdmin(allowedSelfFields = []) {
   return (req, res, next) => {
     const isAdmin = isAdminRole(req.user.role);
-    const isSelf  = req.user.id === parseInt(req.params.id);
+    const isSelf  = parseInt(req.user.id) === parseInt(req.params.id);
 
     if (!isAdmin && !isSelf)
       return res.status(403).json({ error: 'Access denied' });

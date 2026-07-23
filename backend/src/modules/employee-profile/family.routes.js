@@ -5,7 +5,7 @@ const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
 function checkAccess(req, empId) {
-  return isAdminRole(req.user.role) || req.user.id === empId;
+  return isAdminRole(req.user.role) || parseInt(req.user.id) === empId;
 }
 
 // GET /api/profile/:id/family
