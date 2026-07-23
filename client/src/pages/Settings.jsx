@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { RoleBadge } from '@/components/ui/Badge';
 import { todayStr, initials } from '@/lib/utils';
 import { usePushNotification } from '@/hooks/usePushNotification';
@@ -142,117 +143,6 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
   );
 }
 
-// ── Clockify Integration Card ─────────────────────────────────────────────────
-function ClockifyCard({ clockify, isAdmin, onSaved }) {
-  const toast = useToast();
-  const [apiKey, setApiKey]   = useState('');
-  const [wsId,   setWsId]     = useState(clockify?.workspace_id || '');
-  const [saving,  setSaving]  = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [syncing,  setSyncing] = useState(false);
-
-  async function saveConfig() {
-    // Need at least a workspace ID; API key can be omitted if one is already stored
-    if (!wsId) { toast('Enter Workspace ID', 'warning'); return; }
-    if (!apiKey && !clockify?.api_key) { toast('Enter API key', 'warning'); return; }
-    setSaving(true);
-    try {
-      // Only send api_key when the user actually typed a new one
-      const payload = { workspace_id: wsId };
-      if (apiKey.trim()) payload.api_key = apiKey.trim();
-      await apiPut('/settings/clockify', payload);
-      toast('Clockify settings saved!', 'success');
-      onSaved?.();
-    } catch (err) { toast(err.message, 'error'); }
-    finally { setSaving(false); }
-  }
-
-  async function testConnection() {
-    // Save first only if a new API key was entered; otherwise just test what's stored
-    if (apiKey.trim()) await saveConfig();
-    setTesting(true);
-    try {
-      const workspaces = await apiGet('/clockify/workspaces');
-      toast(`Connected! Found ${workspaces.length} workspace(s)`, 'success');
-    } catch (err) { toast('Connection failed: ' + err.message, 'error'); }
-    finally { setTesting(false); }
-  }
-
-  async function syncToday() {
-    setSyncing(true);
-    try {
-      toast('Syncing Clockify data for today…', 'info');
-      const result = await apiPost('/clockify/sync', { date: todayStr() });
-      toast(`Synced ${result.synced} users from Clockify`, 'success');
-    } catch (err) { toast('Sync failed: ' + err.message, 'error'); }
-    finally { setSyncing(false); }
-  }
-
-  return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <Zap size={18} className="text-[#3525cd]" />
-          <span className="font-bold text-[#151c27]">Clockify Integration</span>
-        </div>
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
-          <Timer size={11} /> Clockify
-        </span>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] text-sm text-[#3525cd]">
-          <Info size={15} className="mt-0.5 flex-shrink-0" />
-          <span>
-            Connect your Clockify workspace to automatically sync work hours.
-            Get your API key from <strong>clockify.me → Profile Settings → API</strong>
-          </span>
-        </div>
-
-        <div>
-          <label className="form-label">Clockify API Key</label>
-          <input className="form-control" type="password"
-            placeholder={clockify?.api_key ? '••••••••••' : 'Enter your API key'}
-            value={apiKey} disabled={!isAdmin}
-            onChange={e => setApiKey(e.target.value)} />
-        </div>
-
-        <div>
-          <label className="form-label">Workspace ID</label>
-          <input className="form-control"
-            placeholder="Enter workspace ID"
-            value={wsId} disabled={!isAdmin}
-            onChange={e => setWsId(e.target.value)} />
-          <p className="form-hint">
-            Found in Clockify URL: clockify.me/workspaces/<strong>[ID]</strong>/settings
-          </p>
-        </div>
-
-        {clockify?.last_synced && (
-          <p className="text-xs text-[#777587]">
-            Last synced: {new Date(clockify.last_synced).toLocaleString()}
-          </p>
-        )}
-
-        {isAdmin ? (
-          <div className="flex gap-2 flex-wrap">
-            <button className="btn btn-primary btn-sm" onClick={saveConfig} disabled={saving}>
-              {saving ? <><span className="spinner w-3 h-3" /> Saving…</> : <><Check size={14} /> Save Config</>}
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={testConnection} disabled={testing}>
-              {testing ? <><span className="spinner w-3 h-3" /> Testing…</> : <><RefreshCw size={14} /> Test Connection</>}
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={syncToday} disabled={syncing}>
-              {syncing ? <><span className="spinner w-3 h-3" /> Syncing…</> : <><RefreshCw size={14} /> Sync Today</>}
-            </button>
-          </div>
-        ) : (
-          <p className="text-xs text-[#777587]">Only admins can configure Clockify.</p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ── Status Legend Card ────────────────────────────────────────────────────────
 function AttendanceCleanupCard() {
@@ -360,6 +250,7 @@ function NotificationRecipientsCard() {
   const [newEmail, setNewEmail] = useState('');
   const [newName,  setNewName]  = useState('');
   const [adding,   setAdding]   = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
   const { data: recipients = [], isLoading } = useQuery({
     queryKey: ['notify-recipients'],
@@ -386,13 +277,13 @@ function NotificationRecipientsCard() {
     } catch (err) { toast(err.message, 'error'); }
   }
 
-  async function removeRecipient(id) {
-    if (!confirm('Remove this recipient?')) return;
+  async function doRemoveRecipient(id) {
     try {
       await apiDelete(`/root/notify-recipients/${id}`);
       qc.invalidateQueries({ queryKey: ['notify-recipients'] });
       toast('Recipient removed', 'success');
     } catch (err) { toast(err.message, 'error'); }
+    setConfirmRemove(null);
   }
 
   return (
@@ -440,13 +331,23 @@ function NotificationRecipientsCard() {
               <button onClick={() => toggleActive(r)} className="p-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors text-[#464555]">
                 {r.active ? <ToggleRight size={16} className="text-emerald-600" /> : <ToggleLeft size={16} />}
               </button>
-              <button onClick={() => removeRecipient(r.id)} className="p-1.5 rounded-lg hover:bg-rose-50 transition-colors text-rose-400 hover:text-rose-600">
+              <button onClick={() => setConfirmRemove(r)} className="p-1.5 rounded-lg hover:bg-rose-50 transition-colors text-rose-400 hover:text-rose-600">
                 <Trash2 size={15} />
               </button>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmRemove}
+        title="Remove Recipient"
+        message={`Remove ${confirmRemove?.name || confirmRemove?.email} from notification recipients?`}
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={() => doRemoveRecipient(confirmRemove.id)}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }
@@ -569,7 +470,6 @@ export default function Settings() {
   });
 
   const schedule = data?.schedule;
-  const clockify = data?.clockify;
 
   if (isLoading) {
     return <div className="loading"><div className="spinner" /> Loading…</div>;
@@ -586,7 +486,6 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <WorkScheduleCard schedule={schedule} isAdmin={isAdmin} onSaved={refetch} />
-        <ClockifyCard     clockify={clockify} isAdmin={isAdmin} onSaved={refetch} />
         <PushNotificationsCard userId={user?.id} />
         <StatusLegendCard />
         <MyProfileCard user={user} />

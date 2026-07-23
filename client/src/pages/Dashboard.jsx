@@ -13,6 +13,7 @@ import {
   UserPlus, FileText, CheckCircle2, Pencil, RefreshCw, Inbox,
   Trash2, CalendarCheck, ChevronRight, TrendingUp, TrendingDown,
   Cake, Building2, Mail, Zap, AlertCircle, Gift, ShieldCheck, PartyPopper,
+  Coffee, Play,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -73,29 +74,28 @@ function CheckinWidget({ onRefresh }) {
   const [record, setRecord] = useState(null);
   const [elapsed, setElapsed] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const { data: checkinMode } = useQuery({
-    queryKey: ['checkin-mode'],
-    queryFn: () => apiGet('/attendance/checkin-mode'),
-    staleTime: 5 * 60 * 1000,
-  });
-  const clockifySyncs = checkinMode?.syncs_clockify ?? false;
+  const [breakBusy, setBreakBusy] = useState(false);
 
   const load = useCallback(async () => {
     try { const r = await apiGet('/attendance/today'); setRecord(r); } catch { /* silent */ }
   }, []);
-
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!record?.check_in || record?.check_out) return;
+    const isOnBreak = record?.break_start && !record?.break_end;
+    if (!record?.check_in || record?.check_out) { setElapsed(''); return; }
     const tick = () => {
-      const [h, m] = record.check_in.split(':').map(Number);
-      const start = new Date(); start.setHours(h, m, 0, 0);
-      const diff = Date.now() - start.getTime();
-      const total = Math.floor(diff / 60000);
-      const hrs = Math.floor(total / 60); const min = total % 60;
-      setElapsed(hrs > 0 ? `${hrs}h ${min}m` : `${min}m`);
+      if (isOnBreak) {
+        const [bh, bm] = record.break_start.split(':').map(Number);
+        const s = new Date(); s.setHours(bh, bm, 0, 0);
+        const t = Math.floor((Date.now() - s.getTime()) / 60000);
+        setElapsed(`${Math.floor(t/60) > 0 ? Math.floor(t/60) + 'h ' : ''}${t%60}m on break`);
+      } else {
+        const [h, m] = record.check_in.split(':').map(Number);
+        const s = new Date(); s.setHours(h, m, 0, 0);
+        const t = Math.max(0, Math.floor((Date.now() - s.getTime()) / 60000) - (record.total_break_minutes || 0));
+        setElapsed(`${Math.floor(t/60) > 0 ? Math.floor(t/60) + 'h ' : ''}${t%60}m`);
+      }
     };
     tick();
     const id = setInterval(tick, 30000);
@@ -104,51 +104,37 @@ function CheckinWidget({ onRefresh }) {
 
   async function checkIn() {
     setBusy(true);
-    try {
-      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkin', {});
-      setRecord(r);
-      toast(message || 'Checked in!', 'success');
-      if (clockify_synced) toast('Timer started in Clockify', 'success');
-      onRefresh?.();
-    } catch (err) { toast(err.message, 'error'); }
-    finally { setBusy(false); }
+    try { const { record: r, message } = await apiPost('/attendance/checkin', {}); setRecord(r); toast(message || 'Checked in!', 'success'); onRefresh?.(); }
+    catch (err) { toast(err.message, 'error'); } finally { setBusy(false); }
   }
   async function checkOut() {
     setBusy(true);
-    try {
-      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkout', {});
-      setRecord(r);
-      toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
-      if (clockify_synced) toast('Timer stopped in Clockify', 'success');
-      onRefresh?.();
-    } catch (err) { toast(err.message, 'error'); }
-    finally { setBusy(false); }
+    try { const { record: r, message } = await apiPost('/attendance/checkout', {}); setRecord(r); toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success'); onRefresh?.(); }
+    catch (err) { toast(err.message, 'error'); } finally { setBusy(false); }
+  }
+  async function breakIn() {
+    setBreakBusy(true);
+    try { const { record: r, message } = await apiPost('/attendance/break-in', {}); setRecord(r); toast(message || 'Break started', 'info'); }
+    catch (err) { toast(err.message, 'error'); } finally { setBreakBusy(false); }
+  }
+  async function breakOut() {
+    setBreakBusy(true);
+    try { const { record: r, message } = await apiPost('/attendance/break-out', {}); setRecord(r); toast(message || 'Break ended', 'success'); }
+    catch (err) { toast(err.message, 'error'); } finally { setBreakBusy(false); }
   }
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const isOnBreak = !!(record?.break_start && !record?.break_end && !record?.check_out);
 
   return (
     <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#e7eefe] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CalendarDays size={13} className="text-[#777587]" />
-          <span className="text-xs font-semibold text-[#777587]">{dateStr}</span>
-        </div>
-        {clockifySyncs && (
-          <span className="flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white"
-            style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-            <Timer size={9} /> Clockify
-          </span>
-        )}
-        {checkinMode && !clockifySyncs && checkinMode.has_clockify && (
-          <span className="flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
-            <Timer size={9} /> Link Clockify ID
-          </span>
-        )}
+      <div className="px-4 py-3 border-b border-[#e7eefe] flex items-center gap-2">
+        <CalendarDays size={13} className="text-[#777587]" />
+        <span className="text-xs font-semibold text-[#777587]">{dateStr}</span>
       </div>
       <div className="p-4">
-        {!record || !record.check_in ? (
+        {!record?.check_in ? (
           <>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
@@ -156,18 +142,29 @@ function CheckinWidget({ onRefresh }) {
               </div>
               <div>
                 <p className="text-sm font-bold text-[#151c27]">Check In</p>
-                <p className="text-xs text-[#777587]">
-                  {clockifySyncs ? 'Will start your Clockify timer too' : "You haven't checked in today"}
-                </p>
+                <p className="text-xs text-[#777587]">You haven't checked in today</p>
               </div>
             </div>
             <button onClick={checkIn} disabled={busy}
               className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
               <CheckCircle2 size={14} /> {busy ? 'Checking in…' : 'Check In Now'}
             </button>
-            <p className="text-center text-[0.65rem] text-[#9ca3af] mt-2 flex items-center justify-center gap-1">
-              <Building2 size={10} /> {clockifySyncs ? 'Syncs with Clockify' : 'Standalone Mode'}
-            </p>
+          </>
+        ) : isOnBreak ? (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+                <Coffee size={16} className="text-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-amber-600">On Break</p>
+                <p className="text-xs text-[#777587]">{elapsed || `Since ${fmtTime(record.break_start)}`}</p>
+              </div>
+            </div>
+            <button onClick={breakOut} disabled={breakBusy}
+              className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
+              <Play size={14} /> {breakBusy ? 'Ending…' : 'End Break'}
+            </button>
           </>
         ) : !record.check_out ? (
           <>
@@ -176,16 +173,20 @@ function CheckinWidget({ onRefresh }) {
                 <CheckCircle2 size={16} className="text-emerald-500" />
               </div>
               <div>
-                <p className="text-sm font-bold text-emerald-600">
-                  Checked In {record.clockify_entry_id && <span className="ml-1 text-[0.6rem] bg-indigo-100 text-indigo-600 px-1 py-0.5 rounded font-bold">Clockify ✓</span>}
-                </p>
+                <p className="text-sm font-bold text-emerald-600">Checked In</p>
                 <p className="text-xs text-[#777587]">Since {fmtTime(record.check_in)} · {elapsed}</p>
               </div>
             </div>
-            <button onClick={checkOut} disabled={busy}
-              className="w-full flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition-all shadow-sm">
-              <LogOut size={14} /> {busy ? 'Checking out…' : (clockifySyncs ? 'Check Out & Stop Timer' : 'Check Out')}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={breakIn} disabled={breakBusy || busy}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold text-sm px-3 py-2.5 rounded-xl transition-all shadow-sm">
+                <Coffee size={13} /> {breakBusy ? '…' : 'Break'}
+              </button>
+              <button onClick={checkOut} disabled={busy}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white font-bold text-sm px-3 py-2.5 rounded-xl transition-all shadow-sm">
+                <LogOut size={13} /> {busy ? '…' : 'Check Out'}
+              </button>
+            </div>
           </>
         ) : (
           <div className="flex items-center gap-3 py-1">
@@ -196,8 +197,7 @@ function CheckinWidget({ onRefresh }) {
               <p className="text-sm font-bold text-[#151c27]">Work Done</p>
               <p className="text-xs text-[#777587]">
                 {fmtTime(record.check_in)} – {fmtTime(record.check_out)}
-                {' · '}{fmtHours(record.clockify_hours > 0 ? record.clockify_hours : record.work_hours)}
-                {record.clockify_hours > 0 && <span className="text-[#3525cd] font-semibold ml-1">Clockify</span>}
+                {record.work_hours > 0 && ` · ${fmtHours(record.work_hours)}`}
                 {record.total_break_minutes > 0 && <span className="text-amber-600 ml-1">({record.total_break_minutes >= 60 ? `${Math.floor(record.total_break_minutes/60)}h ` : ''}{record.total_break_minutes % 60}m break)</span>}
               </p>
             </div>
@@ -234,12 +234,6 @@ function EmployeeQuickView({ record: r, onClose }) {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={r.status} />
-            {r.clockify_live && (
-              <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
-                style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                <Timer size={10} /> Clockify Live
-              </span>
-            )}
           </div>
           <div className="rounded-xl border border-[#c7c4d8] bg-[#f0f3ff] divide-y divide-[#e7eefe]">
             {r.check_in && (
@@ -261,13 +255,13 @@ function EmployeeQuickView({ record: r, onClose }) {
                 </span>
               </div>
             ) : null}
-            {(r.clockify_hours > 0 || r.work_hours > 0) && (
+            {r.work_hours > 0 && (
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-[#464555]">
                   <Timer size={13} className="text-[#4f46e5]" />
-                  {r.clockify_hours > 0 ? 'Working Hrs (Clockify)' : 'Working Hrs'}
+                  Working Hrs
                 </div>
-                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}</span>
+                <span className="text-sm font-bold text-[#3525cd]">{fmtHours(r.work_hours)}</span>
               </div>
             )}
             {r.total_break_minutes > 0 && (
@@ -876,12 +870,6 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <StatusBadge status={r.status} />
-                    {r.clockify_live && (
-                      <span className="text-[0.6rem] font-bold px-1 py-0.5 rounded text-white flex items-center gap-0.5"
-                        style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                        <Timer size={8} /> CW
-                      </span>
-                    )}
                   </div>
                   <div className="text-right shrink-0">
                     {r.check_in && <div className="text-[0.65rem] font-bold text-[#151c27]">{fmtTime(r.check_in)}</div>}

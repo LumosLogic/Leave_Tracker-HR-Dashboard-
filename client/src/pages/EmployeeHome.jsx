@@ -86,34 +86,16 @@ export default function EmployeeHome() {
   const [checkBusy, setCheckBusy]     = useState(false);
   const [breakBusy, setBreakBusy]     = useState(false);
 
-  const { data: checkinMode } = useQuery({
-    queryKey: ['checkin-mode'],
-    queryFn: () => apiGet('/attendance/checkin-mode'),
-    staleTime: 5 * 60 * 1000,
-  });
-  const clockifySyncs = checkinMode?.syncs_clockify ?? false;
+  const clockifySyncs = false;
+  const clockifyTodayHours = 0;
 
   const nowDate = new Date();
-  const todayISO = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')}`;
-  const { data: clockifyData } = useQuery({
-    queryKey: ['my-clockify-hours', nowDate.getFullYear(), nowDate.getMonth() + 1],
-    queryFn: () => apiGet('/my-clockify-hours', { year: nowDate.getFullYear(), month: nowDate.getMonth() + 1 }),
-    staleTime: 2 * 60 * 1000,
-    enabled: clockifySyncs,
-  });
-  const clockifyTodayHours = clockifyData?.hours?.[todayISO] || 0;
 
   const loadToday = useCallback(async () => {
     try { setAttRecord(await apiGet('/attendance/today')); } catch { /* silent */ }
   }, []);
   useEffect(() => { loadToday(); }, [loadToday]);
 
-  // For Clockify users: poll every 60s so dashboard reflects timer changes made directly in Clockify
-  useEffect(() => {
-    if (!clockifySyncs) return;
-    const id = setInterval(loadToday, 60 * 1000);
-    return () => clearInterval(id);
-  }, [clockifySyncs, loadToday]);
 
   // Elapsed timer — pauses when on break
   useEffect(() => {
@@ -142,20 +124,18 @@ export default function EmployeeHome() {
   async function checkIn() {
     setCheckBusy(true);
     try {
-      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkin', {});
+      const { record: r, message } = await apiPost('/attendance/checkin', {});
       setAttRecord(r);
       toast(message || 'Checked in!', 'success');
-      if (clockify_synced) toast('Clockify timer started', 'success');
     } catch (err) { toast(err.message, 'error'); }
     finally { setCheckBusy(false); }
   }
   async function checkOut() {
     setCheckBusy(true);
     try {
-      const { record: r, message, clockify_synced } = await apiPost('/attendance/checkout', {});
+      const { record: r, message } = await apiPost('/attendance/checkout', {});
       setAttRecord(r);
       toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
-      if (clockify_synced) toast('Clockify timer paused', 'success');
     } catch (err) { toast(err.message, 'error'); }
     finally { setCheckBusy(false); }
   }
@@ -669,12 +649,7 @@ export default function EmployeeHome() {
                       <td className="px-4 py-2.5 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-amber-600">{r.total_break_minutes ? fmtBreakTime(r.total_break_minutes) : '—'}</td>
                       <td className="px-4 py-2.5 text-xs font-semibold text-[#151c27]">
-                        {(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours) > 0
-                          ? <span className="flex items-center gap-1">
-                              {fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}
-                              {r.clockify_hours > 0 && <span className="text-[0.55rem] text-[#3525cd] font-bold">⏱</span>}
-                            </span>
-                          : '—'}
+                        {r.work_hours > 0 ? <span>{fmtHours(r.work_hours)}</span> : '—'}
                       </td>
                     </tr>
                   );

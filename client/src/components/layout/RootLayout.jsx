@@ -4,9 +4,10 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
-  Radio,
+  Radio, Fingerprint, Link2, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { FeatureFlagContext } from '@/context/FeatureFlagContext';
 import { Header } from './Header';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { initials, cn } from '@/lib/utils';
@@ -35,6 +36,11 @@ const NAV_SECTIONS = [
     { to: '/root/leave-policies',  label: 'Leave Policies',  Icon: Shield },
     { to: '/root/shifts',          label: 'Shifts & Roster', Icon: Clock },
   ]},
+  { id: 'tour-nav-biometric', title: 'Biometric', items: [
+    { to: '/root/biometric/devices', label: 'Devices',    Icon: Fingerprint, featureKey: 'biometric' },
+    { to: '/root/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
+    { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
+  ]},
   { id: 'tour-nav-finance', title: 'Finance', items: [
     { to: '/root/payroll',  label: 'Payroll',  Icon: DollarSign },
     { to: '/root/expenses', label: 'Expenses', Icon: Receipt },
@@ -58,6 +64,7 @@ const NAV_SECTIONS = [
 
 function RootSidebar({ onClose }) {
   const { user, logout, organization } = useAuth();
+  const featureFlags = React.useContext(FeatureFlagContext);
   const navigate = useNavigate();
 
   const { data: countData } = useQuery({
@@ -84,11 +91,17 @@ function RootSidebar({ onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
-        {NAV_SECTIONS.map(sec => (
+        {NAV_SECTIONS.map(sec => {
+          const visibleItems = sec.items.filter(i => {
+            if (!i.featureKey) return true;
+            return i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
+          });
+          if (!visibleItems.length) return null;
+          return (
           <div key={sec.title} id={sec.id} className="mb-2">
             <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>
             <div className="flex flex-col gap-0.5">
-              {sec.items.map(({ to, label, Icon, notifBadge }) => {
+              {visibleItems.map(({ to, label, Icon, notifBadge }) => {
                 const badge = notifBadge && unread > 0 ? unread : null;
                 return (
                   <NavLink key={to} to={to} onClick={onClose}
@@ -114,7 +127,8 @@ function RootSidebar({ onClose }) {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* User */}

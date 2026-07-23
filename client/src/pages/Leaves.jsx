@@ -398,9 +398,27 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
 }
 
 // ── Apply Leave Modal ─────────────────────────────────────────────────────────
+function SegBtn({ value, current, onChange, children }) {
+  const active = value === current;
+  return (
+    <button type="button" onClick={() => onChange(value)}
+      className={`flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all duration-150 ${
+        active ? 'bg-[#3525cd] text-white shadow-sm' : 'text-[#777587] hover:text-[#151c27]'
+      }`}>
+      {children}
+    </button>
+  );
+}
+
 function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onSuccess }) {
   const toast = useToast();
-  const blank = () => ({ emp: '', type: 'casual', time: 'full', half: 'first_half', start: '', end: '', reason: '' });
+  const blank = () => ({
+    emp: '', request_type: 'leave',
+    type: 'casual', time: 'full', half: 'first_half',
+    start: '', end: '',
+    wfh_date: '', wfh_time: 'full',
+    reason: '',
+  });
   const [forms, setForms] = useState([blank()]);
 
   function update(i, k, v) { setForms(fs => fs.map((f, idx) => idx === i ? { ...f, [k]: v } : f)); }
@@ -422,12 +440,32 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
 
   async function submit() {
     for (const [i, f] of forms.entries()) {
-      if (!f.start || !f.end) { toast(`Fill start/end date for request ${i + 1}`, 'warning'); return; }
       if (isAdmin && !f.emp) { toast('Select an employee', 'warning'); return; }
+      if (!f.reason.trim()) { toast(`Reason is required for request ${i + 1}`, 'warning'); return; }
+      if (f.request_type === 'wfh') {
+        if (!f.wfh_date) { toast(`Fill WFH date for request ${i + 1}`, 'warning'); return; }
+      } else {
+        if (!f.start || !f.end) { toast(`Fill start/end date for request ${i + 1}`, 'warning'); return; }
+      }
     }
     try {
       await Promise.all(forms.map(f => {
-        const body = { leave_type: f.type, start_date: f.start, end_date: f.end, reason: f.reason, leave_time: f.time, half_type: f.time === 'half' ? f.half : null };
+        let body;
+        if (f.request_type === 'wfh') {
+          body = {
+            leave_type: 'wfh',
+            leave_time: f.wfh_time === 'half' ? 'half' : 'wfh',
+            half_type:  f.wfh_time === 'half' ? f.half : null,
+            start_date: f.wfh_date, end_date: f.wfh_date,
+            reason: f.reason,
+          };
+        } else {
+          body = {
+            leave_type: f.type, start_date: f.start, end_date: f.end,
+            reason: f.reason, leave_time: f.time,
+            half_type: f.time === 'half' ? f.half : null,
+          };
+        }
         if (isAdmin && f.emp) body.user_id = parseInt(f.emp);
         return apiPost('/leaves', body);
       }));
@@ -437,7 +475,7 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
   }
 
   return (
-    <Modal open onClose={onClose} title="Apply for Leave" size="lg"
+    <Modal open onClose={onClose} title="Add Employee Leave" size="lg"
       footer={<><button className="btn btn-outline" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={submit}>Submit All</button></>}>
       {{
         body: (
@@ -445,12 +483,14 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
             {forms.map((f, i) => (
               <div key={i} className="border border-[#c7c4d8] rounded-xl p-4 mb-3 bg-[#f0f3ff]/50">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-[#3525cd]">{i === 0 ? 'Leave Request' : `Leave Request #${i + 1}`}</span>
+                  <span className="text-xs font-bold text-[#3525cd]">{i === 0 ? 'Request' : `Request #${i + 1}`}</span>
                   {i > 0 && <button className="btn btn-ghost btn-sm text-xs text-rose-400" onClick={() => remove(i)}><X size={12} /> Remove</button>}
                 </div>
+
+                {/* Employee selector */}
                 {isAdmin && (
                   <div className="mb-3">
-                    <label className="form-label">Employee</label>
+                    <label className="form-label">Employee <span className="text-rose-500">*</span></label>
                     <select className="form-control" value={f.emp} onChange={e => update(i, 'emp', e.target.value)}>
                       <option value="">Select employee…</option>
                       {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -465,9 +505,7 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
                             {balance.map(b => (
                               <div key={b.type} className="text-xs">
                                 <span className="capitalize text-[#464555] font-semibold">{b.type}: </span>
-                                <span className={b.remaining === 0 ? 'text-rose-600 font-black' : b.remaining <= 2 ? 'text-amber-600 font-black' : 'text-emerald-600 font-black'}>
-                                  {b.remaining}
-                                </span>
+                                <span className={b.remaining === 0 ? 'text-rose-600 font-black' : b.remaining <= 2 ? 'text-amber-600 font-black' : 'text-emerald-600 font-black'}>{b.remaining}</span>
                                 <span className="text-[#9ca3af]">/{b.quota} days</span>
                               </div>
                             ))}
@@ -477,37 +515,81 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
                     })()}
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div><label className="form-label">Leave Type</label>
-                    <select className="form-control" value={f.type} onChange={e => update(i, 'type', e.target.value)}>
-                      {LEAVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="form-label">Leave Time</label>
-                    <select className="form-control" value={f.time} onChange={e => {
-                      const t = e.target.value;
-                      update(i, 'time', t);
-                      if (t === 'wfh') update(i, 'type', 'wfh');
-                    }}>
-                      <option value="full">Full Leave</option>
-                      <option value="half">Half Leave</option>
-                      <option value="wfh">Work from Home</option>
-                    </select>
+
+                {/* Request Type toggle */}
+                <div className="mb-3">
+                  <label className="form-label">Request Type</label>
+                  <div className="flex gap-1 p-1 bg-white border border-[#c7c4d8] rounded-xl">
+                    <SegBtn value="leave" current={f.request_type} onChange={v => update(i, 'request_type', v)}>Leave</SegBtn>
+                    <SegBtn value="wfh"   current={f.request_type} onChange={v => update(i, 'request_type', v)}>
+                      <span className="flex items-center justify-center gap-1"><Home size={12} /> Work From Home</span>
+                    </SegBtn>
                   </div>
                 </div>
-                {f.time === 'half' && (
-                  <div className="mb-3"><label className="form-label">Which Half?</label>
-                    <select className="form-control" value={f.half} onChange={e => update(i, 'half', e.target.value)}>
-                      <option value="first_half">First Half (Morning)</option>
-                      <option value="second_half">Second Half (Afternoon)</option>
-                    </select>
-                  </div>
+
+                {/* Leave fields */}
+                {f.request_type === 'leave' && (
+                  <>
+                    <div className="mb-3">
+                      <label className="form-label">Leave Type</label>
+                      <select className="form-control" value={f.type} onChange={e => update(i, 'type', e.target.value)}>
+                        {LEAVE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Duration</label>
+                      <div className="flex gap-1 p-1 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl">
+                        <SegBtn value="full" current={f.time} onChange={v => update(i, 'time', v)}>Full Day</SegBtn>
+                        <SegBtn value="half" current={f.time} onChange={v => update(i, 'time', v)}>Half Day</SegBtn>
+                      </div>
+                    </div>
+                    {f.time === 'half' && (
+                      <div className="mb-3">
+                        <label className="form-label">Which Half?</label>
+                        <div className="flex gap-1 p-1 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl">
+                          <SegBtn value="first_half"  current={f.half} onChange={v => update(i, 'half', v)}>First Half (Morning)</SegBtn>
+                          <SegBtn value="second_half" current={f.half} onChange={v => update(i, 'half', v)}>Second Half (Afternoon)</SegBtn>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div><label className="form-label">Start Date</label><input type="date" className="form-control" value={f.start} onChange={e => update(i, 'start', e.target.value)} /></div>
+                      <div><label className="form-label">End Date</label><input type="date" className="form-control" value={f.end} min={f.start} onChange={e => update(i, 'end', e.target.value)} /></div>
+                    </div>
+                  </>
                 )}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div><label className="form-label">Start Date</label><input type="date" className="form-control" value={f.start} onChange={e => update(i, 'start', e.target.value)} /></div>
-                  <div><label className="form-label">End Date</label><input type="date" className="form-control" value={f.end} onChange={e => update(i, 'end', e.target.value)} /></div>
+
+                {/* WFH fields */}
+                {f.request_type === 'wfh' && (
+                  <>
+                    <div className="mb-3">
+                      <label className="form-label">WFH Date</label>
+                      <input type="date" className="form-control" value={f.wfh_date} onChange={e => update(i, 'wfh_date', e.target.value)} />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Duration</label>
+                      <div className="flex gap-1 p-1 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl">
+                        <SegBtn value="full" current={f.wfh_time} onChange={v => update(i, 'wfh_time', v)}>Full Day</SegBtn>
+                        <SegBtn value="half" current={f.wfh_time} onChange={v => update(i, 'wfh_time', v)}>Half Day</SegBtn>
+                      </div>
+                    </div>
+                    {f.wfh_time === 'half' && (
+                      <div className="mb-3">
+                        <label className="form-label">Which Half?</label>
+                        <div className="flex gap-1 p-1 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl">
+                          <SegBtn value="first_half"  current={f.half} onChange={v => update(i, 'half', v)}>First Half (Morning)</SegBtn>
+                          <SegBtn value="second_half" current={f.half} onChange={v => update(i, 'half', v)}>Second Half (Afternoon)</SegBtn>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Reason — always required */}
+                <div>
+                  <label className="form-label">Reason <span className="text-rose-500">*</span></label>
+                  <textarea className="form-control" rows="2" placeholder="Reason is required…" value={f.reason} onChange={e => update(i, 'reason', e.target.value)} />
                 </div>
-                <div><label className="form-label">Reason</label><textarea className="form-control" rows="2" placeholder="Optional reason…" value={f.reason} onChange={e => update(i, 'reason', e.target.value)} /></div>
               </div>
             ))}
             <button className="btn btn-outline btn-sm text-xs" onClick={add}><Plus size={12} /> Add Another</button>
@@ -528,6 +610,7 @@ function EditLeaveModal({ leave: l, isAdmin, onClose, onSuccess }) {
   async function save() {
     if (!form.start || !form.end) return toast('Fill dates', 'warning');
     if (form.start > form.end)    return toast('Start must be before end', 'warning');
+    if (!form.reason.trim())      return toast('Reason is required', 'warning');
     try {
       await apiPut(`/leaves/${l.id}`, { leave_type: form.type, start_date: form.start, end_date: form.end, reason: form.reason, leave_time: form.time, half_type: form.time === 'half' ? form.half : null });
       toast('Updated!', 'success'); onClose(); onSuccess();
@@ -573,7 +656,7 @@ function EditLeaveModal({ leave: l, isAdmin, onClose, onSuccess }) {
                 <div><label className="form-label">Start Date</label><input type="date" className="form-control" value={form.start} disabled={!canEdit} onChange={e => setForm(f => ({ ...f, start: e.target.value }))} /></div>
                 <div><label className="form-label">End Date</label><input type="date" className="form-control" value={form.end} disabled={!canEdit} onChange={e => setForm(f => ({ ...f, end: e.target.value }))} /></div>
               </div>
-              <div><label className="form-label">Reason</label><textarea className="form-control" rows="2" value={form.reason} disabled={!canEdit} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} /></div>
+              <div><label className="form-label">Reason <span className="text-rose-500">*</span></label><textarea className="form-control" rows="2" value={form.reason} disabled={!canEdit} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} /></div>
               {!canEdit && <p className="text-xs text-amber-600 flex items-center gap-1.5"><AlertTriangle size={12} /> Approved leave — only admin can edit</p>}
               <div className="flex items-center gap-2 mt-1"><StatusBadge status={l.status} />{l.approver_name && <span className="text-xs text-[#777587]">By: {l.approver_name}</span>}</div>
             </div>

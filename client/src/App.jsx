@@ -42,12 +42,18 @@ import Performance      from '@/pages/Performance';
 import Onboarding       from '@/pages/Onboarding';
 import ExitManagement   from '@/pages/ExitManagement';
 import NotificationCenter from '@/pages/NotificationCenter';
+import Branches              from '@/pages/Branches';
+import BiometricDevices      from '@/pages/BiometricDevices';
+import BiometricPinMapping   from '@/pages/BiometricPinMapping';
+import BiometricLogs         from '@/pages/BiometricLogs';
+import BiometricSettings     from '@/pages/BiometricSettings';
 
 // ── Employee portal pages ──
-import EmployeeHome     from '@/pages/EmployeeHome';
-import MyLeaves         from '@/pages/MyLeaves';
-import MyAttendance     from '@/pages/MyAttendance';
-import TeamCalendar     from '@/pages/TeamCalendar';
+import EmployeeHome            from '@/pages/EmployeeHome';
+import MyLeaves                from '@/pages/MyLeaves';
+import MyAttendance            from '@/pages/MyAttendance';
+import TeamCalendar            from '@/pages/TeamCalendar';
+import EmployeePortalProfile   from '@/pages/EmployeePortalProfile';
 
 // Shows a locked screen when a feature is disabled for the org
 function FeatureRoute({ featureKey, children }) {
@@ -116,6 +122,7 @@ function AppRoutes() {
         <Route path="/leaves"           element={<Leaves />} />
 
         <Route path="/employees"        element={<Employees />} />
+        <Route path="/employees/:id"    element={<Employees />} />
         <Route path="/departments"      element={<Departments />} />
         <Route path="/holidays"         element={<HolidaysPage />} />
         <Route path="/leave-policies"   element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
@@ -133,6 +140,11 @@ function AppRoutes() {
         <Route path="/notifications"    element={<NotificationCenter />} />
         <Route path="/settings"         element={<Settings />} />
         <Route path="/profile"          element={<MyProfile />} />
+        <Route path="/branches"          element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
+        <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/biometric/settings" element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
       </Route>
 
       {/* ── Root Admin area (root_admin only) ── */}
@@ -141,6 +153,7 @@ function AppRoutes() {
         <Route path="/root/calendar"        element={<Calendar />} />
         <Route path="/root/leaves"          element={<Leaves />} />
         <Route path="/root/employees"       element={<Employees />} />
+        <Route path="/root/employees/:id"   element={<Employees />} />
         <Route path="/root/departments"     element={<Departments />} />
         <Route path="/root/holidays"        element={<HolidaysPage />} />
         <Route path="/root/leave-policies"  element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
@@ -162,6 +175,9 @@ function AppRoutes() {
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
         <Route path="/root/org-settings"    element={<OrgSettings />} />
+        <Route path="/root/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/root/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/root/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
       </Route>
 
       {/* ── Employee portal (employee only) ── */}
@@ -179,7 +195,7 @@ function AppRoutes() {
         <Route path="/portal/regularization" element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/portal/notifications"  element={<NotificationCenter />} />
         <Route path="/portal/announcements"  element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
-        <Route path="/portal/profile"        element={<MyProfile />} />
+        <Route path="/portal/profile"        element={<EmployeePortalProfile />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? home : '/'} replace />} />

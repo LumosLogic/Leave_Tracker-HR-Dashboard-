@@ -6,6 +6,7 @@ import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { StatusBadge } from '@/components/ui/Badge';
 import { fmtTime, fmtHours, todayStr, statusLabel, MONTHS, DAYS_FULL } from '@/lib/utils';
 
@@ -14,9 +15,8 @@ function fmtBreakMins(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-// Prefer Clockify effective hours, fall back to work_hours (manual/standalone)
 function effectiveHours(rec) {
-  return rec.clockify_hours > 0 ? rec.clockify_hours : (rec.work_hours || 0);
+  return rec.work_hours || 0;
 }
 
 // Inline edit attendance sub-modal — stays within the dashboard context
@@ -89,6 +89,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(initialTab || 'all');
   const [editRec, setEditRec] = useState(null);
+  const [confirmAbsent, setConfirmAbsent] = useState(null);
 
   const d = new Date(dateStr + 'T12:00:00');
   const year  = d.getFullYear();
@@ -162,13 +163,13 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
         return true;
       });
 
-  async function markAbsent(emp) {
-    if (!window.confirm(`Mark ${emp.name} as absent for ${dateStr}?`)) return;
+  async function doMarkAbsent(emp) {
     try {
       await apiPost('/attendance/mark-absent', { user_id: emp.id, date: dateStr });
       toast('Marked absent', 'success');
       refetchAtt();
     } catch (err) { toast(err.message, 'error'); }
+    setConfirmAbsent(null);
   }
 
   function handleAttRefresh() {
@@ -264,12 +265,6 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
                           <div className="mt-1 flex flex-col gap-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <StatusBadge status={rec.status} />
-                              {rec.clockify_hours > 0 && (
-                                <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded text-white flex items-center gap-0.5"
-                                  style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-                                  <Timer size={9} /> Clockify
-                                </span>
-                              )}
                             </div>
                             {!rec._synthetic && rec.check_in && (
                               <div className="flex items-center gap-2 flex-wrap text-[0.65rem] text-[#777587]">
@@ -305,7 +300,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
                           )}
                           {!rec && dateStr <= todayStr() && (
                             <button className="btn btn-danger btn-sm text-xs py-1 px-2"
-                              onClick={() => markAbsent(emp)}>
+                              onClick={() => setConfirmAbsent(emp)}>
                               Absent
                             </button>
                           )}
@@ -333,6 +328,16 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
           onRefresh={handleAttRefresh}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmAbsent}
+        title="Mark Absent"
+        message={`Mark ${confirmAbsent?.name} as absent for ${dateStr}?`}
+        confirmLabel="Mark Absent"
+        variant="danger"
+        onConfirm={() => doMarkAbsent(confirmAbsent)}
+        onCancel={() => setConfirmAbsent(null)}
+      />
     </>
   );
 }

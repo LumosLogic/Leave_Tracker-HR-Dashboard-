@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter } from 'lucide-react';
+import { useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { useFeature } from '@/context/FeatureFlagContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import EmployeeProfileV2 from '@/components/EmployeeProfileV2';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
@@ -17,13 +19,9 @@ import {
 
 const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
-// ── Clockify Day Timeline ──────────────────────────────────────────────────────
-function AttendanceDayTimeline({ empId, date, totalHours }) {
-  const [open,    setOpen]    = useState(false);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const loaded = useRef(false);
-
+/* Clockify AttendanceDayTimeline component removed */
+function _attendanceDayTimelineRemoved() { return null; }
+function _deadCodeBlock() {
   async function toggle() {
     if (open) { setOpen(false); return; }
     if (!loaded.current) {
@@ -42,7 +40,7 @@ function AttendanceDayTimeline({ empId, date, totalHours }) {
   const timeline = [];
   entries.forEach((e, i) => {
     timeline.push({ type: 'work', start: e.start, end: e.end, durationMin: e.durationMin, desc: e.description });
-    if (i < entries.length - 1 && e.end) {
+    if (i < entries.length - 1 && e.end && entries[i + 1].start) {
       const [eh, em] = e.end.split(':').map(Number);
       const [nh, nm] = entries[i + 1].start.split(':').map(Number);
       const breakMin = (nh * 60 + nm) - (eh * 60 + em);
@@ -456,7 +454,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 <div className="flex items-center gap-1.5">
                   <Calendar size={12} className="text-[#777587]" />
                   <p className="text-sm font-semibold text-[#151c27]">
-                    {emp.joining_date ? fmtDate(emp.joining_date) : (emp.created_at ? fmtDate(emp.created_at.split('T')[0]) : '—')}
+                    {emp.joining_date ? fmtDate(emp.joining_date) : (emp.created_at ? fmtDate(emp.created_at.slice(0, 10)) : '—')}
                   </p>
                 </div>
               </div>
@@ -797,7 +795,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                 ) : (
                   <div className="flex flex-col gap-3">
                     {presentRecords.map(r => {
-                      const totalHours = r.clockify_hours > 0 ? r.clockify_hours : r.work_hours;
+                      const totalHours = r.work_hours;
                       const dow    = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
                       const dayNum = new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                       return (
@@ -816,14 +814,10 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                                       <Timer size={12} /> {totalHours}h
                                     </span>
                                   )}
-                                  {r.clockify_hours > 0 && (
-                                    <span className="text-[0.65rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">Clockify</span>
-                                  )}
                                 </div>
                               </div>
                             </div>
                           </div>
-                          <AttendanceDayTimeline empId={emp.id} date={r.date} totalHours={totalHours} />
                         </div>
                       );
                     })}
@@ -919,10 +913,11 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
 
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee', initialTab = 'personal' }) {
-  const isEdit          = !!employee;
-  const toast           = useToast();
-  const { isRootAdmin } = useAuth();
-  const qc              = useQueryClient();
+  const isEdit            = !!employee;
+  const toast             = useToast();
+  const { isRootAdmin }   = useAuth();
+  const qc                = useQueryClient();
+  const hasBiometric      = useFeature('biometric');
   const navigate        = useNavigate();
   const location        = useLocation();
   const employeesBase   = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
@@ -938,25 +933,52 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     email:                employee.email           || '',
     phone:                employee.phone           || '',
     personal_email:       employee.personal_email  || '',
-    date_of_birth:        employee.date_of_birth   || '',
+    date_of_birth:        employee.date_of_birth        ? employee.date_of_birth.slice(0, 10)        : '',
     department:           employee.department      || '',
     department_ids:       initDeptIds,
     position:             employee.position        || '',
-    joining_date:         employee.joining_date    || '',
+    joining_date:         employee.joining_date         ? employee.joining_date.slice(0, 10)         : '',
     employment_type:      employee.employment_type || 'full_time',
     work_mode:            employee.work_mode       || 'office',
     employee_status:      employee.employee_status || 'active',
     ctc:                  employee.ctc             || '',
-    salary_effective_date:employee.salary_effective_date || '',
+    salary_effective_date:employee.salary_effective_date ? employee.salary_effective_date.slice(0, 10) : '',
     role:                 employee.role,
     avatar_color:         employee.avatar_color    || '#3525cd',
     clockify_user_id:     employee.clockify_user_id || '',
     password:             '',
+    // Extended profile
+    salutation:           employee.salutation           || '',
+    middle_name:          employee.middle_name          || '',
+    surname:              employee.surname              || '',
+    branch_id:            employee.branch_id            || '',
+    grade:                employee.grade                || '',
+    division:             employee.division             || '',
+    sub_division:         employee.sub_division         || '',
+    device_enrollment_id: employee.device_enrollment_id || '',
+    weekly_off_day:       employee.weekly_off_day       || '',
+    work_hours_per_day:   employee.work_hours_per_day   || 8,
+    // Personal profile fields
+    gender:               employee.gender               || '',
+    blood_group:          employee.blood_group          || '',
+    marital_status:       employee.marital_status       || '',
+    nationality:          employee.nationality          || '',
+    religion:             employee.religion             || '',
+    citizenship:          employee.citizenship          || '',
+    height:               employee.height               || '',
+    weight:               employee.weight               || '',
   } : {
     name: '', email: '', password: '', department: '', position: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
     phone: '', personal_email: '', joining_date: '', employment_type: 'full_time',
     work_mode: 'office', employee_status: 'active', ctc: '', salary_effective_date: '',
+    // Extended profile defaults
+    salutation: '', middle_name: '', surname: '', branch_id: '', grade: '',
+    division: '', sub_division: '', device_enrollment_id: '', weekly_off_day: '',
+    work_hours_per_day: 8,
+    // Personal profile fields defaults
+    gender: '', blood_group: '', marital_status: '', nationality: '',
+    religion: '', citizenship: '', height: '', weight: '',
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -999,10 +1021,18 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     onError: err => toast(err.message, 'error'),
   });
 
+  // Fetch branches for extended profile
+  const { data: _branchData = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => apiGet('/branches'),
+  });
+  const branches = Array.isArray(_branchData) ? _branchData : [];
+
   // Tab definitions (only for edit mode)
   const TABS = [
     { id: 'personal',   label: 'Personal'   },
     { id: 'employment', label: 'Employment' },
+    { id: 'extended',   label: 'Extended'   },
     { id: 'salary',     label: 'Salary'     },
     { id: 'documents',  label: 'Documents'  },
     { id: 'account',    label: 'Account'    },
@@ -1049,33 +1079,158 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
 
           {/* ── Personal ── */}
           {tab === 'personal' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
-                  <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+            <div className="space-y-5">
+
+              {/* Name Details */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Name Details</p>
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Salutation</label>
+                    <select className="form-control" value={form.salutation} onChange={e => set('salutation', e.target.value)}>
+                      <option value="">—</option>
+                      <option value="Mr">Mr.</option>
+                      <option value="Mrs">Mrs.</option>
+                      <option value="Ms">Ms.</option>
+                      <option value="Miss">Miss</option>
+                      <option value="Dr">Dr.</option>
+                      <option value="Prof">Prof.</option>
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
+                    <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <label className="form-label">Phone</label>
-                  <input className="form-control" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Middle Name</label>
+                    <input className="form-control" placeholder="Middle name" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Last Name / Surname</label>
+                    <input className="form-control" placeholder="Surname" value={form.surname} onChange={e => set('surname', e.target.value)} />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Personal Email</label>
-                  <input className="form-control" type="email" placeholder="personal@gmail.com" value={form.personal_email} onChange={e => set('personal_email', e.target.value)} />
+
+              {/* Contact */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Contact</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Mobile</label>
+                    <input className="form-control" type="tel" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Personal Email</label>
+                    <input className="form-control" type="email" placeholder="personal@gmail.com" value={form.personal_email} onChange={e => set('personal_email', e.target.value)} />
+                  </div>
                 </div>
                 <div>
                   <label className="form-label">Company Email <span className="text-rose-500">*</span></label>
                   <input className="form-control" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Date of Birth</label>
-                  <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+
+              {/* Personal Information */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Personal Information</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Date of Birth</label>
+                    <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Gender</label>
+                    <select className="form-control" value={form.gender} onChange={e => set('gender', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Blood Group</label>
+                    <select className="form-control" value={form.blood_group} onChange={e => set('blood_group', e.target.value)}>
+                      <option value="">— Select —</option>
+                      {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Marital Status</label>
+                    <select className="form-control" value={form.marital_status} onChange={e => set('marital_status', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Divorced">Divorced</option>
+                      <option value="Widowed">Widowed</option>
+                      <option value="Separated">Separated</option>
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Background */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Background</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="form-label">Nationality</label>
+                    <input className="form-control" list="nationality-list" placeholder="e.g. Indian" value={form.nationality} onChange={e => set('nationality', e.target.value)} />
+                    <datalist id="nationality-list">
+                      {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Italian','Spanish','Russian','Brazilian','Pakistani','Bangladeshi','Sri Lankan','Nepali','Maldivian','Bhutanese','South African','Other'].map(n => <option key={n} value={n} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="form-label">Religion</label>
+                    <select className="form-control" value={form.religion} onChange={e => set('religion', e.target.value)}>
+                      <option value="">— Select —</option>
+                      <option value="Hindu">Hindu</option>
+                      <option value="Muslim">Muslim</option>
+                      <option value="Christian">Christian</option>
+                      <option value="Sikh">Sikh</option>
+                      <option value="Buddhist">Buddhist</option>
+                      <option value="Jain">Jain</option>
+                      <option value="Parsi">Parsi (Zoroastrian)</option>
+                      <option value="Jewish">Jewish</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label">Citizenship</label>
+                  <input className="form-control" list="citizenship-list" placeholder="e.g. Indian" value={form.citizenship} onChange={e => set('citizenship', e.target.value)} />
+                  <datalist id="citizenship-list">
+                    {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Other'].map(n => <option key={n} value={n} />)}
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Physical */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Physical Measurements</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Height</label>
+                    <div className="relative">
+                      <input className="form-control pr-10" type="number" step="0.01" min="0" placeholder="e.g. 170" value={form.height} onChange={e => set('height', e.target.value)} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.7rem] font-semibold text-[#777587]">cm</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Weight</label>
+                    <div className="relative">
+                      <input className="form-control pr-10" type="number" step="0.1" min="0" placeholder="e.g. 65" value={form.weight} onChange={e => set('weight', e.target.value)} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.7rem] font-semibold text-[#777587]">kg</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -1133,6 +1288,88 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     <option value="inactive">Inactive</option>
                     <option value="on_leave">On Leave</option>
                   </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Extended Profile ── */}
+          {tab === 'extended' && (
+            <div className="space-y-5">
+              <p className="text-xs text-[#777587] bg-[#f0f3ff] border border-[#e7eefe] rounded-lg px-3 py-2">
+                Extended profile fields used for statutory compliance and biometric device integration.
+              </p>
+
+              {/* Branch + Grade */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Organisation</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="form-label">Branch</label>
+                    <select className="form-control" value={form.branch_id} onChange={e => set('branch_id', e.target.value)}>
+                      <option value="">— No branch —</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Grade</label>
+                    <input className="form-control" placeholder="e.g. A" value={form.grade} onChange={e => set('grade', e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="form-label">Division</label>
+                    <input className="form-control" placeholder="e.g. Operations" value={form.division} onChange={e => set('division', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Sub Division</label>
+                    <input className="form-control" placeholder="e.g. Dispatch" value={form.sub_division} onChange={e => set('sub_division', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Biometric — only shown if org has biometric feature enabled */}
+              {hasBiometric && (
+                <div>
+                  <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Biometric Device</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="form-label">Device Enrollment ID / PIN</label>
+                      <div className="relative">
+                        <Fingerprint size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                        <input className="form-control pl-8 font-mono" placeholder="e.g. 1001"
+                          value={form.device_enrollment_id} onChange={e => set('device_enrollment_id', e.target.value)} />
+                      </div>
+                      {form.device_enrollment_id && (
+                        <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                          <Fingerprint size={11} /> Biometric enrollment configured
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Work schedule */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Work Schedule</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="form-label">Weekly Off Day</label>
+                    <select className="form-control" value={form.weekly_off_day} onChange={e => set('weekly_off_day', e.target.value)}>
+                      <option value="">— Default —</option>
+                      {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Work Hours / Day</label>
+                    <input className="form-control" type="number" min={1} max={24} placeholder="8"
+                      value={form.work_hours_per_day} onChange={e => set('work_hours_per_day', e.target.value)} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1335,7 +1572,10 @@ export default function Employees() {
   const toast    = useToast();
   const qc       = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { id: routeId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const employeesBase = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
 
   // URL params
   const roleFilter    = searchParams.get('role');
@@ -1352,9 +1592,9 @@ export default function Employees() {
   const [editInitialTab, setEditInitialTab] = useState('personal');
   const [confirmDel,     setConfirmDel]     = useState(null);
 
-  function openProfile(emp, fromUrl = false) {
+  function openProfile(emp) {
+    navigate(`${employeesBase}/${emp.id}`);
     setProfileEmp(emp);
-    setCameFromUrl(fromUrl);
   }
 
   function handleEdit(emp, tab = 'personal') {
@@ -1363,11 +1603,12 @@ export default function Employees() {
   }
 
   // Search / filter / sort / view / selection state
-  const [search,       setSearch]       = useState('');
-  const [deptFilter,   setDeptFilter]   = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter,   setTypeFilter]   = useState('');
-  const [sortBy,       setSortBy]       = useState('name');
+  const [search,        setSearch]       = useState('');
+  const [deptFilter,    setDeptFilter]   = useState('');
+  const [branchFilter,  setBranchFilter] = useState('');
+  const [statusFilter,  setStatusFilter] = useState('');
+  const [typeFilter,    setTypeFilter]   = useState('');
+  const [sortBy,        setSortBy]       = useState('name');
   const [sortDir,      setSortDir]      = useState('asc');
   const [viewMode,     setViewMode]     = useState('card');
   const [selected,     setSelected]     = useState(new Set());
@@ -1399,12 +1640,27 @@ export default function Employees() {
     if (viewParam && allEmployees.length > 0) {
       const emp = allEmployees.find(e => String(e.id) === String(viewParam));
       if (emp) {
-        openProfile(emp, true);
+        navigate(`${employeesBase}/${emp.id}`, { replace: true });
+        setProfileEmp(emp);
         setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('view'); return n; }, { replace: true });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewParam, allEmployees]);
+
+  // Auto-open profile from URL :id param (handles refresh / direct links)
+  useEffect(() => {
+    if (!routeId || allEmployees.length === 0) return;
+    const emp = allEmployees.find(e => String(e.id) === String(routeId));
+    if (emp && (!profileEmp || String(profileEmp.id) !== String(routeId))) setProfileEmp(emp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, allEmployees]);
+
+  // Close profile when URL no longer has :id (browser back button)
+  useEffect(() => {
+    if (!routeId && profileEmp) setProfileEmp(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId]);
 
   useEffect(() => {
     if (profileEmp && allEmployees.length > 0) {
@@ -1416,13 +1672,19 @@ export default function Employees() {
 
   // Reset to page 1 when any filter / sort changes
   useEffect(() => { setPage(1); setSelected(new Set()); },
-    [search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
+    [search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
     queryFn:  () => apiGet('/departments'),
   });
   const departments = Array.isArray(_dData) ? _dData : [];
+
+  const { data: _brData = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  () => apiGet('/branches'),
+  });
+  const branchList = Array.isArray(_brData) ? _brData : [];
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/employees/${id}`),
@@ -1463,6 +1725,7 @@ export default function Employees() {
     }
     if (deptFilter)   rows = rows.filter(e =>
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
+    if (branchFilter) rows = rows.filter(e => String(e.branch_id) === String(branchFilter));
     if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
     if (joinedYmParam) {
@@ -1478,12 +1741,12 @@ export default function Employees() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [employees, search, deptFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
+  }, [employees, search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const anyFilter  = search || deptFilter || statusFilter || typeFilter || joinedYmParam;
+  const anyFilter  = search || deptFilter || branchFilter || statusFilter || typeFilter || joinedYmParam;
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
   const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
@@ -1530,7 +1793,7 @@ export default function Employees() {
   if (profileEmp) {
     return (
       <>
-        <EmployeeProfile emp={profileEmp} onBack={cameFromUrl ? () => navigate(-1) : () => setProfileEmp(null)} onEdit={handleEdit} />
+        <EmployeeProfileV2 emp={profileEmp} onBack={() => { setProfileEmp(null); navigate(employeesBase); }} onEdit={handleEdit} />
         {editEmp && (
           <EmployeeFormModal open={!!editEmp} onClose={() => { setEditEmp(null); setEditInitialTab('personal'); }}
             employee={editEmp} departments={departments} initialTab={editInitialTab} />
@@ -1638,6 +1901,15 @@ export default function Employees() {
           {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
 
+        {/* Branch */}
+        {branchList.length > 0 && (
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            className="form-control w-auto text-xs py-1.5">
+            <option value="">All Branches</option>
+            {branchList.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        )}
+
         {/* Status */}
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="form-control w-auto text-xs py-1.5">
@@ -1668,7 +1940,7 @@ export default function Employees() {
 
         {anyFilter && (
           <button onClick={() => {
-            setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter('');
+            setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter('');
             if (joinedYmParam) setSearchParams(p => { const n = new URLSearchParams(p); n.delete('joined_ym'); return n; }, { replace: true });
           }}
             className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
@@ -1734,7 +2006,7 @@ export default function Employees() {
               : 'Add your first employee to get started.'}
           </p>
           {anyFilter && (
-            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+            <button onClick={() => { setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter(''); }}
               className="mt-3 text-xs font-bold text-[#3525cd] hover:underline">
               Clear all filters
             </button>
@@ -1769,6 +2041,12 @@ export default function Employees() {
                     {emp.employment_type && (
                       <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-white/70 text-[#464555] border border-[#c7c4d8] capitalize">
                         {emp.employment_type.replace('_', ' ')}
+                      </span>
+                    )}
+                    {emp.device_enrollment_id && (
+                      <span title={`Biometric PIN: ${emp.device_enrollment_id}`}
+                        className="w-4 h-4 rounded-full bg-[#3525cd]/10 flex items-center justify-center">
+                        <Fingerprint size={10} className="text-[#3525cd]" />
                       </span>
                     )}
                   </div>

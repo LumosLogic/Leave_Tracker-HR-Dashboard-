@@ -8,6 +8,7 @@ import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusBadge, LeaveTypeBadge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   fmtDate, fmtTime, fmtHours, toISODate, todayStr, statusLabel,
   MONTHS, DAYS, DAYS_FULL, getWeekDates, initials, cn
@@ -300,8 +301,7 @@ function AdminCellContent({ ds, records, total }) {
 function EmpCellContent({ records, userId }) {
   const my = records.find(r => r.user_id === userId);
   if (!my) return null;
-  // Prefer Clockify effective hours, fall back to work_hours
-  const effHours = my.clockify_hours > 0 ? my.clockify_hours : my.work_hours;
+  const effHours = my.work_hours;
   return (
     <div className="flex flex-col gap-0.5">
       <span className={cn('text-[0.64rem] font-black px-1.5 py-0.5 rounded capitalize',
@@ -357,11 +357,8 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
                       {r.status === 'wfh' && (
                         <div className="text-[0.58rem] text-[#3525cd] font-medium">WFH</div>
                       )}
-                      {(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours) > 0 && r.status === 'present' && (
-                        <div className="text-[0.58rem] text-[#777587]">
-                          {fmtHours(r.clockify_hours > 0 ? r.clockify_hours : r.work_hours)}
-                          {r.clockify_hours > 0 && <span className="ml-0.5 text-[#3525cd]">⏱</span>}
-                        </div>
+                      {r.work_hours > 0 && r.status === 'present' && (
+                        <div className="text-[0.58rem] text-[#777587]">{fmtHours(r.work_hours)}</div>
                       )}
                     </div>
                   </div>
@@ -381,85 +378,22 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
   );
 }
 
-// ── Clockify Timeline Row ─────────────────────────────────────────────────────
-function ClockifyTimeline({ userId, dateStr }) {
-  const [open,    setOpen]    = useState(false);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  async function load() {
-    if (open) { setOpen(false); return; }
-    setLoading(true);
-    try {
-      const { entries: e } = await apiGet('/clockify/user-entries', { userId, date: dateStr });
-      setEntries(e || []);
-    } catch { setEntries([]); }
-    finally { setLoading(false); setOpen(true); }
-  }
-
-  const ICONS = [<Play size={11} />, <Pause size={11} />, <Play size={11} />, <Square size={11} />];
-
-  return (
-    <div className="mt-1.5 w-full">
-      <button
-        onClick={load}
-        className="flex items-center gap-1 text-[0.68rem] font-bold text-[#3525cd] hover:text-[#4f46e5] transition-colors"
-      >
-        <Timer size={11} />
-        {loading ? 'Loading…' : open ? <><ChevronUp size={11} /> Hide Timeline</> : <><ChevronDown size={11} /> View Clockify Timeline</>}
-      </button>
-      {open && (
-        <div className="mt-1.5 rounded-lg border border-[#c7c4d8] overflow-hidden bg-[#f9f9ff]">
-          {entries.length === 0 ? (
-            <p className="text-[0.68rem] text-[#777587] px-3 py-2 text-center italic">No Clockify entries found for this date</p>
-          ) : (
-            <div className="divide-y divide-[#f0f3ff]">
-              {entries.map((e, i) => (
-                <div key={e.id} className="flex items-center gap-2 px-3 py-2">
-                  <span className="text-[#3525cd] flex-shrink-0">{ICONS[Math.min(i, ICONS.length - 1)]}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[0.68rem] font-bold text-[#151c27]">{e.start}</span>
-                    {e.end && <span className="text-[0.65rem] text-[#777587]"> → {e.end}</span>}
-                    {e.description && <span className="text-[0.63rem] text-[#777587] ml-1.5 truncate">· {e.description}</span>}
-                  </div>
-                  {e.durationMin > 0 && (
-                    <span className="text-[0.65rem] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                      {e.durationMin >= 60 ? `${Math.floor(e.durationMin/60)}h ${e.durationMin%60}m` : `${e.durationMin}m`}
-                    </span>
-                  )}
-                </div>
-              ))}
-              <div className="flex items-center justify-between px-3 py-2 bg-[#f0f3ff]">
-                <span className="text-[0.68rem] font-bold text-[#464555]">Total Work</span>
-                <span className="text-[0.7rem] font-black text-[#3525cd]">
-                  {(() => {
-                    const total = entries.reduce((s, e) => s + (e.durationMin || 0), 0);
-                    return total >= 60 ? `${Math.floor(total/60)}h ${total%60}m` : `${total}m`;
-                  })()}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Day Modal ─────────────────────────────────────────────────────────────────
 function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditAtt, onRefresh, getLeaveForDate, initialTab }) {
   const toast = useToast();
   const d = new Date(dateStr + 'T12:00:00');
   const [activeTab, setActiveTab] = useState(initialTab || 'all');
+  const [confirmAbsent, setConfirmAbsent] = useState(null);
 
-  async function markAbsent(emp) {
-    if (!confirm(`Mark ${emp.name} as absent for ${dateStr}?`)) return;
+  async function doMarkAbsent(emp) {
     try {
       await apiPost('/attendance/mark-absent', { user_id: emp.id, date: dateStr });
       toast('Marked absent', 'success');
       onRefresh();
       onClose();
     } catch (err) { toast(err.message, 'error'); }
+    setConfirmAbsent(null);
   }
 
   const present  = records.filter(r => r.status === 'present').length;
@@ -485,6 +419,7 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
       });
 
   return (
+    <>
     <Modal open onClose={onClose} title="" size="lg">
       {{
         body: (
@@ -579,10 +514,9 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                                 {leave.leave_type} leave
                               </span>
                             )}
-                            {(rec.clockify_hours > 0 ? rec.clockify_hours : rec.work_hours) > 0 && !rec._synthetic && (
+                            {rec.work_hours > 0 && !rec._synthetic && (
                               <span className="text-xs font-bold text-[#3525cd] flex items-center gap-1">
-                                <Timer size={11} /> {fmtHours(rec.clockify_hours > 0 ? rec.clockify_hours : rec.work_hours)}
-                                {rec.clockify_hours > 0 && <span className="text-[0.6rem] font-normal text-[#777587]">(Clockify)</span>}
+                                <Timer size={11} /> {fmtHours(rec.work_hours)}
                               </span>
                             )}
                             {/* Check-in / Check-out / Break row */}
@@ -601,9 +535,6 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                               </div>
                             )}
                           </div>
-                          {rec.status === 'present' && !rec._synthetic && (
-                            <ClockifyTimeline userId={rec.user_id} dateStr={dateStr} />
-                          )}
                         </div>
                       )}
                       {!rec && <span className="text-xs text-[#777587] italic">No record yet</span>}
@@ -612,7 +543,7 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
                       <div className="flex gap-1.5 shrink-0">
                         {rec && <button className="btn btn-outline btn-sm text-xs py-1 px-2" onClick={() => onEditAtt(rec)}>Edit</button>}
                         {!rec && dateStr <= todayStr() && (
-                          <button className="btn btn-danger btn-sm text-xs py-1 px-2" onClick={() => markAbsent(emp)}>Absent</button>
+                          <button className="btn btn-danger btn-sm text-xs py-1 px-2" onClick={() => setConfirmAbsent(emp)}>Absent</button>
                         )}
                       </div>
                     )}
@@ -627,6 +558,17 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
         ),
       }}
     </Modal>
+
+    <ConfirmModal
+      open={!!confirmAbsent}
+      title="Mark Absent"
+      message={`Mark ${confirmAbsent?.name} as absent for ${dateStr}?`}
+      confirmLabel="Mark Absent"
+      variant="danger"
+      onConfirm={() => doMarkAbsent(confirmAbsent)}
+      onCancel={() => setConfirmAbsent(null)}
+    />
+    </>
   );
 }
 
