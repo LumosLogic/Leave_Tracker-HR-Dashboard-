@@ -138,23 +138,25 @@ function ProfileHeaderCard({ empId }) {
   if (isLoading) return <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-6 animate-pulse h-36" />;
   if (!data) return null;
 
-  const name = data.name || data.full_name || '—';
-  const position = data.position || data.designation || '—';
-  const empNo = data.employee_id || data.employeeId || '—';
+  const name = data.name || '—';
+  const position = data.position || '—';
+  const empNo = data.employee_id || data.device_enrollment_id || '—';
   const department = data.department || '—';
-  const branchName = data.branch?.name || data.branch || '—';
-  const employmentType = data.employment_type || 'Full Time';
-  const managerName = data.manager?.name || data.manager_name || null;
+  const branchName = data.branch?.name || null;
+  const employmentType = (data.employment_type || 'full_time').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const managerName = data.manager?.name || null;
   const managerPos = data.manager?.position || null;
   const joiningDate = data.joining_date;
   const experience = calcExperience(joiningDate);
   const phone = data.phone || '—';
   const email = data.email || '—';
-  const status = data.employee_status || data.status || 'active';
+  const status = data.employee_status || 'active';
   const avatarColor = data.avatar_color || '#3525cd';
   const profilePhoto = data.profile_photo_url || null;
 
-  const workLocation = [data.current_city, data.current_state].filter(Boolean).join(', ') || branchName;
+  const workLocation = [data.current_city, data.current_state].filter(Boolean).join(', ')
+    || branchName
+    || '—';
 
   return (
     <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
@@ -320,7 +322,7 @@ function OverviewTab({ empId }) {
   ].filter(Boolean).slice(0, 4);
 
   const summaryCards = [
-    { label: 'Employee ID',       value: overview.employee_id || overview.employeeId || '—', icon: BadgeCheck },
+    { label: 'Employee ID',       value: overview.employee_id || overview.device_enrollment_id || '—', icon: BadgeCheck },
     { label: 'Department',        value: overview.department || '—',                          icon: Layers },
     { label: 'Designation',       value: overview.position || overview.designation || '—',    icon: Briefcase },
     { label: 'Joining Date',      value: joiningDate ? fmtDate(joiningDate) : '—',            icon: Calendar },
@@ -1949,7 +1951,7 @@ export default function EmployeePortalProfile() {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5 pb-10">
+    <div className="w-full space-y-5 pb-10">
       {/* Profile Header Card — always visible */}
       <ProfileHeaderCard empId={empId} />
 

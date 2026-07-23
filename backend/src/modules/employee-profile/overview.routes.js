@@ -18,10 +18,12 @@ router.get('/:id/overview', auth, async (req, res) => {
     // Core user row
     const { data: emp, error } = await supabase.from('users')
       .select(`
-        id, name, email, phone, role, employee_id, salutation, middle_name, surname,
+        id, name, email, phone, role, employee_id, device_enrollment_id,
+        salutation, middle_name, surname,
         department, position, grade, branch_id, employee_status, joining_date,
-        avatar_color, profile_photo_url, organization_id, created_at,
-        reporting_to, cost_centre, pay_cadre
+        employment_type, avatar_color, profile_photo_url, organization_id, created_at,
+        reporting_to, cost_centre, pay_cadre,
+        current_city, current_state, current_country
       `)
       .eq('id', empId).eq('organization_id', oId).maybeSingle();
 
