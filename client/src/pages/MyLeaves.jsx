@@ -439,7 +439,6 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
                 <textarea className="form-control resize-none" rows={3} value={form.reason}
                   onChange={e => set('reason', e.target.value)} placeholder="Briefly describe why you need to work from home…" />
               </div>
-              </div>
             </>
           )}
         </div>
