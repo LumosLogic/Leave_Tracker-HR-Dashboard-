@@ -9,11 +9,11 @@ import { Doughnut, Line } from 'react-chartjs-2';
 import {
   Users, UserCheck, Umbrella, Home, Clock, ClipboardList,
   CalendarDays, Megaphone, Activity, BarChart2,
-  Timer, X, LogIn, LogOut, ExternalLink,
+  Timer, X, LogIn, LogOut,
   UserPlus, FileText, CheckCircle2, Pencil, RefreshCw, Inbox,
-  Trash2, CalendarCheck, ChevronRight, TrendingUp, TrendingDown,
-  Cake, Building2, Mail, Zap, AlertCircle, Gift, ShieldCheck, PartyPopper,
-  Coffee, Play,
+  Trash2, ChevronRight, TrendingUp, TrendingDown,
+  Cake, Building2, Mail, AlertCircle, Gift, ShieldCheck,
+  Coffee, Play, FolderOpen,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -691,7 +691,7 @@ export default function Dashboard() {
   const qc       = useQueryClient();
   const [dashDate, setDashDate]   = useState('');
   const [selectedEmp, setSelectedEmp] = useState(null);
-  const [attModal, setAttModal] = useState(null); // { date, filter }
+  const [attModal, setAttModal] = useState(null);
 
   const qs = dashDate ? { date: dashDate } : {};
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -755,372 +755,384 @@ export default function Dashboard() {
   const pending = d?.pendingLeaves  ?? 0;
   const newThis = d?.newThisMonth   ?? 0;
 
-  const pct = v => total > 0 ? `${Math.round((v / total) * 100)}% of total` : '—';
+  const pct = v => total > 0 ? `${Math.round((v / total) * 100)}% of total` : '0% of total';
 
   const kpiCards = [
-    { label: 'Total Employees',   value: total,   hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0, icon: <Users size={16} />,      iconBg: 'bg-[#f0f3ff] text-[#3525cd]',    onClick: () => navigate('/employees') },
-    { label: 'Present Today',     value: present, hint: pct(present), hintGreen: false, icon: <UserCheck size={16} />,  iconBg: 'bg-emerald-50 text-emerald-600', onClick: () => setAttModal({ date: todayStr(), filter: 'present' }) },
-    { label: 'On Leave',          value: onLeave, hint: pct(onLeave), hintGreen: false, icon: <Umbrella size={16} />,   iconBg: 'bg-amber-50 text-amber-600',     onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}`) },
-    { label: 'WFH Today',         value: wfh,     hint: pct(wfh),     hintGreen: false, icon: <Home size={16} />,       iconBg: 'bg-indigo-50 text-indigo-600',   onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`) },
-    { label: 'Checked In',        value: checked, hint: pct(checked), hintGreen: false, icon: <Clock size={16} />,      iconBg: 'bg-emerald-50 text-emerald-500', onClick: () => setAttModal({ date: todayStr(), filter: 'present' }) },
-    { label: 'Pending Approvals', value: pending, hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
-      icon: <ClipboardList size={16} />, iconBg: pending > 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-50 text-slate-500', onClick: () => navigate('/leaves?tab=all&status=pending') },
+    {
+      label: 'Total Employees', value: total,
+      hint: newThis > 0 ? `↑${newThis} this month` : 'No new this month', hintGreen: newThis > 0,
+      icon: <Users size={18} />, iconBg: 'bg-[#eef0ff]', iconColor: 'text-[#3525cd]',
+      onClick: () => navigate('/employees'),
+    },
+    {
+      label: 'Present Today', value: present, hint: pct(present), hintGreen: false,
+      icon: <UserCheck size={18} />, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600',
+      onClick: () => setAttModal({ date: todayStr(), filter: 'present' }),
+    },
+    {
+      label: 'On Leave', value: onLeave, hint: pct(onLeave), hintGreen: false,
+      icon: <Umbrella size={18} />, iconBg: 'bg-amber-50', iconColor: 'text-amber-600',
+      onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}`),
+    },
+    {
+      label: 'WFH Today', value: wfh, hint: pct(wfh), hintGreen: false,
+      icon: <Home size={18} />, iconBg: 'bg-sky-50', iconColor: 'text-sky-600',
+      onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`),
+    },
+    {
+      label: 'Checked In', value: checked, hint: pct(checked), hintGreen: false,
+      icon: <Clock size={18} />, iconBg: 'bg-teal-50', iconColor: 'text-teal-600',
+      onClick: () => setAttModal({ date: todayStr(), filter: 'present' }),
+    },
+    {
+      label: 'Pending Approvals', value: pending,
+      hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
+      icon: <ClipboardList size={18} />, iconBg: pending > 0 ? 'bg-rose-50' : 'bg-slate-50', iconColor: pending > 0 ? 'text-rose-500' : 'text-slate-400',
+      onClick: () => navigate('/leaves?tab=all&status=pending'),
+    },
   ];
 
   const { birthdaysToday = [], upcomingBirthdays = [], holidays = [] } = culture || {};
 
+  const quickActions = [
+    { label: 'Add Employee',     icon: <UserPlus size={15} />,     color: 'text-[#3525cd] bg-[#eef0ff]',    onClick: () => navigate('/employees?action=add') },
+    { label: 'Apply Leave',      icon: <Umbrella size={15} />,     color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
+    { label: 'Mark Attendance',  icon: <UserCheck size={15} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/calendar') },
+    { label: 'Regularization',   icon: <Pencil size={15} />,       color: 'text-orange-600 bg-orange-50',   onClick: () => navigate('/regularization') },
+    { label: 'Announcement',     icon: <Megaphone size={15} />,    color: 'text-purple-600 bg-purple-50',   onClick: () => navigate('/announcements') },
+    { label: 'View Reports',     icon: <BarChart2 size={15} />,    color: 'text-sky-600 bg-sky-50',         onClick: () => navigate('/reports') },
+    { label: 'Assign Shift',     icon: <Clock size={15} />,        color: 'text-indigo-600 bg-indigo-50',   onClick: () => navigate('/shifts') },
+    { label: 'Manage Holidays',  icon: <CalendarDays size={15} />, color: 'text-rose-600 bg-rose-50',       onClick: () => navigate('/holidays') },
+    { label: 'Document Manager', icon: <FolderOpen size={15} />,   color: 'text-teal-600 bg-teal-50',       onClick: () => navigate('/documents') },
+  ];
+
   return (
-    <div className="flex gap-5 items-start">
+    <div className="space-y-5">
 
-      {/* ── MAIN CONTENT ────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 space-y-5">
-
-        {/* HERO */}
-        <div className="rounded-2xl relative overflow-hidden shadow-md"
-          style={{ background: 'linear-gradient(135deg, #1e1b5e 0%, #3525cd 40%, #6d28d9 75%, #9333ea 100%)' }}>
-          <div className="absolute inset-0 pointer-events-none"
-            style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,.12) 0%, transparent 50%)' }} />
-          <div className="relative px-7 pt-6 pb-5">
+      {/* ─── HERO ──────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl relative overflow-hidden shadow-md"
+        style={{ background: 'linear-gradient(135deg, #1e1b5e 0%, #3525cd 45%, #6d28d9 80%, #9333ea 100%)' }}>
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(circle at 85% 30%, rgba(255,255,255,.13) 0%, transparent 45%), radial-gradient(circle at 15% 70%, rgba(109,40,217,.4) 0%, transparent 50%)' }} />
+        <div className="relative px-7 pt-6 pb-5">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <h1 className="text-2xl font-black text-white tracking-tight">
-                {getGreeting()}, {user?.name?.split(' ')[0]}! 👋
+              <div className="text-2xl">👋</div>
+              <h1 className="text-xl font-black text-white tracking-tight mt-1">
+                {getGreeting()}, {user?.name?.split(' ')[0]}!
               </h1>
-              <p className="text-white/70 text-sm mt-1">Here's what's happening in your organization today.</p>
-              {dashDate && (
-                <div className="flex gap-2 mt-3">
-                  <button className="flex items-center gap-1.5 text-white text-sm font-bold px-3 py-2 rounded-xl"
-                    style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)' }}
-                    onClick={() => setDashDate('')}>
-                    <RefreshCw size={13} /> Back to Today
-                  </button>
-                </div>
-              )}
+              <p className="text-white/65 text-sm mt-1">Here's what's happening in your organization today.</p>
             </div>
-            <div className="flex items-center gap-4 mt-5 pt-4 border-t border-white/10 flex-wrap">
-              <span className="flex items-center gap-1.5 text-white/70 text-xs font-semibold">
-                <CalendarDays size={12} /> {displayDate}
-              </span>
-              <span className="text-white/30">|</span>
-              <span className="text-white/70 text-xs font-semibold">📅 Week {weekNum}</span>
-              <span className="text-white/30">|</span>
-              <span className="text-white/70 text-xs font-semibold">✨ {season}</span>
-              <input type="date" className="ml-auto px-3 py-1.5 text-xs rounded-lg font-semibold text-white cursor-pointer"
-                style={{ border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(10px)', colorScheme: 'dark' }}
-                value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* 6 KPI CARDS */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {kpiCards.map((card, i) => (
-            <div key={i} onClick={card.onClick}
-              className={`bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 ${card.onClick ? 'cursor-pointer' : ''}`}>
-              <div className="flex items-start justify-between mb-2">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${card.iconBg}`}>{card.icon}</div>
-                {card.alert && <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse flex-shrink-0" />}
-              </div>
-              <p className="text-xl font-black text-[#151c27] leading-tight">{card.value}</p>
-              <p className="text-[0.68rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
-              {card.hint && (
-                <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-rose-500' : card.hintGreen ? 'text-emerald-600' : 'text-[#9ca3af]'}`}>
-                  {card.hint}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* HR INSIGHTS */}
-        {isAdmin && <HRInsightsRow d={d} culture={culture} navigate={navigate} />}
-
-        {/* LIVE ATTENDANCE + TREND CHART + LEAVE REQUESTS */}
-        <div className="grid lg:grid-cols-[1fr_280px_260px] gap-4">
-
-          {/* Live Attendance */}
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-              <div>
-                <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                  {isToday ? <Activity size={14} className="text-[#3525cd]" /> : <BarChart2 size={14} className="text-[#3525cd]" />}
-                  {isToday ? 'Live Attendance' : 'Attendance'}
-                </h2>
-                <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
-                  {isToday ? `Today · ${displayDate}` : displayDate}
-                </p>
-              </div>
-              <button onClick={() => navigate('/calendar')}
-                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-                View all
+            {dashDate && (
+              <button className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-xl shrink-0"
+                style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)' }}
+                onClick={() => setDashDate('')}>
+                <RefreshCw size={12} /> Back to Today
               </button>
-            </div>
-            <div className="flex-1 divide-y divide-[#f9f9ff] overflow-y-auto" style={{ maxHeight: 320 }}>
-              {(d?.recentActivity || []).length === 0 ? (
-                <div className="py-12 text-center">
-                  <Inbox size={32} className="mx-auto mb-2 text-[#c7c4d8]" />
-                  <p className="text-sm text-[#777587]">No activity recorded today</p>
-                </div>
-              ) : (d?.recentActivity || []).map(r => (
-                <div key={r.id || r.name} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[#fafaff] cursor-pointer transition-colors"
-                  onClick={() => setSelectedEmp(r)}>
-                  <Avatar name={r.name} color={r.avatar_color} size={30} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-[#151c27] truncate">{r.name}</div>
-                    <div className="text-[0.6rem] text-[#9ca3af] truncate">{r.department}</div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <StatusBadge status={r.status} />
-                  </div>
-                  <div className="text-right shrink-0">
-                    {r.check_in && <div className="text-[0.65rem] font-bold text-[#151c27]">{fmtTime(r.check_in)}</div>}
-                    {r.check_in && <div className="text-[0.58rem] text-[#9ca3af]">{r.is_late ? 'Late' : 'On time'}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="px-5 py-3 border-t border-[#e7eefe]">
-              <button onClick={() => navigate('/calendar')}
-                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
-                View full attendance <ChevronRight size={13} />
-              </button>
-            </div>
-          </div>
-
-          {/* Attendance Trend */}
-          {isAdmin && analytics
-            ? <AttendanceTrendChart analytics={analytics} navigate={navigate} />
-            : <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex items-center justify-center text-sm text-[#9ca3af]">
-                Attendance trend available for admins
-              </div>
-          }
-
-          {/* Leave Requests */}
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-              <div>
-                <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                  <ClipboardList size={14} className="text-amber-500" />
-                  {isAdmin ? 'Leave Requests' : 'My Leaves'}
-                </h2>
-                {isAdmin && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Pending approvals</p>}
-              </div>
-              <button onClick={() => navigate('/leaves')}
-                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-                View all
-              </button>
-            </div>
-            <div className="flex-1 divide-y divide-[#f0f3ff] overflow-y-auto" style={{ maxHeight: 320 }}>
-              {(d?.pendingLeaveList || []).length === 0 ? (
-                <div className="py-10 text-center px-4">
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-2">
-                    <CheckCircle2 size={18} className="text-emerald-500" />
-                  </div>
-                  <p className="text-xs font-semibold text-[#151c27]">No pending requests</p>
-                  <p className="text-[0.62rem] text-[#777587] mt-1">All leave requests have been reviewed.</p>
-                </div>
-              ) : (d?.pendingLeaveList || []).map(l => (
-                <div key={l.id} className="flex items-start gap-2 px-4 py-3">
-                  <Avatar name={l.name} color={l.avatar_color} size={28} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-[#151c27]">{l.name}</div>
-                    <div className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDateRange(l.start_date, l.end_date)}</div>
-                    <div className="flex items-center gap-1 mt-1">
-                      <LeaveTypeBadge type={l.leave_type} />
-                    </div>
-                    {isAdmin && l.status === 'pending' && (
-                      <div className="flex gap-1 mt-1.5">
-                        <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
-                          onClick={() => handleApprove(l.id)}>
-                          <CheckCircle2 size={9} /> Approve
-                        </button>
-                        <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all"
-                          onClick={() => handleReject(l.id)}>
-                          <X size={9} /> Reject
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ORG OVERVIEW + LEAVE BALANCE + QUICK ACTIONS */}
-        {isAdmin && analytics && (
-          <div className="grid lg:grid-cols-[1fr_1fr_260px] gap-4">
-            <OrgOverviewSection analytics={analytics} navigate={navigate} />
-            <LeaveBalanceSection analytics={analytics} navigate={navigate} />
-
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#e7eefe]">
-                <h2 className="text-sm font-black text-[#151c27]">Quick Actions</h2>
-              </div>
-              <div className="p-4 grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Add Employee',    icon: <UserPlus size={14} />,     color: 'text-[#3525cd] bg-[#f0f3ff]',    onClick: () => navigate('/employees?action=add') },
-                  { label: 'Apply Leave',     icon: <Umbrella size={14} />,     color: 'text-emerald-600 bg-emerald-50', onClick: () => navigate('/leaves') },
-                  { label: 'Mark Attendance', icon: <UserCheck size={14} />,    color: 'text-amber-600 bg-amber-50',     onClick: () => navigate('/calendar') },
-                  { label: 'Regularization',  icon: <Pencil size={14} />,       color: 'text-orange-600 bg-orange-50',   onClick: () => navigate('/regularization') },
-
-                  { label: 'Announcement',    icon: <Megaphone size={14} />,    color: 'text-purple-600 bg-purple-50',   onClick: () => navigate('/announcements') },
-                  { label: 'View Reports',    icon: <BarChart2 size={14} />,    color: 'text-sky-600 bg-sky-50',         onClick: () => navigate('/reports') },
-                  { label: 'Assign Shift',    icon: <Clock size={14} />,        color: 'text-indigo-600 bg-indigo-50',   onClick: () => navigate('/shifts') },
-                  { label: 'Manage Holidays', icon: <CalendarDays size={14} />, color: 'text-rose-600 bg-rose-50',       onClick: () => navigate('/holidays') },
-                ].map((action, i) => (
-                  <button key={i} onClick={action.onClick}
-                    className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border border-[#e7eefe] hover:border-[#3525cd]/30 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-150 text-center bg-white">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${action.color}`}>{action.icon}</div>
-                    <span className="text-[0.6rem] font-bold text-[#464555] leading-tight">{action.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* NEW JOINERS */}
-        {(d?.newJoiners || []).length > 0 && (
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                <UserPlus size={14} className="text-emerald-500" /> New Joiners
-              </h2>
-              <span className="text-[0.65rem] text-[#777587]">Last 7 days</span>
-            </div>
-            <div className="divide-y divide-[#f9f9ff]">
-              {(d.newJoiners || []).map(e => {
-                const joined = new Date(e.created_at);
-                const daysAgo = Math.floor((Date.now() - joined.getTime()) / 86400000);
-                return (
-                  <div key={e.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
-                    <Avatar name={e.name} color={e.avatar_color} size={34} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-[#151c27]">{e.name}</p>
-                      <p className="text-[0.62rem] text-[#777587]">{e.position || 'Staff'} · {e.department || '—'}</p>
-                    </div>
-                    <span className="text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      {daysAgo === 0 ? 'Today' : `${daysAgo}d ago`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* ── RIGHT SIDEBAR ────────────────────────────────────────────────────── */}
-      <div className="hidden xl:flex xl:flex-col w-[288px] shrink-0 gap-4">
-
-        {/* Upcoming Holidays */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
-              <CalendarDays size={13} className="text-[#3525cd]" /> Upcoming Holidays
-            </h2>
-            <div className="flex items-center gap-1">
-              {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
-              <button onClick={() => navigate('/holidays')} className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-1.5 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">View all</button>
-            </div>
-          </div>
-          <div className="divide-y divide-[#f9f9ff]">
-            {holidays.length === 0 ? (
-              <div className="py-6 text-center">
-                <CalendarDays size={20} className="text-[#c7c4d8] mx-auto mb-1" />
-                <p className="text-xs text-[#777587]">No holidays in next 30 days</p>
-              </div>
-            ) : holidays.slice(0, 4).map(h => (
-              <div key={h.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 text-sm">
-                    🗓️
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-[#151c27]">{h.name}</p>
-                    <p className="text-[0.6rem] text-[#9ca3af]">{fmtDate(h.date)}</p>
-                  </div>
-                </div>
-                <span className="text-[0.58rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 capitalize shrink-0">{h.type}</span>
-              </div>
-            ))}
-            {holidays.length > 4 && (
-              <div className="px-4 py-2.5 cursor-pointer hover:bg-[#f9f9ff] transition-colors" onClick={() => navigate('/holidays')}>
-                <p className="text-xs font-bold text-[#3525cd]">See holiday calendar →</p>
-              </div>
             )}
           </div>
+          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-white/10 flex-wrap">
+            <span className="flex items-center gap-1.5 text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg">
+              <CalendarDays size={11} /> {displayDate}
+            </span>
+            <span className="text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg">
+              📅 Week {weekNum}
+            </span>
+            <span className="text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg">
+              ✨ {season}
+            </span>
+            <input type="date" className="ml-auto px-3 py-1.5 text-xs rounded-lg font-semibold text-white cursor-pointer"
+              style={{ border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(10px)', colorScheme: 'dark' }}
+              value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
+          </div>
         </div>
+      </div>
 
-        {/* Announcements */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
-              <Megaphone size={13} className="text-[#3525cd]" /> Announcements
-            </h2>
-            <button onClick={() => navigate('/announcements')}
-              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-1.5 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+      {/* ─── 6 KPI CARDS ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {kpiCards.map((card, i) => (
+          <div key={i} onClick={card.onClick}
+            className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-[#3525cd]/30 hover:-translate-y-0.5 group">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${card.iconBg} ${card.iconColor}`}>
+                {card.icon}
+              </div>
+              {card.alert && <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse ml-auto flex-shrink-0" />}
+            </div>
+            <p className="text-2xl font-black text-[#151c27] leading-tight">{card.value}</p>
+            <p className="text-[0.7rem] text-[#777587] mt-0.5 font-medium leading-tight">{card.label}</p>
+            {card.hint && (
+              <p className={`text-[0.62rem] mt-1 font-semibold ${card.alert ? 'text-rose-500' : card.hintGreen ? 'text-emerald-600' : 'text-[#9ca3af]'}`}>
+                {card.hint}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ─── HR INSIGHTS ─────────────────────────────────────────────────── */}
+      {isAdmin && <HRInsightsRow d={d} culture={culture} navigate={navigate} />}
+
+      {/* ─── LIVE ATTENDANCE | TREND | LEAVE REQUESTS ──────────────────── */}
+      <div className="grid lg:grid-cols-[1fr_300px_280px] gap-4">
+
+        {/* Live Attendance */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+            <div>
+              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                {isToday ? <Activity size={14} className="text-[#3525cd]" /> : <BarChart2 size={14} className="text-[#3525cd]" />}
+                {isToday ? 'Live Attendance' : 'Attendance'}
+              </h2>
+              <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">
+                {isToday ? `Today · ${displayDate}` : displayDate}
+              </p>
+            </div>
+            <button onClick={() => navigate('/calendar')}
+              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               View all
             </button>
           </div>
-          <div className="p-4">
-            {!(announcements || []).length ? (
-              <div className="py-4 text-center">
-                <Megaphone size={20} className="text-[#c7c4d8] mx-auto mb-1" />
-                <p className="text-xs text-[#777587]">No announcements yet</p>
+          <div className="flex-1 divide-y divide-[#f9f9ff] overflow-y-auto" style={{ maxHeight: 300 }}>
+            {(d?.recentActivity || []).length === 0 ? (
+              <div className="py-12 text-center">
+                <Inbox size={32} className="mx-auto mb-2 text-[#c7c4d8]" />
+                <p className="text-sm text-[#777587]">No activity recorded today</p>
+              </div>
+            ) : (d?.recentActivity || []).map(r => (
+              <div key={r.id || r.name} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[#fafaff] cursor-pointer transition-colors"
+                onClick={() => setSelectedEmp(r)}>
+                <Avatar name={r.name} color={r.avatar_color} size={30} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-[#151c27] truncate">{r.name}</div>
+                  <div className="text-[0.6rem] text-[#9ca3af] truncate">{r.department}</div>
+                </div>
+                <StatusBadge status={r.status} />
+                <div className="text-right shrink-0 ml-1">
+                  {r.check_in && <div className="text-[0.65rem] font-bold text-[#151c27]">{fmtTime(r.check_in)}</div>}
+                  {r.check_in && <div className="text-[0.58rem] text-[#9ca3af]">{r.is_late ? 'Late' : 'On time'}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 py-3 border-t border-[#e7eefe]">
+            <button onClick={() => navigate('/calendar')}
+              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
+              View full attendance <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* Attendance Trend */}
+        {isAdmin && analytics
+          ? <AttendanceTrendChart analytics={analytics} navigate={navigate} />
+          : <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm flex items-center justify-center text-sm text-[#9ca3af] p-6 text-center">
+              Attendance trend available for admins
+            </div>
+        }
+
+        {/* Leave Requests */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+            <div>
+              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                <ClipboardList size={14} className="text-amber-500" />
+                {isAdmin ? 'Leave Requests' : 'My Leaves'}
+              </h2>
+              {isAdmin && <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">Pending approval</p>}
+            </div>
+            <button onClick={() => navigate('/leaves?status=pending')}
+              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+              View all
+            </button>
+          </div>
+          <div className="flex-1 divide-y divide-[#f0f3ff] overflow-y-auto" style={{ maxHeight: 300 }}>
+            {(d?.pendingLeaveList || []).length === 0 ? (
+              <div className="py-10 text-center px-4">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-2">
+                  <CheckCircle2 size={18} className="text-emerald-500" />
+                </div>
+                <p className="text-xs font-semibold text-[#151c27]">No pending requests</p>
+                <p className="text-[0.62rem] text-[#777587] mt-1">All leave requests have been reviewed.</p>
+              </div>
+            ) : (d?.pendingLeaveList || []).map(l => (
+              <div key={l.id} className="flex items-start gap-2.5 px-4 py-3 hover:bg-[#fafaff] cursor-pointer transition-colors"
+                onClick={() => navigate('/leaves?status=pending')}>
+                <Avatar name={l.name} color={l.avatar_color} size={30} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-[#151c27]">{l.name}</div>
+                  <div className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDateRange(l.start_date, l.end_date)}</div>
+                  <LeaveTypeBadge type={l.leave_type} />
+                  {isAdmin && l.status === 'pending' && (
+                    <div className="flex gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
+                      <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+                        onClick={() => handleApprove(l.id)}>
+                        <CheckCircle2 size={9} /> Approve
+                      </button>
+                      <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all"
+                        onClick={() => handleReject(l.id)}>
+                        <X size={9} /> Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── ORG OVERVIEW | LEAVE BALANCE | QUICK ACTIONS ──────────────── */}
+      {isAdmin && analytics && (
+        <div className="grid lg:grid-cols-[1fr_1fr_280px] gap-4">
+          <OrgOverviewSection analytics={analytics} navigate={navigate} />
+          <LeaveBalanceSection analytics={analytics} navigate={navigate} />
+
+          {/* Quick Actions — 3×3 grid */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#e7eefe]">
+              <h2 className="text-sm font-black text-[#151c27]">Quick Actions</h2>
+            </div>
+            <div className="p-4 grid grid-cols-3 gap-2.5">
+              {quickActions.map((action, i) => (
+                <button key={i} onClick={action.onClick}
+                  className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border border-[#f0f3ff] hover:border-[#3525cd]/25 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-150 text-center bg-white">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${action.color}`}>{action.icon}</div>
+                  <span className="text-[0.58rem] font-bold text-[#464555] leading-tight">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── UPCOMING HOLIDAYS + ANNOUNCEMENTS | BIRTHDAYS ─────────────── */}
+      <div className="grid lg:grid-cols-[1fr_280px] gap-4">
+
+        {/* Left column: Holidays grid + Announcements */}
+        <div className="space-y-4">
+
+          {/* Upcoming Holidays */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                <CalendarDays size={14} className="text-[#3525cd]" /> Upcoming Holidays
+              </h2>
+              <div className="flex items-center gap-2">
+                {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
+              </div>
+            </div>
+            {holidays.length === 0 ? (
+              <div className="py-8 text-center">
+                <CalendarDays size={24} className="text-[#c7c4d8] mx-auto mb-2" />
+                <p className="text-sm text-[#777587]">No holidays in the next 30 days</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {(announcements || []).slice(0, 3).map(a => (
-                  <div key={a.id} className="flex items-start gap-2.5 cursor-pointer hover:bg-[#f9f9ff] -mx-1 px-1 py-1.5 rounded-lg transition-colors"
-                    onClick={() => navigate('/announcements')}>
-                    <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center shrink-0 mt-0.5">
-                      <Megaphone size={11} className="text-[#3525cd]" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
+                {holidays.slice(0, 4).map(h => (
+                  <div key={h.id} onClick={() => navigate('/holidays')}
+                    className="flex flex-col gap-2 p-3 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:bg-[#fafaff] transition-colors cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[#eef0ff] flex items-center justify-center shrink-0 text-sm">🗓️</div>
+                      <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full capitalize ${
+                        h.type === 'public' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                      }`}>{h.type}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-[#151c27] truncate">{a.title}</p>
-                      <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">By {a.created_by_name || 'Admin'} · {relTime(a.created_at)}</p>
+                    <div>
+                      <p className="text-xs font-bold text-[#151c27] leading-tight">{h.name}</p>
+                      <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDate(h.date)}</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+            <div className="px-5 py-3 border-t border-[#f0f3ff]">
+              <button onClick={() => navigate('/holidays')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
+                See holiday calendar <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
+
+          {/* Announcements */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+                <Megaphone size={14} className="text-[#3525cd]" /> Announcements
+              </h2>
+              <button onClick={() => navigate('/announcements')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+                View all
+              </button>
+            </div>
+            <div className="p-5">
+              {!(announcements || []).length ? (
+                <div className="py-8 flex flex-col items-center text-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-2xl">📢</div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#464555]">No announcements yet</p>
+                    <p className="text-xs text-[#9ca3af] mt-0.5">Post an announcement to keep your team informed.</p>
+                  </div>
+                  {isAdmin && (
+                    <button onClick={() => navigate('/announcements')}
+                      className="text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl px-4 py-2 hover:bg-[#f0f3ff] transition-colors">
+                      Post Announcement
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(announcements || []).slice(0, 3).map(a => (
+                    <div key={a.id} className="flex items-start gap-3 cursor-pointer hover:bg-[#fafaff] -mx-2 px-2 py-2 rounded-xl transition-colors"
+                      onClick={() => navigate('/announcements')}>
+                      <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center shrink-0">
+                        <Megaphone size={13} className="text-[#3525cd]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-[#151c27] truncate">{a.title}</p>
+                        <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{relTime(a.created_at)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Birthdays widget — always visible */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e7eefe]">
-            <h2 className="text-xs font-black text-[#151c27] flex items-center gap-2">
-              <Cake size={13} className="text-pink-500" /> Upcoming Birthdays
+        {/* Right column: Upcoming Birthdays */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden self-start">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+              <Cake size={14} className="text-pink-500" /> Upcoming Birthdays
             </h2>
             {isAdmin && <ManageBirthdaysBtn onRefresh={refetch} />}
           </div>
           <div className="p-4">
             {(birthdaysToday.length + upcomingBirthdays.length) === 0 ? (
-              <div className="flex items-center gap-2 py-1">
-                <div className="w-7 h-7 rounded-lg bg-pink-50 flex items-center justify-center text-sm shrink-0">🎁</div>
+              <div className="py-6 flex flex-col items-center gap-2 text-center">
+                <div className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-xl">🎁</div>
                 <p className="text-xs text-[#777587]">No birthdays in the next 30 days</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {birthdaysToday.map(u => (
-                  <div key={u.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-pink-50 border border-pink-100">
-                    <Avatar name={u.name} color={u.avatar_color} size={26} />
-                    <div className="min-w-0">
+                  <div key={u.id} onClick={() => navigate('/employees')}
+                    className="flex items-center gap-3 p-2.5 rounded-xl bg-pink-50 border border-pink-100 cursor-pointer hover:bg-pink-100 transition-colors">
+                    <Avatar name={u.name} color={u.avatar_color} size={32} />
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-[#151c27] truncate">{u.name} 🎂</p>
-                      <p className="text-[0.58rem] text-pink-500 font-semibold">Birthday today!</p>
+                      <p className="text-[0.6rem] text-pink-500 font-semibold">Birthday today!</p>
                     </div>
                   </div>
                 ))}
-                {upcomingBirthdays.slice(0, 4).map(u => (
-                  <div key={u.id + u.birthday_date} className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-pink-50 border border-pink-100 flex items-center justify-center text-sm shrink-0">🎂</div>
+                {upcomingBirthdays.slice(0, 5).map(u => (
+                  <div key={u.id + u.birthday_date} onClick={() => navigate('/employees')}
+                    className="flex items-center gap-3 cursor-pointer hover:bg-[#fafaff] -mx-1 px-1 py-1.5 rounded-lg transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-pink-50 border border-pink-100 flex items-center justify-center text-base shrink-0">🎂</div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-[#151c27] truncate">{u.name}</p>
-                      <p className="text-[0.58rem] text-[#777587]">in {u.days_until} day{u.days_until !== 1 ? 's' : ''}</p>
+                      <p className="text-[0.6rem] text-[#777587]">In {u.days_until} day{u.days_until !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
                 ))}
@@ -1130,10 +1142,44 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Employee Quick View Modal */}
-      {selectedEmp && <EmployeeQuickView record={selectedEmp} onClose={() => setSelectedEmp(null)} />}
+      {/* ─── NEW JOINERS — horizontal scroll ────────────────────────────── */}
+      {(d?.newJoiners || []).length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+              <UserPlus size={14} className="text-emerald-500" /> New Joiners
+            </h2>
+            <div className="flex items-center gap-3">
+              <span className="text-[0.65rem] text-[#9ca3af] font-medium">Last 7 days</span>
+              <button onClick={() => navigate('/employees')}
+                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+                View all
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-3 px-5 py-4 overflow-x-auto scrollbar-hide">
+            {(d.newJoiners || []).map(e => {
+              const daysAgo = Math.floor((Date.now() - new Date(e.created_at).getTime()) / 86400000);
+              return (
+                <div key={e.id} onClick={() => navigate('/employees')}
+                  className="flex flex-col items-center gap-2 min-w-[110px] p-3 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:bg-[#fafaff] transition-colors cursor-pointer shrink-0 text-center">
+                  <Avatar name={e.name} color={e.avatar_color} size={40} />
+                  <div>
+                    <p className="text-[0.72rem] font-bold text-[#151c27] leading-tight">{e.name}</p>
+                    <p className="text-[0.58rem] text-[#777587] mt-0.5 leading-tight">{e.position || 'Staff'} · {e.department || '—'}</p>
+                  </div>
+                  <span className="text-[0.58rem] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {daysAgo === 0 ? 'Today' : `${daysAgo}d ago`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {/* Inline attendance day-view modal — avoids navigation away from Dashboard */}
+      {/* Modals */}
+      {selectedEmp && <EmployeeQuickView record={selectedEmp} onClose={() => setSelectedEmp(null)} />}
       {attModal && (
         <AttendanceDayModal
           dateStr={attModal.date}
