@@ -346,6 +346,7 @@ export default function EmployeeHome() {
   }
 
   /* ── queries ── */
+  const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: () => apiGet('/settings'), staleTime: 10 * 60 * 1000 });
   const { data: myStats } = useQuery({ queryKey: ['my-stats'], queryFn: () => apiGet('/my-stats') });
   const { data: myLeaves = [] } = useQuery({ queryKey: ['my-leaves-recent'], queryFn: () => apiGet('/leaves') });
   const { data: culture } = useQuery({
@@ -422,11 +423,26 @@ export default function EmployeeHome() {
     : attRecord?.work_hours
       ? Math.round(attRecord.work_hours * 60)
       : 0;
-  const remainingMins = Math.max(0, 480 - workingMins); // 8h = 480 min
+  const workSchedule = settingsData?.schedule;
+  const shiftTotalMins = workSchedule?.start_time && workSchedule?.end_time
+    ? parseWorkMins(workSchedule.end_time) - parseWorkMins(workSchedule.start_time)
+    : 480;
+  const remainingMins = Math.max(0, shiftTotalMins - workingMins);
   const fmtMins = (mins) => {
     const h = Math.floor(mins / 60); const m = mins % 60;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
+
+  function fmt24to12(t) {
+    if (!t) return '—';
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12  = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+  const shiftLabel = workSchedule?.start_time && workSchedule?.end_time
+    ? `${fmt24to12(workSchedule.start_time)} – ${fmt24to12(workSchedule.end_time)}`
+    : '—';
 
   /* recent activity: synthesize from attendance + leaves */
   const recentActivity = [
@@ -516,7 +532,7 @@ export default function EmployeeHome() {
               {
                 icon: <CalendarDays size={13} />,
                 label: "Today's Shift",
-                value: '09:30 AM – 06:30 PM',
+                value: shiftLabel,
               },
             ].map(({ icon, label, value }) => (
               <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl px-3 py-2">
