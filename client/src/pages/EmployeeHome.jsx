@@ -481,19 +481,19 @@ export default function EmployeeHome() {
       ═══════════════════════════════════════════════════════════════════ */}
       <div
         className="rounded-2xl relative overflow-hidden shadow-lg"
-        style={{ background: 'linear-gradient(135deg, #3525cd 0%, #4f46e5 50%, #712ae2 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #1e1b8e 0%, #3525cd 55%, #4f46e5 100%)' }}
       >
         {/* decorative glows */}
         <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,.13) 0%, transparent 50%), radial-gradient(circle at 20% 80%, rgba(113,42,226,.4) 0%, transparent 50%)',
+          backgroundImage: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,.10) 0%, transparent 50%), radial-gradient(circle at 20% 80%, rgba(79,70,229,.35) 0%, transparent 50%)',
         }} />
 
-        <div className="relative px-6 pt-6 pb-5">
+        <div className="relative px-6 pt-5 pb-5">
           {/* greeting */}
-          <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+          <h1 className="text-lg sm:text-xl font-bold text-white leading-tight">
             {getGreeting()}, {user?.name?.split(' ')[0] || 'there'}! 👋
           </h1>
-          <p className="text-white/60 text-sm mt-1">Have a productive and amazing day ahead.</p>
+          <p className="text-white/60 text-xs mt-0.5">Have a productive and amazing day ahead.</p>
 
           {/* stat chips */}
           <div className="mt-5 flex flex-wrap gap-2">
