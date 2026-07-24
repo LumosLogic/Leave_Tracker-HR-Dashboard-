@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Mail, Calendar, Clock, Bell, Shield, Save, Eye, EyeOff, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { Building2, Mail, Calendar, Bell, Shield, Save, Eye, EyeOff, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -97,8 +97,6 @@ export default function OrgSettings() {
         google_client_secret:'',
         google_refresh_token:'',
         google_calendar_id:  org.google_calendar_id || '',
-        clockify_api_key:    '',
-        clockify_workspace_id: org.clockify_workspace_id || '',
         vapid_public_key:    org.vapid_public_key || '',
         vapid_private_key:   '',
         total_annual_leaves: org.total_annual_leaves || 18,
@@ -212,16 +210,6 @@ export default function OrgSettings() {
           <PasswordField label="Google Refresh Token" hint="Leave blank to keep current" value={form.google_refresh_token || ''} onChange={e => set('google_refresh_token', e.target.value)} placeholder="Leave blank to keep" />
           <Field label="Google Calendar ID" hint="The calendar to sync to (e.g. primary or your calendar email)">
             <input className="form-control" value={form.google_calendar_id || ''} onChange={e => set('google_calendar_id', e.target.value)} placeholder="primary" />
-          </Field>
-        </div>
-      </Section>
-
-      {/* Clockify */}
-      <Section icon={<Clock size={18} />} title="Clockify Integration" subtitle="Track employee working hours via Clockify time entries">
-        <div className="grid grid-cols-2 gap-4">
-          <PasswordField label="Clockify API Key" hint="Leave blank to keep current" value={form.clockify_api_key || ''} onChange={e => set('clockify_api_key', e.target.value)} placeholder="Leave blank to keep" />
-          <Field label="Workspace ID" hint="Your Clockify workspace ID">
-            <input className="form-control" value={form.clockify_workspace_id || ''} onChange={e => set('clockify_workspace_id', e.target.value)} placeholder="Workspace ID from Clockify" />
           </Field>
         </div>
       </Section>

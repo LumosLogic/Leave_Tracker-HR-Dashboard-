@@ -453,14 +453,14 @@ export default function EmployeeHome() {
 
   /* ── quick action items ── */
   const quickActions = [
-    { icon: <Umbrella size={18} />,   label: 'Apply Leave',             to: '/portal/leaves',         color: 'bg-[#f0f3ff] text-[#3525cd]' },
-    { icon: <ClipboardList size={18}/>,label: 'Attendance Correction',   to: '/portal/regularization', color: 'bg-amber-50 text-amber-600'   },
-    { icon: <CreditCard size={18} />, label: 'Expense Claim',            to: '/portal/expenses',       color: 'bg-emerald-50 text-emerald-600'},
-    { icon: <Download size={18} />,   label: 'Download Payslip',         to: '/portal/payslips',       color: 'bg-rose-50 text-rose-600'     },
-    { icon: <FolderOpen size={18} />, label: 'My Documents',             to: '/portal/documents',      color: 'bg-purple-50 text-purple-600' },
-    { icon: <CalendarDays size={18}/>, label: 'Attendance History',      to: '/portal/attendance',     color: 'bg-cyan-50 text-cyan-600'     },
-    { icon: <User size={18} />,        label: 'My Profile',              to: '/portal/profile',        color: 'bg-pink-50 text-pink-600'     },
-    { icon: <Target size={18} />,      label: 'Goals & Tasks',           to: '/portal/performance',    color: 'bg-orange-50 text-orange-600' },
+    { icon: <Umbrella size={18} />,   label: 'Apply Leave',             to: '/portal/leaves?action=apply',         color: 'bg-[#f0f3ff] text-[#3525cd]' },
+    { icon: <ClipboardList size={18}/>,label: 'Attendance Correction',   to: '/portal/regularization?action=apply', color: 'bg-amber-50 text-amber-600'   },
+    { icon: <CreditCard size={18} />, label: 'Expense Claim',            to: '/portal/expenses?action=apply',       color: 'bg-emerald-50 text-emerald-600'},
+    { icon: <Download size={18} />,   label: 'Download Payslip',         to: '/portal/payslips',                    color: 'bg-rose-50 text-rose-600'     },
+    { icon: <FolderOpen size={18} />, label: 'My Documents',             to: '/portal/documents',                   color: 'bg-purple-50 text-purple-600' },
+    { icon: <CalendarDays size={18}/>, label: 'Attendance History',      to: '/portal/attendance',                  color: 'bg-cyan-50 text-cyan-600'     },
+    { icon: <User size={18} />,        label: 'My Profile',              to: '/portal/profile',                     color: 'bg-pink-50 text-pink-600'     },
+    { icon: <Target size={18} />,      label: 'Goals & Tasks',           to: '/portal/performance',                 color: 'bg-orange-50 text-orange-600' },
   ];
 
   /* ── upcoming schedule items (holidays + birthdays + announcements) ── */

@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
 import { fmtDate } from '@/lib/utils';
 
@@ -111,14 +113,31 @@ function ApplyModal({ open, onClose }) {
 }
 
 export default function Regularization() {
-  const { isAdmin, isEmployee } = useAuth();
+  const { isAdmin, isEmployee, isRootAdmin } = useAuth();
   const wrap = '';
-  const [applyOpen, setApplyOpen] = useState(false);
-  const [reviewReq, setReviewReq] = useState(null);
-  const [filter,    setFilter]    = useState('all');
+  const [searchParams] = useSearchParams();
+  const [applyOpen,   setApplyOpen]   = useState(false);
+  const [reviewReq,   setReviewReq]   = useState(null);
+  const [confirmDel,  setConfirmDel]  = useState(null);
+  const [filter,      setFilter]      = useState('all');
+  const toast = useToast();
+  const qc    = useQueryClient();
+
+  // Auto-open apply modal if coming from quick actions
+  useEffect(() => {
+    if (!isAdmin && searchParams.get('action') === 'apply') {
+      setApplyOpen(true);
+    }
+  }, []);
 
   const { data: _regData, isLoading } = useQuery({ queryKey: ['regularization'], queryFn: () => apiGet('/regularization') });
   const requests = Array.isArray(_regData) ? _regData : [];
+
+  const delMut = useMutation({
+    mutationFn: id => apiDelete(`/regularization/${id}`),
+    onSuccess: () => { toast('Request deleted', 'warning'); qc.invalidateQueries({ queryKey: ['regularization'] }); setConfirmDel(null); },
+    onError: e => toast(e.message, 'error'),
+  });
 
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
   const counts   = { pending: requests.filter(r => r.status === 'pending').length, approved: requests.filter(r => r.status === 'approved').length, rejected: requests.filter(r => r.status === 'rejected').length };
@@ -202,11 +221,23 @@ export default function Regularization() {
                       </div>
                     )}
                   </div>
-                  {isAdmin && r.status === 'pending' && (
-                    <button className="btn btn-outline btn-sm flex-shrink-0" onClick={() => setReviewReq(r)}>
-                      Review <ChevronRight size={13} />
-                    </button>
-                  )}
+                  <div className="flex gap-2 flex-shrink-0">
+                    {isAdmin && r.status === 'pending' && (
+                      <button className="btn btn-outline btn-sm" onClick={() => setReviewReq(r)}>
+                        Review <ChevronRight size={13} />
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                        title="Delete request"
+                        onClick={() => setConfirmDel(r)}
+                        disabled={!isRootAdmin && r.status !== 'pending'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -216,6 +247,15 @@ export default function Regularization() {
 
       {applyOpen && <ApplyModal open onClose={() => setApplyOpen(false)} />}
       {reviewReq && <ReviewModal open onClose={() => setReviewReq(null)} request={reviewReq} />}
+      <ConfirmModal
+        open={!!confirmDel}
+        title="Delete Regularization Request"
+        message={`Delete the regularization request from ${confirmDel?.user_name || 'this employee'} for ${confirmDel?.date ? fmtDate(confirmDel.date) : ''}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => delMut.mutate(confirmDel.id)}
+        onCancel={() => setConfirmDel(null)}
+      />
     </div>
   );
 }

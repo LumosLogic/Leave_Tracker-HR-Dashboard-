@@ -96,7 +96,7 @@ function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
       </div>
 
       {/* Search trigger */}
-      <div className="px-3 py-2 border-b border-[#e7eefe]">
+      <div className="px-3 py-2">
         <button
           onClick={onSearchOpen}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"

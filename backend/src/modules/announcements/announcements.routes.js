@@ -132,6 +132,31 @@ router.delete('/:id', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
+
+    // Fetch the announcement first to get title and file info
+    const { data: ann } = await supabase.from('announcements')
+      .select('id, title, file_url').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    if (!ann) return res.status(404).json({ error: 'Announcement not found' });
+
+    // Delete related notifications for this announcement
+    await supabase.from('notifications')
+      .delete()
+      .eq('organization_id', oId)
+      .eq('type', 'announcement')
+      .eq('title', `📢 ${ann.title}`);
+
+    // Delete Cloudinary file if present
+    if (ann.file_url) {
+      try {
+        // Extract public_id from Cloudinary URL
+        const match = ann.file_url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+        if (match) {
+          const publicId = match[1];
+          await cloudinary.uploader.destroy(publicId, { resource_type: 'auto' });
+        }
+      } catch { /* ignore Cloudinary errors — proceed with DB delete */ }
+    }
+
     const { error } = await supabase.from('announcements').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });

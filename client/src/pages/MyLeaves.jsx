@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle,
@@ -469,10 +470,18 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
 export default function MyLeaves() {
   const qc    = useQueryClient();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
   const [applyOpen, setApplyOpen]       = useState(false);
   const [delTarget, setDelTarget]       = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter]     = useState('all');
+
+  // Auto-open apply panel from quick actions
+  useEffect(() => {
+    if (searchParams.get('action') === 'apply') {
+      setApplyOpen(true);
+    }
+  }, []);
 
   const { data: leaves = [], isLoading } = useQuery({
     queryKey: ['my-leaves'],

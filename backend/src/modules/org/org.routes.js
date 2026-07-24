@@ -55,22 +55,23 @@ router.post('/register-org', async (req, res) => {
 });
 
 // ─── Organization Settings: GET ───────────────────────────────────────────────
-router.get('/settings', auth, async (req, res) => {
+router.get('/org/settings', auth, async (req, res) => {
   try {
     let targetOrgId = orgId(req);
     if (req.user.role === 'root_admin' && req.query.org_id) {
       targetOrgId = Number(req.query.org_id);
     }
-    const { data } = await supabase.from('organizations')
-      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
-      .eq('id', targetOrgId).single();
+    const { data, error } = await supabase.from('organizations')
+      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
+      .eq('id', targetOrgId).maybeSingle();
+    if (error) throw new Error(error.message);
     if (!data) return res.status(404).json({ error: 'Organization not found' });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Organization Settings: PUT ───────────────────────────────────────────────
-router.put('/settings', auth, async (req, res) => {
+router.put('/org/settings', auth, async (req, res) => {
   try {
     if (req.user.role !== 'root_admin') return res.status(403).json({ error: 'Root admin access required' });
     const {
@@ -78,7 +79,6 @@ router.put('/settings', auth, async (req, res) => {
       name, domain, logo_url,
       smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from,
       google_client_id, google_client_secret, google_refresh_token, google_calendar_id,
-      clockify_api_key, clockify_workspace_id,
       vapid_public_key, vapid_private_key,
       total_annual_leaves,
     } = req.body;
@@ -98,15 +98,15 @@ router.put('/settings', auth, async (req, res) => {
     if (google_client_secret && google_client_secret.trim() !== '') update.google_client_secret = google_client_secret.trim();
     if (google_refresh_token && google_refresh_token.trim() !== '') update.google_refresh_token = google_refresh_token.trim();
     if (google_calendar_id !== undefined) update.google_calendar_id = google_calendar_id;
-    if (clockify_api_key && clockify_api_key.trim() !== '') update.clockify_api_key = clockify_api_key.trim();
-    if (clockify_workspace_id !== undefined) update.clockify_workspace_id = clockify_workspace_id;
     if (vapid_public_key !== undefined) update.vapid_public_key = vapid_public_key;
     if (vapid_private_key && vapid_private_key.trim() !== '') update.vapid_private_key = vapid_private_key.trim();
     if (total_annual_leaves) update.total_annual_leaves = parseInt(total_annual_leaves) || 18;
 
+    if (Object.keys(update).length === 0) return res.status(400).json({ error: 'No fields to update' });
+
     const { data, error } = await supabase.from('organizations')
       .update(update).eq('id', targetOrgId)
-      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, clockify_workspace_id, vapid_public_key, total_annual_leaves, plan, status').single();
+      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status').single();
     if (error) throw new Error(error.message);
 
     res.json(data);
@@ -114,7 +114,7 @@ router.put('/settings', auth, async (req, res) => {
 });
 
 // ─── Organization HR Contact ──────────────────────────────────────────────────
-router.get('/hr-contact', auth, async (req, res) => {
+router.get('/org/hr-contact', auth, async (req, res) => {
   try {
     const { data } = await supabase.from('users')
       .select('email, name')

@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -218,11 +219,19 @@ export default function ExpensesPage() {
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [addOpen,   setAddOpen]   = useState(false);
   const [editExp,   setEditExp]   = useState(null);
   const [reviewExp, setReviewExp] = useState(null);
   const [confirmDel,setConfirmDel]= useState(null);
   const [filter,    setFilter]    = useState('all');
+
+  // Auto-open submit form from quick actions
+  useEffect(() => {
+    if (!isAdmin && searchParams.get('action') === 'apply') {
+      setAddOpen(true);
+    }
+  }, []);
 
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });
   const expenses = Array.isArray(_expData) ? _expData : [];

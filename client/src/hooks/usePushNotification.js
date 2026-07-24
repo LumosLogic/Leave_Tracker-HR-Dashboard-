@@ -61,12 +61,14 @@ export function usePushNotification(userId) {
         userVisibleOnly:      true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      await apiPost('/push/subscribe', {
+      // Mark as subscribed immediately once local subscription is created
+      setSubscribed(true);
+      // Sync with server (non-blocking — badge already shows Enabled)
+      apiPost('/push/subscribe', {
         subscription: sub.toJSON(),
         endpoint:     sub.endpoint,
         userAgent:    navigator.userAgent,
-      });
-      setSubscribed(true);
+      }).catch(err => console.warn('[Push] Server sync failed:', err.message));
     } catch (err) {
       console.warn('[Push] Subscribe failed:', err.message);
     }

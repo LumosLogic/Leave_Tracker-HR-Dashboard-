@@ -184,4 +184,27 @@ router.put('/:id/review', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// DELETE /api/regularization/:id — root_admin or admin can delete pending; root_admin can delete any
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const oId = req.user.organization_id;
+
+    const { data: reg } = await supabase.from('attendance_regularization')
+      .select('id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    if (!reg) return res.status(404).json({ error: 'Request not found' });
+
+    // HR admin can only delete pending; root admin can delete any
+    if (req.user.role === 'admin' && reg.status !== 'pending') {
+      return res.status(403).json({ error: 'HR admin can only delete pending requests' });
+    }
+
+    const { error } = await supabase.from('attendance_regularization')
+      .delete().eq('id', req.params.id).eq('organization_id', oId);
+    if (error) throw error;
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
