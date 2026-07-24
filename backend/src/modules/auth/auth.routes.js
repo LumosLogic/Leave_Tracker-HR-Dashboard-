@@ -5,6 +5,8 @@ const jwt       = require('jsonwebtoken');
 const crypto    = require('crypto');
 const multer    = require('multer');
 const cloudinary = require('cloudinary').v2;
+const { authenticator } = require('otplib');
+const qrcode = require('qrcode');
 const { supabase } = require('../../config/db');
 const { JWT_SECRET, auth } = require('../../middleware/auth');
 const { orgId, getRecipients } = require('../../utils/helpers');
@@ -39,6 +41,18 @@ router.post('/login', async (req, res) => {
     if (!user || !bcrypt.compareSync(password, user.password))
       return res.status(401).json({ error: 'Invalid email or password' });
 
+    // Record login history (fire and forget)
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || '';
+    supabase.from('users').update({ last_login_at: new Date().toISOString(), last_login_ip: clientIp, last_login_ua: userAgent }).eq('id', user.id).then(() => {});
+    supabase.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'success' }).then(() => {});
+
+    // If TOTP is enabled, return a short-lived totp-pending session
+    if (user.totp_enabled) {
+      const totpSession = jwt.sign({ user_id: user.id, purpose: 'totp-pending' }, JWT_SECRET, { expiresIn: '5m' });
+      return res.json({ requires2FA: true, totp_session: totpSession });
+    }
+
     const org = user.organizations || {};
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },
@@ -49,6 +63,9 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id, name: user.name, email: user.email, role: user.role,
         department: user.department, position: user.position, avatar_color: user.avatar_color,
+        avatar_url: user.avatar_url || '', email_verified: user.email_verified || false,
+        employee_id: user.employee_id || null, totp_enabled: user.totp_enabled || false,
+        last_login_at: user.last_login_at || null,
         force_password_change: user.force_password_change || false,
         organization_id: user.organization_id || 1,
         organization_name: org.name || 'LumosLogic',
@@ -62,7 +79,8 @@ router.post('/login', async (req, res) => {
 // ─── Auth: Get Current User ───────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
   const { data } = await supabase.from('users')
-    .select('id, name, email, role, department, position, avatar_color').eq('id', req.user.id).single();
+    .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
+    .eq('id', req.user.id).single();
   res.json(data);
 });
 
@@ -109,10 +127,27 @@ router.put('/change-password', auth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
     if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    const { data: user } = await supabase.from('users').select('password').eq('id', req.user.id).single();
+
+    const { data: user } = await supabase.from('users')
+      .select('password, password_history').eq('id', req.user.id).single();
+
     if (!bcrypt.compareSync(currentPassword, user.password))
       return res.status(400).json({ error: 'Current password is incorrect' });
-    const { error: pwErr } = await supabase.from('users').update({ password: bcrypt.hashSync(newPassword, 10), force_password_change: false }).eq('id', req.user.id);
+
+    // Check last 5 passwords for reuse
+    const history = Array.isArray(user.password_history) ? user.password_history : [];
+    const isReused = history.some(h => bcrypt.compareSync(newPassword, h));
+    if (isReused) return res.status(400).json({ error: 'Cannot reuse one of your last 5 passwords' });
+
+    const newHash = bcrypt.hashSync(newPassword, 10);
+    const newHistory = [user.password, ...history].slice(0, 5); // keep last 5
+
+    const { error: pwErr } = await supabase.from('users').update({
+      password: newHash,
+      force_password_change: false,
+      password_changed_at: new Date().toISOString(),
+      password_history: newHistory,
+    }).eq('id', req.user.id);
     if (pwErr) throw new Error(pwErr.message);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -228,6 +263,122 @@ router.post('/request-deletion', auth, async (req, res) => {
       html: `<p>Employee <strong>${req.user.name}</strong> (${req.user.email}) has requested account deletion.</p><p>Reason: ${reason || 'None provided'}</p>`
     });
     res.json({ success: true, message: 'Account deletion request submitted to HR' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── 2FA: Setup (generate QR + secret) ──────────────────────────────────────
+router.post('/totp/setup', auth, async (req, res) => {
+  try {
+    const { data: user } = await supabase.from('users').select('email, totp_enabled').eq('id', req.user.id).single();
+    if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(user.email, 'Lumos Logic HRMS', secret);
+    const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
+    // Store secret temporarily (not yet enabled)
+    await supabase.from('users').update({ totp_secret: secret }).eq('id', req.user.id);
+    res.json({ secret, qrDataUrl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── 2FA: Enable (verify code + activate) ────────────────────────────────────
+router.post('/totp/enable', auth, async (req, res) => {
+  try {
+    const { token: totpToken } = req.body;
+    if (!totpToken) return res.status(400).json({ error: 'TOTP code required' });
+    const { data: user } = await supabase.from('users').select('totp_secret').eq('id', req.user.id).single();
+    if (!user.totp_secret) return res.status(400).json({ error: 'Run /totp/setup first' });
+    if (!authenticator.check(totpToken, user.totp_secret))
+      return res.status(400).json({ error: 'Invalid code. Please try again.' });
+    await supabase.from('users').update({ totp_enabled: true }).eq('id', req.user.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── 2FA: Disable ────────────────────────────────────────────────────────────
+router.post('/totp/disable', auth, async (req, res) => {
+  try {
+    const { password: currentPassword } = req.body;
+    if (!currentPassword) return res.status(400).json({ error: 'Password required to disable 2FA' });
+    const { data: user } = await supabase.from('users').select('password').eq('id', req.user.id).single();
+    if (!bcrypt.compareSync(currentPassword, user.password))
+      return res.status(400).json({ error: 'Incorrect password' });
+    await supabase.from('users').update({ totp_enabled: false, totp_secret: null }).eq('id', req.user.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── 2FA: Verify login step ───────────────────────────────────────────────────
+router.post('/totp/verify-login', async (req, res) => {
+  try {
+    const { totp_session, token: totpToken } = req.body;
+    if (!totp_session || !totpToken) return res.status(400).json({ error: 'Missing parameters' });
+    let decoded;
+    try { decoded = jwt.verify(totp_session, JWT_SECRET); }
+    catch { return res.status(401).json({ error: 'TOTP session expired. Please login again.' }); }
+    if (decoded.purpose !== 'totp-pending') return res.status(401).json({ error: 'Invalid session' });
+
+    const { data: user } = await supabase.from('users')
+      .select('*, organizations(id, name, slug, logo_url)')
+      .eq('id', decoded.user_id).maybeSingle();
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if (!authenticator.check(totpToken, user.totp_secret))
+      return res.status(400).json({ error: 'Invalid authenticator code' });
+
+    const org = user.organizations || {};
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },
+      JWT_SECRET, { expiresIn: '7d' }
+    );
+    res.json({
+      token,
+      user: {
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        department: user.department, position: user.position, avatar_color: user.avatar_color,
+        avatar_url: user.avatar_url || '', email_verified: user.email_verified || false,
+        employee_id: user.employee_id || null, totp_enabled: true,
+        force_password_change: user.force_password_change || false,
+        organization_id: user.organization_id || 1,
+        organization_name: org.name || 'LumosLogic',
+        organization_slug: org.slug || 'lumoslogic',
+        organization_logo: org.logo_url || '',
+      }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Login History ────────────────────────────────────────────────────────────
+router.get('/login-history', auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('login_history')
+      .select('id, ip_address, user_agent, status, logged_in_at')
+      .eq('user_id', req.user.id)
+      .order('logged_in_at', { ascending: false })
+      .limit(15);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Download My Data (GDPR) ──────────────────────────────────────────────────
+router.get('/download-data', auth, async (req, res) => {
+  try {
+    const { data: user } = await supabase.from('users')
+      .select('id, name, email, role, department, position, avatar_color, employee_id, created_at, last_login_at, email_verified')
+      .eq('id', req.user.id).single();
+    const { data: leaves } = await supabase.from('leaves').select('*').eq('user_id', req.user.id);
+    const { data: attendance } = await supabase.from('attendance').select('date, check_in, check_out, status, work_hours').eq('user_id', req.user.id).limit(365);
+    const { data: history } = await supabase.from('login_history').select('ip_address, user_agent, logged_in_at, status').eq('user_id', req.user.id).limit(50);
+
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      profile: user,
+      leaves: leaves || [],
+      attendance: attendance || [],
+      login_history: history || [],
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="my-data-${user.name?.replace(/\s/g, '_')}-${Date.now()}.json"`);
+    res.json(exportData);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

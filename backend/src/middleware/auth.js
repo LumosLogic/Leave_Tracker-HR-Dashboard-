@@ -16,7 +16,12 @@ const ALLOWED_ORIGINS = [
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.purpose === 'totp-pending') return res.status(401).json({ error: 'TOTP verification required' });
+    req.user = decoded;
+    next();
+  }
   catch { return res.status(401).json({ error: 'Invalid token' }); }
 }
 

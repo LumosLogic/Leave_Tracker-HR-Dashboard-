@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock, Building2 } from 'lucide-react';
+import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock, Building2, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { apiPost } from '@/lib/api';
 
@@ -14,6 +14,11 @@ export default function Login() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
+  // 2FA step state
+  const [totpStep,         setTotpStep]         = useState(false);
+  const [totpSessionToken, setTotpSessionToken] = useState('');
+  const [totpCode,         setTotpCode]         = useState('');
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
@@ -21,9 +26,33 @@ export default function Login() {
     try {
       const payload = { email, password };
       if (orgSlug.trim()) payload.org_slug = orgSlug.trim().toLowerCase();
-      const { token, user } = await apiPost('/auth/login', payload);
+      const response = await apiPost('/auth/login', payload);
+      if (response.requires2FA) {
+        setTotpSessionToken(response.totp_session);
+        setTotpStep(true);
+        setLoading(false);
+        return;
+      }
+      const { token, user } = response;
       saveAuth(token, user);
       // Navigate directly to the correct portal — no redirect chain
+      if (user.role === 'root_admin') navigate('/root/dashboard');
+      else if (user.role === 'employee') navigate('/portal/home');
+      else navigate('/dashboard');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTotpVerify(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const { token, user } = await apiPost('/auth/totp/verify-login', { totp_session: totpSessionToken, token: totpCode });
+      saveAuth(token, user);
       if (user.role === 'root_admin') navigate('/root/dashboard');
       else if (user.role === 'employee') navigate('/portal/home');
       else navigate('/dashboard');
@@ -107,85 +136,144 @@ export default function Login() {
             <span className="text-base font-black text-[#3525cd]">LeaveTracker</span>
           </div>
 
-          <div className="mb-9">
-            <h2 className="text-[2rem] font-black text-[#151c27] tracking-[-0.04em] leading-tight mb-2">
-              Welcome back
-            </h2>
-            <p className="text-sm text-[#464555]">Please enter your credentials to access the Management Console.</p>
-          </div>
+          {/* ── TOTP Step ─────────────────────────────────────────────────── */}
+          {totpStep ? (
+            <>
+              <div className="mb-9">
+                <div className="w-14 h-14 rounded-2xl bg-[#f0f3ff] flex items-center justify-center mb-5">
+                  <ShieldCheck size={28} className="text-[#3525cd]" />
+                </div>
+                <h2 className="text-[2rem] font-black text-[#151c27] tracking-[-0.04em] leading-tight mb-2">
+                  Two-Factor Authentication
+                </h2>
+                <p className="text-sm text-[#464555]">Enter the 6-digit code from your authenticator app.</p>
+              </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="form-label">Organization Slug <span className="text-[#777587] font-normal">(optional)</span></label>
-              <div className="relative">
-                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                <input
-                  type="text" className="form-control pl-9"
-                  placeholder="e.g. lumoslogic (leave blank if only 1 org)"
-                  value={orgSlug}
-                  onChange={e => setOrgSlug(e.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="form-label">Email Address</label>
-              <input
-                type="email" className="form-control" required autoComplete="email"
-                placeholder="name@company.com" value={email}
-                onChange={e => setEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="form-label mb-0">Password</label>
-                <Link to="/forgot-password" className="text-xs text-[#3525cd] font-semibold hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'} className="form-control pr-12" required
-                  placeholder="••••••••" value={password} autoComplete="current-password"
-                  onChange={e => setPassword(e.target.value)}
-                />
+              <form onSubmit={handleTotpVerify} className="space-y-4">
+                <div>
+                  <label className="form-label">Authentication Code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="form-control tracking-widest text-center text-2xl font-black"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={totpCode}
+                    onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                    autoFocus
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-[0.83rem] text-rose-700 bg-rose-50 border border-rose-200 border-l-4 border-l-rose-500 rounded-xl px-4 py-3">
+                    {error}
+                  </div>
+                )}
+
                 <button
-                  type="button" onClick={() => setShowPw(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1"
+                  type="submit"
+                  disabled={loading || totpCode.length !== 6}
+                  className="w-full py-4 bg-[#3525cd] text-white font-bold text-base rounded-xl hover:bg-[#4f46e5] transition-all shadow-lg shadow-[#3525cd]/20 active:scale-[0.98] mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {loading ? (
+                    <span className="flex items-center gap-2 justify-center">
+                      <span className="spinner w-4 h-4" /> Verifying…
+                    </span>
+                  ) : 'Verify'}
                 </button>
+              </form>
+
+              <button
+                onClick={() => { setTotpStep(false); setTotpCode(''); setError(''); }}
+                className="w-full text-center text-sm text-[#3525cd] font-semibold hover:underline mt-5"
+              >
+                ← Back to login
+              </button>
+            </>
+          ) : (
+            /* ── Standard Login Form ──────────────────────────────────────── */
+            <>
+              <div className="mb-9">
+                <h2 className="text-[2rem] font-black text-[#151c27] tracking-[-0.04em] leading-tight mb-2">
+                  Welcome back
+                </h2>
+                <p className="text-sm text-[#464555]">Please enter your credentials to access the Management Console.</p>
               </div>
-            </div>
 
-            {error && (
-              <div className="text-[0.83rem] text-rose-700 bg-rose-50 border border-rose-200 border-l-4 border-l-rose-500 rounded-xl px-4 py-3">
-                {error}
-              </div>
-            )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="form-label">Organization Slug <span className="text-[#777587] font-normal">(optional)</span></label>
+                  <div className="relative">
+                    <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                    <input
+                      type="text" className="form-control pl-9"
+                      placeholder="e.g. lumoslogic (leave blank if only 1 org)"
+                      value={orgSlug}
+                      onChange={e => setOrgSlug(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label">Email Address</label>
+                  <input
+                    type="email" className="form-control" required autoComplete="email"
+                    placeholder="name@company.com" value={email}
+                    onChange={e => setEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="form-label mb-0">Password</label>
+                    <Link to="/forgot-password" className="text-xs text-[#3525cd] font-semibold hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPw ? 'text' : 'password'} className="form-control pr-12" required
+                      placeholder="••••••••" value={password} autoComplete="current-password"
+                      onChange={e => setPassword(e.target.value)}
+                    />
+                    <button
+                      type="button" onClick={() => setShowPw(s => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1"
+                    >
+                      {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-[#3525cd] text-white font-bold text-base rounded-xl hover:bg-[#4f46e5] transition-all shadow-lg shadow-[#3525cd]/20 active:scale-[0.98] mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2 justify-center">
-                  <span className="spinner w-4 h-4" /> Signing in…
-                </span>
-              ) : 'Login to Console'}
-            </button>
-          </form>
+                {error && (
+                  <div className="text-[0.83rem] text-rose-700 bg-rose-50 border border-rose-200 border-l-4 border-l-rose-500 rounded-xl px-4 py-3">
+                    {error}
+                  </div>
+                )}
 
-          <p className="text-center text-sm text-[#464555] mt-6">
-            New company?{' '}
-            <Link to="/register" className="text-[#3525cd] font-bold hover:underline">
-              Create your organization →
-            </Link>
-          </p>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-[#3525cd] text-white font-bold text-base rounded-xl hover:bg-[#4f46e5] transition-all shadow-lg shadow-[#3525cd]/20 active:scale-[0.98] mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2 justify-center">
+                      <span className="spinner w-4 h-4" /> Signing in…
+                    </span>
+                  ) : 'Login to Console'}
+                </button>
+              </form>
 
-          <p className="text-center text-[0.72rem] text-[#777587] mt-3">
-            LeaveTracker — Multi-Tenant HR Management
-          </p>
+              <p className="text-center text-sm text-[#464555] mt-6">
+                New company?{' '}
+                <Link to="/register" className="text-[#3525cd] font-bold hover:underline">
+                  Create your organization →
+                </Link>
+              </p>
+
+              <p className="text-center text-[0.72rem] text-[#777587] mt-3">
+                LeaveTracker — Multi-Tenant HR Management
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
