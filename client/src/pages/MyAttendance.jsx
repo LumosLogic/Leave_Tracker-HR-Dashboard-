@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut, Timer, Clock, Coffee, Play } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut,
+  Timer, Clock, Coffee, Play,
+  Download, Search, TrendingUp, BarChart2,
+} from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 
@@ -22,6 +26,7 @@ function fmtBreak(mins) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+// ─── AttendanceCheckinCard — DO NOT MODIFY ────────────────────────────────────
 function AttendanceCheckinCard({ onRefreshed }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -34,7 +39,6 @@ function AttendanceCheckinCard({ onRefreshed }) {
     try { setRecord(await apiGet('/attendance/today')); } catch { /* silent */ }
   }, []);
   useEffect(() => { load(); }, [load]);
-
 
   // Elapsed timer (pauses during break)
   useEffect(() => {
@@ -216,15 +220,25 @@ function AttendanceCheckinCard({ onRefreshed }) {
     </div>
   );
 }
+// ─── End AttendanceCheckinCard ────────────────────────────────────────────────
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const STATUS_CONFIG = {
-  present:  { label:'Present',  bg:'bg-emerald-50',  text:'text-emerald-700',  border:'border-emerald-200', dot:'bg-emerald-500', cellBg:'bg-emerald-50',  showTag: false },
-  half_day: { label:'Half Day', bg:'bg-amber-50',    text:'text-amber-700',    border:'border-amber-200',   dot:'bg-amber-500',   cellBg:'bg-amber-50',    showTag: true,  tag: 'Half' },
-  on_leave: { label:'On Leave', bg:'bg-[#f0f3ff]',   text:'text-[#3525cd]',    border:'border-[#c7c4d8]',   dot:'bg-[#3525cd]',   cellBg:'bg-indigo-50',   showTag: true,  tag: 'Leave' },
-  wfh:      { label:'WFH',      bg:'bg-cyan-50',     text:'text-cyan-700',     border:'border-cyan-200',    dot:'bg-cyan-500',    cellBg:'bg-cyan-50',     showTag: true,  tag: 'WFH' },
-  absent:   { label:'Absent',   bg:'bg-rose-50',     text:'text-rose-700',     border:'border-rose-200',    dot:'bg-rose-500',    cellBg:'bg-rose-50',     showTag: false },
+  present:  { label: 'Present',  bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200', dot: 'bg-emerald-500', cellBg: 'bg-emerald-50',  showTag: false },
+  half_day: { label: 'Half Day', bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200',   dot: 'bg-amber-500',   cellBg: 'bg-amber-50',    showTag: true,  tag: 'Half' },
+  on_leave: { label: 'On Leave', bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200',  dot: 'bg-indigo-500',  cellBg: 'bg-indigo-50',   showTag: true,  tag: 'Leave' },
+  wfh:      { label: 'WFH',      bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200',    dot: 'bg-cyan-500',    cellBg: 'bg-cyan-50',     showTag: true,  tag: 'WFH' },
+  absent:   { label: 'Absent',   bg: 'bg-rose-50',     text: 'text-rose-700',     border: 'border-rose-200',    dot: 'bg-rose-500',    cellBg: 'bg-rose-50',     showTag: false },
+};
+
+// KPI card accent config (ring color for active state)
+const KPI_RING = {
+  present:  'ring-2 ring-emerald-400',
+  half_day: 'ring-2 ring-amber-400',
+  on_leave: 'ring-2 ring-indigo-400',
+  wfh:      'ring-2 ring-cyan-400',
+  absent:   'ring-2 ring-rose-400',
 };
 
 function toDSString(d) {
@@ -232,10 +246,45 @@ function toDSString(d) {
   return `${y}-${m}-${day}`;
 }
 
+// CSV export helper
+function exportCSV(rows, monthName, year) {
+  const headers = ['Date', 'Status', 'Check-In', 'Check-Out', 'Break', 'Gross Hours', 'Working Hours'];
+  const lines = [headers.join(',')];
+  rows.forEach(r => {
+    const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
+    const grossH = r.gross_hours > 0 ? r.gross_hours : r.work_hours || null;
+    const effectiveH = r.work_hours > 0 ? r.work_hours : null;
+    lines.push([
+      r.date,
+      cfg.label,
+      r.check_in  ? fmtTime(r.check_in)  : '',
+      r.check_out ? fmtTime(r.check_out) : '',
+      r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '',
+      grossH    ? fmtHours(grossH)    : '',
+      effectiveH ? fmtHours(effectiveH) : '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `attendance-${monthName}-${year}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function MyAttendance() {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+
+  // Filter & pagination state
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [dateSearch,   setDateSearch]   = useState('');
+  const [page, setPage] = useState(1);
+
+  // Reset pagination when filters / month change
+  useEffect(() => { setPage(1); }, [statusFilter, dateSearch, month, year]);
 
   const { data: records = [], isLoading, refetch } = useQuery({
     queryKey: ['my-attendance', year, month],
@@ -252,10 +301,16 @@ export default function MyAttendance() {
   });
   const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
 
+  function prevMonth() {
+    setStatusFilter(null); setDateSearch('');
+    if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    setStatusFilter(null); setDateSearch('');
+    if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1);
+  }
 
-  function prevMonth() { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); }
-  function nextMonth() { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); }
-
+  // Build attendance + leave synthesis map (unchanged logic)
   const attMap = {};
   records.forEach(r => { attMap[r.date] = r; });
 
@@ -279,100 +334,322 @@ export default function MyAttendance() {
     }
   });
 
-  const firstDay   = new Date(year, month - 1, 1).getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayStr   = toDSString(new Date());
+  const todayStr = toDSString(new Date());
 
+  // Summary counts
   const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
   Object.values(recMap).forEach(r => {
     const d = new Date(r.date + 'T12:00:00');
     if (activeWorkDays.includes(d.getDay()) && summary[r.status] !== undefined) summary[r.status]++;
   });
 
-  const tableRecords = records.map(r => {
-    const merged = recMap[r.date];
-    return merged ? { ...r, status: merged.status } : r;
-  }).sort((a, b) => b.date.localeCompare(a.date));
+  // Full sorted table records (status merged)
+  const tableRecords = useMemo(() => {
+    return records.map(r => {
+      const merged = recMap[r.date];
+      return merged ? { ...r, status: merged.status } : r;
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, allLeaves, schedule]);
+
+  // Analytics derived from full tableRecords
+  const analytics = useMemo(() => {
+    const workingDaysCount = Object.values(recMap).filter(r => {
+      const d = new Date(r.date + 'T12:00:00');
+      return activeWorkDays.includes(d.getDay());
+    }).length;
+
+    const presentCount  = summary.present;
+    const halfDayCount  = summary.half_day;
+    const attPct = workingDaysCount > 0
+      ? Math.round(((presentCount + halfDayCount * 0.5) / workingDaysCount) * 100)
+      : 0;
+
+    // Average work hours for present/half_day rows
+    const workedRows = tableRecords.filter(r => (r.status === 'present' || r.status === 'half_day') && r.work_hours > 0);
+    const avgWorkHours = workedRows.length > 0
+      ? workedRows.reduce((sum, r) => sum + (r.work_hours || 0), 0) / workedRows.length
+      : 0;
+
+    // Total break minutes for the month
+    const totalBreakMins = tableRecords.reduce((sum, r) => sum + (r.total_break_minutes || 0), 0);
+
+    // Format avg work hours as "Xh Ym"
+    const avgH = Math.floor(avgWorkHours);
+    const avgM = Math.round((avgWorkHours - avgH) * 60);
+    const avgWorkStr = workedRows.length > 0
+      ? (avgH > 0 ? `${avgH}h ${avgM}m` : `${avgM}m`)
+      : '—';
+
+    // Format total break as "Xh Ym"
+    const tbH = Math.floor(totalBreakMins / 60);
+    const tbM = totalBreakMins % 60;
+    const totalBreakStr = totalBreakMins > 0
+      ? (tbH > 0 ? `${tbH}h ${tbM}m` : `${tbM}m`)
+      : '—';
+
+    return {
+      attPct: workingDaysCount > 0 ? `${attPct}%` : '—',
+      avgWorkStr,
+      totalBreakStr,
+      totalRecords: tableRecords.length,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableRecords, summary, activeWorkDays]);
+
+  // Filtered records (status filter + date search)
+  const filteredRecords = useMemo(() => {
+    return tableRecords.filter(r => {
+      const statusMatch = statusFilter ? r.status === statusFilter : true;
+      const dateMatch   = dateSearch.trim()
+        ? r.date.includes(dateSearch.trim())
+        : true;
+      return statusMatch && dateMatch;
+    });
+  }, [tableRecords, statusFilter, dateSearch]);
+
+  // Pagination
+  const PAGE_SIZE = 20;
+  const visibleRecords = filteredRecords.slice(0, page * PAGE_SIZE);
+  const hasMore = filteredRecords.length > visibleRecords.length;
+
+  // Toggle KPI card filter
+  function handleKpiClick(key) {
+    setStatusFilter(prev => prev === key ? null : key);
+    setPage(1);
+  }
+
+  // Dropdown status change
+  function handleDropdownChange(e) {
+    const val = e.target.value;
+    setStatusFilter(val === 'all' ? null : val);
+    setPage(1);
+  }
+
+  // Export CSV handler
+  function handleExport() {
+    exportCSV(filteredRecords, MONTH_NAMES[month - 1], year);
+  }
 
   return (
     <div>
-      {/* Check-in / Check-out */}
+      {/* Check-in / Check-out card */}
       <AttendanceCheckinCard onRefreshed={refetch} />
 
-      {/* Month nav */}
-      <div className="flex justify-end mb-6">
+      {/* Month nav + Export */}
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div className="flex items-center gap-2 bg-white border border-[#c7c4d8] rounded-xl p-1 shadow-sm">
-          <button onClick={prevMonth} className="p-2 text-[#464555] hover:text-[#151c27] hover:bg-[#f0f3ff] rounded-lg transition-colors">
+          <button
+            onClick={prevMonth}
+            className="p-2 text-[#464555] hover:text-[#151c27] hover:bg-[#f0f3ff] rounded-lg transition-colors"
+          >
             <ChevronLeft size={16} />
           </button>
           <span className="text-sm font-bold text-[#151c27] px-2 min-w-[130px] text-center">
             {MONTH_NAMES[month - 1]} {year}
           </span>
-          <button onClick={nextMonth} className="p-2 text-[#464555] hover:text-[#151c27] hover:bg-[#f0f3ff] rounded-lg transition-colors">
+          <button
+            onClick={nextMonth}
+            className="p-2 text-[#464555] hover:text-[#151c27] hover:bg-[#f0f3ff] rounded-lg transition-colors"
+          >
             <ChevronRight size={16} />
           </button>
         </div>
+
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 bg-white border border-[#c7c4d8] hover:border-[#3525cd] hover:bg-[#f0f3ff] text-[#464555] hover:text-[#3525cd] text-xs font-semibold px-4 py-2 rounded-xl transition-all shadow-sm"
+        >
+          <Download size={14} />
+          Export CSV
+        </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      {/* KPI Summary Cards — clickable */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         {Object.entries({ present: 'Present', half_day: 'Half Day', on_leave: 'On Leave', wfh: 'WFH', absent: 'Absent' }).map(([key, label]) => {
-          const cfg = STATUS_CONFIG[key] || { bg:'bg-[#f0f3ff]', text:'text-[#464555]', border:'border-[#c7c4d8]' };
+          const cfg      = STATUS_CONFIG[key] || { bg: 'bg-[#f0f3ff]', text: 'text-[#464555]', border: 'border-[#c7c4d8]' };
+          const isActive = statusFilter === key;
+          const ringCls  = isActive ? KPI_RING[key] : '';
           return (
-            <div key={key} className={`${cfg.bg} ${cfg.border} border rounded-xl p-3 text-center`}>
+            <button
+              key={key}
+              onClick={() => handleKpiClick(key)}
+              className={`${cfg.bg} ${cfg.border} ${ringCls} border rounded-xl p-3 text-center cursor-pointer transition-all hover:shadow-md focus:outline-none`}
+            >
               <p className={`text-xl font-black ${cfg.text}`}>{summary[key]}</p>
               <p className="text-[0.65rem] text-[#464455] mt-0.5">{label}</p>
-            </div>
+              {isActive && (
+                <p className={`text-[0.6rem] mt-1 font-semibold ${cfg.text} opacity-70`}>Filtered ×</p>
+              )}
+            </button>
           );
         })}
       </div>
 
+      {/* Analytics Summary Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {[
+          {
+            icon: <TrendingUp size={14} className="text-[#3525cd]" />,
+            label: 'Attendance',
+            value: analytics.attPct,
+            sub: 'of working days',
+          },
+          {
+            icon: <Clock size={14} className="text-emerald-600" />,
+            label: 'Avg Work Hours',
+            value: analytics.avgWorkStr,
+            sub: 'per present day',
+          },
+          {
+            icon: <Coffee size={14} className="text-amber-500" />,
+            label: 'Total Break Time',
+            value: analytics.totalBreakStr,
+            sub: 'this month',
+          },
+          {
+            icon: <BarChart2 size={14} className="text-cyan-600" />,
+            label: 'Total Records',
+            value: analytics.totalRecords,
+            sub: 'attendance entries',
+          },
+        ].map(({ icon, label, value, sub }) => (
+          <div key={label} className="bg-white border border-[#e7eefe] rounded-xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center shrink-0">
+              {icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-[#151c27] leading-tight">{value}</p>
+              <p className="text-[0.6rem] text-[#777587] truncate">{label}</p>
+              <p className="text-[0.55rem] text-[#aaa9b8] truncate">{sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Table — enhanced with break/gross/effective columns */}
+      {/* Search + Status filter bar */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        {/* Date search */}
+        <div className="relative flex-1 max-w-xs">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa9b8] pointer-events-none" />
+          <input
+            type="text"
+            value={dateSearch}
+            onChange={e => { setDateSearch(e.target.value); setPage(1); }}
+            placeholder="Search by date (e.g. 15)"
+            className="w-full pl-8 pr-3 py-2 text-xs border border-[#c7c4d8] rounded-xl bg-white text-[#151c27] placeholder-[#aaa9b8] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd] transition"
+          />
+        </div>
+
+        {/* Status dropdown */}
+        <select
+          value={statusFilter ?? 'all'}
+          onChange={handleDropdownChange}
+          className="text-xs border border-[#c7c4d8] rounded-xl bg-white text-[#151c27] px-3 py-2 focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd] transition cursor-pointer"
+        >
+          <option value="all">All Statuses</option>
+          <option value="present">Present</option>
+          <option value="half_day">Half Day</option>
+          <option value="on_leave">On Leave</option>
+          <option value="wfh">WFH</option>
+          <option value="absent">Absent</option>
+        </select>
+
+        {/* Clear filters (shown when any filter is active) */}
+        {(statusFilter || dateSearch) && (
+          <button
+            onClick={() => { setStatusFilter(null); setDateSearch(''); setPage(1); }}
+            className="text-xs text-[#3525cd] font-semibold px-3 py-2 rounded-xl border border-[#c7c4d8] bg-[#f0f3ff] hover:bg-[#e7eefe] transition"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Attendance Table */}
       {isLoading ? (
         <div className="flex justify-center py-10"><div className="spinner w-6 h-6" /></div>
-      ) : tableRecords.length === 0 && Object.keys(recMap).length === 0 ? (
+      ) : filteredRecords.length === 0 && Object.keys(recMap).length === 0 ? (
         <div className="text-center py-10 bg-white rounded-xl border border-[#c7c4d8] text-[#777587] text-sm">
           No records for {MONTH_NAMES[month - 1]} {year}
         </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
-                <tr>
-                  {['Date', 'Status', 'Check-In', 'Check-Out', 'Break', 'Gross Hours', 'Working Hours'].map(h => (
-                    <th key={h} className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f0f3ff]">
-                {tableRecords.map(r => {
-                  const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
-                  const grossH     = r.gross_hours > 0 ? r.gross_hours : r.work_hours || null;
-                  const effectiveH = r.work_hours > 0 ? r.work_hours : null;
-                  return (
-                    <tr key={r.id} className="hover:bg-[#f0f3ff] transition-colors">
-                      <td className="px-3 py-3 font-medium text-[#151c27] text-xs">{r.date}</td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                          {cfg.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[#464555]">{r.check_in ? fmtTime(r.check_in) : '—'}</td>
-                      <td className="px-3 py-3 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
-                      <td className="px-3 py-3 text-xs text-amber-600">{r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '—'}</td>
-                      <td className="px-3 py-3 text-xs text-[#151c27]">{grossH ? fmtHours(grossH) : '—'}</td>
-                      <td className="px-3 py-3 text-xs font-semibold text-[#151c27]">
-                        {effectiveH ? fmtHours(effectiveH) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      ) : filteredRecords.length === 0 ? (
+        <div className="text-center py-10 bg-white rounded-xl border border-[#c7c4d8] text-[#777587] text-sm">
+          No records match your current filters.
         </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Date</th>
+                    <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Check-In</th>
+                    <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Check-Out</th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide cursor-help"
+                      title="Total break duration taken during the day"
+                    >
+                      Break
+                    </th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide cursor-help"
+                      title="Total time from check-in to check-out including breaks"
+                    >
+                      Gross Hours
+                    </th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide cursor-help"
+                      title="Effective work time after deducting break time"
+                    >
+                      Working Hours
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f0f3ff]">
+                  {visibleRecords.map(r => {
+                    const cfg      = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
+                    const grossH   = r.gross_hours > 0 ? r.gross_hours : r.work_hours || null;
+                    const effectiveH = r.work_hours > 0 ? r.work_hours : null;
+                    return (
+                      <tr key={r.id ?? r.date} className="hover:bg-[#f8f9ff] transition-colors">
+                        <td className="px-3 py-3 font-medium text-[#151c27] text-xs">{r.date}</td>
+                        <td className="px-3 py-3">
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                            {cfg.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-[#464555]">{r.check_in  ? fmtTime(r.check_in)  : '—'}</td>
+                        <td className="px-3 py-3 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
+                        <td className="px-3 py-3 text-xs text-amber-600">{r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '—'}</td>
+                        <td className="px-3 py-3 text-xs text-[#151c27]">{grossH    ? fmtHours(grossH)     : '—'}</td>
+                        <td className="px-3 py-3 text-xs font-semibold text-[#151c27]">{effectiveH ? fmtHours(effectiveH) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Record count + Load More */}
+          <div className="flex items-center justify-between mt-3 px-1">
+            <p className="text-xs text-[#777587]">
+              Showing {visibleRecords.length} of {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}
+            </p>
+            {hasMore && (
+              <button
+                onClick={() => setPage(p => p + 1)}
+                className="text-xs font-semibold text-[#3525cd] border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] px-4 py-1.5 rounded-xl transition"
+              >
+                Load More
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

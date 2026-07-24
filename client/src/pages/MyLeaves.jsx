@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, CheckCircle2, XCircle, Clock, Inbox, AlertTriangle,
   Trash2, X, Info, Loader2, RotateCcw, BookOpen, Home, MapPin, Phone,
-  Filter, ChevronDown,
+  Filter, ChevronDown, Download, SortDesc, CalendarRange, ArrowRight,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
@@ -466,6 +466,55 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
   );
 }
 
+// ── Approval Timeline ─────────────────────────────────────────────────────────
+function ApprovalTimeline({ status }) {
+  const steps = ['Applied', 'Pending', status === 'approved' ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Cancelled'];
+  const activeIdx = status === 'pending' ? 1 : 2;
+  const stepColors = {
+    Applied:   { dot: 'bg-[#3525cd]', text: 'text-[#3525cd]' },
+    Pending:   { dot: 'bg-amber-400',  text: 'text-amber-600' },
+    Approved:  { dot: 'bg-emerald-500', text: 'text-emerald-600' },
+    Rejected:  { dot: 'bg-rose-500',   text: 'text-rose-600' },
+    Cancelled: { dot: 'bg-slate-400',  text: 'text-slate-500' },
+  };
+  return (
+    <div className="flex items-center gap-0 mt-1.5">
+      {steps.map((step, i) => {
+        const isActive = i <= activeIdx;
+        const isCurrent = i === activeIdx;
+        const colors = stepColors[step] || stepColors.Applied;
+        return (
+          <React.Fragment key={step}>
+            <div className="flex flex-col items-center">
+              <div className={`w-3 h-3 rounded-full border-2 transition-all ${
+                isCurrent
+                  ? `${colors.dot} border-transparent ring-2 ring-offset-1 ring-current`
+                  : isActive
+                    ? `${colors.dot} border-transparent`
+                    : 'bg-white border-[#c7c4d8]'
+              }`}
+                style={isCurrent ? { ringColor: colors.dot.replace('bg-', '') } : {}}
+              />
+              <span className={`text-[0.55rem] font-bold mt-0.5 whitespace-nowrap ${
+                isCurrent ? colors.text : isActive ? 'text-[#777587]' : 'text-[#c7c4d8]'
+              }`}>
+                {step}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`h-0.5 flex-1 mx-0.5 mb-2.5 transition-all ${
+                i < activeIdx ? colors.dot.replace('bg-', 'bg-') : 'bg-[#e7eefe]'
+              }`}
+                style={{ minWidth: '20px' }}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main MyLeaves Page ────────────────────────────────────────────────────────
 export default function MyLeaves() {
   const qc    = useQueryClient();
@@ -475,6 +524,9 @@ export default function MyLeaves() {
   const [delTarget, setDelTarget]       = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter]     = useState('all');
+  const [dateFrom, setDateFrom]         = useState('');
+  const [dateTo, setDateTo]             = useState('');
+  const [sortBy, setSortBy]             = useState('newest');
 
   // Auto-open apply panel from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
@@ -521,18 +573,81 @@ export default function MyLeaves() {
 
   const activePolicies = policies.filter(p => p.active && p.annual_quota > 0);
 
-  // Filter logic
+  // Today string for upcoming leaves comparison
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Upcoming approved leaves (start_date > today, non-WFH)
+  const upcomingLeaves = leaves
+    .filter(l => !isWFHRecord(l) && l.status === 'approved' && l.start_date > todayStr)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  // Sort comparator
+  function sortComparator(a, b) {
+    switch (sortBy) {
+      case 'oldest':     return (a.created_at || '').localeCompare(b.created_at || '');
+      case 'leave_date': return b.start_date.localeCompare(a.start_date);
+      case 'newest':
+      default:           return (b.created_at || '').localeCompare(a.created_at || '');
+    }
+  }
+
+  // Filter + sort logic
   const sortedLeaves = [...leaves]
-    .sort((a, b) => b.start_date.localeCompare(a.start_date))
     .filter(l => {
       if (statusFilter !== 'all' && l.status !== statusFilter) return false;
       if (typeFilter === 'wfh' && !isWFHRecord(l)) return false;
       if (typeFilter !== 'all' && typeFilter !== 'wfh' && (isWFHRecord(l) || l.leave_type !== typeFilter)) return false;
+      if (dateFrom && l.start_date < dateFrom) return false;
+      if (dateTo && l.start_date > dateTo) return false;
       return true;
-    });
+    })
+    .sort(sortComparator);
 
   // Types that appear in the leave list (for filter dropdown)
   const usedTypes = [...new Set(leaves.map(l => isWFHRecord(l) ? 'wfh' : l.leave_type))];
+
+  // Check if any filter is active
+  const hasActiveFilters = statusFilter !== 'all' || typeFilter !== 'all' || dateFrom !== '' || dateTo !== '' || sortBy !== 'newest';
+
+  function clearAllFilters() {
+    setStatusFilter('all');
+    setTypeFilter('all');
+    setDateFrom('');
+    setDateTo('');
+    setSortBy('newest');
+  }
+
+  // Export CSV
+  function exportCSV() {
+    const headers = ['Type', 'Status', 'From', 'To', 'Days', 'Applied Date', 'Reason'];
+    const rows = sortedLeaves.map(l => {
+      const wfh   = isWFHRecord(l);
+      const wdays = wfh ? 1 : (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date));
+      const type  = wfh ? 'WFH' : leaveLabel(l.leave_type);
+      const appliedDate = l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+      // Escape commas/quotes in reason
+      const reason = l.reason ? `"${l.reason.replace(/"/g, '""')}"` : '';
+      return [type, l.status, l.start_date, l.end_date, wdays, appliedDate, reason].join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href     = url;
+    link.download = `my-leaves-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // Format date range for display
+  function fmtDateShort(d) {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${day} ${months[parseInt(m, 10) - 1]}`;
+  }
 
   return (
     <div>
@@ -541,31 +656,55 @@ export default function MyLeaves() {
           <h1 className="page-title">My Leaves</h1>
           <p className="page-subtitle">Apply and track your leave requests</p>
         </div>
-        <button onClick={() => setApplyOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all"
-          style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
-          <Plus size={15} /> Apply Request
-        </button>
+        <div className="flex items-center gap-2">
+          {sortedLeaves.length > 0 && (
+            <button onClick={exportCSV}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold text-[#3525cd] bg-[#f0f3ff] border border-[#c7c4d8] hover:bg-[#e7eefe] transition-all">
+              <Download size={14} /> Export
+            </button>
+          )}
+          <button onClick={() => setApplyOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all"
+            style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+            <Plus size={15} /> Apply Request
+          </button>
+        </div>
       </div>
 
-      {/* Summary counts */}
+      {/* Summary KPI cards — clickable to toggle status filter */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: 'Pending',  count: counts.pending,  style: STATUS_STYLES.pending  },
-          { label: 'Approved', count: counts.approved, style: STATUS_STYLES.approved },
-          { label: 'Rejected', count: counts.rejected, style: STATUS_STYLES.rejected },
-        ].map(({ label, count, style }) => (
-          <div key={label} className={`${style.bg} ${style.border} border rounded-2xl p-4 text-center`}>
-            <p className={`text-2xl font-black ${style.text}`}>{count}</p>
-            <p className="text-xs text-[#464455] mt-0.5 font-medium">{label}</p>
-          </div>
-        ))}
+          { label: 'Pending',  key: 'pending',  count: counts.pending,  style: STATUS_STYLES.pending,
+            ring: 'ring-amber-400',   activeBg: 'bg-amber-100' },
+          { label: 'Approved', key: 'approved', count: counts.approved, style: STATUS_STYLES.approved,
+            ring: 'ring-emerald-400', activeBg: 'bg-emerald-100' },
+          { label: 'Rejected', key: 'rejected', count: counts.rejected, style: STATUS_STYLES.rejected,
+            ring: 'ring-rose-400',    activeBg: 'bg-rose-100' },
+        ].map(({ label, key, count, style, ring, activeBg }) => {
+          const isActive = statusFilter === key;
+          return (
+            <div key={label}
+              onClick={() => setStatusFilter(prev => prev === key ? 'all' : key)}
+              className={`border rounded-2xl p-4 text-center cursor-pointer transition-all duration-150 select-none
+                ${isActive
+                  ? `${activeBg} ${style.border} ring-2 ${ring} shadow-sm`
+                  : `${style.bg} ${style.border} hover:shadow-sm hover:scale-[1.02]`
+                }`}>
+              <p className={`text-2xl font-black ${style.text}`}>{count}</p>
+              <p className="text-xs text-[#464455] mt-0.5 font-medium">{label}</p>
+              {isActive && (
+                <p className="text-[0.6rem] font-bold text-[#3525cd] mt-1 uppercase tracking-wide">Active filter</p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-5 items-start">
         <div>
           {/* ── Filter bar ── */}
           <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 mb-4">
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Row 1: Status tabs + type filter + sort */}
+            <div className="flex flex-wrap items-center gap-3 mb-3">
               <div className="flex items-center gap-1.5 text-[0.65rem] font-black text-[#777587] uppercase tracking-widest">
                 <Filter size={11} /> Filter
               </div>
@@ -588,19 +727,64 @@ export default function MyLeaves() {
                   </button>
                 ))}
               </div>
-              {/* Leave type filter */}
-              {usedTypes.length > 1 && (
-                <div className="relative ml-auto">
-                  <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-                    className="text-xs font-semibold bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] rounded-lg px-3 py-1.5 pr-7 appearance-none cursor-pointer focus:outline-none">
-                    <option value="all">All Types</option>
-                    <option value="wfh">WFH</option>
-                    {ALL_LEAVE_TYPES.filter(t => usedTypes.includes(t.value)).map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
+
+              {/* Right-aligned: type filter + sort */}
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
+                {/* Leave type filter */}
+                {usedTypes.length > 1 && (
+                  <div className="relative">
+                    <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+                      className="text-xs font-semibold bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] rounded-lg px-3 py-1.5 pr-7 appearance-none cursor-pointer focus:outline-none">
+                      <option value="all">All Types</option>
+                      <option value="wfh">WFH</option>
+                      {ALL_LEAVE_TYPES.filter(t => usedTypes.includes(t.value)).map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  </div>
+                )}
+
+                {/* Sort dropdown */}
+                <div className="relative">
+                  <SortDesc size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+                    className="text-xs font-semibold bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] rounded-lg pl-7 pr-7 py-1.5 appearance-none cursor-pointer focus:outline-none">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="leave_date">By Leave Date</option>
                   </select>
                   <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
                 </div>
+              </div>
+            </div>
+
+            {/* Row 2: Date range filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              <CalendarRange size={11} className="text-[#777587]" />
+              <span className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest">Date Range</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="text-xs bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#3525cd] cursor-pointer"
+                placeholder="From"
+              />
+              <span className="text-[#c7c4d8] text-xs">→</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={e => setDateTo(e.target.value)}
+                className="text-xs bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#3525cd] cursor-pointer"
+                placeholder="To"
+              />
+              {(dateFrom || dateTo) && (
+                <button
+                  onClick={() => { setDateFrom(''); setDateTo(''); }}
+                  className="text-[0.65rem] font-bold text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg transition-colors flex items-center gap-1">
+                  <X size={9} /> Clear dates
+                </button>
               )}
             </div>
           </div>
@@ -611,7 +795,7 @@ export default function MyLeaves() {
           ) : sortedLeaves.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-xl border border-[#c7c4d8]">
               <div className="w-16 h-16 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-3xl mx-auto mb-3">🗓️</div>
-              {statusFilter === 'all' && typeFilter === 'all' ? (
+              {!hasActiveFilters ? (
                 <>
                   <p className="text-[#464555] font-semibold">No leave requests yet</p>
                   <p className="text-[#777587] text-sm mt-1 max-w-xs mx-auto">
@@ -625,9 +809,13 @@ export default function MyLeaves() {
               ) : (
                 <>
                   <p className="text-[#464555] font-semibold">No matching requests</p>
-                  <p className="text-[#777587] text-sm mt-1">Try changing your filters.</p>
-                  <button onClick={() => { setStatusFilter('all'); setTypeFilter('all'); }} className="mt-3 text-sm font-bold text-[#3525cd] hover:underline">
-                    Clear Filters
+                  <p className="text-[#777587] text-sm mt-1 max-w-xs mx-auto">
+                    No leave requests match the current filters. Try adjusting the status, type, or date range.
+                  </p>
+                  <button onClick={clearAllFilters}
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-white px-5 py-2.5 rounded-xl shadow-sm transition-all"
+                    style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}>
+                    <RotateCcw size={13} /> Clear All Filters
                   </button>
                 </>
               )}
@@ -638,13 +826,14 @@ export default function MyLeaves() {
                 const s   = STATUS_STYLES[l.status] || STATUS_STYLES.pending;
                 const wfh = isWFHRecord(l);
                 const wdays = wfh ? 1 : (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date));
+                const showTimeline = l.status !== 'pending';
                 return (
                   <div key={l.id}
                     className={`bg-white rounded-xl border border-[#c7c4d8] p-4 shadow-card hover:shadow-card-hover transition-all
-                      ${l.status === 'pending'  ? 'border-l-4 border-l-amber-400'   : ''}
-                      ${l.status === 'approved' ? 'border-l-4 border-l-emerald-400' : ''}
-                      ${l.status === 'rejected' ? 'border-l-4 border-l-rose-400'    : ''}
-                      ${l.status === 'cancelled' ? 'border-l-4 border-l-slate-300'  : ''}`}
+                      ${l.status === 'pending'   ? 'border-l-4 border-l-amber-400'   : ''}
+                      ${l.status === 'approved'  ? 'border-l-4 border-l-emerald-400' : ''}
+                      ${l.status === 'rejected'  ? 'border-l-4 border-l-rose-400'    : ''}
+                      ${l.status === 'cancelled' ? 'border-l-4 border-l-slate-300'   : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
@@ -679,7 +868,13 @@ export default function MyLeaves() {
                         </div>
                         {/* Applied date */}
                         <p className="text-[0.65rem] text-[#9ca3af]">Applied {l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
-                        {l.reason && <p className="text-xs text-[#777587] mt-1 italic">"{l.reason}"</p>}
+
+                        {/* Approval timeline — shown when not pending */}
+                        {showTimeline && (
+                          <ApprovalTimeline status={l.status} />
+                        )}
+
+                        {l.reason && <p className="text-xs text-[#777587] mt-1.5 italic">"{l.reason}"</p>}
                         {/* Approved by */}
                         {(l.status === 'approved' || l.status === 'rejected') && l.approver_name && (
                           <p className="text-[0.65rem] text-[#777587] mt-1">
@@ -712,6 +907,40 @@ export default function MyLeaves() {
 
         {/* Right sidebar */}
         <div className="space-y-4 self-start">
+
+          {/* Upcoming Leaves */}
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
+            <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
+              <CalendarRange size={14} className="text-[#3525cd]" />
+              <span className="font-black text-[#151c27] text-sm">Upcoming Leaves</span>
+            </div>
+            <div className="p-4">
+              {upcomingLeaves.length === 0 ? (
+                <p className="text-xs text-[#9ca3af] text-center py-3">No upcoming leaves</p>
+              ) : (
+                <div className="space-y-2">
+                  {upcomingLeaves.map(l => {
+                    const wdays = l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date);
+                    const isSingle = l.start_date === l.end_date;
+                    return (
+                      <div key={l.id} className="flex items-center gap-2.5 py-2 border-b border-[#f0f3ff] last:border-0">
+                        <span className={`text-[0.65rem] px-2 py-0.5 rounded-full border font-bold capitalize flex-shrink-0 ${LEAVE_TYPE_COLORS[l.leave_type] || LEAVE_TYPE_COLORS.other}`}>
+                          {leaveLabel(l.leave_type)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#151c27] truncate">
+                            {isSingle ? fmtDateShort(l.start_date) : `${fmtDateShort(l.start_date)} → ${fmtDateShort(l.end_date)}`}
+                          </p>
+                          <p className="text-[0.6rem] text-[#9ca3af]">{wdays} day{wdays !== 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Leave Balance */}
           <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm">
             <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
