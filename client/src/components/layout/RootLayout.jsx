@@ -56,6 +56,7 @@ const NAV_SECTIONS = [
     { to: '/root/notifications', label: 'Notifications', Icon: Bell, notifBadge: true },
   ]},
   { id: 'tour-nav-account', title: 'Administration', items: [
+    { to: '/root/pending-approvals',  label: 'Pending Approvals',   Icon: ClipboardList },
     { to: '/root/org-settings',       label: 'Org Settings',        Icon: Building2 },
     { to: '/root/manage-root-admins', label: 'Manage Root Admins',  Icon: Shield },
     { to: '/root/settings',           label: 'Settings',            Icon: Settings },

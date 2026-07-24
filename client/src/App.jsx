@@ -47,6 +47,7 @@ import BiometricDevices      from '@/pages/BiometricDevices';
 import BiometricPinMapping   from '@/pages/BiometricPinMapping';
 import BiometricLogs         from '@/pages/BiometricLogs';
 import BiometricSettings     from '@/pages/BiometricSettings';
+import PendingApprovals      from '@/pages/PendingApprovals';
 
 // ── Employee portal pages ──
 import EmployeeHome            from '@/pages/EmployeeHome';
@@ -168,8 +169,10 @@ function AppRoutes() {
         <Route path="/root/performance"     element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
         <Route path="/root/onboarding"      element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
         <Route path="/root/exit-management" element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
-        <Route path="/root/notifications"   element={<NotificationCenter />} />
-        <Route path="/root/settings"        element={<Settings />} />
+        <Route path="/root/notifications"      element={<NotificationCenter />} />
+        <Route path="/root/settings"           element={<Settings />} />
+        <Route path="/root/pending-approvals"  element={<PendingApprovals />} />
+        <Route path="/pending-approvals"       element={<PendingApprovals />} />
         <Route path="/root/manage-hr"            element={<ManageHR />} />
         <Route path="/root/manage-root-admins"  element={<ManageRootAdmins />} />
         <Route path="/root/broadcast"       element={<Broadcast />} />

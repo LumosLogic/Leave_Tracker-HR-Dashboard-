@@ -60,6 +60,7 @@ const COMMUNICATION_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
+  { to: '/pending-approvals', label: 'Pending Approvals', Icon: ClipboardList, adminOnly: true },
   { to: '/settings', label: 'Settings', Icon: Settings },
   { to: '/profile',  label: 'Profile',  Icon: UserCircle },
 ];

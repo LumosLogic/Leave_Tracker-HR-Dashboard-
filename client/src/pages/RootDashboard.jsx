@@ -14,7 +14,7 @@ import {
   Award, DollarSign, Receipt, BarChart3, Radio, Settings,
   ChevronUp, ChevronDown, Filter,
 } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -183,10 +183,11 @@ export default function RootDashboard() {
   const qc       = useQueryClient();
 
   // ── UI state ──────────────────────────────────────────────────────────────────
-  const [trendDays,      setTrendDays]      = useState(30);
-  const [yearlySort,     setYearlySort]     = useState({ col: 'usedDays', dir: 'desc' });
-  const [yearlyDeptFilt, setYearlyDeptFilt] = useState('');
-  const [attModal,       setAttModal]       = useState(null); // { date, filter }
+  const [trendDays,       setTrendDays]       = useState(30);
+  const [yearlySort,      setYearlySort]      = useState({ col: 'usedDays', dir: 'desc' });
+  const [yearlyDeptFilt,  setYearlyDeptFilt]  = useState('');
+  const [attModal,        setAttModal]        = useState(null);
+  const [pendingTab,      setPendingTab]      = useState('all');
 
   const { data, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey:        ['root-dashboard'],
@@ -200,6 +201,13 @@ export default function RootDashboard() {
     refetchInterval: 300000,
   });
 
+  const { data: pendingRegs = [] } = useQuery({
+    queryKey:        ['root-pending-regs'],
+    queryFn:         () => apiGet('/regularization').catch(() => []),
+    select:          d => (Array.isArray(d) ? d : []).filter(r => r.status === 'pending'),
+    refetchInterval: 60000,
+  });
+
   const approveMut = useMutation({
     mutationFn: id => apiPut(`/leaves/${id}/approve`),
     onSuccess:  () => { toast('Leave approved!', 'success'); qc.invalidateQueries({ queryKey: ['root-dashboard'] }); },
@@ -208,6 +216,16 @@ export default function RootDashboard() {
   const rejectMut = useMutation({
     mutationFn: id => apiPut(`/leaves/${id}/reject`),
     onSuccess:  () => { toast('Leave rejected', 'warning'); qc.invalidateQueries({ queryKey: ['root-dashboard'] }); },
+    onError:    err => toast(err.message, 'error'),
+  });
+  const approveRegMut = useMutation({
+    mutationFn: id => apiPut(`/regularization/${id}/review`, { status: 'approved' }),
+    onSuccess:  () => { toast('Regularization approved!', 'success'); qc.invalidateQueries({ queryKey: ['root-pending-regs'] }); },
+    onError:    err => toast(err.message, 'error'),
+  });
+  const rejectRegMut = useMutation({
+    mutationFn: id => apiPut(`/regularization/${id}/review`, { status: 'rejected' }),
+    onSuccess:  () => { toast('Regularization rejected', 'warning'); qc.invalidateQueries({ queryKey: ['root-pending-regs'] }); },
     onError:    err => toast(err.message, 'error'),
   });
 
@@ -483,20 +501,13 @@ export default function RootDashboard() {
       icon: <UserCheck size={16} />, iconBg: 'bg-emerald-50 text-emerald-600',
       tooltip: 'Percentage of employees present today. Click to view details.',
       onClick: () => setAttModal({ date: new Date().toISOString().split('T')[0], filter: 'present' }) },
-    { label: 'Pending Approvals', value: pendingLeaves,
-      sub: pendingLeaves > 0 ? 'Needs attention' : 'All clear',
+    { label: 'Pending Approvals', value: pendingLeaves + pendingRegs.length,
+      sub: (pendingLeaves + pendingRegs.length) > 0 ? 'Needs attention' : 'All clear',
       icon: <ClipboardList size={16} />,
-      iconBg: pendingLeaves > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
-      tooltip: 'Leave requests awaiting your approval.',
-      alert: pendingLeaves > 0, onClick: () => {
-        const wfhPending   = pendingLeavesData.filter(l => l.leave_time === 'wfh' || l.leave_type === 'wfh');
-        const leavePending = pendingLeavesData.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
-        if (wfhPending.length > 0 && leavePending.length === 0) {
-          navigate('/root/leaves?tab=wfh&status=pending');
-        } else {
-          navigate('/root/leaves?tab=all&status=pending');
-        }
-      } },
+      iconBg: (pendingLeaves + pendingRegs.length) > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
+      tooltip: 'All pending approval requests. Click to view the dedicated approvals dashboard.',
+      alert: (pendingLeaves + pendingRegs.length) > 0,
+      onClick: () => navigate('/root/pending-approvals') },
     { label: 'HR Admins', value: totalHR, sub: 'Active admins',
       icon: <ShieldCheck size={16} />, iconBg: 'bg-purple-50 text-purple-600',
       tooltip: 'Number of HR administrators managing the organization. Click to manage HR access.',
@@ -620,47 +631,99 @@ export default function RootDashboard() {
         ))}
       </div>
 
-      {/* ── LIVE ACTIVITY + ACTION CENTER + WORKFORCE ─────────────────────────── */}
+      {/* ── PENDING APPROVALS + ACTION CENTER + WORKFORCE ─────────────────────── */}
       <div className="grid lg:grid-cols-5 gap-5">
 
-        {/* Live Activity */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+        {/* Pending Approvals (replaces Live Activity) */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
             <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live Activity
+              <ClipboardList size={14} className="text-amber-500" /> Pending Approvals
+              {(pendingLeavesData.length + pendingRegs.length) > 0 && (
+                <span className="text-[0.6rem] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
+                  {pendingLeavesData.length + pendingRegs.length}
+                </span>
+              )}
             </h2>
-            <button onClick={() => navigate('/root/calendar')}
+            <button onClick={() => navigate('/root/pending-approvals')}
               className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-              View all
+              View all →
             </button>
           </div>
-          <div className="divide-y divide-[#f9f9ff]">
-            {liveActivity.length === 0 ? (
-              <div className="py-10 text-center">
-                <Activity size={22} className="text-[#c7c4d8] mx-auto mb-2" />
-                <p className="text-sm font-semibold text-[#464555]">No activity yet today</p>
-                <p className="text-xs text-[#9ca3af] mt-0.5">Check-ins and leave requests will appear here.</p>
-              </div>
-            ) : liveActivity.slice(0, 7).map((item, i) => (
-              <div key={i} className="flex items-start gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors">
-                <Avatar name={item.name} color={item.avatar_color} size={30} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#464555] leading-snug">
-                    <button onClick={e => handleActivityNameClick(e, item)}
-                      className="font-bold text-[#3525cd] hover:underline focus:outline-none">
-                      {item.name}
-                    </button>
-                    {' '}{item.detail}
-                  </p>
-                  {item.department && <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{item.department}</p>}
-                </div>
-                <span className="text-[0.6rem] text-[#9ca3af] whitespace-nowrap flex-shrink-0">{relTime(item.time)}</span>
-              </div>
+
+          {/* Type tabs */}
+          <div className="flex gap-1 px-4 pt-3 pb-2 border-b border-[#f0f3ff] overflow-x-auto">
+            {[
+              { key: 'all',   label: `All (${pendingLeavesData.length + pendingRegs.length})` },
+              { key: 'leave', label: `Leave (${pendingLeavesData.filter(l => l.leave_type !== 'wfh' && l.leave_time !== 'wfh').length})` },
+              { key: 'wfh',   label: `WFH (${pendingLeavesData.filter(l => l.leave_type === 'wfh' || l.leave_time === 'wfh').length})` },
+              { key: 'reg',   label: `Regularization (${pendingRegs.length})` },
+            ].map(t => (
+              <button key={t.key} onClick={() => setPendingTab(t.key)}
+                className={`px-2.5 py-1 rounded-full text-[0.65rem] font-bold whitespace-nowrap transition-all ${
+                  pendingTab === t.key ? 'bg-[#3525cd] text-white' : 'bg-[#f0f3ff] text-[#777587] hover:text-[#3525cd]'
+                }`}>
+                {t.label}
+              </button>
             ))}
+          </div>
+
+          <div className="flex-1 divide-y divide-[#f9f9ff] overflow-y-auto" style={{ maxHeight: 280 }}>
+            {(() => {
+              const isWfh = l => l.leave_type === 'wfh' || l.leave_time === 'wfh';
+              const leaves = pendingTab === 'all'   ? pendingLeavesData
+                           : pendingTab === 'leave' ? pendingLeavesData.filter(l => !isWfh(l))
+                           : pendingTab === 'wfh'   ? pendingLeavesData.filter(isWfh)
+                           : [];
+              const regs   = pendingTab === 'all' || pendingTab === 'reg' ? pendingRegs : [];
+              const combined = [
+                ...leaves.map(l => ({ ...l, _kind: 'leave' })),
+                ...regs.map(r => ({ ...r, _kind: 'reg' })),
+              ];
+              if (combined.length === 0) return (
+                <div className="py-10 text-center">
+                  <CheckCircle2 size={22} className="text-emerald-400 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-[#464555]">All clear!</p>
+                  <p className="text-xs text-[#9ca3af] mt-0.5">No pending requests.</p>
+                </div>
+              );
+              return combined.slice(0, 8).map((item, i) => (
+                <div key={`${item._kind}-${item.id}`} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[#fafaff] transition-colors">
+                  <Avatar name={item.name || item.user_name} color={item.avatar_color || item.user_avatar_color} size={28} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-[#151c27] truncate">{item.name || item.user_name}</p>
+                    <p className="text-[0.6rem] text-[#9ca3af]">
+                      {item._kind === 'leave'
+                        ? `${isWfh(item) ? 'WFH' : (item.leave_type || 'Leave')} · ${item.start_date}${item.end_date && item.end_date !== item.start_date ? ` → ${item.end_date}` : ''}`
+                        : `Regularization · ${item.date}`}
+                    </p>
+                  </div>
+                  <span className={`text-[0.58rem] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                    item._kind === 'reg' ? 'bg-orange-50 text-orange-600' : isWfh(item) ? 'bg-[#f0f3ff] text-[#3525cd]' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {item._kind === 'reg' ? 'Reg.' : isWfh(item) ? 'WFH' : 'Leave'}
+                  </span>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => item._kind === 'leave' ? approveMut.mutate(item.id) : approveRegMut.mutate(item.id)}
+                      disabled={isBusy || approveRegMut.isPending || rejectRegMut.isPending}
+                      className="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 transition-colors disabled:opacity-40">
+                      <Check size={10} />
+                    </button>
+                    <button
+                      onClick={() => item._kind === 'leave' ? rejectMut.mutate(item.id) : rejectRegMut.mutate(item.id)}
+                      disabled={isBusy || approveRegMut.isPending || rejectRegMut.isPending}
+                      className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-200 transition-colors disabled:opacity-40">
+                      <X size={10} />
+                    </button>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </div>
 
-        {/* Action Center — Quick Actions + Pending Tasks */}
+        {/* Action Center — Quick Actions + Pending Tasks (Quick Approvals removed) */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
             <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
@@ -715,34 +778,6 @@ export default function RootDashboard() {
               </div>
             )}
           </div>
-
-          {/* Quick Approvals */}
-          {pendingLeavesData.length > 0 && (
-            <div className="px-5 py-3 border-t border-[#e7eefe] bg-[#fafaff]">
-              <p className="text-[0.6rem] font-bold text-[#777587] uppercase tracking-wide mb-2">Quick Approvals</p>
-              <div className="space-y-2">
-                {pendingLeavesData.slice(0, 3).map(l => (
-                  <div key={l.id} className="flex items-center gap-2">
-                    <Avatar name={l.name} color={l.avatar_color} size={24} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-[#151c27] truncate">{l.name}</p>
-                      <p className="text-[0.6rem] text-[#9ca3af]">{l.leave_type} · {l.start_date}</p>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => approveMut.mutate(l.id)} disabled={isBusy}
-                        className="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 transition-colors disabled:opacity-40">
-                        <Check size={10} />
-                      </button>
-                      <button onClick={() => rejectMut.mutate(l.id)} disabled={isBusy}
-                        className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-200 transition-colors disabled:opacity-40">
-                        <X size={10} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Today's Workforce — interactive doughnut */}
