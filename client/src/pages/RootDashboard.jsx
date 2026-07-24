@@ -703,18 +703,18 @@ export default function RootDashboard() {
                   }`}>
                     {item._kind === 'reg' ? 'Reg.' : isWfh(item) ? 'WFH' : 'Leave'}
                   </span>
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-1.5 shrink-0">
                     <button
                       onClick={() => item._kind === 'leave' ? approveMut.mutate(item.id) : approveRegMut.mutate(item.id)}
                       disabled={isBusy || approveRegMut.isPending || rejectRegMut.isPending}
-                      className="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 transition-colors disabled:opacity-40">
-                      <Check size={10} />
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[0.65rem] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors disabled:opacity-40">
+                      <Check size={10} /> Approve
                     </button>
                     <button
                       onClick={() => item._kind === 'leave' ? rejectMut.mutate(item.id) : rejectRegMut.mutate(item.id)}
                       disabled={isBusy || approveRegMut.isPending || rejectRegMut.isPending}
-                      className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-200 transition-colors disabled:opacity-40">
-                      <X size={10} />
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[0.65rem] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-colors disabled:opacity-40">
+                      <X size={10} /> Reject
                     </button>
                   </div>
                 </div>
@@ -1035,52 +1035,6 @@ export default function RootDashboard() {
           </div>
         </div>
 
-        {/* Pending Approvals */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-              <ClipboardList size={13} className="text-amber-500" /> Pending Approvals
-              {pendingLeavesData.length > 0 && (
-                <span className="text-[0.62rem] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold">
-                  {pendingLeavesData.length}
-                </span>
-              )}
-            </h2>
-            <button onClick={() => navigate('/root/leaves?tab=all&status=pending')}
-              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-              View all →
-            </button>
-          </div>
-          <div className="divide-y divide-[#f0f3ff]">
-            {pendingLeavesData.length === 0 ? (
-              <div className="py-10 text-center">
-                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-2">
-                  <Check size={18} className="text-emerald-500" />
-                </div>
-                <p className="text-sm font-semibold text-[#151c27]">All caught up!</p>
-                <p className="text-xs text-[#777587] mt-0.5">No pending leave requests at the moment.</p>
-              </div>
-            ) : pendingLeavesData.slice(0, 5).map(l => (
-              <div key={l.id} className="flex items-center gap-2.5 px-4 py-3 hover:bg-[#f9f9ff] transition-colors">
-                <Avatar name={l.name} color={l.avatar_color} size={30} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-[#151c27] truncate">{l.name}</p>
-                  <p className="text-[0.6rem] text-[#9ca3af]">{l.leave_type} · {l.start_date}</p>
-                </div>
-                <div className="flex gap-1 flex-shrink-0">
-                  <button onClick={() => approveMut.mutate(l.id)} disabled={isBusy}
-                    className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all disabled:opacity-40">
-                    <Check size={9} /> Approve
-                  </button>
-                  <button onClick={() => rejectMut.mutate(l.id)} disabled={isBusy}
-                    className="flex items-center gap-0.5 px-2 py-1 rounded text-[0.62rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all disabled:opacity-40">
-                    <X size={9} /> Reject
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* ── YEARLY LEAVE OVERVIEW — sortable + filterable ─────────────────────── */}

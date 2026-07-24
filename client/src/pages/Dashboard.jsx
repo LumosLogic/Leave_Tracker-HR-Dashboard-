@@ -788,7 +788,7 @@ export default function Dashboard() {
       label: 'Pending Approvals', value: pending,
       hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
       icon: <ClipboardList size={18} />, iconBg: pending > 0 ? 'bg-rose-50' : 'bg-slate-50', iconColor: pending > 0 ? 'text-rose-500' : 'text-slate-400',
-      onClick: () => navigate('/leaves?tab=all&status=pending'),
+      onClick: () => navigate('/pending-approvals'),
     },
   ];
 

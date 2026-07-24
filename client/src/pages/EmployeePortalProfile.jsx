@@ -802,8 +802,9 @@ function FamilySection({ empId }) {
 
 // ─── EDUCATION SECTION ───────────────────────────────────────────────────────
 
-const EDU_BLANK = { degree_level: '', institution: '', board_university: '', specialization: '', year_of_passing: '', percentage: '', cgpa: '', degree_class: '' };
-const DEGREE_LEVELS = ['10th','12th','diploma','bachelor','master','phd','other'];
+const EDU_BLANK = { degree_level: '', institution: '', board_university: '', specialization: '', from_year: '', to_year: '', year_of_passing: '', result_type: 'percentage', percentage: '', cgpa: '', degree_class: '', education_mode: '', education_country: 'India', enrollment_number: '', remarks: '' };
+const DEGREE_LEVELS = ['SSC / 10th','HSC / 12th','Diploma','Graduation','Post Graduation','PhD','Other'];
+const EDU_COUNTRIES = ['India','United States','United Kingdom','Canada','Australia','UAE','Singapore','Germany','France','Japan','Other'];
 
 function EducationSection({ empId }) {
   const toast = useToast();
@@ -845,7 +846,7 @@ function EducationSection({ empId }) {
   function openAdd() { setEditing(null); setForm(EDU_BLANK); setModalOpen(true); }
   function openEdit(r) {
     setEditing(r);
-    setForm({ degree_level: r.degree_level || '', institution: r.institution || '', board_university: r.board_university || '', specialization: r.specialization || '', year_of_passing: r.year_of_passing || '', percentage: r.percentage || '', cgpa: r.cgpa || '', degree_class: r.degree_class || '' });
+    setForm({ degree_level: r.degree_level||'', institution: r.institution||'', board_university: r.board_university||'', specialization: r.specialization||'', from_year: r.from_year||'', to_year: r.to_year||'', year_of_passing: r.year_of_passing||'', result_type: r.result_type||'percentage', percentage: r.percentage||'', cgpa: r.cgpa||'', degree_class: r.degree_class||'', education_mode: r.education_mode||'', education_country: r.education_country||'India', enrollment_number: r.enrollment_number||'', remarks: r.remarks||'' });
     setModalOpen(true);
   }
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -896,47 +897,74 @@ function EducationSection({ empId }) {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Education' : 'Add Education'} size="md"
-        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">Degree Level</label>
-              <select className="form-control" value={form.degree_level} onChange={e => setF('degree_level', e.target.value)}>
-                <option value="">Select…</option>
-                {DEGREE_LEVELS.map(d => <option key={d} value={d}>{d.toUpperCase()}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Year of Passing</label>
-              <input className="form-control" type="number" value={form.year_of_passing} onChange={e => setF('year_of_passing', e.target.value)} placeholder="2020" min="1950" max="2099" />
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Qualification' : 'Add Qualification'} size="lg"
+        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !form.institution}>{saveMut.isPending ? 'Saving…' : 'Save Qualification'}</button></>}>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="form-label">Degree Level</label>
+            <select className="form-control" value={form.degree_level} onChange={e=>setF('degree_level',e.target.value)}>
+              <option value="">— Select —</option>
+              {DEGREE_LEVELS.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div><label className="form-label">Education Mode</label>
+            <select className="form-control" value={form.education_mode} onChange={e=>setF('education_mode',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Regular','Distance Learning','Online','Part-Time','Full-Time'].map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div><label className="form-label">Institution / School <span className="text-rose-500">*</span></label>
+            <input className="form-control" value={form.institution} onChange={e=>setF('institution',e.target.value)} placeholder="e.g. IIT Bombay"/>
+          </div>
+          <div><label className="form-label">Board / University</label>
+            <input className="form-control" value={form.board_university} onChange={e=>setF('board_university',e.target.value)} placeholder="e.g. Mumbai University"/>
+          </div>
+          <div><label className="form-label">Specialization / Stream</label>
+            <input className="form-control" value={form.specialization} onChange={e=>setF('specialization',e.target.value)} placeholder="e.g. Computer Science"/>
+          </div>
+          <div><label className="form-label">Country</label>
+            <select className="form-control" value={form.education_country} onChange={e=>setF('education_country',e.target.value)}>
+              {EDU_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div><label className="form-label">From Year</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2018" value={form.from_year} onChange={e=>setF('from_year',e.target.value)}/>
+          </div>
+          <div><label className="form-label">To Year</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2022" value={form.to_year} onChange={e=>setF('to_year',e.target.value)}/>
+          </div>
+          <div><label className="form-label">Year of Passing</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} value={form.year_of_passing} onChange={e=>setF('year_of_passing',e.target.value)}/>
+          </div>
+          <div><label className="form-label">Enrollment / Roll Number</label>
+            <input className="form-control" placeholder="Optional" value={form.enrollment_number} onChange={e=>setF('enrollment_number',e.target.value)}/>
+          </div>
+          <div className="col-span-2"><label className="form-label">Result Type</label>
+            <div className="flex gap-4">
+              {['percentage','cgpa'].map(t=>(
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="portal-result-type" value={t} checked={form.result_type===t} onChange={()=>setF('result_type',t)} className="accent-[#3525cd]"/>
+                  <span className="text-sm font-semibold text-[#464555]">{t==='percentage'?'Percentage':'CGPA'}</span>
+                </label>
+              ))}
             </div>
           </div>
-          <div>
-            <label className="form-label">Institution *</label>
-            <input className="form-control" value={form.institution} onChange={e => setF('institution', e.target.value)} placeholder="University / College / School name" />
-          </div>
-          <div>
-            <label className="form-label">Board / University</label>
-            <input className="form-control" value={form.board_university} onChange={e => setF('board_university', e.target.value)} placeholder="CBSE / Mumbai University" />
-          </div>
-          <div>
-            <label className="form-label">Specialization / Stream</label>
-            <input className="form-control" value={form.specialization} onChange={e => setF('specialization', e.target.value)} placeholder="Computer Science, Finance, etc." />
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="form-label">Percentage</label>
-              <input className="form-control" type="number" value={form.percentage} onChange={e => setF('percentage', e.target.value)} placeholder="85.5" step="0.01" />
+          {form.result_type==='percentage' ? (
+            <div><label className="form-label">Percentage (%)</label>
+              <input className="form-control" type="number" min="0" max="100" step="0.01" value={form.percentage} onChange={e=>setF('percentage',e.target.value)}/>
             </div>
-            <div>
-              <label className="form-label">CGPA</label>
-              <input className="form-control" type="number" value={form.cgpa} onChange={e => setF('cgpa', e.target.value)} placeholder="8.5" step="0.01" />
+          ) : (
+            <div><label className="form-label">CGPA</label>
+              <input className="form-control" type="number" min="0" max="10" step="0.01" value={form.cgpa} onChange={e=>setF('cgpa',e.target.value)}/>
             </div>
-            <div>
-              <label className="form-label">Degree Class</label>
-              <input className="form-control" value={form.degree_class} onChange={e => setF('degree_class', e.target.value)} placeholder="First / Distinction" />
-            </div>
+          )}
+          <div><label className="form-label">Class / Division</label>
+            <select className="form-control" value={form.degree_class} onChange={e=>setF('degree_class',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Distinction','First Class','Second Class','Pass','Fail'].map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2"><label className="form-label">Remarks <span className="text-xs font-normal text-[#777587]">(optional)</span></label>
+            <textarea className="form-control" rows={2} placeholder="e.g. Gold Medalist, University Rank Holder…" value={form.remarks} onChange={e=>setF('remarks',e.target.value)}/>
           </div>
         </div>
       </Modal>

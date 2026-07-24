@@ -911,6 +911,37 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
   );
 }
 
+// ── Designation mapping by department keywords ────────────────────────────────
+const DEPT_DESIGNATIONS = {
+  'web development':              ['Frontend Developer','Backend Developer','Full Stack Developer','Software Engineer','Senior Software Engineer','Lead Engineer','Tech Lead','Engineering Manager'],
+  'mobile application development': ['Mobile Developer','iOS Developer','Android Developer','React Native Developer','Flutter Developer','Mobile Tech Lead'],
+  'ui/ux':                        ['UI Designer','UX Designer','UI/UX Designer','Graphic Designer','Visual Designer','Motion Designer','Design Lead'],
+  'seo':                          ['SEO Executive','Digital Marketing Executive','Content Writer','Social Media Manager','SEO Analyst','Performance Marketer'],
+  'meta ads':                     ['Digital Marketing Executive','Performance Marketer','Paid Media Specialist','Social Media Manager'],
+  'human resources':              ['HR Executive','HR Manager','Senior HR Manager','Recruiter','Talent Acquisition Specialist','HR Business Partner','HR Coordinator'],
+  'hr':                           ['HR Executive','HR Manager','Senior HR Manager','Recruiter','Talent Acquisition Specialist','HR Business Partner'],
+  'qa':                           ['QA Engineer','Senior QA Engineer','QA Analyst','Test Lead','QA Manager','Automation Engineer'],
+  'project':                      ['Project Coordinator','Project Manager','Senior Project Manager','Scrum Master','Delivery Manager'],
+  'finance':                      ['Finance Executive','Accountant','Senior Accountant','Finance Manager','CFO'],
+  'sales':                        ['Sales Executive','Senior Sales Executive','Business Development Manager','Sales Manager'],
+  'operations':                   ['Operations Executive','Operations Manager','Business Analyst','Process Analyst'],
+  'management':                   ['Manager','Senior Manager','Director','Vice President','Chief Executive Officer','Chief Technology Officer','Chief Operating Officer'],
+};
+
+const ALL_DESIGNATIONS = ['Software Engineer','Senior Software Engineer','Lead Engineer','Engineering Manager','Frontend Developer','Backend Developer','Full Stack Developer','Mobile Developer','iOS Developer','Android Developer','React Native Developer','UI Designer','UX Designer','UI/UX Designer','Graphic Designer','SEO Executive','Digital Marketing Executive','Content Writer','QA Engineer','QA Analyst','Test Lead','HR Executive','HR Manager','Recruiter','Project Coordinator','Project Manager','Finance Executive','Accountant','Sales Executive','Business Development Manager','Operations Manager','Business Analyst','Team Lead','Assistant Manager','Manager','Senior Manager','Director','Vice President','CEO','CTO','COO'];
+
+function getDesignationsForDepts(selectedDeptNames = []) {
+  if (!selectedDeptNames.length) return ALL_DESIGNATIONS;
+  const matched = new Set();
+  selectedDeptNames.forEach(name => {
+    const lc = name.toLowerCase();
+    Object.entries(DEPT_DESIGNATIONS).forEach(([key, desigs]) => {
+      if (lc.includes(key)) desigs.forEach(d => matched.add(d));
+    });
+  });
+  return matched.size > 0 ? [...matched] : ALL_DESIGNATIONS;
+}
+
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee', initialTab = 'personal' }) {
   const isEdit            = !!employee;
@@ -1262,10 +1293,22 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="form-label">Designation / Position</label>
-                  <input className="form-control" list="designation-list-emp" placeholder="e.g. Senior Developer" value={form.position} onChange={e => set('position', e.target.value)} />
-                  <datalist id="designation-list-emp">
-                    {['Software Engineer','Senior Software Engineer','Lead Engineer','Engineering Manager','Product Manager','Project Manager','Project Coordinator','UI/UX Designer','Graphic Designer','Business Analyst','Data Analyst','Data Scientist','QA Engineer','DevOps Engineer','System Administrator','HR Executive','HR Manager','Recruiter','Marketing Executive','Sales Executive','Finance Executive','Accountant','Operations Manager','Team Lead','Assistant Manager','Manager','Senior Manager','Director','Vice President','Chief Technology Officer','Chief Executive Officer'].map(d=><option key={d} value={d}/>)}
-                  </datalist>
+                  {(() => {
+                    const selectedDeptNames = departments.filter(d => form.department_ids.includes(d.id)).map(d => d.name);
+                    const desigs = getDesignationsForDepts(selectedDeptNames);
+                    return (
+                      <>
+                        <input className="form-control" list="designation-list-emp" placeholder="e.g. Senior Developer"
+                          value={form.position} onChange={e => set('position', e.target.value)} />
+                        <datalist id="designation-list-emp">
+                          {desigs.map(d => <option key={d} value={d} />)}
+                        </datalist>
+                        {selectedDeptNames.length > 0 && (
+                          <p className="text-[0.65rem] text-[#3525cd] mt-1">Showing designations for: {selectedDeptNames.join(', ')}</p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="form-label">Joining Date</label>
@@ -1524,11 +1567,19 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
             </div>
             <div>
               <label className="form-label">Designation <span className="text-rose-500">*</span></label>
-              <input className="form-control" list="designation-list-add" placeholder="e.g. Software Developer"
-                value={form.position} onChange={e => set('position', e.target.value)} />
-              <datalist id="designation-list-add">
-                {['Software Engineer','Senior Software Engineer','Lead Engineer','Engineering Manager','Product Manager','Project Manager','Project Coordinator','UI/UX Designer','Graphic Designer','Business Analyst','Data Analyst','QA Engineer','DevOps Engineer','HR Executive','HR Manager','Recruiter','Marketing Executive','Sales Executive','Finance Executive','Accountant','Operations Manager','Team Lead','Manager','Senior Manager','Director'].map(d=><option key={d} value={d}/>)}
-              </datalist>
+              {(() => {
+                const selectedDeptNames = departments.filter(d => form.department_ids.includes(d.id)).map(d => d.name);
+                const desigs = getDesignationsForDepts(selectedDeptNames);
+                return (
+                  <>
+                    <input className="form-control" list="designation-list-add" placeholder="e.g. Software Developer"
+                      value={form.position} onChange={e => set('position', e.target.value)} />
+                    <datalist id="designation-list-add">
+                      {desigs.map(d => <option key={d} value={d} />)}
+                    </datalist>
+                  </>
+                );
+              })()}
             </div>
           </div>
           <div>
