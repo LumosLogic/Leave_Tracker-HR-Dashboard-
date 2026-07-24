@@ -696,21 +696,21 @@ export default function EmployeeHome() {
               {
                 label: 'Pending Leave Requests',
                 count: pendingLeaves.length,
-                to: '/portal/leaves',
+                to: '/portal/leaves?status=pending',
                 icon: <Umbrella size={14} className="text-[#3525cd]" />,
                 bg: 'bg-[#f0f3ff]',
               },
               {
                 label: 'Pending Regularization',
                 count: pendingReg.length,
-                to: '/portal/regularization',
+                to: '/portal/regularization?status=pending',
                 icon: <ClipboardList size={14} className="text-amber-500" />,
                 bg: 'bg-amber-50',
               },
               {
                 label: 'Pending Expenses',
                 count: pendingExpenses,
-                to: '/portal/expenses',
+                to: '/portal/expenses?status=pending',
                 icon: <CreditCard size={14} className="text-emerald-500" />,
                 bg: 'bg-emerald-50',
               },
@@ -732,10 +732,6 @@ export default function EmployeeHome() {
               </Link>
             ))}
 
-            <Link to="/portal/leaves"
-              className="flex items-center gap-1.5 text-xs font-bold text-[#3525cd] hover:underline mt-1 pt-2">
-              View All Actions <ArrowRight size={12} />
-            </Link>
           </div>
         </div>
 

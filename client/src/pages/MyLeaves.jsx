@@ -476,11 +476,11 @@ export default function MyLeaves() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter]     = useState('all');
 
-  // Auto-open apply panel from quick actions
+  // Auto-open apply panel from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
-    if (searchParams.get('action') === 'apply') {
-      setApplyOpen(true);
-    }
+    if (searchParams.get('action') === 'apply') setApplyOpen(true);
+    const s = searchParams.get('status');
+    if (s && ['pending', 'approved', 'rejected'].includes(s)) setStatusFilter(s);
   }, []);
 
   const { data: leaves = [], isLoading } = useQuery({

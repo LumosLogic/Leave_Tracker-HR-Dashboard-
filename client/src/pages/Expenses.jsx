@@ -226,11 +226,11 @@ export default function ExpensesPage() {
   const [confirmDel,setConfirmDel]= useState(null);
   const [filter,    setFilter]    = useState('all');
 
-  // Auto-open submit form from quick actions
+  // Auto-open submit form from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
-    if (!isAdmin && searchParams.get('action') === 'apply') {
-      setAddOpen(true);
-    }
+    if (!isAdmin && searchParams.get('action') === 'apply') setAddOpen(true);
+    const s = searchParams.get('status');
+    if (s && ['pending', 'approved', 'rejected'].includes(s)) setFilter(s);
   }, []);
 
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });

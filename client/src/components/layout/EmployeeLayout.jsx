@@ -82,7 +82,7 @@ function EmployeeSidebar({ onClose, onMenuClick, onSearchOpen }) {
         </button>
       </div>
 
-      <nav className="flex-1 p-3 overflow-y-auto space-y-1">
+      <nav className="flex-1 px-3 pb-3 pt-1 overflow-y-auto space-y-1">
         {NAV_SECTIONS.map((sec, idx) => (
           <div key={sec.title} id={`tour-emp-${['workspace','selfservice','growth','company'][idx] || idx}`} className="mb-2">
             <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{sec.title}</p>

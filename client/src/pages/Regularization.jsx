@@ -123,11 +123,11 @@ export default function Regularization() {
   const toast = useToast();
   const qc    = useQueryClient();
 
-  // Auto-open apply modal if coming from quick actions
+  // Auto-open apply modal if coming from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
-    if (!isAdmin && searchParams.get('action') === 'apply') {
-      setApplyOpen(true);
-    }
+    if (!isAdmin && searchParams.get('action') === 'apply') setApplyOpen(true);
+    const s = searchParams.get('status');
+    if (s && ['pending', 'approved', 'rejected'].includes(s)) setFilter(s);
   }, []);
 
   const { data: _regData, isLoading } = useQuery({ queryKey: ['regularization'], queryFn: () => apiGet('/regularization') });
