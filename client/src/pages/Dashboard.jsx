@@ -1006,53 +1006,48 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ─── UPCOMING HOLIDAYS + ANNOUNCEMENTS | BIRTHDAYS ─────────────── */}
-      <div className="grid lg:grid-cols-[1fr_280px] gap-4">
+      {/* ─── UPCOMING HOLIDAYS | ANNOUNCEMENTS | BIRTHDAYS ──────────────── */}
+      <div className="grid lg:grid-cols-[1fr_1fr_280px] gap-4">
 
-        {/* Left column: Holidays grid + Announcements */}
-        <div className="space-y-4">
-
-          {/* Upcoming Holidays */}
-          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
-              <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
-                <CalendarDays size={14} className="text-[#3525cd]" /> Upcoming Holidays
-              </h2>
-              <div className="flex items-center gap-2">
-                {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
-              </div>
-            </div>
-            {holidays.length === 0 ? (
-              <div className="py-8 text-center">
-                <CalendarDays size={24} className="text-[#c7c4d8] mx-auto mb-2" />
-                <p className="text-sm text-[#777587]">No holidays in the next 30 days</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
-                {holidays.slice(0, 4).map(h => (
-                  <div key={h.id} onClick={() => navigate('/holidays')}
-                    className="flex flex-col gap-2 p-3 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:bg-[#fafaff] transition-colors cursor-pointer">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-[#eef0ff] flex items-center justify-center shrink-0 text-sm">🗓️</div>
-                      <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full capitalize ${
-                        h.type === 'public' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                      }`}>{h.type}</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-[#151c27] leading-tight">{h.name}</p>
-                      <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDate(h.date)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="px-5 py-3 border-t border-[#f0f3ff]">
-              <button onClick={() => navigate('/holidays')}
-                className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
-                See holiday calendar <ChevronRight size={12} />
-              </button>
-            </div>
+        {/* Upcoming Holidays — vertical list */}
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+            <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
+              <CalendarDays size={14} className="text-[#3525cd]" /> Upcoming Holidays
+            </h2>
+            {isAdmin && <ManageHolidaysBtn onRefresh={refetch} />}
           </div>
+          {holidays.length === 0 ? (
+            <div className="py-8 text-center flex-1 flex flex-col items-center justify-center gap-2">
+              <CalendarDays size={24} className="text-[#c7c4d8]" />
+              <p className="text-sm text-[#777587]">No holidays in the next 30 days</p>
+            </div>
+          ) : (
+            <div className="flex-1 divide-y divide-[#f9f9ff]">
+              {holidays.slice(0, 5).map(h => (
+                <div key={h.id} onClick={() => navigate('/holidays')}
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff] transition-colors cursor-pointer">
+                  <div className="w-8 h-8 rounded-lg bg-[#eef0ff] flex items-center justify-center shrink-0 text-base">🗓️</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-[#151c27] truncate">{h.name}</p>
+                    <p className="text-[0.6rem] text-[#9ca3af] mt-0.5">{fmtDate(h.date)}</p>
+                  </div>
+                  <span className={`text-[0.6rem] font-bold px-2 py-0.5 rounded-full capitalize shrink-0 ${
+                    h.type === 'public' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>{h.type}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="px-5 py-3 border-t border-[#f0f3ff] mt-auto">
+            <button onClick={() => navigate('/holidays')}
+              className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] flex items-center gap-1 transition-colors">
+              See holiday calendar <ChevronRight size={12} />
+            </button>
+          </div>
+        </div>
+
+        {/* Announcements — vertical */}
 
           {/* Announcements */}
           <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
@@ -1098,7 +1093,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
 
         {/* Right column: Upcoming Birthdays */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden self-start">
