@@ -67,14 +67,20 @@ function LoadingSection() {
   );
 }
 
-function AdminBtn({ onClick, label = 'Edit', size = 'sm' }) {
+function AdminBtn({ onClick, label = 'Edit' }) {
+  const isAdd = label.toLowerCase().startsWith('add');
   return (
     <button onClick={onClick}
       className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
-      <Pencil size={11} /> {label}
+      {isAdd ? <Plus size={11} /> : <Pencil size={11} />} {label}
     </button>
   );
 }
+
+// ─── Address Data ────────────────────────────────────────────────────────────
+const COUNTRIES = ['India','United States','United Kingdom','Canada','Australia','UAE','Singapore','Germany','France','Japan','Other'];
+const INDIA_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
+const INDIA_CITIES = ['Ahmedabad','Bangalore','Bhopal','Chennai','Coimbatore','Delhi','Faridabad','Ghaziabad','Hyderabad','Indore','Jaipur','Jodhpur','Kanpur','Kochi','Kolkata','Lucknow','Ludhiana','Meerut','Mumbai','Nagpur','Nashik','Patna','Pune','Rajkot','Surat','Thane','Vadodara','Varanasi','Visakhapatnam'];
 
 const PROFICIENCY_COLORS = { beginner: 'bg-amber-100 text-amber-700', intermediate: 'bg-blue-100 text-blue-700', advanced: 'bg-emerald-100 text-emerald-700', expert: 'bg-purple-100 text-purple-700' };
 const DOC_VERIFY_COLORS  = { pending: 'bg-amber-100 text-amber-700', verified: 'bg-emerald-100 text-emerald-700', rejected: 'bg-rose-100 text-rose-700' };
@@ -301,9 +307,15 @@ function PersonalTab({ empId, isAdmin }) {
               ))}
             </select>
           </div>
-          {[['name','Full Name *'],['date_of_birth','Date of Birth','date'],['gender','Gender'],['occupation','Occupation'],['contact_number','Contact Number']].map(([k,l,t])=>(
+          {[['name','Full Name *'],['date_of_birth','Date of Birth','date'],['occupation','Occupation'],['contact_number','Contact Number']].map(([k,l,t])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
           ))}
+          <div><label className="form-label">Gender</label>
+            <select className="form-control" value={form.gender||''} onChange={e=>set('gender',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Male','Female','Other','Prefer not to say'].map(g=><option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
           <label className="flex items-center gap-2 text-sm col-span-2">
             <input type="checkbox" checked={form.dependent||false} onChange={e=>set('dependent',e.target.checked)} className="accent-[#3525cd]"/>
             Financially dependent
@@ -375,18 +387,58 @@ function PersonalTab({ empId, isAdmin }) {
       {/* Edit Address Modal */}
       <Modal open={editModal === 'address'} onClose={() => setEditModal(null)} title="Edit Addresses" size="lg"
         footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="space-y-4">
           <p className="text-xs font-black text-[#777587] uppercase tracking-wider">Current Address</p>
           <div className="grid grid-cols-2 gap-4">
-            {[['current_address_line1','Address Line 1'],['current_address_line2','Address Line 2'],['current_city','City'],['current_state','State'],['current_country','Country'],['current_postal_code','Postal Code']].map(([k,l])=>(
-              <div key={k}><label className="form-label">{l}</label><input className="form-control" value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-            ))}
+            <div><label className="form-label">Address Line 1</label><input className="form-control" value={form.current_address_line1||''} onChange={e=>set('current_address_line1',e.target.value)}/></div>
+            <div><label className="form-label">Address Line 2</label><input className="form-control" value={form.current_address_line2||''} onChange={e=>set('current_address_line2',e.target.value)}/></div>
+            <div><label className="form-label">Country</label>
+              <select className="form-control" value={form.current_country||''} onChange={e=>set('current_country',e.target.value)}>
+                <option value="">— Select Country —</option>
+                {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div><label className="form-label">State</label>
+              {form.current_country === 'India' ? (
+                <select className="form-control" value={form.current_state||''} onChange={e=>set('current_state',e.target.value)}>
+                  <option value="">— Select State —</option>
+                  {INDIA_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <input className="form-control" placeholder="State / Province" value={form.current_state||''} onChange={e=>set('current_state',e.target.value)}/>
+              )}
+            </div>
+            <div><label className="form-label">City</label>
+              <input className="form-control" list="cur-cities" placeholder="City" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)}/>
+              {form.current_country === 'India' && <datalist id="cur-cities">{INDIA_CITIES.map(c=><option key={c} value={c}/>)}</datalist>}
+            </div>
+            <div><label className="form-label">Postal Code</label><input className="form-control" value={form.current_postal_code||''} onChange={e=>set('current_postal_code',e.target.value)}/></div>
           </div>
+
           <p className="text-xs font-black text-[#777587] uppercase tracking-wider mt-2">Permanent Address</p>
           <div className="grid grid-cols-2 gap-4">
-            {[['permanent_address','Address'],['permanent_city','City'],['permanent_state','State'],['permanent_country','Country'],['permanent_postal_code','Postal Code']].map(([k,l])=>(
-              <div key={k}><label className="form-label">{l}</label><input className="form-control" value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-            ))}
+            <div className="col-span-2"><label className="form-label">Address</label><input className="form-control" value={form.permanent_address||''} onChange={e=>set('permanent_address',e.target.value)}/></div>
+            <div><label className="form-label">Country</label>
+              <select className="form-control" value={form.permanent_country||''} onChange={e=>set('permanent_country',e.target.value)}>
+                <option value="">— Select Country —</option>
+                {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div><label className="form-label">State</label>
+              {form.permanent_country === 'India' ? (
+                <select className="form-control" value={form.permanent_state||''} onChange={e=>set('permanent_state',e.target.value)}>
+                  <option value="">— Select State —</option>
+                  {INDIA_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <input className="form-control" placeholder="State / Province" value={form.permanent_state||''} onChange={e=>set('permanent_state',e.target.value)}/>
+              )}
+            </div>
+            <div><label className="form-label">City</label>
+              <input className="form-control" list="perm-cities" placeholder="City" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)}/>
+              {form.permanent_country === 'India' && <datalist id="perm-cities">{INDIA_CITIES.map(c=><option key={c} value={c}/>)}</datalist>}
+            </div>
+            <div><label className="form-label">Postal Code</label><input className="form-control" value={form.permanent_postal_code||''} onChange={e=>set('permanent_postal_code',e.target.value)}/></div>
           </div>
         </div>
       </Modal>
@@ -395,7 +447,13 @@ function PersonalTab({ empId, isAdmin }) {
       <Modal open={editModal === 'health'} onClose={() => setEditModal(null)} title="Edit Health Information" size="md"
         footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveHealthMut.mutate(form)} disabled={saveHealthMut.isPending}>{saveHealthMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
-          {[['blood_group','Blood Group'],['allergies','Allergies'],['medical_conditions','Medical Conditions'],['disabilities','Disabilities'],['emergency_medical_notes','Emergency Medical Notes'],['health_insurance_provider','Insurance Provider'],['health_insurance_number','Insurance Number'],['health_insurance_expiry','Insurance Expiry','date']].map(([k,l,t])=>(
+          <div><label className="form-label">Blood Group</label>
+            <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
+              <option value="">— Select —</option>
+              {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          {[['allergies','Allergies'],['medical_conditions','Medical Conditions'],['disabilities','Disabilities'],['emergency_medical_notes','Emergency Medical Notes'],['health_insurance_provider','Insurance Provider'],['health_insurance_number','Insurance Number'],['health_insurance_expiry','Insurance Expiry','date']].map(([k,l,t])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
           ))}
         </div>
@@ -638,7 +696,7 @@ function EducationTab({ empId, isAdmin }) {
   const delTrain = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/training/${id}`),         onSuccess: () => qc.invalidateQueries({queryKey:['epv2-training',empId]}) });
   const delCert  = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/certifications/${id}`),   onSuccess: () => qc.invalidateQueries({queryKey:['epv2-certs',empId]}) });
 
-  const openEdu   = (r={}) => { setForm({degree_level:r.degree_level||'',institution:r.institution||'',board_university:r.board_university||'',specialization:r.specialization||'',year_of_passing:r.year_of_passing||'',percentage:r.percentage||'',cgpa:r.cgpa||'',degree_class:r.degree_class||''}); setEduModal(r); };
+  const openEdu   = (r={}) => { setForm({degree_level:r.degree_level||'',institution:r.institution||'',board_university:r.board_university||'',specialization:r.specialization||'',from_year:r.from_year||'',to_year:r.to_year||'',year_of_passing:r.year_of_passing||'',result_type:r.result_type||'percentage',percentage:r.percentage||'',cgpa:r.cgpa||'',degree_class:r.degree_class||'',education_mode:r.education_mode||'',education_country:r.education_country||'India',enrollment_number:r.enrollment_number||'',remarks:r.remarks||''}); setEduModal(r); };
   const openTrain = (r={}) => { setForm({training_name:r.training_name||'',training_type:r.training_type||'other',training_provider:r.training_provider||'',start_date:r.start_date||'',end_date:r.end_date||'',duration_hours:r.duration_hours||'',completion_status:r.completion_status||'in_progress',score:r.score||'',certificate_url:r.certificate_url||'',remarks:r.remarks||''}); setTrainModal(r); };
   const openCert  = (r={}) => { setForm({certification_name:r.certification_name||'',issuing_authority:r.issuing_authority||'',issue_date:r.issue_date||'',expiry_date:r.expiry_date||'',certification_number:r.certification_number||'',file_url:r.file_url||'',is_lifetime:r.is_lifetime||false}); setCertModal(r); };
 
@@ -723,16 +781,86 @@ function EducationTab({ empId, isAdmin }) {
 
       {/* Education Modal */}
       <Modal open={eduModal !== null} onClose={() => setEduModal(null)} title={eduModal?.id ? 'Edit Qualification' : 'Add Qualification'} size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEduModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => eduMut.mutate(form)} disabled={eduMut.isPending}>{eduMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEduModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => eduMut.mutate(form)} disabled={eduMut.isPending || !form.institution}>{eduMut.isPending ? 'Saving…' : 'Save Qualification'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2"><label className="form-label">Degree Level</label>
+          {/* Degree Level */}
+          <div><label className="form-label">Degree Level</label>
             <select className="form-control" value={form.degree_level||''} onChange={e=>set('degree_level',e.target.value)}>
               <option value="">— Select —</option>
               {DEGREE_LEVELS.map(d=><option key={d} value={d}>{d}</option>)}
-            </select></div>
-          {[['institution','Institution / School *'],['board_university','Board / University'],['specialization','Specialization / Stream'],['year_of_passing','Year of Passing','number'],['percentage','Percentage','number'],['cgpa','CGPA','number'],['degree_class','Class / Division']].map(([k,l,t])=>(
-            <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-          ))}
+            </select>
+          </div>
+          {/* Education Mode */}
+          <div><label className="form-label">Education Mode</label>
+            <select className="form-control" value={form.education_mode||''} onChange={e=>set('education_mode',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Regular','Distance Learning','Online','Part-Time','Full-Time'].map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          {/* Institution */}
+          <div><label className="form-label">Institution / School <span className="text-rose-500">*</span></label>
+            <input className="form-control" value={form.institution||''} onChange={e=>set('institution',e.target.value)} placeholder="e.g. IIT Bombay"/>
+          </div>
+          {/* Board / University */}
+          <div><label className="form-label">Board / University</label>
+            <input className="form-control" value={form.board_university||''} onChange={e=>set('board_university',e.target.value)} placeholder="e.g. Mumbai University"/>
+          </div>
+          {/* Specialization */}
+          <div><label className="form-label">Specialization / Stream</label>
+            <input className="form-control" value={form.specialization||''} onChange={e=>set('specialization',e.target.value)} placeholder="e.g. Computer Science"/>
+          </div>
+          {/* Country */}
+          <div><label className="form-label">Country</label>
+            <select className="form-control" value={form.education_country||'India'} onChange={e=>set('education_country',e.target.value)}>
+              {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {/* From Year / To Year */}
+          <div><label className="form-label">From Year</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2018" value={form.from_year||''} onChange={e=>set('from_year',e.target.value)}/>
+          </div>
+          <div><label className="form-label">To Year</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2022" value={form.to_year||''} onChange={e=>set('to_year',e.target.value)}/>
+          </div>
+          {/* Year of Passing */}
+          <div><label className="form-label">Year of Passing</label>
+            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} value={form.year_of_passing||''} onChange={e=>set('year_of_passing',e.target.value)}/>
+          </div>
+          {/* Enrollment Number */}
+          <div><label className="form-label">Enrollment / Roll Number</label>
+            <input className="form-control" placeholder="Optional" value={form.enrollment_number||''} onChange={e=>set('enrollment_number',e.target.value)}/>
+          </div>
+          {/* Result Type */}
+          <div className="col-span-2"><label className="form-label">Result Type</label>
+            <div className="flex gap-3">
+              {['percentage','cgpa'].map(t=>(
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="result_type" value={t} checked={form.result_type===t} onChange={()=>set('result_type',t)} className="accent-[#3525cd]"/>
+                  <span className="text-sm font-semibold text-[#464555]">{t === 'percentage' ? 'Percentage' : 'CGPA'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {form.result_type === 'percentage' ? (
+            <div><label className="form-label">Percentage (%)</label>
+              <input className="form-control" type="number" min="0" max="100" step="0.01" value={form.percentage||''} onChange={e=>set('percentage',e.target.value)}/>
+            </div>
+          ) : (
+            <div><label className="form-label">CGPA</label>
+              <input className="form-control" type="number" min="0" max="10" step="0.01" value={form.cgpa||''} onChange={e=>set('cgpa',e.target.value)}/>
+            </div>
+          )}
+          {/* Class / Division */}
+          <div><label className="form-label">Class / Division</label>
+            <select className="form-control" value={form.degree_class||''} onChange={e=>set('degree_class',e.target.value)}>
+              <option value="">— Select —</option>
+              {['Distinction','First Class','Second Class','Pass','Fail'].map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {/* Remarks */}
+          <div className="col-span-2"><label className="form-label">Remarks <span className="text-xs font-normal text-[#777587]">(optional)</span></label>
+            <textarea className="form-control" rows={2} placeholder="e.g. Gold Medalist, University Rank Holder…" value={form.remarks||''} onChange={e=>set('remarks',e.target.value)}/>
+          </div>
         </div>
       </Modal>
 

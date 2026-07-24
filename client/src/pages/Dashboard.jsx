@@ -1095,7 +1095,7 @@ export default function Dashboard() {
           </div>
 
         {/* Right column: Upcoming Birthdays */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden self-start">
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
             <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
               <Cake size={14} className="text-pink-500" /> Upcoming Birthdays

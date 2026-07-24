@@ -1012,6 +1012,12 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     onSuccess: (data) => {
       toast(isEdit ? 'Employee updated!' : 'Employee added! Redirecting to profile…', 'success');
       qc.invalidateQueries({ queryKey: ['employees'] });
+      // Invalidate profile queries so EmployeeProfileV2 reflects changes immediately
+      const empId = data?.id || employee?.id;
+      if (empId) {
+        qc.invalidateQueries({ queryKey: ['epv2-professional', empId] });
+        qc.invalidateQueries({ queryKey: ['epv2-overview',    empId] });
+      }
       onSaved?.();
       onClose();
       if (!isEdit && data?.id) {
@@ -1256,7 +1262,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="form-label">Designation / Position</label>
-                  <input className="form-control" placeholder="Senior Developer" value={form.position} onChange={e => set('position', e.target.value)} />
+                  <input className="form-control" list="designation-list-emp" placeholder="e.g. Senior Developer" value={form.position} onChange={e => set('position', e.target.value)} />
+                  <datalist id="designation-list-emp">
+                    {['Software Engineer','Senior Software Engineer','Lead Engineer','Engineering Manager','Product Manager','Project Manager','Project Coordinator','UI/UX Designer','Graphic Designer','Business Analyst','Data Analyst','Data Scientist','QA Engineer','DevOps Engineer','System Administrator','HR Executive','HR Manager','Recruiter','Marketing Executive','Sales Executive','Finance Executive','Accountant','Operations Manager','Team Lead','Assistant Manager','Manager','Senior Manager','Director','Vice President','Chief Technology Officer','Chief Executive Officer'].map(d=><option key={d} value={d}/>)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="form-label">Joining Date</label>
@@ -1515,8 +1524,11 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
             </div>
             <div>
               <label className="form-label">Designation <span className="text-rose-500">*</span></label>
-              <input className="form-control" placeholder="e.g. Software Developer"
+              <input className="form-control" list="designation-list-add" placeholder="e.g. Software Developer"
                 value={form.position} onChange={e => set('position', e.target.value)} />
+              <datalist id="designation-list-add">
+                {['Software Engineer','Senior Software Engineer','Lead Engineer','Engineering Manager','Product Manager','Project Manager','Project Coordinator','UI/UX Designer','Graphic Designer','Business Analyst','Data Analyst','QA Engineer','DevOps Engineer','HR Executive','HR Manager','Recruiter','Marketing Executive','Sales Executive','Finance Executive','Accountant','Operations Manager','Team Lead','Manager','Senior Manager','Director'].map(d=><option key={d} value={d}/>)}
+              </datalist>
             </div>
           </div>
           <div>
