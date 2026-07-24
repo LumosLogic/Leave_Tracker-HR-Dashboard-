@@ -77,10 +77,24 @@ function AdminBtn({ onClick, label = 'Edit' }) {
   );
 }
 
-// ─── Address Data ────────────────────────────────────────────────────────────
-const COUNTRIES = ['India','United States','United Kingdom','Canada','Australia','UAE','Singapore','Germany','France','Japan','Other'];
-const INDIA_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
-const INDIA_CITIES = ['Ahmedabad','Bangalore','Bhopal','Chennai','Coimbatore','Delhi','Faridabad','Ghaziabad','Hyderabad','Indore','Jaipur','Jodhpur','Kanpur','Kochi','Kolkata','Lucknow','Ludhiana','Meerut','Mumbai','Nagpur','Nashik','Patna','Pune','Rajkot','Surat','Thane','Vadodara','Varanasi','Visakhapatnam'];
+// ─── Address Data (country-state-city library) ────────────────────────────────
+import { Country, State, City } from 'country-state-city';
+
+const ALL_COUNTRIES = Country.getAllCountries(); // [{ isoCode, name, ... }]
+
+function getStates(countryName) {
+  const c = ALL_COUNTRIES.find(c => c.name === countryName);
+  if (!c) return [];
+  return State.getStatesOfCountry(c.isoCode);
+}
+
+function getCities(countryName, stateName) {
+  const c = ALL_COUNTRIES.find(c => c.name === countryName);
+  if (!c) return [];
+  const s = State.getStatesOfCountry(c.isoCode).find(s => s.name === stateName);
+  if (!s) return [];
+  return City.getCitiesOfState(c.isoCode, s.isoCode);
+}
 
 const PROFICIENCY_COLORS = { beginner: 'bg-amber-100 text-amber-700', intermediate: 'bg-blue-100 text-blue-700', advanced: 'bg-emerald-100 text-emerald-700', expert: 'bg-purple-100 text-purple-700' };
 const DOC_VERIFY_COLORS  = { pending: 'bg-amber-100 text-amber-700', verified: 'bg-emerald-100 text-emerald-700', rejected: 'bg-rose-100 text-rose-700' };
@@ -393,24 +407,30 @@ function PersonalTab({ empId, isAdmin }) {
             <div><label className="form-label">Address Line 1</label><input className="form-control" value={form.current_address_line1||''} onChange={e=>set('current_address_line1',e.target.value)}/></div>
             <div><label className="form-label">Address Line 2</label><input className="form-control" value={form.current_address_line2||''} onChange={e=>set('current_address_line2',e.target.value)}/></div>
             <div><label className="form-label">Country</label>
-              <select className="form-control" value={form.current_country||''} onChange={e=>set('current_country',e.target.value)}>
+              <select className="form-control" value={form.current_country||''} onChange={e=>{set('current_country',e.target.value); set('current_state',''); set('current_city','');}}>
                 <option value="">— Select Country —</option>
-                {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
               </select>
             </div>
-            <div><label className="form-label">State</label>
-              {form.current_country === 'India' ? (
-                <select className="form-control" value={form.current_state||''} onChange={e=>set('current_state',e.target.value)}>
+            <div><label className="form-label">State / Province</label>
+              {form.current_country ? (
+                <select className="form-control" value={form.current_state||''} onChange={e=>{set('current_state',e.target.value); set('current_city','');}}>
                   <option value="">— Select State —</option>
-                  {INDIA_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                  {getStates(form.current_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
                 </select>
-              ) : (
-                <input className="form-control" placeholder="State / Province" value={form.current_state||''} onChange={e=>set('current_state',e.target.value)}/>
-              )}
+              ) : <input className="form-control" placeholder="Select country first" disabled />}
             </div>
             <div><label className="form-label">City</label>
-              <input className="form-control" list="cur-cities" placeholder="City" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)}/>
-              {form.current_country === 'India' && <datalist id="cur-cities">{INDIA_CITIES.map(c=><option key={c} value={c}/>)}</datalist>}
+              {form.current_state ? (
+                <select className="form-control" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)}>
+                  <option value="">— Select City —</option>
+                  {getCities(form.current_country, form.current_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
+                  <option value="__other__">Other (type below)</option>
+                </select>
+              ) : <input className="form-control" placeholder="Select state first" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)} />}
+              {form.current_city === '__other__' && (
+                <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('current_city',e.target.value)}/>
+              )}
             </div>
             <div><label className="form-label">Postal Code</label><input className="form-control" value={form.current_postal_code||''} onChange={e=>set('current_postal_code',e.target.value)}/></div>
           </div>
@@ -419,24 +439,30 @@ function PersonalTab({ empId, isAdmin }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2"><label className="form-label">Address</label><input className="form-control" value={form.permanent_address||''} onChange={e=>set('permanent_address',e.target.value)}/></div>
             <div><label className="form-label">Country</label>
-              <select className="form-control" value={form.permanent_country||''} onChange={e=>set('permanent_country',e.target.value)}>
+              <select className="form-control" value={form.permanent_country||''} onChange={e=>{set('permanent_country',e.target.value); set('permanent_state',''); set('permanent_city','');}}>
                 <option value="">— Select Country —</option>
-                {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
               </select>
             </div>
-            <div><label className="form-label">State</label>
-              {form.permanent_country === 'India' ? (
-                <select className="form-control" value={form.permanent_state||''} onChange={e=>set('permanent_state',e.target.value)}>
+            <div><label className="form-label">State / Province</label>
+              {form.permanent_country ? (
+                <select className="form-control" value={form.permanent_state||''} onChange={e=>{set('permanent_state',e.target.value); set('permanent_city','');}}>
                   <option value="">— Select State —</option>
-                  {INDIA_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                  {getStates(form.permanent_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
                 </select>
-              ) : (
-                <input className="form-control" placeholder="State / Province" value={form.permanent_state||''} onChange={e=>set('permanent_state',e.target.value)}/>
-              )}
+              ) : <input className="form-control" placeholder="Select country first" disabled />}
             </div>
             <div><label className="form-label">City</label>
-              <input className="form-control" list="perm-cities" placeholder="City" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)}/>
-              {form.permanent_country === 'India' && <datalist id="perm-cities">{INDIA_CITIES.map(c=><option key={c} value={c}/>)}</datalist>}
+              {form.permanent_state ? (
+                <select className="form-control" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)}>
+                  <option value="">— Select City —</option>
+                  {getCities(form.permanent_country, form.permanent_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
+                  <option value="__other__">Other (type below)</option>
+                </select>
+              ) : <input className="form-control" placeholder="Select state first" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)} />}
+              {form.permanent_city === '__other__' && (
+                <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('permanent_city',e.target.value)}/>
+              )}
             </div>
             <div><label className="form-label">Postal Code</label><input className="form-control" value={form.permanent_postal_code||''} onChange={e=>set('permanent_postal_code',e.target.value)}/></div>
           </div>

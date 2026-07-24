@@ -1,12 +1,21 @@
-const express = require('express');
-const router  = express.Router();
-const bcrypt   = require('bcryptjs');
-const jwt      = require('jsonwebtoken');
-const crypto   = require('crypto');
+const express   = require('express');
+const router    = express.Router();
+const bcrypt    = require('bcryptjs');
+const jwt       = require('jsonwebtoken');
+const crypto    = require('crypto');
+const multer    = require('multer');
+const cloudinary = require('cloudinary').v2;
 const { supabase } = require('../../config/db');
 const { JWT_SECRET, auth } = require('../../middleware/auth');
 const { orgId, getRecipients } = require('../../utils/helpers');
 const { sendMail, passwordResetHtml } = require('../../services/emailService');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ─── Auth: Login ──────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -60,9 +69,10 @@ router.get('/me', auth, async (req, res) => {
 // ─── Auth: Update Profile ─────────────────────────────────────────────────────
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { name, avatar_color, email } = req.body;
+    const { name, avatar_color, email, avatar_url } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
     const update = { name, avatar_color };
+    if (avatar_url !== undefined) update.avatar_url = avatar_url;
     if (email) {
       const norm = email.toLowerCase().trim();
       const { data: dup } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
@@ -72,9 +82,24 @@ router.put('/profile', auth, async (req, res) => {
     const { data, error } = await supabase.from('users')
       .update(update)
       .eq('id', req.user.id)
-      .select('id, name, email, role, department, position, avatar_color').single();
+      .select('id, name, email, role, department, position, avatar_color, avatar_url').single();
     if (error) throw new Error(error.message);
     res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Auth: Upload Avatar Photo ────────────────────────────────────────────────
+router.post('/upload-avatar', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `hrms/${req.user.organization_id}/avatars`, resource_type: 'image', transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }] },
+        (err, r) => err ? reject(err) : resolve(r)
+      ).end(req.file.buffer);
+    });
+    await supabase.from('users').update({ avatar_url: result.secure_url }).eq('id', req.user.id);
+    res.json({ avatar_url: result.secure_url });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -83,7 +108,7 @@ router.put('/change-password', auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     const { data: user } = await supabase.from('users').select('password').eq('id', req.user.id).single();
     if (!bcrypt.compareSync(currentPassword, user.password))
       return res.status(400).json({ error: 'Current password is incorrect' });
