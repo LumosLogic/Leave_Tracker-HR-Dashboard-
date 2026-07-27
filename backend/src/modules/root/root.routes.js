@@ -292,7 +292,7 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     // Action center items
     const actionCenter = [];
     if (pendingLeaves > 0) actionCenter.push({ type: 'leaves', label: `${pendingLeaves} leave approval${pendingLeaves !== 1 ? 's' : ''} pending`, priority: pendingLeaves > 5 ? 'High' : 'Medium', link: '/root/leaves' });
-    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/regularization' });
+    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/regularization?status=pending' });
     if (pendingExp > 0)   actionCenter.push({ type: 'expenses', label: `${pendingExp} expense${pendingExp !== 1 ? 's' : ''} awaiting approval`, priority: 'Medium', link: '/root/expenses' });
     if (actionCenter.length === 0) actionCenter.push({ type: 'all_clear', label: 'All tasks up to date', priority: 'Low' });
 

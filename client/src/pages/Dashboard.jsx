@@ -772,7 +772,7 @@ export default function Dashboard() {
     {
       label: 'On Leave', value: onLeave, hint: pct(onLeave), hintGreen: false,
       icon: <Umbrella size={18} />, iconBg: 'bg-amber-50', iconColor: 'text-amber-600',
-      onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}`),
+      onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}&status=approved`),
     },
     {
       label: 'WFH Today', value: wfh, hint: pct(wfh), hintGreen: false,

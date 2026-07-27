@@ -336,13 +336,6 @@ export default function MyAttendance() {
 
   const todayStr = toDSString(new Date());
 
-  // Summary counts
-  const summary = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
-  Object.values(recMap).forEach(r => {
-    const d = new Date(r.date + 'T12:00:00');
-    if (activeWorkDays.includes(d.getDay()) && summary[r.status] !== undefined) summary[r.status]++;
-  });
-
   // Full sorted table records (status merged)
   const tableRecords = useMemo(() => {
     return records.map(r => {
@@ -351,6 +344,13 @@ export default function MyAttendance() {
     }).sort((a, b) => b.date.localeCompare(a.date));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, allLeaves, schedule]);
+
+  // Summary counts — derived from tableRecords so KPI card counts match the filtered list
+  const summary = useMemo(() => {
+    const s = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
+    tableRecords.forEach(r => { if (s[r.status] !== undefined) s[r.status]++; });
+    return s;
+  }, [tableRecords]);
 
   // Analytics derived from full tableRecords
   const analytics = useMemo(() => {

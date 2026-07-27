@@ -584,10 +584,10 @@ export default function MyLeaves() {
   // Sort comparator
   function sortComparator(a, b) {
     switch (sortBy) {
-      case 'oldest':     return (a.created_at || '').localeCompare(b.created_at || '');
-      case 'leave_date': return b.start_date.localeCompare(a.start_date);
+      case 'oldest':     return new Date(a.start_date) - new Date(b.start_date) || new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      case 'leave_date': return new Date(b.start_date) - new Date(a.start_date);
       case 'newest':
-      default:           return (b.created_at || '').localeCompare(a.created_at || '');
+      default:           return new Date(b.start_date) - new Date(a.start_date) || new Date(b.created_at || 0) - new Date(a.created_at || 0);
     }
   }
 
