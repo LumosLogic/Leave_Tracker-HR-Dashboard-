@@ -985,6 +985,11 @@ export default function MyLeaves() {
 
           {/* WFH Summary */}
           {(() => {
+            const countDays = (list) => list.reduce((sum, l) => {
+              const s = new Date(l.start_date + 'T12:00:00');
+              const e = new Date(l.end_date   + 'T12:00:00');
+              return sum + Math.round((e - s) / 86400000) + 1;
+            }, 0);
             const wfhLeaves   = leaves.filter(isWFHRecord);
             const wfhApproved = wfhLeaves.filter(l => l.status === 'approved');
             const wfhPending  = wfhLeaves.filter(l => l.status === 'pending');
@@ -998,8 +1003,8 @@ export default function MyLeaves() {
                 </div>
                 <div className="p-4 space-y-3">
                   {[
-                    { label: 'Total Approved', value: `${wfhApproved.length} days`, color: 'text-blue-600' },
-                    { label: 'This Month',     value: `${wfhThisMonth.length} days`, color: 'text-blue-600' },
+                    { label: 'Total Approved', value: `${countDays(wfhApproved)} days`, color: 'text-blue-600' },
+                    { label: 'This Month',     value: `${countDays(wfhThisMonth)} days`, color: 'text-blue-600' },
                     { label: 'Pending',        value: wfhPending.length > 0 ? `${wfhPending.length} request${wfhPending.length > 1 ? 's' : ''}` : 'None', color: wfhPending.length > 0 ? 'text-amber-600' : 'text-[#9ca3af]' },
                   ].map(({ label, value, color }) => (
                     <div key={label} className="flex items-center justify-between py-2 border-b border-[#f0f3ff] last:border-0">

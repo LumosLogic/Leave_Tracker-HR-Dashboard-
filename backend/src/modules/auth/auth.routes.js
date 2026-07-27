@@ -140,13 +140,13 @@ router.put('/change-password', auth, async (req, res) => {
     if (isReused) return res.status(400).json({ error: 'Cannot reuse one of your last 5 passwords' });
 
     const newHash = bcrypt.hashSync(newPassword, 10);
-    const newHistory = [user.password, ...history].slice(0, 5); // keep last 5
+    const newHistory = [user.password, ...history].slice(0, 5);
 
     const { error: pwErr } = await supabase.from('users').update({
       password: newHash,
       force_password_change: false,
       password_changed_at: new Date().toISOString(),
-      password_history: newHistory,
+      password_history: JSON.stringify(newHistory),
     }).eq('id', req.user.id);
     if (pwErr) throw new Error(pwErr.message);
     res.json({ success: true });
