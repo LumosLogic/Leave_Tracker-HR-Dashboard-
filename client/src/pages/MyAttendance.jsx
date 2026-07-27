@@ -328,7 +328,9 @@ export default function MyAttendance() {
       const existing = recMap[ds];
       const leaveStatus = (l.leave_time === 'wfh' || l.leave_type === 'wfh') ? 'wfh'
                         : l.leave_time === 'half' ? 'half_day' : 'on_leave';
-      if (!existing || !existing.check_in) {
+      // WFH overrides even when check_in exists (employee works from home and checks in)
+      // on_leave / half_day only apply when there is no actual office check-in
+      if (leaveStatus === 'wfh' || !existing || !existing.check_in) {
         recMap[ds] = { ...(existing || {}), date: ds, status: leaveStatus, _synthetic: !existing };
       }
     }
@@ -366,13 +368,14 @@ export default function MyAttendance() {
       : 0;
 
     // Average work hours for present/half_day rows
-    const workedRows = tableRecords.filter(r => (r.status === 'present' || r.status === 'half_day') && r.work_hours > 0);
+    // parseFloat handles PostgreSQL NUMERIC columns returned as strings by the pg driver
+    const workedRows = tableRecords.filter(r => (r.status === 'present' || r.status === 'half_day') && parseFloat(r.work_hours) > 0);
     const avgWorkHours = workedRows.length > 0
-      ? workedRows.reduce((sum, r) => sum + (r.work_hours || 0), 0) / workedRows.length
+      ? workedRows.reduce((sum, r) => sum + parseFloat(r.work_hours || 0), 0) / workedRows.length
       : 0;
 
     // Total break minutes for the month
-    const totalBreakMins = tableRecords.reduce((sum, r) => sum + (r.total_break_minutes || 0), 0);
+    const totalBreakMins = tableRecords.reduce((sum, r) => sum + (parseInt(r.total_break_minutes, 10) || 0), 0);
 
     // Format avg work hours as "Xh Ym"
     const avgH = Math.floor(avgWorkHours);
