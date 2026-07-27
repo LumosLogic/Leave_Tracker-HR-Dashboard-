@@ -838,7 +838,7 @@ function EducationTab({ empId, isAdmin }) {
           {/* Country */}
           <div><label className="form-label">Country</label>
             <select className="form-control" value={form.education_country||'India'} onChange={e=>set('education_country',e.target.value)}>
-              {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+              {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
             </select>
           </div>
           {/* From Year / To Year */}

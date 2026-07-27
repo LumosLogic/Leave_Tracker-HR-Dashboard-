@@ -61,12 +61,12 @@ router.get('/', auth, async (req, res) => {
 
     const onLeaveToday   = onLeaveIds.size;
     const wfhOnlyCount   = [...wfhIds].filter(id => !onLeaveIds.has(id)).length;
-    const presentToday   = Math.max(0, totalEmployees - onLeaveToday - wfhOnlyCount);
+    const checkedInToday = todayRecords.filter(r => r.check_in).length;
+    const presentToday   = checkedInToday;
     const lateToday      = todayRecords.filter(r => r.is_late).length;
     const earlyExitToday = todayRecords.filter(r => r.is_early_exit).length;
     const halfDayToday   = todayRecords.filter(r => r.status === 'half_day').length;
     const wfhToday       = wfhIds.size;
-    const checkedInToday = todayRecords.filter(r => r.check_in).length;
     const _now = new Date();
     const _ms  = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-01`;
     const newThisMonth   = (allEmployees || []).filter(e => e.created_at >= _ms).length;
