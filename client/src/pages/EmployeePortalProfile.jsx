@@ -126,62 +126,228 @@ function InfoPill({ icon: Icon, text }) {
   );
 }
 
+// ─── PROFILE PRINT MODAL ─────────────────────────────────────────────────────
+
+function ProfilePrintModal({ empId, open, onClose }) {
+  const { data: ov }  = useQuery({ queryKey: ['profile-overview', empId], queryFn: () => apiGet(`/profile/${empId}/overview`), enabled: !!empId && open });
+  const { data: per } = useQuery({ queryKey: ['profile-personal',  empId], queryFn: () => apiGet(`/profile/${empId}/personal`),  enabled: !!empId && open });
+
+  useEffect(() => {
+    if (!open) return;
+    const style = document.createElement('style');
+    style.id = 'print-profile-style';
+    style.textContent = `
+      @media print {
+        body > * { visibility: hidden !important; }
+        #profile-print-root, #profile-print-root * { visibility: visible !important; }
+        #profile-print-root {
+          position: fixed; top: 0; left: 0; width: 100%; height: auto;
+          z-index: 99999; background: white; padding: 2rem;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.getElementById('print-profile-style')?.remove(); };
+  }, [open]);
+
+  if (!open) return null;
+
+  const name      = [ov?.salutation, ov?.name, ov?.middle_name, ov?.surname].filter(Boolean).join(' ') || ov?.name || '—';
+  const address   = [per?.current_address_line1, per?.current_address_line2, per?.current_city, per?.current_state, per?.current_country].filter(Boolean).join(', ');
+  const permAddr  = [per?.permanent_address, per?.permanent_city, per?.permanent_state, per?.permanent_country].filter(Boolean).join(', ');
+  const empType   = (ov?.employment_type || 'full_time').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  function Row({ label, value }) {
+    if (!value) return null;
+    return (
+      <div className="flex gap-2 py-1.5 border-b border-gray-100 last:border-0">
+        <span className="text-[0.7rem] font-semibold text-gray-500 w-36 flex-shrink-0">{label}</span>
+        <span className="text-[0.75rem] font-semibold text-gray-800 flex-1">{value}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      {/* Dismiss backdrop */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      <div id="profile-print-root" className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 print:hidden">
+          <span className="text-sm font-black text-[#151c27]">Employee Profile</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="btn btn-primary btn-sm flex items-center gap-1.5"
+            >
+              <Printer size={13} /> Save as PDF
+            </button>
+            <button onClick={onClose} className="btn btn-ghost btn-sm text-[#777587]">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── PRINT CONTENT ── */}
+        <div className="p-6 space-y-5">
+
+          {/* Profile header */}
+          <div className="flex items-start gap-5">
+            {ov?.profile_photo_url
+              ? <img src={ov.profile_photo_url} alt={name} className="w-20 h-20 rounded-xl object-cover border border-gray-200 flex-shrink-0" />
+              : (
+                <div className="w-20 h-20 rounded-xl flex items-center justify-center text-white text-2xl font-black flex-shrink-0"
+                  style={{ background: ov?.avatar_color || '#3525cd' }}>
+                  {initials(ov?.name || '')}
+                </div>
+              )
+            }
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-black text-[#151c27]">{name}</h1>
+              <p className="text-sm font-bold text-[#464555] mt-0.5">{ov?.position || '—'}</p>
+              <p className="text-xs text-[#777587] mt-0.5">{ov?.department || '—'}</p>
+              <div className="flex flex-wrap gap-3 mt-3 text-xs text-[#464555]">
+                {ov?.email    && <span><strong>Email:</strong> {ov.email}</span>}
+                {ov?.phone    && <span><strong>Phone:</strong> {ov.phone}</span>}
+                {ov?.employee_id && <span><strong>ID:</strong> {ov.employee_id}</span>}
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <span className="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 capitalize">
+                {ov?.employee_status || 'Active'}
+              </span>
+              <p className="text-[0.65rem] text-gray-400 mt-2">Lumos Logic HRMS</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Professional Info */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-widest mb-3">Professional Information</p>
+              <Row label="Employee ID"     value={ov?.employee_id} />
+              <Row label="Department"      value={ov?.department} />
+              <Row label="Position"        value={ov?.position} />
+              <Row label="Grade"           value={ov?.grade} />
+              <Row label="Employment Type" value={empType} />
+              <Row label="Joining Date"    value={ov?.joining_date ? fmtDate(ov.joining_date) : null} />
+              <Row label="Branch"          value={ov?.branch?.name} />
+              <Row label="Reporting To"    value={ov?.manager?.name} />
+              <Row label="Cost Centre"     value={ov?.cost_centre} />
+            </div>
+
+            {/* Personal Info */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-widest mb-3">Personal Information</p>
+              <Row label="Date of Birth"   value={per?.date_of_birth   ? fmtDate(per.date_of_birth) : null} />
+              <Row label="Gender"          value={per?.gender} />
+              <Row label="Blood Group"     value={per?.blood_group} />
+              <Row label="Marital Status"  value={per?.marital_status} />
+              <Row label="Nationality"     value={per?.nationality} />
+              <Row label="Personal Email"  value={per?.personal_email} />
+            </div>
+          </div>
+
+          {/* Address */}
+          {(address || permAddr) && (
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-widest mb-3">Address</p>
+              {address   && <Row label="Current Address"   value={address} />}
+              {permAddr  && <Row label="Permanent Address" value={permAddr} />}
+            </div>
+          )}
+
+          {/* Section counts */}
+          {ov?.sectionCounts && (
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-widest mb-3">Profile Sections</p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  ['Education',   ov.sectionCounts.education],
+                  ['Experience',  ov.sectionCounts.experience],
+                  ['Skills',      ov.sectionCounts.skills],
+                  ['Family',      ov.sectionCounts.family],
+                  ['Documents',   ov.sectionCounts.documents],
+                  ['Banking',     ov.sectionCounts.banking],
+                ].map(([label, count]) => (
+                  <div key={label} className="text-center bg-white rounded-lg py-2 border border-gray-200">
+                    <p className="text-lg font-black text-[#3525cd]">{count}</p>
+                    <p className="text-[0.65rem] font-semibold text-gray-500">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-center text-[0.65rem] text-gray-400 pt-2 border-t border-gray-100">
+            Generated by Lumos Logic HRMS · {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PROFILE ACTIONS ─────────────────────────────────────────────────────────
 
-function ProfileActions({ onTabChange }) {
-  const [open, setOpen] = useState(false);
+function ProfileActions({ empId, onTabChange }) {
+  const [dropOpen,  setDropOpen]  = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setDropOpen(false); }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
   function goToTab(tab) {
     onTabChange(tab);
-    setOpen(false);
+    setDropOpen(false);
     setTimeout(() => {
       document.getElementById('profile-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   }
 
   return (
-    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f0f3ff]">
-      <button
-        onClick={() => goToTab('account')}
-        className="btn btn-primary btn-sm flex items-center gap-1.5"
-      >
-        <Pencil size={13} /> Edit Profile
-      </button>
-      <button
-        onClick={() => window.print()}
-        className="btn btn-outline btn-sm flex items-center gap-1.5"
-      >
-        <Printer size={13} /> Download Profile
-      </button>
-      <div className="relative ml-auto" ref={ref}>
+    <>
+      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f0f3ff]">
         <button
-          onClick={() => setOpen(o => !o)}
-          className="btn btn-ghost btn-icon btn-sm text-[#777587]"
+          onClick={() => goToTab('account')}
+          className="btn btn-primary btn-sm flex items-center gap-1.5"
         >
-          <MoreHorizontal size={16} />
+          <Pencil size={13} /> Edit Profile
         </button>
-        {open && (
-          <div className="absolute right-0 top-full mt-1 bg-white border border-[#c7c4d8] rounded-xl shadow-lg z-50 min-w-[180px] py-1">
-            <button onClick={() => goToTab('account')} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
-              <Settings size={13} className="text-[#777587]" /> Account Settings
-            </button>
-            <button onClick={() => { goToTab('account'); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
-              <ShieldCheck size={13} className="text-[#777587]" /> Security &amp; 2FA
-            </button>
-            <button onClick={() => window.print()} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
-              <Printer size={13} className="text-[#777587]" /> Print Profile
-            </button>
-          </div>
-        )}
+        <button
+          onClick={() => setPrintOpen(true)}
+          className="btn btn-outline btn-sm flex items-center gap-1.5"
+        >
+          <Download size={13} /> Download Profile
+        </button>
+        <div className="relative ml-auto" ref={ref}>
+          <button
+            onClick={() => setDropOpen(o => !o)}
+            className="btn btn-ghost btn-icon btn-sm text-[#777587]"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          {dropOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-[#c7c4d8] rounded-xl shadow-lg z-50 min-w-[180px] py-1">
+              <button onClick={() => goToTab('account')} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+                <Settings size={13} className="text-[#777587]" /> Account Settings
+              </button>
+              <button onClick={() => { setDropOpen(false); goToTab('account'); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+                <ShieldCheck size={13} className="text-[#777587]" /> Security &amp; 2FA
+              </button>
+              <button onClick={() => { setDropOpen(false); setPrintOpen(true); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+                <Printer size={13} className="text-[#777587]" /> Download Profile
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <ProfilePrintModal empId={empId} open={printOpen} onClose={() => setPrintOpen(false)} />
+    </>
   );
 }
 
@@ -301,7 +467,7 @@ function ProfileHeaderCard({ empId, onTabChange }) {
       </div>
 
       {/* Actions row */}
-      <ProfileActions onTabChange={onTabChange} />
+      <ProfileActions empId={empId} onTabChange={onTabChange} />
     </div>
   );
 }
