@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,7 +7,7 @@ import {
   Plus, Pencil, Trash2, X, Check, Eye, EyeOff, Save, AlertTriangle,
   ShieldCheck, ShieldAlert, Mail, ChevronRight, Building2, MapPin, Phone,
   CheckCircle2, Download, MoreHorizontal, Calendar, TrendingUp, Activity,
-  Layers, BadgeCheck, ClipboardList,
+  Layers, BadgeCheck, ClipboardList, Key, Printer, QrCode,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -126,9 +126,68 @@ function InfoPill({ icon: Icon, text }) {
   );
 }
 
+// ─── PROFILE ACTIONS ─────────────────────────────────────────────────────────
+
+function ProfileActions({ onTabChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  function goToTab(tab) {
+    onTabChange(tab);
+    setOpen(false);
+    setTimeout(() => {
+      document.getElementById('profile-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f0f3ff]">
+      <button
+        onClick={() => goToTab('account')}
+        className="btn btn-primary btn-sm flex items-center gap-1.5"
+      >
+        <Pencil size={13} /> Edit Profile
+      </button>
+      <button
+        onClick={() => window.print()}
+        className="btn btn-outline btn-sm flex items-center gap-1.5"
+      >
+        <Printer size={13} /> Download Profile
+      </button>
+      <div className="relative ml-auto" ref={ref}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="btn btn-ghost btn-icon btn-sm text-[#777587]"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+        {open && (
+          <div className="absolute right-0 top-full mt-1 bg-white border border-[#c7c4d8] rounded-xl shadow-lg z-50 min-w-[180px] py-1">
+            <button onClick={() => goToTab('account')} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+              <Settings size={13} className="text-[#777587]" /> Account Settings
+            </button>
+            <button onClick={() => { goToTab('account'); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+              <ShieldCheck size={13} className="text-[#777587]" /> Security &amp; 2FA
+            </button>
+            <button onClick={() => window.print()} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] flex items-center gap-2">
+              <Printer size={13} className="text-[#777587]" /> Print Profile
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── PROFILE HEADER CARD ─────────────────────────────────────────────────────
 
-function ProfileHeaderCard({ empId }) {
+function ProfileHeaderCard({ empId, onTabChange }) {
   const { data, isLoading } = useQuery({
     queryKey: ['profile-overview', empId],
     queryFn: () => apiGet(`/profile/${empId}/overview`),
@@ -242,17 +301,7 @@ function ProfileHeaderCard({ empId }) {
       </div>
 
       {/* Actions row */}
-      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f0f3ff]">
-        <button className="btn btn-primary btn-sm flex items-center gap-1.5">
-          <Pencil size={13} /> Edit Profile
-        </button>
-        <button className="btn btn-outline btn-sm flex items-center gap-1.5">
-          <Download size={13} /> Download Profile
-        </button>
-        <button className="btn btn-ghost btn-icon btn-sm text-[#777587] ml-auto">
-          <MoreHorizontal size={16} />
-        </button>
-      </div>
+      <ProfileActions onTabChange={onTabChange} />
     </div>
   );
 }
@@ -1775,6 +1824,164 @@ function AccountSection() {
   );
 }
 
+// ─── TWO-FACTOR AUTHENTICATION SECTION ───────────────────────────────────────
+
+function SecuritySection() {
+  const { user, saveAuth, token } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: meData, refetch: refetchMe } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => apiGet('/auth/me'),
+  });
+  const totpEnabled = meData?.totp_enabled ?? user?.totp_enabled ?? false;
+
+  const [totpSetup,        setTotpSetup]        = useState(null);
+  const [totpCode,         setTotpCode]         = useState('');
+  const [disable2FAModal,  setDisable2FAModal]  = useState(false);
+  const [disable2FAPw,     setDisable2FAPw]     = useState('');
+  const [copied,           setCopied]           = useState(false);
+
+  const setupTotp = useMutation({
+    mutationFn: () => apiPost('/auth/totp/setup', {}),
+    onSuccess: data => setTotpSetup(data),
+    onError:   e    => toast(e.message, 'error'),
+  });
+
+  const enableTotp = useMutation({
+    mutationFn: () => apiPost('/auth/totp/enable', { token: totpCode }),
+    onSuccess: () => {
+      toast('2FA enabled successfully!', 'success');
+      saveAuth(token, { ...user, totp_enabled: true });
+      refetchMe();
+      setTotpSetup(null);
+      setTotpCode('');
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const disableTotp = useMutation({
+    mutationFn: () => apiPost('/auth/totp/disable', { password: disable2FAPw }),
+    onSuccess: () => {
+      toast('2FA disabled.', 'warning');
+      saveAuth(token, { ...user, totp_enabled: false });
+      refetchMe();
+      setDisable2FAModal(false);
+      setDisable2FAPw('');
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  function copySecret() {
+    navigator.clipboard.writeText(totpSetup.secret);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <ShieldCheck size={14} className="text-[#3525cd]" />
+        <span className="text-sm font-black text-[#151c27]">Two-Factor Authentication</span>
+        {totpEnabled && (
+          <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>
+        )}
+      </div>
+
+      {!totpEnabled ? (
+        !totpSetup ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-[#777587]">
+              Add an extra layer of security. After setup, you'll need an authenticator app (Google Authenticator, Authy, etc.) each time you log in.
+            </p>
+            <button
+              onClick={() => setupTotp.mutate()}
+              disabled={setupTotp.isPending}
+              className="btn btn-primary btn-sm self-start flex items-center gap-2"
+            >
+              {setupTotp.isPending ? <><span className="spinner w-4 h-4" /> Setting up…</> : <><Key size={14} /> Set Up 2FA</>}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-xs text-[#777587]">Scan this QR code with your authenticator app, then enter the 6-digit code to activate.</p>
+            <img src={totpSetup.qrDataUrl} alt="2FA QR Code" className="w-40 h-40 mx-auto rounded-xl border border-[#c7c4d8] p-1" />
+            <div className="bg-[#f8f9ff] rounded-lg p-3 border border-[#e7eefe]">
+              <p className="text-[0.65rem] text-[#777587] mb-1 font-semibold uppercase tracking-wider">Manual Entry Key</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-black text-[#3525cd] tracking-widest flex-1 break-all">{totpSetup.secret}</code>
+                <button onClick={copySecret} className="text-[#777587] hover:text-[#3525cd] flex-shrink-0">
+                  {copied ? <Check size={14} className="text-emerald-500" /> : <QrCode size={14} />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="form-label">Enter 6-digit code from your app</label>
+              <input
+                className="form-control tracking-widest text-center text-lg font-black"
+                maxLength={6}
+                placeholder="123456"
+                value={totpCode}
+                onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => enableTotp.mutate()}
+                disabled={enableTotp.isPending || totpCode.length !== 6}
+                className="btn btn-primary btn-sm flex items-center gap-2"
+              >
+                {enableTotp.isPending ? <><span className="spinner w-4 h-4" /> Enabling…</> : <><ShieldCheck size={14} /> Enable 2FA</>}
+              </button>
+              <button onClick={() => { setTotpSetup(null); setTotpCode(''); }} className="btn btn-outline btn-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <ShieldCheck size={16} />
+            <span className="text-sm font-bold">2FA Active</span>
+          </div>
+          <p className="text-xs text-[#777587]">Your account is protected with two-factor authentication. Each login requires your authenticator app code.</p>
+          <button
+            onClick={() => setDisable2FAModal(true)}
+            className="btn btn-outline btn-sm self-start border-rose-300 text-rose-700 hover:bg-rose-50"
+          >
+            Disable 2FA
+          </button>
+        </div>
+      )}
+
+      <Modal
+        open={disable2FAModal}
+        onClose={() => { setDisable2FAModal(false); setDisable2FAPw(''); }}
+        title="Disable Two-Factor Authentication"
+        footer={
+          <>
+            <button className="btn btn-outline" onClick={() => { setDisable2FAModal(false); setDisable2FAPw(''); }}>Cancel</button>
+            <button className="btn btn-danger" onClick={() => disableTotp.mutate()} disabled={disableTotp.isPending || !disable2FAPw}>
+              {disableTotp.isPending ? 'Disabling…' : 'Confirm Disable'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-[#777587] mb-3">Enter your current password to confirm disabling 2FA.</p>
+        <input
+          className="form-control"
+          type="password"
+          placeholder="Current password"
+          value={disable2FAPw}
+          onChange={e => setDisable2FAPw(e.target.value)}
+        />
+      </Modal>
+    </div>
+  );
+}
+
 // ─── PRIVACY & SECURITY SECTION ──────────────────────────────────────────────
 
 function PrivacySection() {
@@ -1962,6 +2169,7 @@ function TabContent({ tab, empId }) {
       return (
         <div className="space-y-5">
           <AccountSection />
+          <SecuritySection />
           <PrivacySection />
         </div>
       );
@@ -1981,10 +2189,10 @@ export default function EmployeePortalProfile() {
   return (
     <div className="w-full space-y-5 pb-10">
       {/* Profile Header Card — always visible */}
-      <ProfileHeaderCard empId={empId} />
+      <ProfileHeaderCard empId={empId} onTabChange={setActiveTab} />
 
       {/* Horizontal Tab Navigation */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-x-auto">
+      <div id="profile-tabs" className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-x-auto">
         <div className="flex min-w-max">
           {TABS.map((tab, idx) => (
             <button
