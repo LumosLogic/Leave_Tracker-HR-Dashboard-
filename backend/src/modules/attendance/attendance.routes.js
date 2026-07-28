@@ -131,7 +131,7 @@ router.post('/break-in', auth, async (req, res) => {
     if (record.check_out)                            return res.status(400).json({ error: 'You have already checked out today' });
     if (record.break_start && !record.break_end)     return res.status(400).json({ error: 'You are already on a break' });
     const { data: updated } = await supabase.from('attendance')
-      .update({ break_start: timeStr, break_end: null, total_break_minutes: 0 })
+      .update({ break_start: timeStr, break_end: null })
       .eq('id', record.id).select().single();
     res.json({ record: updated, message: 'Break started' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -148,8 +148,9 @@ router.post('/break-out', auth, async (req, res) => {
     if (!record?.check_in)                    return res.status(400).json({ error: 'You have not checked in today' });
     if (!record.break_start || record.break_end) return res.status(400).json({ error: 'No active break found' });
     const breakMins = Math.max(0, toMinutes(timeStr) - toMinutes(record.break_start));
+    const newTotalBreakMins = (record.total_break_minutes || 0) + breakMins;
     const { data: updated } = await supabase.from('attendance')
-      .update({ break_end: timeStr, total_break_minutes: breakMins })
+      .update({ break_end: timeStr, total_break_minutes: newTotalBreakMins })
       .eq('id', record.id).select().single();
     const hrs = Math.floor(breakMins / 60), mins = breakMins % 60;
     const dur = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
