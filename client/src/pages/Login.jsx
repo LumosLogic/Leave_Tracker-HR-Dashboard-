@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock, Building2, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Zap, ClipboardList, BarChart2, Lock, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { apiPost } from '@/lib/api';
 
@@ -9,7 +9,6 @@ export default function Login() {
   const navigate = useNavigate();
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
-  const [orgSlug,  setOrgSlug]  = useState('');
   const [showPw,   setShowPw]   = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
@@ -24,9 +23,7 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const payload = { email, password };
-      if (orgSlug.trim()) payload.org_slug = orgSlug.trim().toLowerCase();
-      const response = await apiPost('/auth/login', payload);
+      const response = await apiPost('/auth/login', { email, password });
       if (response.requires2FA) {
         setTotpSessionToken(response.totp_session);
         setTotpStep(true);
@@ -201,18 +198,6 @@ export default function Login() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="form-label">Organization Slug <span className="text-[#777587] font-normal">(optional)</span></label>
-                  <div className="relative">
-                    <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                    <input
-                      type="text" className="form-control pl-9"
-                      placeholder="e.g. lumoslogic (leave blank if only 1 org)"
-                      value={orgSlug}
-                      onChange={e => setOrgSlug(e.target.value)}
-                    />
-                  </div>
-                </div>
                 <div>
                   <label className="form-label">Email Address</label>
                   <input

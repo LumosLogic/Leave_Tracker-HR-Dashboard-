@@ -1,18 +1,37 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, User, Mail, Phone, Globe, MessageSquare, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
+import { Building2, User, Mail, Phone, Globe, MessageSquare, CheckCircle2, ArrowRight, Clock, FileText, Users, Briefcase } from 'lucide-react';
 import { apiPost } from '@/lib/api';
+
+const COMPANY_SIZES = [
+  { value: '1-10',    label: '1–10 employees' },
+  { value: '11-50',   label: '11–50 employees' },
+  { value: '51-200',  label: '51–200 employees' },
+  { value: '201-500', label: '201–500 employees' },
+  { value: '500+',    label: '500+ employees' },
+];
+
+const INDUSTRIES = [
+  'Technology & Software', 'Manufacturing', 'Healthcare & Pharma',
+  'Retail & E-Commerce', 'Education & Training', 'Finance & Banking',
+  'Real Estate & Construction', 'Logistics & Transportation',
+  'Hospitality & Tourism', 'Media & Entertainment',
+  'Legal & Professional Services', 'Agriculture', 'Other',
+];
 
 export default function Register() {
   const [step, setStep] = useState(1); // 1 = form, 2 = success
 
   const [form, setForm] = useState({
     company_name: '',
-    name: '',
-    email: '',
-    phone: '',
-    website: '',
-    message: '',
+    name:         '',
+    email:        '',
+    phone:        '',
+    website:      '',
+    message:      '',
+    gst_number:   '',
+    company_size: '',
+    industry:     '',
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -28,9 +47,12 @@ export default function Register() {
         company_name: form.company_name.trim(),
         name:         form.name.trim(),
         email:        form.email.trim(),
-        phone:        form.phone.trim() || undefined,
-        website:      form.website.trim() || undefined,
-        message:      form.message.trim() || undefined,
+        phone:        form.phone.trim()        || undefined,
+        website:      form.website.trim()      || undefined,
+        message:      form.message.trim()      || undefined,
+        gst_number:   form.gst_number.trim()   || undefined,
+        company_size: form.company_size        || undefined,
+        industry:     form.industry            || undefined,
       });
       setStep(2);
     } catch (err) {
@@ -56,7 +78,7 @@ export default function Register() {
             <ul className="text-xs text-amber-700 space-y-1">
               <li className="flex items-start gap-1.5"><CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" /> Our team reviews your organization details</li>
               <li className="flex items-start gap-1.5"><CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" /> You receive an approval email within 24 hours</li>
-              <li className="flex items-start gap-1.5"><CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" /> Email includes your login credentials and org slug</li>
+              <li className="flex items-start gap-1.5"><CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" /> Email includes your login credentials — just email &amp; password to sign in</li>
             </ul>
           </div>
           <p className="text-xs text-[#777587] mb-4">Approval sent to <strong>{form.email}</strong></p>
@@ -90,14 +112,14 @@ export default function Register() {
             <em className="not-italic text-white/90">Today.</em>
           </h1>
           <p className="text-white/75 text-sm leading-relaxed max-w-sm mb-7">
-            Set up your own private HR workspace in 60 seconds. Full attendance tracking, leave management, and team analytics — all under your organization's name.
+            Set up your own private HR workspace. Full attendance tracking, leave management, and team analytics — all under your organization's name.
           </p>
           <div className="space-y-3">
             {[
-              { title: 'Isolated Data', desc: 'Your company data is fully private and separate from others' },
-              { title: 'Custom API Keys', desc: 'Bring your own Google Calendar, Clockify, and SMTP settings' },
+              { title: 'Isolated Data',     desc: 'Your company data is fully private and separate from others' },
+              { title: 'Custom Settings',   desc: 'Bring your own SMTP, Google Calendar, and integrations' },
               { title: 'Multi-role System', desc: 'Root Admin → HR Admin → Employee role hierarchy' },
-              { title: 'Scale Freely', desc: 'Add unlimited employees, holidays, and events' },
+              { title: 'Scale Freely',      desc: 'Add unlimited employees, holidays, and events' },
             ].map(f => (
               <div key={f.title} className="flex items-start gap-3">
                 <div className="w-5 h-5 rounded-full bg-white/20 border border-white/30 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -131,6 +153,8 @@ export default function Register() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5">
+
+            {/* Company Name */}
             <div>
               <label className="form-label">Company Name <span className="text-rose-500">*</span></label>
               <div className="relative">
@@ -141,6 +165,7 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Contact Name */}
             <div>
               <label className="form-label">Your Full Name <span className="text-rose-500">*</span></label>
               <div className="relative">
@@ -151,6 +176,7 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Work Email */}
             <div>
               <label className="form-label">Work Email <span className="text-rose-500">*</span></label>
               <div className="relative">
@@ -161,6 +187,7 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Phone + Website */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="form-label">Phone <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
@@ -182,6 +209,55 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Company Size + Industry */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Company Size <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
+                <div className="relative">
+                  <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  <select className="form-control pl-9 appearance-none"
+                    value={form.company_size}
+                    onChange={e => set('company_size', e.target.value)}>
+                    <option value="">Select…</option>
+                    {COMPANY_SIZES.map(s => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">Industry <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
+                <div className="relative">
+                  <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  <select className="form-control pl-9 appearance-none"
+                    value={form.industry}
+                    onChange={e => set('industry', e.target.value)}>
+                    <option value="">Select…</option>
+                    {INDUSTRIES.map(i => (
+                      <option key={i} value={i}>{i}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* GST Number */}
+            <div>
+              <label className="form-label">
+                GST Number <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span>
+              </label>
+              <div className="relative">
+                <FileText size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+                <input type="text" className="form-control pl-9 uppercase tracking-wider"
+                  placeholder="22AAAAA0000A1Z5"
+                  maxLength={15}
+                  value={form.gst_number}
+                  onChange={e => set('gst_number', e.target.value.toUpperCase())} />
+              </div>
+              <p className="text-[0.7rem] text-[#777587] mt-1">15-character GST Identification Number</p>
+            </div>
+
+            {/* Message */}
             <div>
               <label className="form-label">Message <span className="text-[#777587] font-normal">(optional)</span></label>
               <div className="relative">

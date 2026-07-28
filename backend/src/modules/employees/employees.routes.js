@@ -60,6 +60,11 @@ router.post('/', auth, adminOnly, async (req, res) => {
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can create root_admin accounts' });
     }
+
+    // Global email uniqueness — no two users across any org may share an email
+    const { data: dupEmail } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
+    if (dupEmail) return res.status(400).json({ error: 'This email is already registered on the platform. Each user must have a unique email address.' });
+
     const hashed = bcrypt.hashSync(password, 10);
     const {
       device_enrollment_id, branch_id, grade, division, sub_division,
@@ -128,6 +133,14 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
     }
+
+    // If email is being changed, verify it's not already taken by another user anywhere on the platform
+    if (email) {
+      const { data: dupEmail } = await supabase.from('users')
+        .select('id').eq('email', email.toLowerCase().trim()).neq('id', parseInt(req.params.id)).maybeSingle();
+      if (dupEmail) return res.status(400).json({ error: 'This email is already registered on the platform. Each user must have a unique email address.' });
+    }
+
     const update = {
       name, email, role, department, position, avatar_color,
       date_of_birth:        date_of_birth        || null,

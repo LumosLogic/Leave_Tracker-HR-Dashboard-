@@ -20,23 +20,16 @@ cloudinary.config({
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ─── Auth: Login ──────────────────────────────────────────────────────────────
+// Email is globally unique across the platform — no org slug needed.
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, org_slug } = req.body;
+    const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    let userQuery = supabase.from('users')
+    const { data: user } = await supabase.from('users')
       .select('*, organizations(id, name, slug, logo_url)')
-      .eq('email', email.toLowerCase().trim());
-
-    // If org_slug provided, scope the login to that specific organization
-    if (org_slug) {
-      const { data: org } = await supabase.from('organizations').select('id').eq('slug', org_slug.toLowerCase().trim()).maybeSingle();
-      if (!org) return res.status(401).json({ error: 'Organization not found' });
-      userQuery = userQuery.eq('organization_id', org.id);
-    }
-
-    const { data: user } = await userQuery.maybeSingle();
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle();
 
     if (!user || !bcrypt.compareSync(password, user.password))
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -154,17 +147,16 @@ router.put('/change-password', auth, async (req, res) => {
 });
 
 // ─── Auth: Forgot Password ────────────────────────────────────────────────────
+// Email is globally unique — no org slug required.
 router.post('/forgot-password', async (req, res) => {
   try {
-    const { email, org_slug } = req.body;
+    const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    let query = supabase.from('users').select('id, name, email').eq('email', email.toLowerCase().trim());
-    if (org_slug) {
-      const { data: org } = await supabase.from('organizations').select('id').eq('slug', org_slug.toLowerCase().trim()).maybeSingle();
-      if (org) query = query.eq('organization_id', org.id);
-    }
-    const { data: user } = await query.maybeSingle();
+    const { data: user } = await supabase.from('users')
+      .select('id, name, email')
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle();
 
     // Always respond with success to prevent email enumeration
     if (!user) return res.json({ success: true });

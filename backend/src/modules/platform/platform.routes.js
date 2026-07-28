@@ -5,6 +5,7 @@ const jwt      = require('jsonwebtoken');
 const { supabase } = require('../../config/db');
 const { JWT_SECRET, platformAdminAuth } = require('../../middleware/auth');
 const { sendMail, orgApprovedHtml, orgRejectedHtml } = require('../../services/emailService');
+const { generateUniqueSlug } = require('../../utils/helpers');
 
 // ─── All Feature Keys ─────────────────────────────────────────────────────────
 const ALL_FEATURE_KEYS = [
@@ -211,7 +212,8 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
     if (!request) return res.status(404).json({ error: 'Request not found' });
     if (request.status !== 'pending') return res.status(400).json({ error: `Request is already ${request.status}` });
 
-    const slug = request.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    // Collision-safe slug — never reuses an existing slug
+    const slug = await generateUniqueSlug(request.company_name);
 
     // Create organization
     const { data: org, error: orgErr } = await supabase.from('organizations')

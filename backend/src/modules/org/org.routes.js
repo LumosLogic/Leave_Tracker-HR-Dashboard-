@@ -5,35 +5,63 @@ const { auth } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendMail, orgRequestReceivedHtml } = require('../../services/emailService');
 
+// GST format: 2-digit state code + 10-char PAN + entity digit + 'Z' + check char (15 chars total)
+const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
 // ─── Organization Registration (creates pending request, not live org) ────────
 router.post('/register-org', async (req, res) => {
   try {
-    const { company_name, name, email, phone, website, message } = req.body;
+    const { company_name, name, email, phone, website, message, gst_number, company_size, industry } = req.body;
     if (!company_name || !name || !email)
       return res.status(400).json({ error: 'Company name, your name, and email are required' });
 
-    const norm = email.toLowerCase().trim();
-    const slug = company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const norm        = email.toLowerCase().trim();
+    const companyTrim = company_name.trim();
 
-    // Reject duplicate pending/approved requests for same email or slug
+    // ── 1. Validate GST format if provided ───────────────────────────────────
+    const gstNorm = gst_number ? gst_number.trim().toUpperCase() : null;
+    if (gstNorm && !GST_REGEX.test(gstNorm))
+      return res.status(400).json({ error: 'Invalid GST number format. Expected format: 22AAAAA0000A1Z5' });
+
+    // ── 2. Block duplicate contact email ─────────────────────────────────────
     const { data: dupEmail } = await supabase.from('org_registration_requests')
       .select('id').eq('email', norm).in('status', ['pending', 'approved']).maybeSingle();
-    if (dupEmail) return res.status(400).json({ error: 'A request with this email is already pending or approved.' });
+    if (dupEmail) return res.status(400).json({ error: 'A registration request with this email is already pending or approved.' });
 
-    const { data: dupSlug } = await supabase.from('org_registration_requests')
-      .select('id').eq('company_name', company_name.trim()).in('status', ['pending', 'approved']).maybeSingle();
-    if (dupSlug) return res.status(400).json({ error: 'A request for this company name is already pending or approved.' });
+    // ── 3. Block duplicate company name (case-insensitive) across requests ───
+    const { data: dupName } = await supabase.from('org_registration_requests')
+      .select('id').ilike('company_name', companyTrim).in('status', ['pending', 'approved']).maybeSingle();
+    if (dupName) return res.status(400).json({ error: 'This organization is already registered or has a pending request. Please contact support if you believe this is incorrect.' });
 
-    const { data: existingOrg } = await supabase.from('organizations').select('id').eq('slug', slug).maybeSingle();
-    if (existingOrg) return res.status(400).json({ error: `An organization named "${company_name}" already exists.` });
+    // ── 4. Block duplicate company name against live organizations ───────────
+    const { data: existingOrg } = await supabase.from('organizations')
+      .select('id').ilike('name', companyTrim).maybeSingle();
+    if (existingOrg) return res.status(400).json({ error: 'This organization is already registered. Please contact support if you believe this is incorrect.' });
 
+    // ── 5. Block if admin email already has a user account ───────────────────
     const { data: existingUser } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
-    if (existingUser) return res.status(400).json({ error: 'An account with this email already exists.' });
+    if (existingUser) return res.status(400).json({ error: 'An account with this email already exists on the platform.' });
+
+    // ── 6. Unique GST check across pending/approved requests ─────────────────
+    if (gstNorm) {
+      const { data: dupGst } = await supabase.from('org_registration_requests')
+        .select('id').eq('gst_number', gstNorm).in('status', ['pending', 'approved']).maybeSingle();
+      if (dupGst) return res.status(400).json({ error: 'A registration request with this GST number already exists.' });
+    }
 
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
 
     const { data: request, error: reqErr } = await supabase.from('org_registration_requests')
-      .insert({ company_name: company_name.trim(), contact_name: name.trim(), email: norm, phone: phone || null, website: website || null, message: message || null, ip_address: ip })
+      .insert({
+        company_name: companyTrim, contact_name: name.trim(), email: norm,
+        phone:        phone        || null,
+        website:      website      || null,
+        message:      message      || null,
+        gst_number:   gstNorm      || null,
+        company_size: company_size || null,
+        industry:     industry     || null,
+        ip_address:   ip,
+      })
       .select().single();
     if (reqErr) throw new Error(reqErr.message);
 

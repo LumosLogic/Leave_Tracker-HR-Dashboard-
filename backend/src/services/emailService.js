@@ -248,14 +248,15 @@ function orgApprovedHtml(req, orgSlug, tempPassword) {
       <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
         <p style="margin:0 0 10px;font-size:13px;color:#1e40af;font-weight:bold;">Your Login Credentials</p>
         <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Login URL:</span> &nbsp;<a href="https://hrms.lumoslogic.com/login" style="color:#3525cd;">hrms.lumoslogic.com/login</a></p>
-        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Organization Slug:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${orgSlug}</code></p>
         <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span> &nbsp;<strong>${req.email}</strong></p>
         <p style="margin:0;font-size:14px;"><span style="color:#64748b;">Temporary Password:</span> &nbsp;<code style="background:#f1f5f9;padding:3px 10px;border-radius:4px;font-family:monospace;">${tempPassword}</code></p>
       </div>
       <div style="margin-top:16px;padding:12px 16px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px;color:#78350f;">
         For security, you will be asked to change your password on first login.
       </div>
-      <p style="margin-top:16px;font-size:13px;color:#64748b;">Share your organization slug <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-family:monospace;">${orgSlug}</code> with your employees when they log in.</p>
+      <p style="margin-top:16px;font-size:13px;color:#64748b;">
+        Your employees can log in using only their <strong>email address and password</strong> — no organization code is required.
+      </p>
       ${FOOTER}
     `)
   );

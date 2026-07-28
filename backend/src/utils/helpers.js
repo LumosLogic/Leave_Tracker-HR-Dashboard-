@@ -71,4 +71,27 @@ async function getRecipients(oId) {
   return [];
 }
 
-module.exports = { localDateStr, localTimeStr, flat, flatOne, getSettings, orgId, toMinutes, isWorkingDay, getRecipients };
+// Generates a URL-safe slug from a company name, guaranteed unique in the organizations table.
+// Tries: base → base-YYYY → base-2 … base-99 → base-<timestamp>
+async function generateUniqueSlug(companyName) {
+  const base = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+  const taken = async (slug) => {
+    const { data } = await supabase.from('organizations').select('id').eq('slug', slug).maybeSingle();
+    return !!data;
+  };
+
+  if (!(await taken(base))) return base;
+
+  const withYear = `${base}-${new Date().getFullYear()}`;
+  if (!(await taken(withYear))) return withYear;
+
+  for (let i = 2; i <= 99; i++) {
+    const candidate = `${base}-${i}`;
+    if (!(await taken(candidate))) return candidate;
+  }
+
+  return `${base}-${Date.now()}`;
+}
+
+module.exports = { localDateStr, localTimeStr, flat, flatOne, getSettings, orgId, toMinutes, isWorkingDay, getRecipients, generateUniqueSlug };

@@ -5,7 +5,6 @@ import { apiPost } from '@/lib/api';
 
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState('');
-  const [orgSlug, setOrgSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
   const [sent,    setSent]    = useState(false);
@@ -15,7 +14,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      await apiPost('/auth/forgot-password', { email, ...(orgSlug.trim() && { org_slug: orgSlug.trim().toLowerCase() }) });
+      await apiPost('/auth/forgot-password', { email });
       setSent(true);
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -99,15 +98,6 @@ export default function ForgotPassword() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="form-label">Organization Slug <span className="text-[#777587] font-normal">(optional)</span></label>
-                  <input
-                    type="text" className="form-control"
-                    placeholder="e.g. lumoslogic"
-                    value={orgSlug}
-                    onChange={e => setOrgSlug(e.target.value)}
-                  />
-                </div>
                 <div>
                   <label className="form-label">Email Address</label>
                   <div className="relative">
