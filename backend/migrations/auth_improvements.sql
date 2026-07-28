@@ -1,60 +1,122 @@
 -- ============================================================
--- Migration: Auth Improvements + Org Registration Hardening
--- Run in pgAdmin or psql on your Hostinger VPS PostgreSQL DB
+-- Auth Improvements Migration
+-- Lumos Logic HRMS
 --
--- What this does:
---   1. Enforce globally unique emails in the users table
---   2. Add GST, company_size, industry to org_registration_requests
---   3. Partial unique index on gst_number (non-null only)
+-- Run:
+--   docker exec -i lumos_postgres psql -U lumos_admin -d lumos_hrms < backend/migrations/auth_improvements.sql
 --
--- SAFE TO RUN: uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- BEFORE RUNNING: check for duplicate emails first:
+--   docker exec -i lumos_postgres psql -U lumos_admin -d lumos_hrms -c \
+--   "SELECT email, COUNT(*) FROM users GROUP BY email HAVING COUNT(*) > 1;"
+--   If any rows come back, resolve them before running this file.
 -- ============================================================
 
--- ─── STEP 1: Check for duplicate emails before adding constraint ──────────────
--- Run this SELECT first. If it returns rows, resolve them manually before step 2.
--- SELECT email, COUNT(*) as cnt FROM users GROUP BY email HAVING COUNT(*) > 1;
+\echo '>>> Step 1: Global UNIQUE constraint on users.email'
 
--- ─── STEP 2: Global unique email constraint on users ─────────────────────────
--- Drop the constraint if it already exists under a different name, then recreate.
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
-    WHERE conname = 'users_email_unique' AND conrelid = 'users'::regclass
+    WHERE conname = 'users_email_unique'
+      AND conrelid = 'users'::regclass
   ) THEN
     ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);
+    RAISE NOTICE 'users_email_unique created';
+  ELSE
+    RAISE NOTICE 'users_email_unique already exists, skipped';
   END IF;
 END $$;
 
--- ─── STEP 3: Add new columns to org_registration_requests ────────────────────
+\echo '>>> Step 2: Add gst_number, company_size, industry to org_registration_requests'
+
 ALTER TABLE org_registration_requests
   ADD COLUMN IF NOT EXISTS gst_number   TEXT,
   ADD COLUMN IF NOT EXISTS company_size TEXT,
   ADD COLUMN IF NOT EXISTS industry     TEXT;
 
--- ─── STEP 4: Partial unique index on gst_number (ignores NULLs) ──────────────
--- This prevents two approved/pending requests from using the same GST number
--- while allowing NULL for orgs that don't provide one.
+\echo '>>> Step 3: Partial unique index on gst_number (NULLs are excluded)'
+
 CREATE UNIQUE INDEX IF NOT EXISTS org_requests_gst_unique
   ON org_registration_requests (gst_number)
   WHERE gst_number IS NOT NULL;
 
--- ─── STEP 5: Unique index on organizations.slug (should already exist) ───────
+\echo '>>> Step 4: Unique index on organizations.slug'
+
 CREATE UNIQUE INDEX IF NOT EXISTS organizations_slug_unique
   ON organizations (slug);
 
--- ─── STEP 6: Case-insensitive index on organizations.name ────────────────────
--- Enables fast ilike lookups for duplicate name detection
+\echo '>>> Step 5: Case-insensitive index on organizations.name'
+
 CREATE INDEX IF NOT EXISTS organizations_name_lower_idx
   ON organizations (LOWER(name));
 
--- ─── STEP 7: Case-insensitive index on org_registration_requests.company_name ─
+\echo '>>> Step 6: Case-insensitive index on org_registration_requests.company_name'
+
 CREATE INDEX IF NOT EXISTS org_requests_company_name_lower_idx
   ON org_registration_requests (LOWER(company_name));
 
--- ============================================================
--- VERIFICATION QUERIES (run after migration)
--- ============================================================
--- SELECT conname, contype FROM pg_constraint WHERE conrelid = 'users'::regclass AND conname = 'users_email_unique';
--- SELECT column_name FROM information_schema.columns WHERE table_name = 'org_registration_requests' AND column_name IN ('gst_number','company_size','industry');
--- SELECT indexname FROM pg_indexes WHERE tablename = 'org_registration_requests' AND indexname = 'org_requests_gst_unique';
+\echo '>>> Verification'
+
+SELECT
+  'users_email_unique constraint'        AS check_name,
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END AS status
+FROM pg_constraint
+WHERE conname = 'users_email_unique' AND conrelid = 'users'::regclass
+
+UNION ALL
+
+SELECT
+  'gst_number column',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM information_schema.columns
+WHERE table_name = 'org_registration_requests' AND column_name = 'gst_number'
+
+UNION ALL
+
+SELECT
+  'company_size column',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM information_schema.columns
+WHERE table_name = 'org_registration_requests' AND column_name = 'company_size'
+
+UNION ALL
+
+SELECT
+  'industry column',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM information_schema.columns
+WHERE table_name = 'org_registration_requests' AND column_name = 'industry'
+
+UNION ALL
+
+SELECT
+  'org_requests_gst_unique index',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM pg_indexes
+WHERE indexname = 'org_requests_gst_unique'
+
+UNION ALL
+
+SELECT
+  'organizations_slug_unique index',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM pg_indexes
+WHERE indexname = 'organizations_slug_unique'
+
+UNION ALL
+
+SELECT
+  'organizations_name_lower_idx index',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM pg_indexes
+WHERE indexname = 'organizations_name_lower_idx'
+
+UNION ALL
+
+SELECT
+  'org_requests_company_name_lower_idx index',
+  CASE WHEN COUNT(*) > 0 THEN 'OK' ELSE 'MISSING' END
+FROM pg_indexes
+WHERE indexname = 'org_requests_company_name_lower_idx';
+
+\echo '>>> Done'
