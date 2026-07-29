@@ -8,6 +8,7 @@ const path     = require('path');
 const { seed }         = require('./config/db');
 const { ALLOWED_ORIGINS } = require('./middleware/auth');
 const { featureGate }  = require('./middleware/featureFlag');
+const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
 
 // ── Module routers (extracted from old server.js) ────────────────────────────
@@ -90,6 +91,9 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+// ── General API rate limit (300 req/min per IP — catches scripted abuse) ──────
+app.use('/api', rateLimiter(LIMITS.GENERAL_API));
 
 // ── Feature gate (runs before every /api route) ───────────────────────────────
 app.use('/api', featureGate);

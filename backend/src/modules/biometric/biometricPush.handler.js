@@ -154,7 +154,7 @@ async function processAttlogLine(line, orgId, deviceSerial) {
 
   // 5. Leave guard — skip if employee is on leave / half_day / wfh
   const attRes = await pool.query(
-    `SELECT id, status, check_in, check_out FROM attendance
+    `SELECT id, status, check_in, check_out, total_break_minutes FROM attendance
      WHERE user_id = $1 AND date = $2 LIMIT 1`,
     [userId, punchDate]
   );
@@ -184,19 +184,25 @@ async function processAttlogLine(line, orgId, deviceSerial) {
     if (att && att.check_in) {
       const checkInMs  = new Date(`${punchDate}T${att.check_in}`).getTime();
       const checkOutMs = punchTime.getTime();
-      const workHours  = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
+      const grossHours = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
+      // Subtract accumulated break minutes to get effective work hours
+      const breakMins  = att.total_break_minutes || 0;
+      const workHours  = parseFloat(Math.max(0, grossHours - breakMins / 60).toFixed(2));
       await pool.query(
-        `UPDATE attendance SET check_out = $1, work_hours = $2, source = 'biometric'
-         WHERE id = $3`,
-        [punchTimeStr, workHours, att.id]
+        `UPDATE attendance
+         SET check_out = $1, gross_hours = $2, work_hours = $3, source = 'biometric'
+         WHERE id = $4`,
+        [punchTimeStr, grossHours, workHours, att.id]
       );
     }
-    // If no check_in exists — record the check_out anyway for later reconciliation
+    // If no check_in exists — record the check_out for later reconciliation.
+    // Uses the correct 3-column unique constraint (user_id, date, organization_id).
     else if (!att) {
       await pool.query(
         `INSERT INTO attendance (user_id, date, check_out, status, source, organization_id)
          VALUES ($1, $2, $3, 'present', 'biometric', $4)
-         ON CONFLICT (user_id, date) DO UPDATE SET check_out = EXCLUDED.check_out, source = 'biometric'`,
+         ON CONFLICT (user_id, date, organization_id) DO UPDATE
+           SET check_out = EXCLUDED.check_out, source = 'biometric'`,
         [userId, punchDate, punchTimeStr, orgId]
       );
     }

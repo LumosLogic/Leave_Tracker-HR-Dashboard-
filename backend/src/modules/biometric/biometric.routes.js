@@ -206,7 +206,7 @@ router.post('/reprocess', auth, adminOnly, async (req, res) => {
       const punchTimeStr = new Date(log.punch_time).toTimeString().slice(0, 8);
 
       const attRes = await pool.query(
-        `SELECT id, status, check_in FROM attendance
+        `SELECT id, status, check_in, total_break_minutes FROM attendance
          WHERE user_id = $1 AND date = $2 LIMIT 1`,
         [userId, punchDate]
       );
@@ -231,10 +231,12 @@ router.post('/reprocess', auth, adminOnly, async (req, res) => {
         if (att && att.check_in) {
           const checkInMs  = new Date(`${punchDate}T${att.check_in}`).getTime();
           const checkOutMs = new Date(log.punch_time).getTime();
-          const workHours  = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
+          const grossHours = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
+          const breakMins  = att.total_break_minutes || 0;
+          const workHours  = parseFloat(Math.max(0, grossHours - breakMins / 60).toFixed(2));
           await pool.query(
-            `UPDATE attendance SET check_out = $1, work_hours = $2, source = 'biometric' WHERE id = $3`,
-            [punchTimeStr, workHours, att.id]
+            `UPDATE attendance SET check_out = $1, gross_hours = $2, work_hours = $3, source = 'biometric' WHERE id = $4`,
+            [punchTimeStr, grossHours, workHours, att.id]
           );
         }
       }

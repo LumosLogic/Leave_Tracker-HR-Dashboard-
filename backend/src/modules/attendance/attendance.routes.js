@@ -162,10 +162,20 @@ router.post('/break-out', auth, async (req, res) => {
 router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const { check_in, check_out, status, is_late, is_early_exit, notes } = req.body;
-    const work_hours = check_in && check_out
+    // gross_hours = raw span between check_in and check_out (no break deduction)
+    const gross_hours = check_in && check_out
       ? Math.max(0, (toMinutes(check_out) - toMinutes(check_in)) / 60) : 0;
+    // When admin overrides times, reset break minutes to 0 — breaks are unknown for manual edits
+    const work_hours = gross_hours;
     const { data } = await supabase.from('attendance')
-      .update({ check_in, check_out, status, is_late: !!is_late, is_early_exit: !!is_early_exit, work_hours: Math.round(work_hours * 100) / 100, notes })
+      .update({
+        check_in, check_out, status,
+        is_late: !!is_late, is_early_exit: !!is_early_exit,
+        gross_hours: Math.round(gross_hours * 100) / 100,
+        work_hours:  Math.round(work_hours  * 100) / 100,
+        total_break_minutes: 0,
+        notes,
+      })
       .eq('id', req.params.id).select().single();
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -175,8 +185,13 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 router.post('/mark-absent', auth, adminOnly, async (req, res) => {
   try {
     const { user_id, date } = req.body;
-    await supabase.from('attendance')
-      .upsert({ user_id, date, status: 'absent' }, { onConflict: 'user_id,date' });
+    if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
+    const { error } = await supabase.from('attendance')
+      .upsert(
+        { user_id: parseInt(user_id), date, status: 'absent', organization_id: orgId(req) },
+        { onConflict: 'user_id,date,organization_id' }
+      );
+    if (error) throw new Error(error.message);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -187,19 +202,22 @@ router.post('/admin-edit', auth, adminOnly, async (req, res) => {
   try {
     const { user_id, date, check_in, check_out, status, is_late, is_early_exit, notes } = req.body;
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
-    const work_hours = check_in && check_out
+    const gross_hours = check_in && check_out
       ? Math.max(0, (toMinutes(check_out) - toMinutes(check_in)) / 60) : 0;
     const { data, error } = await supabase.from('attendance')
       .upsert({
         user_id: parseInt(user_id), date,
-        check_in:      check_in      || null,
-        check_out:     check_out     || null,
-        status:        status        || 'present',
-        is_late:       !!is_late,
-        is_early_exit: !!is_early_exit,
-        work_hours:    Math.round(work_hours * 100) / 100,
-        notes:         notes         || null,
-      }, { onConflict: 'user_id,date' })
+        check_in:            check_in      || null,
+        check_out:           check_out     || null,
+        status:              status        || 'present',
+        is_late:             !!is_late,
+        is_early_exit:       !!is_early_exit,
+        gross_hours:         Math.round(gross_hours * 100) / 100,
+        work_hours:          Math.round(gross_hours * 100) / 100,
+        total_break_minutes: 0,
+        notes:               notes         || null,
+        organization_id:     orgId(req),
+      }, { onConflict: 'user_id,date,organization_id' })
       .select().single();
     if (error) throw new Error(error.message);
     res.json(data);

@@ -189,8 +189,8 @@ router.get('/headcount', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/reports/employees?format=csv
-router.get('/employees', auth, async (req, res) => {
+// GET /api/reports/employees?format=csv (admin only — contains PII)
+router.get('/employees', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { format } = req.query;

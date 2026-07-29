@@ -4,12 +4,13 @@ const { supabase } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendMail, orgRequestReceivedHtml } = require('../../services/emailService');
+const { rateLimiter, LIMITS } = require('../../middleware/rateLimiter');
 
 // GST format: 2-digit state code + 10-char PAN + entity digit + 'Z' + check char (15 chars total)
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 // ─── Organization Registration (creates pending request, not live org) ────────
-router.post('/register-org', async (req, res) => {
+router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) => {
   try {
     const { company_name, name, email, phone, website, message, gst_number, company_size, industry } = req.body;
     if (!company_name || !name || !email)

@@ -1,10 +1,23 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { flat, flatOne, orgId, getSettings, isWorkingDay, getRecipients } = require('../../utils/helpers');
 const { sendMail, leaveAppliedHtml, leaveStatusHtml } = require('../../services/emailService');
 const gcal = require('../../services/googleCalendar');
+
+// ─── Leave transaction helper ─────────────────────────────────────────────────
+// Builds the working-day date array for a leave span (pure calculation, no DB).
+function buildWorkingDates(startDate, endDate, settings) {
+  const dates = [];
+  const start = new Date(startDate + 'T12:00:00');
+  const end   = new Date(endDate   + 'T12:00:00');
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const ds = d.toISOString().split('T')[0];
+    if (isWorkingDay(ds, settings)) dates.push(ds);
+  }
+  return dates;
+}
 
 // ─── Leaves: Date Conflict Check & Balance ────────────────────────────────────
 // Check for date conflicts and return leave balance for the current user
@@ -53,7 +66,13 @@ router.get('/date-check', auth, async (req, res) => {
       .gte('start_date', `${year}-01-01`)
       .lte('end_date', `${year}-12-31`);
 
-    // Count used days per type
+    // Fetch org holidays for this year — used to exclude holidays from leave-day count (HIGH-03)
+    const { data: orgHolidays } = await supabase.from('holidays')
+      .select('date').eq('organization_id', orgId(req))
+      .like('date', `${year}-%`);
+    const holidaySet = new Set((orgHolidays || []).map(h => h.date));
+
+    // Count used days per type — skipping weekends AND public holidays
     const usedByType = {};
     for (const l of approved || []) {
       if (!usedByType[l.leave_type]) usedByType[l.leave_type] = 0;
@@ -63,22 +82,28 @@ router.get('/date-check', auth, async (req, res) => {
         const s = new Date(l.start_date + 'T12:00:00');
         const e = new Date(l.end_date   + 'T12:00:00');
         for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          const ds  = d.toISOString().split('T')[0];
           const dow = d.getDay();
-          if (dow !== 0 && dow !== 6) usedByType[l.leave_type] += 1;
+          if (dow !== 0 && dow !== 6 && !holidaySet.has(ds)) usedByType[l.leave_type] += 1;
         }
       }
     }
 
-    // Get org leave quota
+    // Get org leave quota — from leave_policies table, falling back to org default
+    const { data: policies } = await supabase.from('leave_policies')
+      .select('leave_type, annual_quota').eq('organization_id', orgId(req)).eq('active', true);
     const { data: orgRow } = await supabase.from('organizations')
       .select('total_annual_leaves').eq('id', orgId(req)).maybeSingle();
+    const policyQuotas = {};
+    (policies || []).forEach(p => { policyQuotas[p.leave_type] = p.annual_quota; });
     const totalAnnual = orgRow?.total_annual_leaves || 18;
 
     res.json({
-      conflicts: conflicts || [],
+      conflicts:    conflicts || [],
       hasAttendance: (attendanceRecs || []).length > 0,
       usedByType,
       totalAnnual,
+      policyQuotas,  // per-type quotas from leave_policies table
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -254,144 +279,204 @@ router.put('/:id', auth, async (req, res) => {
 
 // ─── Leaves: Approve ─────────────────────────────────────────────────────────
 router.put('/:id/approve', auth, adminOnly, async (req, res) => {
+  // Read leave + settings BEFORE opening the transaction (reads don't need the lock)
+  const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
+  if (le || !leave) return res.status(404).json({ error: 'Leave not found' });
+  if (leave.status === 'approved') return res.json(leave);
+
+  const settings   = await getSettings(orgId(req));
+  const workDates  = buildWorkingDates(leave.start_date, leave.end_date, settings);
+  const attStatus  = leave.leave_time === 'half' ? 'half_day'
+    : (leave.leave_time === 'wfh' || leave.leave_type === 'wfh') ? 'wfh'
+    : 'on_leave';
+  const approvedAt = new Date().toISOString();
+
+  // True PostgreSQL transaction — attendance upsert + leave status change are atomic.
+  // If either fails, the whole operation is rolled back and neither write persists.
+  const client = await pool.connect();
   try {
-    const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
-    if (le) return res.status(404).json({ error: 'Leave not found' });
-    if (leave.status === 'approved') return res.json(leave); // already approved — skip duplicate email
+    await client.query('BEGIN');
 
-    await supabase.from('leaves').update({ status: 'approved', approved_by: req.user.id, approved_at: new Date().toISOString() }).eq('id', req.params.id);
-
-    // Mark attendance days as on_leave
-    const settings = await getSettings(orgId(req));
-    const start = new Date(leave.start_date + 'T12:00:00');
-    const end   = new Date(leave.end_date   + 'T12:00:00');
-    const upserts = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const ds = d.toISOString().split('T')[0];
-      const attStatus = leave.leave_time === 'half' ? 'half_day' : (leave.leave_time === 'wfh' || leave.leave_type === 'wfh') ? 'wfh' : 'on_leave';
-      if (isWorkingDay(ds, settings)) upserts.push({ user_id: leave.user_id, date: ds, status: attStatus, organization_id: orgId(req) });
+    for (const ds of workDates) {
+      await client.query(
+        `INSERT INTO attendance (user_id, date, status, organization_id)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, date, organization_id)
+         DO UPDATE SET status = EXCLUDED.status`,
+        [leave.user_id, ds, attStatus, orgId(req)]
+      );
     }
-    if (upserts.length) await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date,organization_id' });
 
-    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
-    // Email the employee
-    if (data.users?.email) {
-      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved — HR Tracker', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
-    }
-    // Sync to Google Calendar
-    const gcalId = await gcal.createLeaveEvent(leave, data.users?.name || 'Employee');
-    if (gcalId) await supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', req.params.id);
-    res.json(flatOne(data));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    await client.query(
+      `UPDATE leaves SET status = 'approved', approved_by = $1, approved_at = $2 WHERE id = $3`,
+      [req.user.id, approvedAt, req.params.id]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Approval failed — no changes were saved. ' + err.message });
+  } finally {
+    client.release();
+  }
+
+  // Post-transaction: fetch updated record for response
+  const { data } = await supabase.from('leaves')
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+
+  // Fire-and-forget side effects (never affect data integrity)
+  if (data.users?.email) {
+    sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved — HR Tracker', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
+  }
+  gcal.createLeaveEvent(leave, data.users?.name || 'Employee')
+    .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', req.params.id).then(() => {}); })
+    .catch(() => {});
+
+  res.json(flatOne(data));
 });
 
 // ─── Leaves: Reject ───────────────────────────────────────────────────────────
 router.put('/:id/reject', auth, adminOnly, async (req, res) => {
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
+  if (!leave) return res.status(404).json({ error: 'Leave not found' });
+  if (leave.status === 'rejected') return res.json(leave);
+
+  const { remarks } = req.body || {};
+  const rejectedAt = new Date().toISOString();
+
+  // Pre-calculate attendance dates to delete (pure JS — no DB writes yet)
+  let workDates = [];
+  if (leave.status === 'approved') {
+    const settings = await getSettings(orgId(req));
+    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+  }
+
+  // Atomic transaction: attendance deletion + leave status change
+  const client = await pool.connect();
   try {
-    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
-    if (!leave) return res.status(404).json({ error: 'Leave not found' });
-    if (leave.status === 'rejected') return res.json(leave); // already rejected — skip duplicate email
+    await client.query('BEGIN');
 
-    // If the leave was previously approved, remove the attendance records it created.
-    // This prevents orphaned on_leave/wfh/half_day records staying in the attendance table.
-    if (leave.status === 'approved') {
-      const settings = await getSettings(orgId(req));
-      const start = new Date(leave.start_date + 'T12:00:00');
-      const end   = new Date(leave.end_date   + 'T12:00:00');
-      const dates = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split('T')[0];
-        if (isWorkingDay(ds, settings)) dates.push(ds);
-      }
-      if (dates.length) {
-        await supabase.from('attendance')
-          .delete()
-          .eq('user_id', leave.user_id)
-          .eq('organization_id', orgId(req))
-          .in('date', dates)
-          .in('status', ['on_leave', 'half_day', 'wfh']); // only remove leave-status records, not manual check-ins
-      }
+    if (workDates.length) {
+      await client.query(
+        `DELETE FROM attendance
+         WHERE user_id = $1 AND organization_id = $2
+           AND date = ANY($3::text[])
+           AND status = ANY(ARRAY['on_leave','half_day','wfh'])`,
+        [leave.user_id, orgId(req), workDates]
+      );
     }
 
-    const { remarks } = req.body || {};
-    await supabase.from('leaves').update({ status: 'rejected', approved_by: req.user.id, approved_at: new Date().toISOString(), google_event_id: null, ...(remarks ? { remarks } : {}) }).eq('id', req.params.id);
-    // Remove from Google Calendar if it was synced
-    if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
-    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
-    // Email the employee
-    if (data.users?.email) {
-      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected — Lumens HR', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name) });
-    }
-    res.json(flatOne(data));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Update leave — always include remarks column (null if not provided)
+    await client.query(
+      `UPDATE leaves
+       SET status = 'rejected', approved_by = $1, approved_at = $2,
+           google_event_id = NULL, remarks = $3
+       WHERE id = $4`,
+      [req.user.id, rejectedAt, remarks || null, req.params.id]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Rejection failed — no changes were saved. ' + err.message });
+  } finally {
+    client.release();
+  }
+
+  // Fire-and-forget side effects
+  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+  const { data } = await supabase.from('leaves')
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+  if (data.users?.email) {
+    sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected — Lumens HR', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name) });
+  }
+  res.json(flatOne(data));
 });
 
 // ─── Leaves: Revert (cancel approved leave) ───────────────────────────────────
 router.put('/:id/revert', auth, async (req, res) => {
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+  if (!leave) return res.status(404).json({ error: 'Leave not found' });
+  if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+  if (leave.status !== 'approved') return res.status(400).json({ error: 'Only approved leaves can be reverted' });
+
+  const settings  = await getSettings(orgId(req));
+  const workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+
+  // Atomic transaction: attendance deletion + leave cancellation
+  const client = await pool.connect();
   try {
-    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
-    if (!leave) return res.status(404).json({ error: 'Leave not found' });
-    if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
-    if (leave.status !== 'approved') return res.status(400).json({ error: 'Only approved leaves can be reverted' });
+    await client.query('BEGIN');
 
-    await supabase.from('leaves').update({ status: 'cancelled', google_event_id: null }).eq('id', req.params.id);
-
-    const settings = await getSettings(orgId(req));
-    const start = new Date(leave.start_date + 'T12:00:00');
-    const end   = new Date(leave.end_date   + 'T12:00:00');
-    const dates = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const ds = d.toISOString().split('T')[0];
-      if (isWorkingDay(ds, settings)) dates.push(ds);
-    }
-    if (dates.length) {
-      await supabase.from('attendance')
-        .delete()
-        .eq('user_id', leave.user_id)
-        .in('date', dates);
+    if (workDates.length) {
+      await client.query(
+        `DELETE FROM attendance
+         WHERE user_id = $1 AND organization_id = $2
+           AND date = ANY($3::text[])
+           AND status = ANY(ARRAY['on_leave','half_day','wfh'])`,
+        [leave.user_id, orgId(req), workDates]
+      );
     }
 
-    if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+    await client.query(
+      `UPDATE leaves SET status = 'cancelled', google_event_id = NULL WHERE id = $1`,
+      [req.params.id]
+    );
 
-    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
-    res.json(flatOne(data));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Revert failed — no changes were saved. ' + err.message });
+  } finally {
+    client.release();
+  }
+
+  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+  const { data } = await supabase.from('leaves')
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+  res.json(flatOne(data));
 });
 
 // ─── Leaves: Delete ───────────────────────────────────────────────────────────
 router.delete('/:id', auth, async (req, res) => {
-  try {
-    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
-    if (!leave) return res.status(404).json({ error: 'Leave not found' });
-    if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
-    if (leave.status === 'approved' && !isAdminRole(req.user.role)) return res.status(400).json({ error: 'Cannot cancel approved leave' });
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+  if (!leave) return res.status(404).json({ error: 'Leave not found' });
+  if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+  if (leave.status === 'approved' && !isAdminRole(req.user.role)) return res.status(400).json({ error: 'Cannot cancel approved leave' });
 
-    // If leave was approved, remove the attendance records that were created for those dates
-    if (leave.status === 'approved') {
-      const settings = await getSettings(orgId(req));
-      const start = new Date(leave.start_date + 'T12:00:00');
-      const end   = new Date(leave.end_date   + 'T12:00:00');
-      const dates = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split('T')[0];
-        if (isWorkingDay(ds, settings)) dates.push(ds);
-      }
-      if (dates.length) {
-        await supabase.from('attendance')
-          .delete()
-          .eq('user_id', leave.user_id)
-          .eq('organization_id', orgId(req))
-          .in('date', dates)
-          .in('status', ['on_leave', 'half_day', 'wfh']);
-      }
+  let workDates = [];
+  if (leave.status === 'approved') {
+    const settings = await getSettings(orgId(req));
+    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+  }
+
+  // Atomic transaction: attendance cleanup + leave deletion
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (workDates.length) {
+      await client.query(
+        `DELETE FROM attendance
+         WHERE user_id = $1 AND organization_id = $2
+           AND date = ANY($3::text[])
+           AND status = ANY(ARRAY['on_leave','half_day','wfh'])`,
+        [leave.user_id, orgId(req), workDates]
+      );
     }
 
-    // Delete Google Calendar event if leave was synced
-    if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+    await client.query(`DELETE FROM leaves WHERE id = $1`, [req.params.id]);
 
-    await supabase.from('leaves').delete().eq('id', req.params.id);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Delete failed — no changes were saved. ' + err.message });
+  } finally {
+    client.release();
+  }
+
+  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
+  res.json({ success: true });
 });
 
 module.exports = router;

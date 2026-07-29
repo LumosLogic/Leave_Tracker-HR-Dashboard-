@@ -137,10 +137,17 @@ router.get('/leave-balance', auth, async (req, res) => {
       .gte('start_date', `${year}-01-01`)
       .lte('end_date',   `${year}-12-31`);
 
-    const { count: totalHolidays } = await supabase.from('holidays')
-      .select('*', { count: 'exact', head: true })
+    // Fetch actual holidays for this org and year
+    const { data: orgHolidays, count: totalHolidays } = await supabase.from('holidays')
+      .select('date', { count: 'exact' })
       .eq('organization_id', orgId(req))
       .like('date', `${year}-%`);
+    const holidaySet = new Set((orgHolidays || []).map(h => h.date));
+
+    // Fetch total annual leave quota from org settings (HIGH-01: remove hardcoded 18)
+    const { data: orgData } = await supabase.from('organizations')
+      .select('total_annual_leaves').eq('id', orgId(req)).maybeSingle();
+    const totalAnnualLeaves = orgData?.total_annual_leaves || 18;
 
     const settings = await getSettings(orgId(req));
     let usedLeaveDays = 0;
@@ -153,18 +160,18 @@ router.get('/leave-balance', auth, async (req, res) => {
         const end   = new Date(l.end_date   + 'T12:00:00');
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const ds = d.toISOString().split('T')[0];
-          if (isWorkingDay(ds, settings)) usedLeaveDays++;
+          // HIGH-03: also skip public holidays when counting used leave days
+          if (isWorkingDay(ds, settings) && !holidaySet.has(ds)) usedLeaveDays++;
         }
       }
     }
 
     res.json({
       userId, year,
-      totalLeaves:     18,
+      totalLeaves:     totalAnnualLeaves,
       usedLeaves:      usedLeaveDays,
-      remainingLeaves: Math.max(0, 18 - usedLeaveDays),
-      totalHolidays:   12,
-      usedHolidays:    Math.min(totalHolidays || 0, 12),
+      remainingLeaves: Math.max(0, totalAnnualLeaves - usedLeaveDays),
+      totalHolidays:   totalHolidays || 0,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

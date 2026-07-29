@@ -10,13 +10,13 @@ const FEATURE_ROUTE_MAP = {
   '/performance':           'performance',
   '/documents':             'documents',
   '/onboarding':            'onboarding',
-  '/exit-management':       'exit_management',
+  '/exit':                  'exit_management',  // actual API route is /api/exit
   '/announcements':         'announcements',
-  '/attendance/late-early': 'regularization',
+  '/regularization':        'regularization',   // gates the main regularization API
+  '/attendance/late-early': 'regularization',   // gates the late-early sub-route
   '/shifts':                'shifts',
   '/roster':                'shifts',
   '/leave-policies':        'leave_policies',
-  '/clockify':              'clockify',
   '/push':                  'push_notifications',
   '/biometric':             'biometric',
   '/branches':              'branches',

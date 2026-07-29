@@ -43,12 +43,29 @@ router.post('/goals', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.put('/goals/:id', auth, adminOnly, async (req, res) => {
+// Admins can update all fields; employees can only update progress on their own goals.
+router.put('/goals/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { title, description, category, target_date, progress, status } = req.body;
+
+    // Fetch goal first to enforce ownership for employees
+    const { data: goal } = await supabase.from('performance_goals')
+      .select('user_id').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+
+    let updatePayload;
+    if (isAdmin(req.user.role)) {
+      // Admins can update all fields
+      updatePayload = { title, description, category, target_date, progress: Number(progress) || 0, status };
+    } else {
+      // Employees can only update progress on their own goals
+      if (goal.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+      updatePayload = { progress: Number(progress) || 0 };
+    }
+
     const { data, error } = await supabase.from('performance_goals')
-      .update({ title, description, category, target_date, progress: Number(progress) || 0, status })
+      .update(updatePayload)
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);

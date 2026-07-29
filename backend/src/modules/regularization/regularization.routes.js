@@ -131,9 +131,13 @@ router.put('/:id/review', auth, async (req, res) => {
         await supabase.from('attendance').insert(attRecord);
       }
 
-      // Revert any approved leave that overlaps this date and restore the balance
+      // Cancel any approved leave that overlaps this date.
+      // HIGH-02: We do NOT update leave_balances — balance is always calculated
+      // on-the-fly from the leaves table. Cancelling the leave (status='cancelled')
+      // is sufficient; it will be excluded from all balance calculations automatically.
+      // HIGH-11: Fixed wrong column reference (leave.half_day → leave.leave_time === 'half')
       const { data: overlappingLeaves } = await supabase.from('leaves')
-        .select('id, leave_type, start_date, end_date, half_day')
+        .select('id, leave_type, start_date, end_date, leave_time')
         .eq('user_id', reg.user_id)
         .eq('organization_id', oId)
         .eq('status', 'approved')
@@ -141,34 +145,7 @@ router.put('/:id/review', auth, async (req, res) => {
         .gte('end_date', reg.date);
 
       for (const leave of (overlappingLeaves || [])) {
-        // Cancel the leave
         await supabase.from('leaves').update({ status: 'cancelled' }).eq('id', leave.id);
-
-        // Restore leave balance: calculate days to restore
-        const start = new Date(leave.start_date + 'T12:00:00');
-        const end   = new Date(leave.end_date   + 'T12:00:00');
-        let daysToRestore = 0;
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const dow = d.getDay();
-          if (dow !== 0 && dow !== 6) daysToRestore++; // skip weekends
-        }
-        if (leave.half_day) daysToRestore = 0.5;
-
-        if (daysToRestore > 0) {
-          const { data: balance } = await supabase.from('leave_balances')
-            .select('id, used_days')
-            .eq('user_id', reg.user_id)
-            .eq('organization_id', oId)
-            .eq('leave_type', leave.leave_type)
-            .maybeSingle();
-
-          if (balance) {
-            const newUsed = Math.max(0, (balance.used_days || 0) - daysToRestore);
-            await supabase.from('leave_balances')
-              .update({ used_days: newUsed })
-              .eq('id', balance.id);
-          }
-        }
       }
     }
 

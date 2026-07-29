@@ -51,9 +51,13 @@ async function runDailyNotifications() {
       const allEmails  = (employees || []).map(e => e.email).filter(Boolean);
       const hrEmails   = await getRecipients(oId);
       const recipients = [...new Set([...allEmails, ...hrEmails])];
+      // HIGH-24: Never pass null — scope push to this org's employee IDs only
+      const empIds = (employees || []).map(e => e.id);
       for (const holiday of tmrHolidays) {
         if (recipients.length) sendMail({ to: recipients, subject: `Tomorrow is a Holiday — ${holiday.name}`, html: holidayReminderHtml(holiday) });
-        await sendPushToUsers(null, { title: `🏖️ Tomorrow is a Holiday — ${holiday.name}`, body: holiday.specific_msg || holiday.description || `Enjoy the ${holiday.name} holiday!`, url: '/portal/home' }).catch(() => {});
+        if (empIds.length) {
+          await sendPushToUsers(empIds, { title: `🏖️ Tomorrow is a Holiday — ${holiday.name}`, body: holiday.specific_msg || holiday.description || `Enjoy the ${holiday.name} holiday!`, url: '/portal/home' }).catch(() => {});
+        }
       }
     }
   }

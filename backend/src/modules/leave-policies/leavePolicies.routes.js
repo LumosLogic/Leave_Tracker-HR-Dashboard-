@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 
 const DEFAULT_POLICIES = [
@@ -28,20 +28,41 @@ router.get('/', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/leave-policies — upsert all policies at once (admin only)
+// POST /api/leave-policies — atomic replace-all using a PostgreSQL transaction (admin only).
+// HIGH-19: DELETE then INSERT must be atomic — if INSERT fails, no policies should be lost.
 router.post('/', auth, adminOnly, async (req, res) => {
-  try {
-    const oId = req.user.organization_id;
-    const { policies } = req.body;
-    if (!Array.isArray(policies)) return res.status(400).json({ error: 'policies array required' });
+  const oId = req.user.organization_id;
+  const { policies } = req.body;
+  if (!Array.isArray(policies) || policies.length === 0)
+    return res.status(400).json({ error: 'policies array required and must not be empty' });
 
-    // Delete existing and re-insert
-    await supabase.from('leave_policies').delete().eq('organization_id', oId);
-    const rows = policies.map(p => ({ ...p, organization_id: oId, id: undefined }));
-    const { data, error } = await supabase.from('leave_policies').insert(rows).select();
-    if (error) throw error;
-    res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM leave_policies WHERE organization_id = $1', [oId]);
+
+    const inserted = [];
+    for (const p of policies) {
+      const { leave_type, label, annual_quota, carry_forward, max_carry_forward, paid, active } = p;
+      const result = await client.query(
+        `INSERT INTO leave_policies
+           (organization_id, leave_type, label, annual_quota, carry_forward, max_carry_forward, paid, active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         RETURNING *`,
+        [oId, leave_type, label || leave_type, Number(annual_quota) || 0,
+         !!carry_forward, Number(max_carry_forward) || 0, paid !== false, active !== false]
+      );
+      inserted.push(result.rows[0]);
+    }
+
+    await client.query('COMMIT');
+    res.json(inserted);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // PUT /api/leave-policies/:id (admin only)

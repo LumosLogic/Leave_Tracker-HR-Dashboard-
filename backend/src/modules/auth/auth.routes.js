@@ -11,6 +11,7 @@ const { supabase } = require('../../config/db');
 const { JWT_SECRET, auth } = require('../../middleware/auth');
 const { orgId, getRecipients } = require('../../utils/helpers');
 const { sendMail, passwordResetHtml } = require('../../services/emailService');
+const { rateLimiter, LIMITS } = require('../../middleware/rateLimiter');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -21,7 +22,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 // ─── Auth: Login ──────────────────────────────────────────────────────────────
 // Email is globally unique across the platform — no org slug needed.
-router.post('/login', async (req, res) => {
+router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -172,7 +173,7 @@ router.put('/change-password', auth, async (req, res) => {
 
 // ─── Auth: Forgot Password ────────────────────────────────────────────────────
 // Email is globally unique — no org slug required.
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -207,11 +208,11 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // ─── Auth: Reset Password ─────────────────────────────────────────────────────
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', rateLimiter(LIMITS.RESET_PASSWORD), async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
-    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
     const { data: user } = await supabase.from('users')
       .select('id, password_reset_token, password_reset_expires')
@@ -234,14 +235,18 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // ─── Auth: Send Email Verification Code ──────────────────────────────────────
-router.post('/send-verification', auth, async (req, res) => {
+router.post('/send-verification', auth, rateLimiter(LIMITS.SEND_VERIFICATION), async (req, res) => {
   try {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await supabase.from('users').update({ email_verify_code: code }).eq('id', req.user.id);
+    const code    = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30-minute expiry
+    await supabase.from('users').update({
+      email_verify_code:         code,
+      email_verify_code_expires: expires,
+    }).eq('id', req.user.id);
     sendMail({
-      to: req.user.email,
+      to:      req.user.email,
       subject: 'Email Verification Code — Lumens HR Tracker',
-      html: `<p>Your email verification code is: <strong>${code}</strong></p>`
+      html:    `<p>Your email verification code is: <strong>${code}</strong></p><p>This code expires in 30 minutes.</p>`,
     });
     res.json({ success: true, message: 'Verification code sent to email' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -251,11 +256,21 @@ router.post('/send-verification', auth, async (req, res) => {
 router.post('/verify-email', auth, async (req, res) => {
   try {
     const { code } = req.body;
-    const { data: user } = await supabase.from('users').select('email_verify_code').eq('id', req.user.id).single();
+    const { data: user } = await supabase.from('users')
+      .select('email_verify_code, email_verify_code_expires')
+      .eq('id', req.user.id).single();
     if (!code || user?.email_verify_code !== code) {
       return res.status(400).json({ error: 'Invalid verification code' });
     }
-    await supabase.from('users').update({ email_verified: true, email_verify_code: null }).eq('id', req.user.id);
+    // HIGH-13: Reject expired codes
+    if (user.email_verify_code_expires && new Date(user.email_verify_code_expires) < new Date()) {
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+    await supabase.from('users').update({
+      email_verified:            true,
+      email_verify_code:         null,
+      email_verify_code_expires: null,
+    }).eq('id', req.user.id);
     res.json({ success: true, message: 'Email verified successfully!' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -324,7 +339,7 @@ router.post('/totp/disable', auth, async (req, res) => {
 });
 
 // ─── 2FA: Verify login step ───────────────────────────────────────────────────
-router.post('/totp/verify-login', async (req, res) => {
+router.post('/totp/verify-login', rateLimiter(LIMITS.TOTP_VERIFY), async (req, res) => {
   try {
     const { totp_session, token: totpToken } = req.body;
     if (!totp_session || !totpToken) return res.status(400).json({ error: 'Missing parameters' });

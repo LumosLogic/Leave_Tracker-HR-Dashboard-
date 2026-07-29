@@ -116,6 +116,20 @@ router.post('/payslips/generate', auth, adminOnly, async (req, res) => {
     const structure = structures?.[0];
     if (!structure) return res.status(400).json({ error: 'No salary structure found for this employee' });
 
+    // HIGH-18: Block regeneration of a published payslip unless force=true is explicitly set.
+    const { force } = req.body;
+    const { data: existingSlip } = await supabase.from('payslips')
+      .select('id, status')
+      .eq('user_id', user_id).eq('month', String(month).padStart(2, '0'))
+      .eq('year', Number(year)).eq('organization_id', oId)
+      .maybeSingle();
+    if (existingSlip?.status === 'published' && !force) {
+      return res.status(409).json({
+        error: 'This payslip has already been published and distributed. Pass force=true to regenerate.',
+        payslip_id: existingSlip.id,
+      });
+    }
+
     // FIX: use actual last day of the month (not hardcoded 31 — breaks February)
     const lastDay = new Date(Number(year), Number(month), 0).getDate();
     const { data: att } = await supabase.from('attendance')
