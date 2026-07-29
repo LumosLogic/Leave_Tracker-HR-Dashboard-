@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
-  Bell, Fingerprint, Link2, ScrollText, Menu, Search,
+  Bell, Fingerprint, Link2, ScrollText, X, Search,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -132,9 +132,10 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
+            aria-label="Close menu"
             className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0"
           >
-            <Menu size={16} className="text-[#464555]" />
+            <X size={16} className="text-[#464555]" />
           </button>
           <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="w-9 h-9 flex-shrink-0 hidden md:block" />
           <div>
