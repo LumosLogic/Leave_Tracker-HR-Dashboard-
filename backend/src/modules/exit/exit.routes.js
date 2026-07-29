@@ -35,17 +35,28 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/exit
-// Employees submit their own resignation; admins can submit on behalf of any employee.
+// Employees submit their own resignation; admins can submit on behalf of any employee
+// within the SAME organization only.
 router.post('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { resignation_date, reason, notice_period_days, user_id } = req.body;
     if (!resignation_date) return res.status(400).json({ error: 'resignation_date is required' });
 
-    // Admins may specify a target employee; employees always submit for themselves.
-    const targetUserId = (isAdmin(req.user.role) && user_id) ? parseInt(user_id) : req.user.id;
+    // Employees always submit for themselves; admins may specify a target employee.
+    let targetUserId = req.user.id;
+    let targetName   = req.user.name;
 
-    // Prevent duplicate open resignation for the same employee
+    if (isAdmin(req.user.role) && user_id) {
+      // Validate that the target user belongs to this org — prevents cross-org IDOR.
+      const { data: targetUser } = await supabase.from('users')
+        .select('id, name').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
+      if (!targetUser) return res.status(400).json({ error: 'Employee not found in your organization.' });
+      targetUserId = targetUser.id;
+      targetName   = targetUser.name;
+    }
+
+    // Prevent a duplicate open resignation for the same employee.
     const { data: existing } = await supabase.from('exit_requests')
       .select('id, status').eq('user_id', targetUserId).eq('organization_id', oId)
       .in('status', ['pending', 'approved']).maybeSingle();
@@ -54,9 +65,6 @@ router.post('/', auth, async (req, res) => {
     const rDate = new Date(resignation_date);
     const lwd   = new Date(rDate);
     lwd.setDate(lwd.getDate() + (Number(notice_period_days) || 30));
-
-    // Resolve the submitter's display name (may differ if admin submitting on behalf)
-    const submitterName = req.user.name;
 
     const { data, error } = await supabase.from('exit_requests')
       .insert({
@@ -68,12 +76,12 @@ router.post('/', auth, async (req, res) => {
       .select().single();
     if (error) throw error;
 
-    // Notify all HR admins and root admins
+    // Notify all HR admins and root admins with the correct employee name.
     const { data: admins } = await supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
     if (admins?.length) {
       await supabase.from('notifications').insert(admins.map(a => ({
         user_id: a.id, title: 'Resignation Submitted',
-        message: `${submitterName} submitted resignation. Last working day: ${lwd.toISOString().split('T')[0]}`,
+        message: `${targetName} submitted a resignation. Last working day: ${lwd.toISOString().split('T')[0]}`,
         type: 'exit', organization_id: oId,
       })));
     }
