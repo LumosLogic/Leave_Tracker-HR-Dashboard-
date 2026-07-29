@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
@@ -162,38 +162,77 @@ router.post('/payslips/generate', auth, adminOnly, async (req, res) => {
     const totalDed     = (structure.pf_employee || 0) + (structure.esi_employee || 0) + (structure.professional_tax || 0) + (structure.tds || 0) + Number(other_deductions || 0) + lopAmount;
     const netSalary    = Math.max(0, grossSalary - totalDed);
 
-    const { data, error } = await supabase.from('payslips').upsert({
-      user_id, month: String(month).padStart(2,'0'), year: Number(year),
-      pay_period: `${String(month).padStart(2,'0')}/${year}`,
-      basic: structure.basic, hra: structure.hra, da: structure.da,
-      transport_allowance: structure.transport_allowance,
-      medical_allowance: structure.medical_allowance,
-      other_allowances: structure.other_allowances,
-      gross_salary: parseFloat(grossSalary.toFixed(2)),
-      pf_employee: structure.pf_employee,
-      pf_employer: structure.pf_employer || 0,
-      esi_employee: structure.esi_employee,
-      esi_employer: structure.esi_employer || 0,
-      professional_tax: structure.professional_tax, tds: structure.tds,
-      other_deductions: Number(other_deductions || 0),
-      total_deductions: parseFloat(totalDed.toFixed(2)),
-      lop_days: lopDays, lop_amount: parseFloat(lopAmount.toFixed(2)),
-      net_salary: parseFloat(netSalary.toFixed(2)),
-      working_days: totalWorkingDays,
-      present_days: presentDays,
-      absent_days: absentCount,
-      leave_days: leaveCount,
-      notes: notes || '', status: 'generated',
-      organization_id: oId, generated_by: req.user.id,
-    }, { onConflict: 'user_id,month,year' }).select().single();
-    if (error) throw error;
+    // Use an advisory lock keyed on (org_id, user_id, month, year) to prevent
+    // two concurrent generate requests from producing duplicate payslips/notifications.
+    // pg_advisory_xact_lock releases automatically at COMMIT/ROLLBACK.
+    const lockKey = BigInt(oId) * 10000000n + BigInt(user_id) * 10000n + BigInt(year % 100) * 100n + BigInt(month);
+    const client = await pool.connect();
+    let data;
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock($1)`, [lockKey.toString()]);
 
-    // Notify employee
-    await supabase.from('notifications').insert({
+      // Re-check published status inside the lock (another concurrent request may have just published)
+      const slipCheck = await client.query(
+        `SELECT id, status FROM payslips
+         WHERE user_id = $1 AND month = $2 AND year = $3 AND organization_id = $4`,
+        [user_id, String(month).padStart(2,'0'), Number(year), oId]
+      );
+      const lockedSlip = slipCheck.rows[0];
+      if (lockedSlip?.status === 'published' && !force) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'Payslip already published. Pass force=true to regenerate.',
+          payslip_id: lockedSlip.id,
+        });
+      }
+
+      const upsertRes = await client.query(
+        `INSERT INTO payslips
+           (user_id, month, year, pay_period, basic, hra, da, transport_allowance,
+            medical_allowance, other_allowances, gross_salary, pf_employee, pf_employer,
+            esi_employee, esi_employer, professional_tax, tds, other_deductions,
+            total_deductions, lop_days, lop_amount, net_salary, working_days, present_days,
+            absent_days, leave_days, notes, status, organization_id, generated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'generated',$28,$29)
+         ON CONFLICT (user_id, month, year)
+         DO UPDATE SET
+           basic=$5, hra=$6, da=$7, transport_allowance=$8, medical_allowance=$9,
+           other_allowances=$10, gross_salary=$11, pf_employee=$12, pf_employer=$13,
+           esi_employee=$14, esi_employer=$15, professional_tax=$16, tds=$17,
+           other_deductions=$18, total_deductions=$19, lop_days=$20, lop_amount=$21,
+           net_salary=$22, working_days=$23, present_days=$24, absent_days=$25,
+           leave_days=$26, notes=$27, status='generated', generated_by=$29
+         RETURNING *`,
+        [user_id, String(month).padStart(2,'0'), Number(year),
+         `${String(month).padStart(2,'0')}/${year}`,
+         structure.basic, structure.hra, structure.da, structure.transport_allowance,
+         structure.medical_allowance, structure.other_allowances,
+         parseFloat(grossSalary.toFixed(2)),
+         structure.pf_employee, structure.pf_employer||0,
+         structure.esi_employee, structure.esi_employer||0,
+         structure.professional_tax, structure.tds,
+         Number(other_deductions||0), parseFloat(totalDed.toFixed(2)),
+         lopDays, parseFloat(lopAmount.toFixed(2)), parseFloat(netSalary.toFixed(2)),
+         totalWorkingDays, presentDays, absentCount, leaveCount,
+         notes||'', oId, req.user.id]
+      );
+      data = upsertRes.rows[0];
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Fire-and-forget notification after COMMIT
+    supabase.from('notifications').insert({
       user_id, title: 'Payslip Generated',
       message: `Your payslip for ${String(month).padStart(2,'0')}/${year} has been generated. Net pay: ₹${netSalary.toFixed(2)}`,
       type: 'payroll', organization_id: oId,
-    });
+    }).then(() => {});
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

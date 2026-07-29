@@ -94,22 +94,42 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { data: existing } = await supabase.from('exit_requests').select('user_id').eq('id', req.params.id).single();
     const updates = { ...req.body };
     delete updates.id; delete updates.organization_id; delete updates.created_at;
-    if (updates.status === 'approved' || updates.status === 'rejected') {
+    const isStatusChange = updates.status === 'approved' || updates.status === 'rejected';
+
+    if (isStatusChange) {
+      // Fetch current state to enforce idempotency — prevent double-approval
+      const { data: current } = await supabase.from('exit_requests')
+        .select('id, status, user_id').eq('id', req.params.id).eq('organization_id', oId).single();
+      if (!current) return res.status(404).json({ error: 'Exit request not found' });
+      if (current.status === updates.status) {
+        // Already in the target status — return current record idempotently
+        const { data: existing } = await supabase.from('exit_requests').select('*').eq('id', req.params.id).single();
+        return res.json(existing);
+      }
+      if (current.status === 'approved' || current.status === 'rejected') {
+        return res.status(409).json({
+          error: `Request already ${current.status}. Cannot change status again.`,
+          current_status: current.status,
+        });
+      }
       updates.reviewed_by = req.user.id;
       updates.reviewed_at = new Date().toISOString();
     }
+
     const { data, error } = await supabase.from('exit_requests')
       .update(updates).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
-    if (existing && (updates.status === 'approved' || updates.status === 'rejected')) {
-      await supabase.from('notifications').insert({
-        user_id: existing.user_id, title: `Exit Request ${updates.status === 'approved' ? 'Accepted' : 'Reviewed'}`,
+
+    // Fire-and-forget notification after successful update
+    if (isStatusChange) {
+      supabase.from('notifications').insert({
+        user_id: data.user_id,
+        title:   `Exit Request ${updates.status === 'approved' ? 'Accepted' : 'Reviewed'}`,
         message: `Your resignation has been ${updates.status}.`,
-        type: 'exit', organization_id: oId,
-      });
+        type:    'exit', organization_id: oId,
+      }).then(() => {});
     }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

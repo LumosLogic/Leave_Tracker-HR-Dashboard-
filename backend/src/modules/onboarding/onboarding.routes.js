@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
@@ -72,19 +72,69 @@ router.get('/overview', auth, async (req, res) => {
 });
 
 // POST /api/onboarding/init/:userId
+// Uses SELECT FOR UPDATE on the user row to serialize concurrent init requests.
+// All 16 tasks are inserted inside a single transaction — either all succeed or none.
 router.post('/init/:userId', auth, adminOnly, async (req, res) => {
+  if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
+  const oId = req.user.organization_id;
+  const uid = parseInt(req.params.userId);
+
+  const client = await pool.connect();
+  let inserted;
   try {
-    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
-    const oId = req.user.organization_id;
-    const uid = req.params.userId;
-    const { data: existing } = await supabase.from('onboarding_checklists').select('id').eq('user_id', uid).eq('organization_id', oId).limit(1);
-    if (existing?.length) return res.status(400).json({ error: 'Onboarding already initialized' });
-    const rows = DEFAULT_TASKS.map(t => ({ ...t, user_id: uid, organization_id: oId }));
-    const { data, error } = await supabase.from('onboarding_checklists').insert(rows).select();
-    if (error) throw error;
-    await supabase.from('notifications').insert({ user_id: uid, title: 'Welcome! Your Onboarding Checklist is Ready', message: 'Please complete the onboarding tasks assigned to you.', type: 'onboarding', organization_id: oId });
-    res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    await client.query('BEGIN');
+
+    // Lock the user row — prevents two concurrent init calls from both passing the existence check
+    const userRes = await client.query(
+      `SELECT id FROM users WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
+      [uid, oId]
+    );
+    if (!userRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Re-check existence inside the transaction (TOCTOU prevention)
+    const existRes = await client.query(
+      `SELECT id FROM onboarding_checklists WHERE user_id = $1 AND organization_id = $2 LIMIT 1`,
+      [uid, oId]
+    );
+    if (existRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Onboarding already initialized for this employee.' });
+    }
+
+    // Insert all 16 tasks atomically
+    inserted = [];
+    for (const task of DEFAULT_TASKS) {
+      const r = await client.query(
+        `INSERT INTO onboarding_checklists
+           (user_id, organization_id, title, assigned_to, order_index)
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING *`,
+        [uid, oId, task.title, task.assigned_to, task.order_index]
+      );
+      inserted.push(r.rows[0]);
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Onboarding init failed — no tasks created. ' + err.message });
+  } finally {
+    client.release();
+  }
+
+  // Fire-and-forget notification after COMMIT
+  supabase.from('notifications').insert({
+    user_id: uid,
+    title:   'Welcome! Your Onboarding Checklist is Ready',
+    message: 'Please complete the onboarding tasks assigned to you.',
+    type:    'onboarding',
+    organization_id: oId,
+  }).then(() => {});
+
+  res.json(inserted);
 });
 
 // POST /api/onboarding

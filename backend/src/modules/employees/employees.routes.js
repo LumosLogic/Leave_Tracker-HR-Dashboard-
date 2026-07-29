@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml } = require('../../services/emailService');
@@ -71,47 +71,55 @@ router.post('/', auth, adminOnly, async (req, res) => {
       salutation, middle_name, surname, location, pay_cadre,
       weekly_off_day, work_hours_per_day,
     } = req.body;
-    const { data, error } = await supabase.from('users')
-      .insert({
-        name, email: email.toLowerCase(), password: hashed,
-        role: role || 'employee', department: department || 'General',
-        position: position || 'Staff', avatar_color: avatar_color || '#4F46E5',
-        date_of_birth: date_of_birth || null,
-        force_password_change: true,
-        organization_id: orgId(req),
-        // new columns
-        device_enrollment_id: device_enrollment_id || null,
-        branch_id:            branch_id            || null,
-        grade:                grade                || null,
-        division:             division             || null,
-        sub_division:         sub_division         || null,
-        salutation:           salutation           || null,
-        middle_name:          middle_name          || null,
-        surname:              surname              || null,
-        location:             location             || null,
-        pay_cadre:            pay_cadre            || null,
-        weekly_off_day:       weekly_off_day       || null,
-        work_hours_per_day:   work_hours_per_day   || null,
-      })
-      .select('id, name, email, role, department, position, avatar_color, date_of_birth').single();
-    if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
-    if (error) throw new Error(error.message);
-
-    // Sync department junction table if department_ids provided
+    // user INSERT + department assignments must be atomic.
+    // A user with no department assignments is a valid partial state we must prevent.
     const department_ids = req.body.department_ids;
-    if (data && Array.isArray(department_ids) && department_ids.length > 0) {
-      try {
-        await supabase.from('user_departments').insert(
-          department_ids.map(dId => ({ user_id: data.id, department_id: parseInt(dId), role_in_dept: 'Member', organization_id: orgId(req) }))
-        );
-      } catch (err) {}
+    const client = await pool.connect();
+    let newUser;
+    try {
+      await client.query('BEGIN');
+
+      const userRes = await client.query(
+        `INSERT INTO users
+           (name, email, password, role, department, position, avatar_color,
+            date_of_birth, force_password_change, organization_id,
+            device_enrollment_id, branch_id, grade, division, sub_division,
+            salutation, middle_name, surname, location, pay_cadre,
+            weekly_off_day, work_hours_per_day)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+         RETURNING id, name, email, role, department, position, avatar_color, date_of_birth`,
+        [name, email.toLowerCase(), hashed, role||'employee', department||'General',
+         position||'Staff', avatar_color||'#4F46E5', date_of_birth||null, orgId(req),
+         device_enrollment_id||null, branch_id||null, grade||null, division||null,
+         sub_division||null, salutation||null, middle_name||null, surname||null,
+         location||null, pay_cadre||null, weekly_off_day||null, work_hours_per_day||null]
+      );
+      newUser = userRes.rows[0];
+
+      if (Array.isArray(department_ids) && department_ids.length > 0) {
+        for (const dId of department_ids) {
+          await client.query(
+            `INSERT INTO user_departments (user_id, department_id, role_in_dept, organization_id)
+             VALUES ($1,$2,'Member',$3)
+             ON CONFLICT (user_id, department_id) DO NOTHING`,
+            [newUser.id, parseInt(dId), orgId(req)]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      if (err.code === '23505') return res.status(400).json({ error: 'Email already exists' });
+      throw err;
+    } finally {
+      client.release();
     }
 
+    // Fire-and-forget side effects after COMMIT
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
-    // Log member added event
-    Promise.resolve(
-      supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } })
-    ).catch(() => {});
+    supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
+    const data = newUser;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -176,20 +184,54 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       weight:               weight               || null,
     };
     if (password) update.password = bcrypt.hashSync(password, 10);
-    const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;
-    const { data, error } = await supabase.from('users').update(update)
-      .eq('id', req.params.id).eq('organization_id', orgId(req))
-      .select(cols).single();
-    if (error) throw new Error(error.message);
+    // Use a transaction when department_ids are provided — DELETE then INSERT must be atomic.
+    // Without it, a crash between DELETE and INSERT leaves the employee with no departments.
+    const empId = parseInt(req.params.id);
+    let data;
 
-    // Sync multi-department assignments if provided
     if (Array.isArray(department_ids)) {
-      await supabase.from('user_departments').delete().eq('user_id', req.params.id);
-      if (department_ids.length > 0) {
-        await supabase.from('user_departments').insert(
-          department_ids.map(dId => ({ user_id: parseInt(req.params.id), department_id: dId, role_in_dept: 'Member', organization_id: orgId(req) }))
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Update user fields
+        const setClauses = Object.entries(update)
+          .filter(([, v]) => v !== undefined)
+          .map(([k], i) => `"${k}" = $${i + 3}`)
+          .join(', ');
+        const vals = Object.entries(update).filter(([, v]) => v !== undefined).map(([, v]) => v);
+        const userRes = await client.query(
+          `UPDATE users SET ${setClauses} WHERE id = $1 AND organization_id = $2 RETURNING *`,
+          [empId, orgId(req), ...vals]
         );
+        data = userRes.rows[0];
+
+        // Replace department assignments atomically
+        await client.query(`DELETE FROM user_departments WHERE user_id = $1`, [empId]);
+        for (const dId of department_ids) {
+          await client.query(
+            `INSERT INTO user_departments (user_id, department_id, role_in_dept, organization_id)
+             VALUES ($1,$2,'Member',$3)
+             ON CONFLICT (user_id, department_id) DO NOTHING`,
+            [empId, dId, orgId(req)]
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
       }
+    } else {
+      // No department change — plain user update
+      const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;
+      const { data: updated, error } = await supabase.from('users').update(update)
+        .eq('id', empId).eq('organization_id', orgId(req))
+        .select(cols).single();
+      if (error) throw new Error(error.message);
+      data = updated;
     }
 
     res.json(data);

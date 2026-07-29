@@ -184,71 +184,90 @@ router.post('/', auth, async (req, res) => {
     if (!start_date || !end_date) return res.status(400).json({ error: 'Start and end dates required' });
     if (start_date > end_date)    return res.status(400).json({ error: 'Start date must be before end date' });
 
-    // Admin can apply leave on behalf of any employee
     const targetUserId = (isAdminRole(req.user.role) && user_id) ? parseInt(user_id) : req.user.id;
     const isOnBehalf   = isAdminRole(req.user.role) && targetUserId !== req.user.id;
 
-    const insertPayload = {
-      user_id: targetUserId, start_date, end_date,
-      leave_type: leave_type||'casual', reason: reason||'',
-      leave_time: leave_time||'full',
-      half_type:  leave_time === 'half' ? (half_type||'first_half') : null,
-      organization_id: orgId(req),
-    };
+    // Employee leave submission — single write, no transaction needed
+    if (!isOnBehalf) {
+      const insertPayload = {
+        user_id: targetUserId, start_date, end_date,
+        leave_type: leave_type||'casual', reason: reason||'',
+        leave_time: leave_time||'full',
+        half_type:  leave_time === 'half' ? (half_type||'first_half') : null,
+        organization_id: orgId(req),
+      };
+      const { data, error } = await supabase.from('leaves')
+        .insert(insertPayload)
+        .select('*, users!leaves_user_id_fkey(name, email, department)').single();
+      if (error) throw new Error(error.message);
 
-    // Auto-approve when admin creates leave on behalf of another employee
-    if (isOnBehalf) {
-      insertPayload.status      = 'approved';
-      insertPayload.approved_by = req.user.id;
-      insertPayload.approved_at = new Date().toISOString();
-    }
-
-    const { data, error } = await supabase.from('leaves')
-      .insert(insertPayload)
-      .select('*, users!leaves_user_id_fkey(name, email, department)').single();
-    if (error) throw new Error(error.message);
-
-    // When auto-approving, create attendance records for the leave dates
-    if (isOnBehalf) {
-      const settings = await getSettings(orgId(req));
-      const start = new Date(start_date + 'T12:00:00');
-      const end   = new Date(end_date   + 'T12:00:00');
-      const upserts = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().split('T')[0];
-        const attStatus = leave_time === 'half' ? 'half_day' : (leave_time === 'wfh' || leave_type === 'wfh') ? 'wfh' : 'on_leave';
-        if (!settings || isWorkingDay(ds, settings)) {
-          upserts.push({ user_id: targetUserId, date: ds, status: attStatus, organization_id: orgId(req) });
+      if (req.user.role === 'employee') {
+        const emp = data.users || {};
+        const recipients = await getRecipients(orgId(req));
+        if (recipients.length > 0) {
+          sendMail({
+            to: recipients,
+            subject: `${leave_type === 'wfh' ? 'WFH Request' : 'Leave Request'} — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
+            html: leaveAppliedHtml(
+              { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
+              data
+            ),
+          });
         }
       }
-      if (upserts.length) {
-        await supabase.from('attendance').upsert(upserts, { onConflict: 'user_id,date,organization_id' });
-      }
-      // Notify the employee about the approved leave
-      if (data.users?.email) {
-        sendMail({
-          to: data.users.email,
-          subject: `Leave Added — ${req.user.name || 'HR'}`,
-          html: leaveStatusHtml(data.users, data, 'approved', req.user.name),
-        });
-      }
-    } else if (req.user.role === 'employee') {
-      // Notify HR when employee applies leave
-      const emp = data.users || {};
-      const recipients = await getRecipients(orgId(req));
-      if (recipients.length > 0) {
-        sendMail({
-          to: recipients,
-          subject: `${leave_type === 'wfh' ? 'WFH Request' : 'Leave Request'} — ${emp.name || req.user.name} (${leave_type || 'casual'})`,
-          html: leaveAppliedHtml(
-            { name: emp.name || req.user.name, email: emp.email || req.user.email, department: emp.department || req.user.department },
-            data
-          ),
-        });
-      }
+      return res.json(flatOne(data));
     }
 
-    res.json(flatOne(data));
+    // Admin creates on behalf — leave INSERT + attendance upsert must be atomic.
+    // If attendance fails, the leave should not exist as 'approved'.
+    const settings  = await getSettings(orgId(req));
+    const attStatus = leave_time === 'half' ? 'half_day' : (leave_time === 'wfh' || leave_type === 'wfh') ? 'wfh' : 'on_leave';
+    const workDates = buildWorkingDates(start_date, end_date, settings);
+    const approvedAt = new Date().toISOString();
+
+    const client = await pool.connect();
+    let leaveId;
+    try {
+      await client.query('BEGIN');
+
+      const leaveRes = await client.query(
+        `INSERT INTO leaves
+           (user_id, start_date, end_date, leave_type, reason, leave_time, half_type,
+            status, approved_by, approved_at, organization_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'approved',$8,$9,$10)
+         RETURNING id`,
+        [targetUserId, start_date, end_date, leave_type||'casual', reason||'',
+         leave_time||'full', leave_time === 'half' ? (half_type||'first_half') : null,
+         req.user.id, approvedAt, orgId(req)]
+      );
+      leaveId = leaveRes.rows[0].id;
+
+      for (const ds of workDates) {
+        await client.query(
+          `INSERT INTO attendance (user_id, date, status, organization_id)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (user_id, date, organization_id) DO UPDATE SET status = EXCLUDED.status`,
+          [targetUserId, ds, attStatus, orgId(req)]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({ error: 'Leave creation failed — no changes saved. ' + err.message });
+    } finally {
+      client.release();
+    }
+
+    // Post-transaction fetch for full response payload
+    const { data } = await supabase.from('leaves')
+      .select('*, users!leaves_user_id_fkey(name, email, department)')
+      .eq('id', leaveId).single();
+
+    if (data.users?.email) {
+      sendMail({ to: data.users.email, subject: `Leave Added — ${req.user.name || 'HR'}`, html: leaveStatusHtml(data.users, data, 'approved', req.user.name) });
+    }
+    return res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

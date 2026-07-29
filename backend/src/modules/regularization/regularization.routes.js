@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
@@ -72,93 +72,121 @@ router.post('/', auth, async (req, res) => {
 
 // PUT /api/regularization/:id/review
 router.put('/:id/review', auth, async (req, res) => {
+  if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+  const oId = req.user.organization_id;
+  const { status, reviewer_notes } = req.body;
+  if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+
+  // All writes inside a single transaction with SELECT FOR UPDATE to prevent
+  // concurrent double-approval of the same regularization request.
+  const client = await pool.connect();
+  let finalReg;
   try {
-    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
-    const oId = req.user.organization_id;
-    const { status, reviewer_notes } = req.body;
-    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    await client.query('BEGIN');
 
-    const { data: reg } = await supabase.from('attendance_regularization')
-      .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
-    if (!reg) return res.status(404).json({ error: 'Request not found' });
+    // Lock the row — any concurrent review of the same request blocks until COMMIT/ROLLBACK
+    const lockRes = await client.query(
+      `SELECT * FROM attendance_regularization
+       WHERE id = $1 AND organization_id = $2
+       FOR UPDATE`,
+      [req.params.id, oId]
+    );
+    if (!lockRes.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Request not found' });
+    }
+    const reg = lockRes.rows[0];
 
-    const { data, error } = await supabase.from('attendance_regularization')
-      .update({ status, reviewer_notes: reviewer_notes || '', reviewed_by: req.user.id, reviewed_at: new Date().toISOString() })
-      .eq('id', req.params.id).select().single();
-    if (error) throw error;
+    // Idempotency guard — prevent double-approval
+    if (reg.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Request already ${reg.status}. No changes made.`,
+        current_status: reg.status,
+      });
+    }
+
+    // 1. Update regularization status
+    const reviewedAt = new Date().toISOString();
+    const updRes = await client.query(
+      `UPDATE attendance_regularization
+       SET status = $1, reviewer_notes = $2, reviewed_by = $3, reviewed_at = $4
+       WHERE id = $5
+       RETURNING *`,
+      [status, reviewer_notes || '', req.user.id, reviewedAt, req.params.id]
+    );
+    finalReg = updRes.rows[0];
 
     if (status === 'approved') {
-      const reg_check_in  = reg.requested_check_in  || null;
-      const reg_check_out = reg.requested_check_out || null;
+      // 2. Fetch existing attendance (inside transaction so we see latest state)
+      const attRes = await client.query(
+        `SELECT * FROM attendance
+         WHERE user_id = $1 AND date = $2 AND organization_id = $3`,
+        [reg.user_id, reg.date, oId]
+      );
+      const existingAtt = attRes.rows[0] || null;
 
-      // Fetch existing attendance record for that date
-      const { data: existingAtt } = await supabase.from('attendance')
-        .select('*').eq('user_id', reg.user_id).eq('date', reg.date).eq('organization_id', oId).maybeSingle();
+      const final_check_in  = reg.requested_check_in  || existingAtt?.check_in  || null;
+      const final_check_out = reg.requested_check_out || existingAtt?.check_out || null;
 
-      // Determine final check_in / check_out (merge: regularization overrides, existing fills gaps)
-      const final_check_in  = reg_check_in  || (existingAtt?.check_in  || null);
-      const final_check_out = reg_check_out || (existingAtt?.check_out || null);
-
-      let reg_work_hours = existingAtt?.work_hours || 0;
+      let gross_hours = existingAtt?.gross_hours || 0;
+      let work_hours  = existingAtt?.work_hours  || 0;
       if (final_check_in && final_check_out) {
         const [h1, m1] = final_check_in.split(':').map(Number);
         const [h2, m2] = final_check_out.split(':').map(Number);
-        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins > 0) {
-          const breakMins = existingAtt?.total_break_minutes || 0;
-          const effectiveMins = Math.max(0, mins - breakMins);
-          reg_work_hours = Math.round((effectiveMins / 60) * 100) / 100;
-        }
+        const totalMins   = (h2 * 60 + m2) - (h1 * 60 + m1);
+        const breakMins   = existingAtt?.total_break_minutes || 0;
+        const effectiveMins = Math.max(0, totalMins - breakMins);
+        gross_hours = totalMins   > 0 ? Math.round((totalMins    / 60) * 100) / 100 : 0;
+        work_hours  = effectiveMins > 0 ? Math.round((effectiveMins / 60) * 100) / 100 : 0;
       }
 
-      const attRecord = {
-        user_id: reg.user_id, date: reg.date, organization_id: oId,
-        check_in:  final_check_in,
-        check_out: final_check_out,
-        work_hours: reg_work_hours,
-        gross_hours: final_check_in && final_check_out ? (() => {
-          const [h1,m1] = final_check_in.split(':').map(Number);
-          const [h2,m2] = final_check_out.split(':').map(Number);
-          const mins = (h2*60+m2)-(h1*60+m1);
-          return mins > 0 ? Math.round((mins/60)*100)/100 : 0;
-        })() : (existingAtt?.gross_hours || 0),
-        status: 'present',
-      };
-
+      // 3. Upsert attendance record
       if (existingAtt) {
-        await supabase.from('attendance').update(attRecord).eq('user_id', reg.user_id).eq('date', reg.date).eq('organization_id', oId);
+        await client.query(
+          `UPDATE attendance
+           SET check_in = $1, check_out = $2, work_hours = $3, gross_hours = $4, status = 'present'
+           WHERE user_id = $5 AND date = $6 AND organization_id = $7`,
+          [final_check_in, final_check_out, work_hours, gross_hours, reg.user_id, reg.date, oId]
+        );
       } else {
-        await supabase.from('attendance').insert(attRecord);
+        await client.query(
+          `INSERT INTO attendance (user_id, date, check_in, check_out, work_hours, gross_hours, status, organization_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'present',$7)
+           ON CONFLICT (user_id, date, organization_id) DO UPDATE
+             SET check_in = EXCLUDED.check_in, check_out = EXCLUDED.check_out,
+                 work_hours = EXCLUDED.work_hours, gross_hours = EXCLUDED.gross_hours, status = 'present'`,
+          [reg.user_id, reg.date, final_check_in, final_check_out, work_hours, gross_hours, oId]
+        );
       }
 
-      // Cancel any approved leave that overlaps this date.
-      // HIGH-02: We do NOT update leave_balances — balance is always calculated
-      // on-the-fly from the leaves table. Cancelling the leave (status='cancelled')
-      // is sufficient; it will be excluded from all balance calculations automatically.
-      // HIGH-11: Fixed wrong column reference (leave.half_day → leave.leave_time === 'half')
-      const { data: overlappingLeaves } = await supabase.from('leaves')
-        .select('id, leave_type, start_date, end_date, leave_time')
-        .eq('user_id', reg.user_id)
-        .eq('organization_id', oId)
-        .eq('status', 'approved')
-        .lte('start_date', reg.date)
-        .gte('end_date', reg.date);
-
-      for (const leave of (overlappingLeaves || [])) {
-        await supabase.from('leaves').update({ status: 'cancelled' }).eq('id', leave.id);
-      }
+      // 4. Cancel any approved leaves overlapping this date (balance recalculates automatically)
+      await client.query(
+        `UPDATE leaves SET status = 'cancelled'
+         WHERE user_id = $1 AND organization_id = $2 AND status = 'approved'
+           AND start_date <= $3 AND end_date >= $3`,
+        [reg.user_id, oId, reg.date]
+      );
     }
 
-    await supabase.from('notifications').insert({
-      user_id: reg.user_id,
-      title: `Regularization ${status === 'approved' ? 'Approved' : 'Rejected'}`,
-      message: `Your attendance correction for ${reg.date} was ${status}.${reviewer_notes ? ` Note: ${reviewer_notes}` : ''}`,
-      type: 'regularization',
-      organization_id: oId,
-    });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Review failed — no changes saved. ' + err.message });
+  } finally {
+    client.release();
+  }
 
-    res.json(data);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  // Fire-and-forget notification (after COMMIT — failure doesn't affect data)
+  supabase.from('notifications').insert({
+    user_id: finalReg.user_id,
+    title:   `Regularization ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+    message: `Your attendance correction for ${finalReg.date} was ${status}.${reviewer_notes ? ` Note: ${reviewer_notes}` : ''}`,
+    type:    'regularization',
+    organization_id: oId,
+  }).then(() => {});
+
+  res.json(finalReg);
 });
 
 // DELETE /api/regularization/:id — root_admin or admin can delete pending; root_admin can delete any
