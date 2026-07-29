@@ -71,10 +71,19 @@ router.post('/login', async (req, res) => {
 
 // ─── Auth: Get Current User ───────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
-  const { data } = await supabase.from('users')
-    .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
-    .eq('id', req.user.id).single();
-  res.json(data);
+  try {
+    const { data, error } = await supabase.from('users')
+      .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
+      .eq('id', req.user.id).single();
+    if (error) {
+      // avatar_url column may not yet exist on older deployments — retry without it
+      const { data: fallback } = await supabase.from('users')
+        .select('id, name, email, role, department, position, avatar_color, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
+        .eq('id', req.user.id).single();
+      return res.json(fallback || null);
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Auth: Update Profile ─────────────────────────────────────────────────────
@@ -83,19 +92,28 @@ router.put('/profile', auth, async (req, res) => {
     const { name, avatar_color, email, avatar_url } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
     const update = { name, avatar_color };
-    if (avatar_url !== undefined) update.avatar_url = avatar_url;
+    // Only include avatar_url in the update when it's a real Cloudinary URL.
+    // An empty string from the frontend (user has no photo) must not be written —
+    // it would fail if the column doesn't exist yet on older deployments.
+    if (avatar_url && typeof avatar_url === 'string' && avatar_url.startsWith('http')) {
+      update.avatar_url = avatar_url;
+    }
     if (email) {
       const norm = email.toLowerCase().trim();
       const { data: dup } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
       if (dup && dup.id !== req.user.id) return res.status(400).json({ error: 'Email already in use by another account' });
       update.email = norm;
     }
+    // SELECT without avatar_url so it works even before the migration column is added.
+    // The upload-avatar endpoint handles avatar_url separately once the column exists.
     const { data, error } = await supabase.from('users')
       .update(update)
       .eq('id', req.user.id)
-      .select('id, name, email, role, department, position, avatar_color, avatar_url').single();
+      .select('id, name, email, role, department, position, avatar_color').single();
     if (error) throw new Error(error.message);
-    res.json(data);
+    // Merge avatar_url from the request back into the response so the frontend
+    // AuthContext stays in sync without requiring the DB column to be present yet.
+    res.json({ ...data, avatar_url: avatar_url || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

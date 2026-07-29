@@ -841,9 +841,14 @@ export default function Dashboard() {
             <span className="text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg">
               ✨ {season}
             </span>
-            <input type="date" className="ml-auto px-3 py-1.5 text-xs rounded-lg font-semibold text-white cursor-pointer"
-              style={{ border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(10px)', colorScheme: 'dark' }}
-              value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
+            <label className="ml-auto flex items-center gap-1.5 text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg border border-white/20 cursor-pointer hover:bg-white/20 transition-colors"
+              title="View attendance for a specific date">
+              <CalendarDays size={11} className="shrink-0" />
+              <span className="hidden sm:inline">Jump to date</span>
+              <input type="date" className="bg-transparent text-white text-[0.72rem] font-semibold cursor-pointer outline-none w-28"
+                style={{ colorScheme: 'dark' }}
+                value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
+            </label>
           </div>
         </div>
       </div>
