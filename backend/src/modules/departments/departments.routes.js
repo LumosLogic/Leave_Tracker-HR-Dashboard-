@@ -52,12 +52,27 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, description, head_user_id } = req.body;
+
+    // Fetch old name before update so we can sync the users.department string
+    const { data: oldDept } = await supabase.from('departments')
+      .select('name').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+
     const { data, error } = await supabase
       .from('departments')
       .update({ name, description: description || '', head_user_id: head_user_id || null })
       .eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
     if (error) throw error;
+
+    // Keep users.department string in sync when the department is renamed.
+    // This is a denormalized field used in reports and filters.
+    if (oldDept && name && oldDept.name !== name) {
+      await supabase.from('users')
+        .update({ department: name })
+        .eq('department', oldDept.name)
+        .eq('organization_id', oId);
+    }
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

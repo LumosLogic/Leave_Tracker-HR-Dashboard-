@@ -98,9 +98,13 @@ router.post('/', auth, async (req, res) => {
     const { data: users } = await supabase.from('users').select('id').eq('organization_id', oId);
     if (users?.length) {
       await supabase.from('notifications').insert(users.map(u => ({
-        user_id: u.id, title: `📢 ${title}`,
-        message: content.length > 100 ? content.substring(0, 100) + '…' : content,
-        type: 'announcement', organization_id: oId,
+        user_id:        u.id,
+        title:          `📢 ${title}`,
+        message:        content.length > 100 ? content.substring(0, 100) + '…' : content,
+        type:           'announcement',
+        reference_id:   data.id,       // links notification to this specific announcement
+        reference_type: 'announcement',
+        organization_id: oId,
       })));
     }
     res.json(data);
@@ -138,12 +142,22 @@ router.delete('/:id', auth, async (req, res) => {
       .select('id, title, file_url').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!ann) return res.status(404).json({ error: 'Announcement not found' });
 
-    // Delete related notifications for this announcement
-    await supabase.from('notifications')
+    // Delete related notifications using reference_id (accurate) with title fallback
+    // for legacy notifications created before reference_id was added.
+    const notifDelete = supabase.from('notifications')
       .delete()
       .eq('organization_id', oId)
-      .eq('type', 'announcement')
-      .eq('title', `📢 ${ann.title}`);
+      .eq('type', 'announcement');
+    // If reference_id exists in schema, use it; otherwise fall back to title match
+    await notifDelete.eq('reference_id', ann.id)
+      .then(() => {})
+      .catch(() =>
+        supabase.from('notifications')
+          .delete()
+          .eq('organization_id', oId)
+          .eq('type', 'announcement')
+          .eq('title', `📢 ${ann.title}`)
+      );
 
     // Delete Cloudinary file if present
     if (ann.file_url) {

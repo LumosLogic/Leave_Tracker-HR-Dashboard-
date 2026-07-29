@@ -43,17 +43,35 @@ router.get('/', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/expenses
-router.post('/', auth, adminOnly, async (req, res) => {
+// POST /api/expenses — any authenticated user can submit their own expense claim.
+// Admins can submit on behalf of another user by passing user_id in the body.
+router.post('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { title, category, amount, expense_date, description, receipt_url } = req.body;
+    const { title, category, amount, expense_date, description, receipt_url, user_id } = req.body;
     if (!title || !amount || !expense_date) return res.status(400).json({ error: 'title, amount and date required' });
+    if (Number(amount) <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
+
+    // Employees always submit for themselves; admins may specify a target user.
+    let targetUserId = req.user.id;
+    if (isAdmin(req.user.role) && user_id) {
+      const { data: targetUser } = await supabase.from('users')
+        .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
+      if (!targetUser) return res.status(400).json({ error: 'Employee not found in your organization' });
+      targetUserId = targetUser.id;
+    }
+
     const { data, error } = await supabase.from('expenses')
-      .insert({ user_id: req.user.id, title, category: category || 'other', amount: Number(amount), expense_date, description: description || '', receipt_url: receipt_url || '', organization_id: oId })
+      .insert({
+        user_id: targetUserId, title, category: category || 'other',
+        amount: Number(amount), expense_date,
+        description: description || '', receipt_url: receipt_url || '',
+        organization_id: oId,
+      })
       .select().single();
     if (error) throw error;
 
+    // Notify all HR admins and root admins
     const { data: admins } = await supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
     if (admins?.length) {
       await supabase.from('notifications').insert(admins.map(a => ({
@@ -104,8 +122,8 @@ router.put('/:id/review', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/expenses/:id
-router.put('/:id', auth, adminOnly, async (req, res) => {
+// PUT /api/expenses/:id — owner can edit pending; admins can edit any
+router.put('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: exp } = await supabase.from('expenses').select('user_id, status').eq('id', req.params.id).single();
@@ -120,8 +138,8 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/expenses/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+// DELETE /api/expenses/:id — owner can delete pending; admins can delete any pending
+router.delete('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: exp } = await supabase.from('expenses').select('user_id, status').eq('id', req.params.id).single();

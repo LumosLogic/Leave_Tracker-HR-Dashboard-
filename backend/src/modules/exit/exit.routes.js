@@ -135,4 +135,26 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// DELETE /api/exit/:id — employee can withdraw their own pending resignation; admin can delete any pending.
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+    const { data: req_ } = await supabase.from('exit_requests')
+      .select('id, user_id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    if (!req_) return res.status(404).json({ error: 'Exit request not found' });
+
+    // Only the employee who submitted it (or an admin) can withdraw
+    if (!isAdmin(req.user.role) && req_.user_id !== req.user.id)
+      return res.status(403).json({ error: 'Access denied' });
+
+    // Only pending resignations can be withdrawn — approved exits require HR action
+    if (req_.status !== 'pending')
+      return res.status(400).json({ error: `Cannot withdraw a ${req_.status} resignation. Contact HR.` });
+
+    const { error } = await supabase.from('exit_requests').delete().eq('id', req.params.id).eq('organization_id', oId);
+    if (error) throw error;
+    res.json({ ok: true, message: 'Resignation withdrawn successfully.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

@@ -193,7 +193,7 @@ router.patch('/:id/status', auth, adminOnly, async (req, res) => {
 });
 
 // PATCH /api/documents/:id — edit metadata, visibility/shares, and optionally replace the file
-router.patch('/:id', upload.single('file'), async (req, res) => {
+router.patch('/:id', auth, upload.single('file'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
 

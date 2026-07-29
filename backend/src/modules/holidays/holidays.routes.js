@@ -22,6 +22,17 @@ router.post('/', auth, adminOnly, async (req, res) => {
     const oId = req.user.organization_id;
     const { name, date, type, description, specific_msg } = req.body;
     if (!name || !date) return res.status(400).json({ error: 'Name and date are required' });
+
+    // Prevent duplicate holiday on same date (causes double-counting in leave calculations)
+    const { data: existing } = await supabase.from('holidays')
+      .select('id, name').eq('date', date).eq('organization_id', oId).maybeSingle();
+    if (existing) {
+      return res.status(409).json({
+        error: `A holiday already exists on ${date}: "${existing.name}". Delete or edit it first.`,
+        existing_id: existing.id,
+      });
+    }
+
     const { data, error } = await supabase.from('holidays')
       .insert({ name, date, type: type || 'public', description: description || '', specific_msg: specific_msg || '', organization_id: oId })
       .select().single();

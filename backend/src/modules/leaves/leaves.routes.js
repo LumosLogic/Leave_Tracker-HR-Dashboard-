@@ -184,6 +184,15 @@ router.post('/', auth, async (req, res) => {
     if (!start_date || !end_date) return res.status(400).json({ error: 'Start and end dates required' });
     if (start_date > end_date)    return res.status(400).json({ error: 'Start date must be before end date' });
 
+    // Reject leaves where the entire date range falls on weekends (no working day in range)
+    if (leave_time !== 'wfh' && leave_type !== 'wfh') {
+      const settings = await getSettings(orgId(req));
+      const checkDates = buildWorkingDates(start_date, end_date, settings);
+      if (checkDates.length === 0) {
+        return res.status(400).json({ error: 'The selected date range contains no working days. Weekends and holidays cannot be taken as leave.' });
+      }
+    }
+
     const targetUserId = (isAdminRole(req.user.role) && user_id) ? parseInt(user_id) : req.user.id;
     const isOnBehalf   = isAdminRole(req.user.role) && targetUserId !== req.user.id;
 
@@ -301,7 +310,14 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
   // Read leave + settings BEFORE opening the transaction (reads don't need the lock)
   const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
   if (le || !leave) return res.status(404).json({ error: 'Leave not found' });
-  if (leave.status === 'approved') return res.json(leave);
+  if (leave.status === 'approved') return res.json(leave); // idempotent — already approved
+  // Block invalid transitions: rejected or cancelled leaves must be re-submitted, not re-approved
+  if (leave.status === 'rejected' || leave.status === 'cancelled') {
+    return res.status(409).json({
+      error: `Cannot approve a ${leave.status} leave. The employee must submit a new request.`,
+      current_status: leave.status,
+    });
+  }
 
   const settings   = await getSettings(orgId(req));
   const workDates  = buildWorkingDates(leave.start_date, leave.end_date, settings);

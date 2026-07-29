@@ -175,11 +175,11 @@ router.get('/headcount', auth, async (req, res) => {
     // root_admin sees HR admins + employees; HR admin sees employees only
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const { data: users } = await supabase.from('users')
-      .select('id, role, employment_status, department, date_of_joining, created_at')
+      .select('id, role, employee_status, department, date_of_joining, created_at')
       .eq('organization_id', oId)
       .in('role', roleFilter);
     const total   = users?.length || 0;
-    const active  = users?.filter(u => u.employment_status === 'active' || !u.employment_status).length || 0;
+    const active  = users?.filter(u => u.employee_status === 'active' || !u.employee_status).length || 0;
     const byDept  = {};
     (users || []).forEach(u => {
       const d = u.department || 'General';

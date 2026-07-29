@@ -86,7 +86,7 @@ router.post('/assignments/bulk', auth, adminOnly, async (req, res) => {
     if (!Array.isArray(assignments)) return res.status(400).json({ error: 'assignments array required' });
     const rows = assignments.map(a => ({ ...a, organization_id: oId }));
     const { data, error } = await supabase.from('shift_assignments')
-      .upsert(rows, { onConflict: 'user_id,date' }).select();
+      .upsert(rows, { onConflict: 'user_id,date,organization_id' }).select();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

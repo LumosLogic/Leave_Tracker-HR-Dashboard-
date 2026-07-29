@@ -697,7 +697,6 @@ export default function Dashboard() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard', dashDate],
     queryFn: async () => {
-      await apiPost('/attendance/cleanup-orphaned', {}).catch(() => {});
       const [d, culture] = await Promise.all([
         apiGet('/dashboard', qs),
         apiGet('/culture').catch(() => ({ birthdaysToday: [], upcomingBirthdays: [], holidays: [], events: [] })),
