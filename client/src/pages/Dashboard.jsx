@@ -817,8 +817,7 @@ export default function Dashboard() {
         <div className="relative px-7 pt-6 pb-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <div className="text-2xl">👋</div>
-              <h1 className="text-xl font-black text-white tracking-tight mt-1">
+              <h1 className="text-xl font-black text-white tracking-tight">
                 {getGreeting()}, {user?.name?.split(' ')[0]}!
               </h1>
               <p className="text-white/65 text-sm mt-1">Here's what's happening in your organization today.</p>
