@@ -253,14 +253,17 @@ router.post('/late-early', auth, adminOnly, async (req, res) => {
 // Return attendance records where is_late or is_early_exit, joined with user info
 router.get('/late-early', auth, async (req, res) => {
   try {
-    // Scope to employees only (never show admin in this list)
-    const { data: empRows } = await supabase.from('users').select('id').eq('role', 'employee');
+    const oid = orgId(req);
+    // Scope to employees only within this org
+    const { data: empRows } = await supabase.from('users').select('id')
+      .eq('role', 'employee').eq('organization_id', oid);
     const empIds = (empRows || []).map(e => e.id);
 
     let query = supabase.from('attendance')
       .select('*, users(name, email, avatar_color, department)')
+      .eq('organization_id', oid)
       .or('is_late.eq.true,is_early_exit.eq.true')
-      .in('user_id', empIds)
+      .in('user_id', empIds.length ? empIds : [-1])
       .order('date', { ascending: false });
 
     // Optional date filter

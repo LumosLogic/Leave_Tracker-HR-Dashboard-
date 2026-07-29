@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'leave-tracker-secret-2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('\n❌  FATAL: JWT_SECRET environment variable is not set.');
+  console.error('    Add  JWT_SECRET=<random-64-char-string>  to your .env file.\n');
+  process.exit(1);
+}
 
 const ALLOWED_ORIGINS = [
   'https://hrms.lumoslogic.com',

@@ -102,22 +102,26 @@ router.post('/', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/onboarding/:id/complete
-router.put('/:id/complete', auth, adminOnly, async (req, res) => {
+// Admins can complete any task; employees can only complete their own 'employee'-assigned tasks.
+router.put('/:id/complete', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { completed } = req.body;
 
-    // Non-admins can only toggle their own employee-assigned tasks
+    // Always fetch the task first so we can enforce ownership
+    const { data: task, error: fetchErr } = await supabase
+      .from('onboarding_checklists')
+      .select('user_id, assigned_to')
+      .eq('id', req.params.id)
+      .eq('organization_id', oId)
+      .single();
+
+    if (fetchErr || !task) return res.status(404).json({ error: 'Task not found' });
+
+    // Employees: must own the task AND it must be assigned to 'employee'
     if (!isAdmin(req.user.role)) {
-      const { data: task } = await supabase
-        .from('onboarding_checklists')
-        .select('user_id, assigned_to')
-        .eq('id', req.params.id)
-        .eq('organization_id', oId)
-        .single();
-      if (!task || task.user_id !== req.user.id || task.assigned_to !== 'employee') {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
+      if (task.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+      if (task.assigned_to !== 'employee') return res.status(403).json({ error: 'Only HR or manager can complete this task' });
     }
 
     const { data, error } = await supabase.from('onboarding_checklists')

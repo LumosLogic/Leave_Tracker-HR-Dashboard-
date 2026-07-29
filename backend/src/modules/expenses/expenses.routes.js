@@ -67,7 +67,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
 });
 
 // POST /api/expenses/upload-receipt
-router.post('/upload-receipt', upload.single('file'), async (req, res) => {
+router.post('/upload-receipt', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file' });
     const oId = req.user.organization_id;

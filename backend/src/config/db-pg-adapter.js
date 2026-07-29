@@ -40,7 +40,8 @@ function from(table) {
     updateData: null,
     upsertData: null,
     onConflict: null,
-    filters: [],       // [{ col, op, val }]
+    filters: [],       // [{ col, op, val }] — all joined with AND
+    orFilters: [],     // [filterString] — each becomes (A OR B) ANDed with the rest
     notNegate: false,  // tracks pending .not()
     orderClauses: [],  // [{ col, asc }]
     limitVal: null,
@@ -58,35 +59,82 @@ function from(table) {
 
   // ── filter builder ────────────────────────────────────────────────────────
   function buildWhere(tablePrefix) {
-    if (!state.filters.length) return '';
+    if (!state.filters.length && !state.orFilters.length) return '';
     const prefix = tablePrefix ? `"${tablePrefix}".` : '';
-    const clauses = state.filters.map(f => {
-      // If col already has a table prefix (e.g. "table.col"), don't add another
-      const col = f.col.includes('.') ? f.col : `${prefix}"${f.col}"`;
-      switch (f.op) {
-        case 'eq':    return `${col} = ${addParam(f.val)}`;
-        case 'neq':   return `${col} <> ${addParam(f.val)}`;
-        case 'gt':    return `${col} > ${addParam(f.val)}`;
-        case 'gte':   return `${col} >= ${addParam(f.val)}`;
-        case 'lt':    return `${col} < ${addParam(f.val)}`;
-        case 'lte':   return `${col} <= ${addParam(f.val)}`;
-        case 'like':  return `${col} LIKE ${addParam(f.val)}`;
-        case 'ilike': return `${col} ILIKE ${addParam(f.val)}`;
-        case 'is':
-          if (f.val === null) return `${col} IS NULL`;
-          if (f.val === true) return `${col} IS TRUE`;
-          if (f.val === false) return `${col} IS FALSE`;
-          return `${col} IS ${addParam(f.val)}`;
-        case 'in': {
-          if (!Array.isArray(f.val) || f.val.length === 0) return 'FALSE';
-          const placeholders = f.val.map(v => addParam(v)).join(', ');
-          return `${col} IN (${placeholders})`;
+    const allClauses = [];
+
+    // ── AND conditions (.eq, .in, .gte, etc.) ────────────────────────────
+    if (state.filters.length) {
+      const andClauses = state.filters.map(f => {
+        const col = f.col.includes('.') ? f.col : `${prefix}"${f.col}"`;
+        switch (f.op) {
+          case 'eq':    return `${col} = ${addParam(f.val)}`;
+          case 'neq':   return `${col} <> ${addParam(f.val)}`;
+          case 'gt':    return `${col} > ${addParam(f.val)}`;
+          case 'gte':   return `${col} >= ${addParam(f.val)}`;
+          case 'lt':    return `${col} < ${addParam(f.val)}`;
+          case 'lte':   return `${col} <= ${addParam(f.val)}`;
+          case 'like':  return `${col} LIKE ${addParam(f.val)}`;
+          case 'ilike': return `${col} ILIKE ${addParam(f.val)}`;
+          case 'is':
+            if (f.val === null)  return `${col} IS NULL`;
+            if (f.val === true)  return `${col} IS TRUE`;
+            if (f.val === false) return `${col} IS FALSE`;
+            return `${col} IS ${addParam(f.val)}`;
+          case 'in': {
+            if (!Array.isArray(f.val) || f.val.length === 0) return 'FALSE';
+            const placeholders = f.val.map(v => addParam(v)).join(', ');
+            return `${col} IN (${placeholders})`;
+          }
+          case 'not_eq': return `${col} <> ${addParam(f.val)}`;
+          default:       return `${col} = ${addParam(f.val)}`;
         }
-        case 'not_eq':   return `${col} <> ${addParam(f.val)}`;
-        default:         return `${col} = ${addParam(f.val)}`;
-      }
-    });
-    return 'WHERE ' + clauses.join(' AND ');
+      });
+      allClauses.push(...andClauses);
+    }
+
+    // ── OR groups (.or('col.op.val,col.op.val')) ──────────────────────────
+    // Each .or() call becomes one (A OR B OR C) block ANDed with the rest.
+    // Supabase format: "is_late.eq.true,is_early_exit.eq.true"
+    for (const orStr of state.orFilters) {
+      const orParts = orStr.split(',').map(part => {
+        part = part.trim();
+        const firstDot  = part.indexOf('.');
+        const colName   = part.substring(0, firstDot);
+        const remainder = part.substring(firstDot + 1);
+        const secondDot = remainder.indexOf('.');
+        const op        = remainder.substring(0, secondDot);
+        const valStr    = remainder.substring(secondDot + 1);
+
+        // Parse value string to JS primitive
+        let val;
+        if      (valStr === 'true')                      val = true;
+        else if (valStr === 'false')                     val = false;
+        else if (valStr === 'null')                      val = null;
+        else if (valStr !== '' && !isNaN(valStr))        val = Number(valStr);
+        else                                             val = valStr;
+
+        const col = colName.includes('.') ? colName : `${prefix}"${colName}"`;
+
+        switch (op) {
+          case 'eq':
+            if (val === null)  return `${col} IS NULL`;
+            if (val === true)  return `${col} IS TRUE`;
+            if (val === false) return `${col} IS FALSE`;
+            return `${col} = ${addParam(val)}`;
+          case 'neq': return `${col} <> ${addParam(val)}`;
+          case 'gt':  return `${col} > ${addParam(val)}`;
+          case 'gte': return `${col} >= ${addParam(val)}`;
+          case 'lt':  return `${col} < ${addParam(val)}`;
+          case 'lte': return `${col} <= ${addParam(val)}`;
+          case 'is':  return val === null ? `${col} IS NULL` : (val ? `${col} IS TRUE` : `${col} IS FALSE`);
+          default:    return `${col} = ${addParam(val)}`;
+        }
+      });
+      allClauses.push(`(${orParts.join(' OR ')})`);
+    }
+
+    return 'WHERE ' + allClauses.join(' AND ');
   }
 
   // ── FK join parser ────────────────────────────────────────────────────────
@@ -376,6 +424,12 @@ function from(table) {
         // chained form: .not().eq(...) — set negate flag
         state.notNegate = true;
       }
+      return builder;
+    },
+
+    // Supabase .or('col.op.val,col.op.val') — produces (A OR B) ANDed with rest
+    or(filterString) {
+      if (filterString) state.orFilters.push(filterString);
       return builder;
     },
 

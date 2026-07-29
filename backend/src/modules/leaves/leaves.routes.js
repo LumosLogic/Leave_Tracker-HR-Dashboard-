@@ -368,7 +368,7 @@ router.delete('/:id', auth, async (req, res) => {
 
     // If leave was approved, remove the attendance records that were created for those dates
     if (leave.status === 'approved') {
-      const settings = await getSettings();
+      const settings = await getSettings(orgId(req));
       const start = new Date(leave.start_date + 'T12:00:00');
       const end   = new Date(leave.end_date   + 'T12:00:00');
       const dates = [];
@@ -380,7 +380,9 @@ router.delete('/:id', auth, async (req, res) => {
         await supabase.from('attendance')
           .delete()
           .eq('user_id', leave.user_id)
-          .in('date', dates);
+          .eq('organization_id', orgId(req))
+          .in('date', dates)
+          .in('status', ['on_leave', 'half_day', 'wfh']);
       }
     }
 

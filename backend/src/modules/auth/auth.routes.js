@@ -34,6 +34,12 @@ router.post('/login', async (req, res) => {
     if (!user || !bcrypt.compareSync(password, user.password))
       return res.status(401).json({ error: 'Invalid email or password' });
 
+    // Block deactivated accounts — status check must happen AFTER password verify
+    // to avoid leaking whether the email exists (timing attack surface).
+    if (user.status === 'inactive') {
+      return res.status(403).json({ error: 'Your account has been deactivated. Please contact HR to restore access.' });
+    }
+
     // Record login history (fire and forget)
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || '';
