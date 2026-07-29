@@ -9,6 +9,7 @@ const { seed }         = require('./config/db');
 const { ALLOWED_ORIGINS } = require('./middleware/auth');
 const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
+const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
 const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
 
 // ── Module routers (extracted from old server.js) ────────────────────────────
@@ -91,6 +92,21 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+// ── Health / status (always available — before maintenance gate) ──────────────
+app.get('/health', (req, res) => {
+  const maintenance = process.env.MAINTENANCE_MODE === 'true';
+  if (!maintenance) return res.status(200).json({ status: 'ok' });
+  return res.status(200).json({
+    status: 'maintenance',
+    bypassAvailable: process.env.MAINTENANCE_ADMIN_BYPASS === 'true',
+    message: process.env.MAINTENANCE_MESSAGE || null,
+  });
+});
+app.get('/status', (req, res) => res.redirect('/health'));
+
+// ── Maintenance Mode (blocks all /api/* requests when MAINTENANCE_MODE=true) ──
+app.use(maintenanceMiddleware);
 
 // ── General API rate limit (300 req/min per IP — catches scripted abuse) ──────
 app.use('/api', rateLimiter(LIMITS.GENERAL_API));

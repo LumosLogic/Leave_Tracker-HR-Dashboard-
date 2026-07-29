@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
@@ -9,6 +9,7 @@ import { EmployeeLayout } from '@/components/layout/EmployeeLayout';
 import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
 import { Lock } from 'lucide-react';
 
+import MaintenancePage  from '@/pages/MaintenancePage';
 import LandingPage      from '@/pages/LandingPage';
 import Login            from '@/pages/Login';
 import Register         from '@/pages/Register';
@@ -72,6 +73,79 @@ function FeatureRoute({ featureKey, children }) {
       </div>
     );
   }
+  return children;
+}
+
+// Checks /health on mount and blocks the app when maintenance mode is active.
+// Root admins bypass if MAINTENANCE_ADMIN_BYPASS=true is set on the backend.
+// Polls every 30 s while in maintenance so the app recovers automatically when
+// the operator turns maintenance off and restarts the backend.
+function MaintenanceGate({ children }) {
+  const { user } = useAuth();
+  const [health, setHealth] = useState(null); // null = loading, object = resolved
+
+  function fetchHealth() {
+    return fetch('/health')
+      .then(r => r.json())
+      .catch(() => ({ status: 'ok' }));
+  }
+
+  // Initial check
+  useEffect(() => {
+    fetchHealth().then(data => setHealth(data));
+  }, []);
+
+  // Auto-recovery: poll every 30 s while maintenance is active
+  useEffect(() => {
+    if (health?.status !== 'maintenance') return;
+    const id = setInterval(() => {
+      fetchHealth().then(data => {
+        if (data.status !== 'maintenance') setHealth(data);
+      });
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [health?.status]);
+
+  // Mid-session detection: any API call returning 503+maintenance fires this event
+  useEffect(() => {
+    const handler = e => {
+      setHealth(prev =>
+        prev?.status === 'maintenance'
+          ? prev
+          : { status: 'maintenance', bypassAvailable: e.detail?.bypassAvailable ?? false, message: e.detail?.message ?? null }
+      );
+    };
+    window.addEventListener('maintenance:active', handler);
+    return () => window.removeEventListener('maintenance:active', handler);
+  }, []);
+
+  if (health === null) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: '#f9f9ff',
+      }}>
+        <div style={{
+          width: '32px', height: '32px', borderRadius: '50%',
+          border: '3px solid #e5e3f0', borderTopColor: '#3525cd',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (health.status === 'maintenance') {
+    // Root admin with bypass configured can proceed normally
+    if (health.bypassAvailable && user?.role === 'root_admin') return children;
+    return (
+      <MaintenancePage
+        bypassAvailable={health.bypassAvailable}
+        message={health.message}
+      />
+    );
+  }
+
   return children;
 }
 
@@ -211,10 +285,12 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <FeatureFlagProvider>
-            <AppRoutes />
-            <ForcePasswordChangeModal />
-          </FeatureFlagProvider>
+          <MaintenanceGate>
+            <FeatureFlagProvider>
+              <AppRoutes />
+              <ForcePasswordChangeModal />
+            </FeatureFlagProvider>
+          </MaintenanceGate>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
