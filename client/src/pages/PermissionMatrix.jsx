@@ -355,9 +355,9 @@ export default function PermissionMatrix() {
   }
 
   return (
-    <div className="w-full flex flex-col h-[calc(100dvh-5.25rem)] md:h-[calc(100dvh-3.5rem)]">
+    <div className="w-full">
       {/* ── HEADER ─────────────────────────────────────── */}
-      <div className="flex-shrink-0 mb-4 md:mb-6">
+      <div className="sticky top-0 z-30 bg-[#f9f9ff] -mx-4 px-4 -mt-4 pt-4 md:-mx-7 md:px-7 md:-mt-7 md:pt-7 pb-4 mb-4 border-b border-[#e7eefe]">
         {/* Title row */}
         <div className="flex items-start justify-between mb-4 md:mb-6">
           <div>
@@ -463,9 +463,9 @@ export default function PermissionMatrix() {
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto min-h-0 pr-2 -mr-2 pb-2">
+      <div className="w-full">
         {activeTab === 'permissions' ? (
-          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-2')}>
+          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
