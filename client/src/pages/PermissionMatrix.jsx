@@ -357,9 +357,9 @@ export default function PermissionMatrix() {
   return (
     <div className="w-full">
       {/* ── HEADER ─────────────────────────────────────── */}
-      <div className="sticky top-0 z-30 bg-[#f9f9ff] -mx-4 px-4 -mt-4 pt-4 md:-mx-7 md:px-7 md:-mt-7 md:pt-7 pb-4 mb-4 border-b border-[#e7eefe]">
+      <div className="mb-6">
         {/* Title row */}
-        <div className="flex items-start justify-between mb-4 md:mb-6">
+        <div className="flex items-start justify-between mb-6">
           <div>
             <button
               onClick={() => navigate('/root/roles')}
@@ -408,7 +408,7 @@ export default function PermissionMatrix() {
 
         {/* Root Admin banner */}
         {isRootAdmin && (
-          <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+          <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
             <Lock size={15} className="text-purple-500 flex-shrink-0" />
             <p className="text-xs text-purple-700 font-semibold">
               Root Admin has all permissions by default and cannot be restricted.
@@ -418,7 +418,7 @@ export default function PermissionMatrix() {
 
         {/* System role banner */}
         {isSystemRole && !isRootAdmin && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
             <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
             <p className="text-xs text-amber-700 font-semibold">
               This is a system role. You can modify its permissions, but it cannot be deleted or renamed.
@@ -427,7 +427,7 @@ export default function PermissionMatrix() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-4 bg-[#f0f3ff] p-1 rounded-xl w-fit">
+        <div className="flex gap-1 mb-5 bg-[#f0f3ff] p-1 rounded-xl w-fit">
           {[
             { key: 'permissions', label: 'Permissions', icon: Shield },
             { key: 'members', label: `Members (${role.members?.length || 0})`, icon: Users },
@@ -449,7 +449,7 @@ export default function PermissionMatrix() {
 
         {/* Quick select */}
         {activeTab === 'permissions' && !isRootAdmin && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-4">
             <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
             <button onClick={handleSelectAll} className="text-xs font-bold text-[#3525cd] hover:underline">
               Select All
@@ -465,7 +465,7 @@ export default function PermissionMatrix() {
       {/* ── BODY ──────────────────────────────────────────────────────── */}
       <div className="w-full">
         {activeTab === 'permissions' ? (
-          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
+          <div className={cn('space-y-3 overflow-y-auto max-h-[calc(100vh-17rem)] pr-2 -mr-2', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
