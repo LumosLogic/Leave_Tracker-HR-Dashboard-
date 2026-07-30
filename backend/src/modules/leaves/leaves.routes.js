@@ -223,6 +223,7 @@ router.get('/pending-department', auth, async (req, res) => {
       .select('*, users!leaves_user_id_fkey(id, name, email, department, avatar_color, position)')
       .eq('organization_id', oId)
       .eq('status', 'pending_dept')
+      .is('deleted_at', null)
       .in('user_id', empIds)
       .order('created_at', { ascending: false });
 
@@ -243,6 +244,7 @@ router.get('/pending-root', auth, adminOnly, async (req, res) => {
       .select('*, users!leaves_user_id_fkey(id, name, email, department, avatar_color, position)')
       .eq('organization_id', oId)
       .eq('status', 'pending_root')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -417,7 +419,7 @@ router.post('/', auth, async (req, res) => {
 // ─── ROUTE 8: PUT /:id — edit leave ──────────────────────────────────────────
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+    const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
     if (!leave) return res.status(404).json({ error: 'Leave not found' });
     if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
     if (['approved','rejected'].includes(leave.status) && !isAdminRole(req.user.role)) {
@@ -434,9 +436,9 @@ router.put('/:id', auth, async (req, res) => {
       reason: reason ?? leave.reason,
       leave_time: leave_time || leave.leave_time,
       half_type:  (leave_time || leave.leave_time) === 'half' ? (half_type || leave.half_type || 'first_half') : null,
-    }).eq('id', req.params.id);
+    }).eq('id', req.params.id).eq('organization_id', orgId(req));
 
-    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name)').eq('id', req.params.id).single();
+    const { data } = await supabase.from('leaves').select('*, users!leaves_user_id_fkey(name)').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -446,7 +448,7 @@ router.put('/:id', auth, async (req, res) => {
 // Handles: status='pending_root' → treated as final-approve (same logic).
 // Blocks:  status='pending_dept' → dept head must act first.
 router.put('/:id/approve', auth, adminOnly, async (req, res) => {
-  const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
+  const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   if (le || !leave) return res.status(404).json({ error: 'Leave not found' });
 
   if (leave.status === 'approved') return res.json(leave);
@@ -492,8 +494,8 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
       `UPDATE leaves SET
          status = 'approved', approved_by = $1, approved_at = $2,
          root_admin_status = 'approved', root_admin_id = $1, root_admin_reviewed_at = $2
-       WHERE id = $3`,
-      [req.user.id, approvedAt, req.params.id]
+       WHERE id = $3 AND organization_id = $4`,
+      [req.user.id, approvedAt, req.params.id, orgId(req)]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -507,7 +509,7 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
   });
 
   const { data } = await supabase.from('leaves')
-    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
 
   notify(leave.user_id, 'Leave Approved', `Your leave request from ${leave.start_date} to ${leave.end_date} has been approved.`, orgId(req));
 
@@ -515,7 +517,7 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
     sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
   }
   gcal.createLeaveEvent(leave, data.users?.name || 'Employee')
-    .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', req.params.id).then(() => {}); })
+    .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', req.params.id).eq('organization_id', orgId(req)).then(() => {}); })
     .catch(() => {});
 
   res.json(flatOne(data));
@@ -523,7 +525,7 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
 
 // ─── ROUTE 10: PUT /:id/reject ────────────────────────────────────────────────
 router.put('/:id/reject', auth, adminOnly, async (req, res) => {
-  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).single();
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   if (!leave) return res.status(404).json({ error: 'Leave not found' });
   if (leave.status === 'rejected') return res.json(leave);
 
@@ -532,6 +534,10 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
       error: 'This leave has not been forwarded by the Department Head yet. Only Root Admin can reject after dept head review.',
       current_status: 'pending_dept',
     });
+  }
+
+  if (leave.status === 'pending_root' && req.user.role !== 'root_admin') {
+    return res.status(403).json({ error: 'Only Root Admin can make the final decision.' });
   }
 
   const { remarks } = req.body || {};
@@ -560,8 +566,8 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
          status = 'rejected', approved_by = $1, approved_at = $2,
          google_event_id = NULL, remarks = $3,
          root_admin_status = 'rejected', root_admin_id = $1, root_admin_reviewed_at = $2
-       WHERE id = $4`,
-      [req.user.id, rejectedAt, remarks || null, req.params.id]
+       WHERE id = $4 AND organization_id = $5`,
+      [req.user.id, rejectedAt, remarks || null, req.params.id, orgId(req)]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -579,7 +585,7 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
   notify(leave.user_id, 'Leave Request Rejected', `Your leave request from ${leave.start_date} to ${leave.end_date} has been rejected.`, orgId(req));
 
   const { data } = await supabase.from('leaves')
-    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   if (data.users?.email) {
     sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name) });
   }
@@ -588,7 +594,7 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
 
 // ─── ROUTE 11: PUT /:id/revert ────────────────────────────────────────────────
 router.put('/:id/revert', auth, async (req, res) => {
-  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
   if (!leave) return res.status(404).json({ error: 'Leave not found' });
   if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
   if (leave.status !== 'approved') return res.status(400).json({ error: 'Only approved leaves can be reverted' });
@@ -609,8 +615,8 @@ router.put('/:id/revert', auth, async (req, res) => {
       );
     }
     await client.query(
-      `UPDATE leaves SET status = 'cancelled', google_event_id = NULL WHERE id = $1`,
-      [req.params.id]
+      `UPDATE leaves SET status = 'cancelled', google_event_id = NULL WHERE id = $1 AND organization_id = $2`,
+      [req.params.id, orgId(req)]
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -625,13 +631,13 @@ router.put('/:id/revert', auth, async (req, res) => {
 
   if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
   const { data } = await supabase.from('leaves')
-    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
+    .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   res.json(flatOne(data));
 });
 
 // ─── ROUTE 12: DELETE /:id ────────────────────────────────────────────────────
 router.delete('/:id', auth, async (req, res) => {
-  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).maybeSingle();
+  const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
   if (!leave) return res.status(404).json({ error: 'Leave not found' });
   if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
   if (leave.status === 'approved' && !isAdminRole(req.user.role)) return res.status(400).json({ error: 'Cannot cancel approved leave' });
@@ -654,7 +660,7 @@ router.delete('/:id', auth, async (req, res) => {
         [leave.user_id, orgId(req), workDates]
       );
     }
-    await client.query(`DELETE FROM leaves WHERE id = $1`, [req.params.id]);
+    await client.query(`DELETE FROM leaves WHERE id = $1 AND organization_id = $2`, [req.params.id, orgId(req)]);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -707,12 +713,16 @@ router.post('/:id/department-approve', auth, async (req, res) => {
     const now = new Date().toISOString();
     const { notes } = req.body || {};
 
-    await supabase.from('leaves').update({
+    const { error: updateError } = await supabase.from('leaves').update({
       status:                 'pending_root',
       dept_head_status:       'approved',
       dept_head_id:           req.user.id,
       dept_head_reviewed_at:  now,
     }).eq('id', leaveId).eq('organization_id', oId);
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Failed to update leave status. ' + updateError.message });
+    }
 
     // Audit log
     logApprovalAction({
@@ -743,7 +753,6 @@ router.post('/:id/department-approve', auth, async (req, res) => {
     }
 
     // Email root admins
-    const rootEmails = rootAdmins.rows.map(r => r.name).filter(Boolean); // just for reference
     const recipients = await getRecipients(oId);
     if (recipients.length > 0 && typeof leaveForwardedToRootHtml === 'function') {
       sendMail({
@@ -759,7 +768,7 @@ router.post('/:id/department-approve', auth, async (req, res) => {
 
     // Fetch updated leave for response
     const { data: updated } = await supabase.from('leaves')
-      .select('*').eq('id', leaveId).single();
+      .select('*').eq('id', leaveId).eq('organization_id', oId).single();
     res.json(updated);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -807,8 +816,8 @@ router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
         `UPDATE leaves SET
            status = 'approved', approved_by = $1, approved_at = $2,
            root_admin_status = 'approved', root_admin_id = $1, root_admin_reviewed_at = $2
-         WHERE id = $3`,
-        [req.user.id, approvedAt, leaveId]
+         WHERE id = $3 AND organization_id = $4`,
+        [req.user.id, approvedAt, leaveId, oId]
       );
       await client.query('COMMIT');
     } catch (err) {
@@ -822,7 +831,7 @@ router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
     });
 
     const { data } = await supabase.from('leaves')
-      .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).single();
+      .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).eq('organization_id', oId).single();
 
     notify(leave.user_id, 'Leave Approved', `Your leave from ${leave.start_date} to ${leave.end_date} has been approved by ${req.user.name}.`, oId);
 
@@ -830,7 +839,7 @@ router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
       sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
     }
     gcal.createLeaveEvent(leave, data.users?.name || 'Employee')
-      .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', leaveId).then(() => {}); })
+      .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', leaveId).eq('organization_id', oId).then(() => {}); })
       .catch(() => {});
 
     res.json(flatOne(data));
@@ -884,8 +893,8 @@ router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
            status = 'rejected', approved_by = $1, approved_at = $2,
            google_event_id = NULL, remarks = $3,
            root_admin_status = 'rejected', root_admin_id = $1, root_admin_reviewed_at = $2
-         WHERE id = $4`,
-        [req.user.id, rejectedAt, remarks || null, leaveId]
+         WHERE id = $4 AND organization_id = $5`,
+        [req.user.id, rejectedAt, remarks || null, leaveId, oId]
       );
       await client.query('COMMIT');
     } catch (err) {
@@ -903,7 +912,7 @@ router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
     notify(leave.user_id, 'Leave Request Rejected', `Your leave from ${leave.start_date} to ${leave.end_date} has been rejected.`, oId);
 
     const { data } = await supabase.from('leaves')
-      .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).single();
+      .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).eq('organization_id', oId).single();
     if (data.users?.email) {
       sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name) });
     }
@@ -924,8 +933,23 @@ router.get('/:id/history', auth, async (req, res) => {
       .select('id, user_id').eq('id', leaveId).eq('organization_id', oId).maybeSingle();
     if (!leave) return res.status(404).json({ error: 'Leave not found' });
     if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) {
-      // Also allow dept head for their department's leaves (verified via log data)
-      return res.status(403).json({ error: 'Not authorized' });
+      const { data: employee } = await supabase.from('users')
+        .select('department_id')
+        .eq('id', leave.user_id)
+        .eq('organization_id', oId)
+        .maybeSingle();
+
+      let isDeptHead = false;
+      if (employee?.department_id) {
+        const { data: dept } = await supabase.from('departments')
+          .select('head_user_id')
+          .eq('id', employee.department_id)
+          .eq('organization_id', oId)
+          .maybeSingle();
+        isDeptHead = dept?.head_user_id === req.user.id;
+      }
+
+      if (!isDeptHead) return res.status(403).json({ error: 'Not authorized' });
     }
 
     const { data, error } = await supabase.from('leave_approval_log')

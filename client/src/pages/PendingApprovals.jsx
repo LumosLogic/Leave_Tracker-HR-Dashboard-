@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList, CheckCircle2, XCircle, Clock, Umbrella, Home,
   Search, Filter, ChevronLeft, ChevronRight, Users, Check, X,
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
@@ -29,8 +27,6 @@ function TypeBadge({ kind }) {
 const ROWS_OPTIONS = [5, 10, 20, 50];
 
 export default function PendingApprovals() {
-  const { isAdmin, isRootAdmin } = useAuth();
-  const navigate   = useNavigate();
   const toast      = useToast();
   const qc         = useQueryClient();
 
@@ -123,6 +119,7 @@ export default function PendingApprovals() {
   const regCount       = regs.length;
   const rootLeaveCount = rootLeaves.length;
   const totalCount     = all.length;
+  const oldFlowCount   = leaves.length + regs.length;
 
   const summaryCards = [
     { label: 'Total Pending',           value: totalCount,     icon: <ClipboardList size={16} />, bg: 'bg-amber-50',   text: 'text-amber-700',  onClick: () => setTab('all') },
@@ -132,7 +129,7 @@ export default function PendingApprovals() {
   ];
 
   const TABS = [
-    { key: 'all',   label: `All (${totalCount})` },
+    { key: 'all',   label: `All (${oldFlowCount})` },
     { key: 'final', label: `Final Approval (${rootLeaveCount})`, highlight: rootLeaveCount > 0 },
     { key: 'leave', label: `Legacy Leave (${leaveCount})` },
     { key: 'wfh',   label: `WFH (${wfhCount})` },
@@ -144,11 +141,8 @@ export default function PendingApprovals() {
 
   const filtered = all.filter(r => {
     if (tab === 'final') return r._flow === 'new';
+    if (r._flow === 'new') return false; // new-flow leaves only appear in the 'final' tab
     if (tab !== 'all' && r._kind !== tab) return false;
-    if (tab === 'all' || tab === 'leave' || tab === 'wfh') {
-      // Exclude new-flow (pending_root) leaves from 'all/leave/wfh' tabs to avoid double-listing
-      // They appear in the 'final' tab
-    }
     if (deptFilt && r._dept !== deptFilt) return false;
     if (search) {
       const q = search.toLowerCase();

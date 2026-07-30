@@ -41,10 +41,20 @@ export function StatusBadge({ status, small = false }) {
 // Shows a 3-step progress bar for new-flow leaves (pending_dept / pending_root / final).
 // Falls back silently for old 'pending' leaves.
 export function LeaveTimeline({ leave }) {
-  const { status, dept_head_status, dept_head_id, root_admin_status, root_admin_id } = leave;
+  const { status, dept_head_status, root_admin_status } = leave;
 
   // Only render timeline for new-flow leaves
   if (!['pending_dept', 'pending_root', 'approved', 'rejected'].includes(status)) return null;
+
+  // Old leaves approved/rejected before the two-tier system have both tracking cols as 'pending'.
+  // Treat them as fully complete rather than showing wrong pending states.
+  const isOldFlow = (status === 'approved' || status === 'rejected')
+    && dept_head_status === 'pending'
+    && root_admin_status === 'pending';
+
+  const deptDone     = dept_head_status === 'approved' || isOldFlow;
+  const rootDone     = root_admin_status === 'approved' || (isOldFlow && status === 'approved');
+  const rootRejected = root_admin_status === 'rejected' || status === 'rejected';
 
   const steps = [
     {
@@ -53,20 +63,20 @@ export function LeaveTimeline({ leave }) {
       active: false,
     },
     {
-      label:  'Department Head',
-      sublabel: dept_head_status === 'approved' ? 'Approved & Forwarded' : 'Pending Review',
-      done:   dept_head_status === 'approved',
-      active: status === 'pending_dept',
+      label:    'Department Head',
+      sublabel: deptDone ? 'Approved & Forwarded' : 'Pending Review',
+      done:     deptDone,
+      active:   status === 'pending_dept',
       rejected: false,
     },
     {
-      label:   'Root Admin',
-      sublabel: root_admin_status === 'approved' ? 'Approved'
-               : root_admin_status === 'rejected' ? 'Rejected'
+      label:    'Root Admin',
+      sublabel: rootDone    ? 'Approved'
+               : rootRejected ? 'Rejected'
                : 'Pending Final Decision',
-      done:    root_admin_status === 'approved',
-      active:  status === 'pending_root',
-      rejected: root_admin_status === 'rejected' || status === 'rejected',
+      done:     rootDone,
+      active:   status === 'pending_root',
+      rejected: rootRejected,
     },
   ];
 
