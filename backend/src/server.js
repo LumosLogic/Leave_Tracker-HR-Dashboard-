@@ -175,6 +175,10 @@ app.use('/api/biometric',      biometricRouter);
 app.use('/api/roles',          rolesRouter);
 app.use('/api/permissions',    permissionsRouter);
 
+// ── Phase 3.7: Statutory Compliance ──────────────────────────────────────────
+const statutoryRouter = require('./modules/statutory/statutory.routes');
+app.use('/api/statutory', statutoryRouter);
+
 // ── Employee Profile V2 routes ────────────────────────────────────────────────
 app.use('/api/profile',        profileOverview);
 app.use('/api/profile',        profilePersonal);

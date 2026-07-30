@@ -42,6 +42,9 @@ import PayrollRunDetails   from '@/pages/PayrollRunDetails';
 import PayslipDetails      from '@/pages/PayslipDetails';
 import PayrollDashboard    from '@/pages/PayrollDashboard';
 import PayrollReports      from '@/pages/PayrollReports';
+import StatutoryConfig     from '@/pages/StatutoryConfig';
+import ComplianceDashboard from '@/pages/ComplianceDashboard';
+import TaxDeclaration      from '@/pages/TaxDeclaration';
 import Assets           from '@/pages/Assets';
 import ExpensesPage     from '@/pages/Expenses';
 import AnnouncementsPage from '@/pages/Announcements';
@@ -222,6 +225,9 @@ function AppRoutes() {
         <Route path="/payroll/runs/:id"         element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
         <Route path="/payroll/payslips/:id"     element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
         <Route path="/payroll/reports"          element={<FeatureRoute featureKey="payroll"><PayrollReports /></FeatureRoute>} />
+        <Route path="/statutory/config"         element={<FeatureRoute featureKey="payroll"><StatutoryConfig /></FeatureRoute>} />
+        <Route path="/statutory/compliance"     element={<FeatureRoute featureKey="payroll"><ComplianceDashboard /></FeatureRoute>} />
+        <Route path="/statutory/declarations"   element={<FeatureRoute featureKey="payroll"><TaxDeclaration /></FeatureRoute>} />
         <Route path="/assets"           element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/expenses"         element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/announcements"    element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
@@ -260,6 +266,9 @@ function AppRoutes() {
         <Route path="/root/payroll/runs/:id"           element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
         <Route path="/root/payroll/payslips/:id"       element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
         <Route path="/root/payroll/reports"            element={<FeatureRoute featureKey="payroll"><PayrollReports /></FeatureRoute>} />
+        <Route path="/root/statutory/config"          element={<FeatureRoute featureKey="payroll"><StatutoryConfig /></FeatureRoute>} />
+        <Route path="/root/statutory/compliance"      element={<FeatureRoute featureKey="payroll"><ComplianceDashboard /></FeatureRoute>} />
+        <Route path="/root/statutory/declarations"    element={<FeatureRoute featureKey="payroll"><TaxDeclaration /></FeatureRoute>} />
         <Route path="/root/assets"          element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/root/expenses"        element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/root/announcements"   element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
@@ -291,7 +300,8 @@ function AppRoutes() {
         <Route path="/portal/team-calendar"  element={<TeamCalendar />} />
         <Route path="/portal/documents"      element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
         <Route path="/portal/expenses"       element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
-        <Route path="/portal/payslips"       element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/portal/payslips"           element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/portal/tax-declaration"  element={<FeatureRoute featureKey="payroll"><TaxDeclaration /></FeatureRoute>} />
         <Route path="/portal/performance"    element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
         <Route path="/portal/onboarding"     element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
         <Route path="/portal/exit"           element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />

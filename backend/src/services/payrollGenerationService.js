@@ -1,15 +1,17 @@
 'use strict';
 /**
- * payrollGenerationService.js — Phase 3.3
+ * payrollGenerationService.js — Phase 3.3 (extended Phase 3.7)
  * Orchestrates payroll runs: creates payslip snapshots, manages locking,
  * handles partial failures. All writes are org-scoped. No cross-tenant access.
  *
  * Delegates ALL salary arithmetic to payrollEngine.calculatePayroll().
- * Never duplicates calculation logic.
+ * Phase 3.7: After upsert, applyStatutoryCalculations() overrides PF/ESI/PT/TDS/LWF
+ *            with org-configured statutory values (backward-compatible; no-op if unconfigured).
  */
 
 const { pool } = require('../config/db');
 const { calculatePayroll } = require('./payrollEngine');
+const { applyStatutoryCalculations } = require('./statutoryCalculationService');
 
 // ─── Custom error ─────────────────────────────────────────────────────────────
 class GenerationError extends Error {
@@ -184,7 +186,34 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
     ]
   );
 
-  return rows[0];
+  const payslipRow = rows[0];
+
+  // ── Phase 3.7: Apply statutory calculations (PF/ESI/PT/TDS/LWF/Gratuity) ──
+  // Fire-and-forget: if statutory config is absent nothing changes; errors are silent.
+  try {
+    await applyStatutoryCalculations({
+      organizationId: oId,
+      userId:         uId,
+      month:          m,
+      year:           y,
+      payslipId:      payslipRow.id,
+      grossSalary:    calc.grossSalary,
+      basicSalary:    sal.basic,
+      salary:         { ...data.salary, basic: sal.basic, da: sal.da },
+      joiningDate:    data.employee?.joining_date || null,
+    });
+  } catch (e) {
+    // Log but don't fail payslip generation
+    console.warn(`[Statutory] Calculation warning for user ${uId}:`, e.message);
+  }
+
+  // Re-fetch updated payslip (statutory may have changed totals)
+  const updated = await pool.query(
+    `SELECT id, gross_salary, total_deductions, net_salary FROM payslips WHERE id = $1`,
+    [payslipRow.id]
+  );
+
+  return updated.rows[0] || payslipRow;
 }
 
 // ─── generatePayrollRun ───────────────────────────────────────────────────────
