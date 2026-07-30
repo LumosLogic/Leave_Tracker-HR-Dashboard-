@@ -141,16 +141,16 @@ ON CONFLICT (module_key, action) DO NOTHING;
 -- Back-fill grants for existing hr_admin roles in all orgs
 DO $$
 DECLARE
-    rec     RECORD;
-    role_id BIGINT;
-    perm_id BIGINT;
+    rec       RECORD;
+    v_role_id BIGINT;
+    v_perm_id BIGINT;
 BEGIN
     FOR rec IN SELECT DISTINCT org_id FROM roles WHERE slug = 'hr_admin' LOOP
-        SELECT id INTO role_id FROM roles
+        SELECT id INTO v_role_id FROM roles
          WHERE org_id = rec.org_id AND slug = 'hr_admin' LIMIT 1;
-        IF role_id IS NULL THEN CONTINUE; END IF;
+        IF v_role_id IS NULL THEN CONTINUE; END IF;
 
-        FOR perm_id IN
+        FOR v_perm_id IN
             SELECT id FROM permissions
              WHERE module_key = 'payroll'
                AND action IN ('view', 'generate', 'export', 'download', 'manage_adjustments',
@@ -158,22 +158,22 @@ BEGIN
                               'email_payslips', 'lock')
         LOOP
             INSERT INTO role_permissions (role_id, permission_id)
-            VALUES (role_id, perm_id)
+            VALUES (v_role_id, v_perm_id)
             ON CONFLICT (role_id, permission_id) DO NOTHING;
         END LOOP;
     END LOOP;
 
     -- Root admin: grant all payroll permissions including unlock
     FOR rec IN SELECT DISTINCT org_id FROM roles WHERE slug = 'root_admin' LOOP
-        SELECT id INTO role_id FROM roles
+        SELECT id INTO v_role_id FROM roles
          WHERE org_id = rec.org_id AND slug = 'root_admin' LIMIT 1;
-        IF role_id IS NULL THEN CONTINUE; END IF;
+        IF v_role_id IS NULL THEN CONTINUE; END IF;
 
-        FOR perm_id IN
+        FOR v_perm_id IN
             SELECT id FROM permissions WHERE module_key = 'payroll'
         LOOP
             INSERT INTO role_permissions (role_id, permission_id)
-            VALUES (role_id, perm_id)
+            VALUES (v_role_id, v_perm_id)
             ON CONFLICT (role_id, permission_id) DO NOTHING;
         END LOOP;
     END LOOP;
