@@ -334,7 +334,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payslips_user_period
 -- ── EMPLOYEE DOCUMENTS ────────────────────────────────────────
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_emp_docs_org_employee
-  ON employee_documents(organization_id, employee_id);
+  ON employee_documents(organization_id, user_id);
 
 -- ── EVENTS ────────────────────────────────────────────────────
 -- Conditional: only if events table has a start_date column.
