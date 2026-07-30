@@ -1352,7 +1352,9 @@ SELECT
   l.leave_time,
   l.start_date,
   l.end_date,
-  l.days,
+  CASE WHEN l.leave_time = 'half' THEN 0.5::NUMERIC
+       ELSE (l.end_date::DATE - l.start_date::DATE + 1)::NUMERIC
+  END AS days,
   l.reason,
   l.status,
   l.created_at
@@ -1388,7 +1390,9 @@ SELECT
   user_id,
   leave_type,
   COUNT(*)   AS total_applications,
-  SUM(days)  AS days_consumed,
+  SUM(CASE WHEN leave_time = 'half' THEN 0.5::NUMERIC
+           ELSE (end_date::DATE - start_date::DATE + 1)::NUMERIC
+      END)   AS days_consumed,
   EXTRACT(YEAR FROM CURRENT_DATE)::INT AS year
 FROM leaves
 WHERE status     = 'approved'
@@ -1567,8 +1571,12 @@ BEGIN
   SELECT
     lp.leave_type,
     lp.annual_quota,
-    COALESCE(SUM(l.days), 0::NUMERIC)                            AS days_consumed,
-    lp.annual_quota - COALESCE(SUM(l.days), 0::NUMERIC)          AS days_remaining
+    COALESCE(SUM(CASE WHEN l.leave_time = 'half' THEN 0.5::NUMERIC
+                      ELSE (l.end_date::DATE - l.start_date::DATE + 1)::NUMERIC
+                 END), 0::NUMERIC)                                 AS days_consumed,
+    lp.annual_quota - COALESCE(SUM(CASE WHEN l.leave_time = 'half' THEN 0.5::NUMERIC
+                                        ELSE (l.end_date::DATE - l.start_date::DATE + 1)::NUMERIC
+                                   END), 0::NUMERIC)              AS days_remaining
   FROM leave_policies lp
   LEFT JOIN leaves l
     ON  l.user_id         = p_user_id
