@@ -61,7 +61,10 @@ const ACTION_COLORS = {
 
 // ─── Permission Checkbox ──────────────────────────────────────────────────────
 function PermissionCheckbox({ permission, checked, onChange, disabled }) {
-  const colorClass = ACTION_COLORS[permission.action] || 'bg-slate-50 text-slate-600';
+  const actionStr = typeof permission?.action === 'string' ? permission.action : 'unknown';
+  const labelStr = permission?.label || 'Unnamed permission';
+  const permId = permission?.id;
+  const colorClass = ACTION_COLORS[actionStr] || 'bg-slate-50 text-slate-600';
 
   return (
     <label className={cn(
@@ -78,16 +81,16 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
       <input
         type="checkbox"
         className="sr-only"
-        checked={checked}
-        onChange={() => !disabled && onChange(permission.id, !checked)}
+        checked={Boolean(checked)}
+        onChange={() => !disabled && onChange(permId, !checked)}
         disabled={disabled}
       />
       <div className="min-w-0">
         <span className={cn('text-[0.68rem] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wide', colorClass)}>
-          {permission.action.replace(/_/g, ' ')}
+          {actionStr.replace(/_/g, ' ')}
         </span>
-        <p className="text-[0.7rem] text-[#777587] mt-0.5 leading-tight truncate">
-          {permission.label}
+        <p className="text-[0.7rem] text-[#777587] mt-0.5 leading-tight truncate" title={labelStr}>
+          {labelStr}
         </p>
       </div>
     </label>
@@ -95,14 +98,16 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
 }
 
 // ─── Module Section ───────────────────────────────────────────────────────────
-function ModuleSection({ module, permissions, selectedIds, onToggle, onToggleAll, isSystemRole }) {
+function ModuleSection({ module, permissions = [], selectedIds, onToggle, onToggleAll, isSystemRole }) {
   const [collapsed, setCollapsed] = useState(false);
+  const safeSelectedIds = (selectedIds && typeof selectedIds.has === 'function') ? selectedIds : new Set();
+  
   const modulePerms = permissions.filter(p => p.module_key === module);
   if (!modulePerms.length) return null;
 
-  const allChecked    = modulePerms.every(p => selectedIds.has(p.id));
-  const someChecked   = modulePerms.some(p => selectedIds.has(p.id));
-  const checkedCount  = modulePerms.filter(p => selectedIds.has(p.id)).length;
+  const allChecked    = modulePerms.every(p => safeSelectedIds.has(p.id));
+  const someChecked   = modulePerms.some(p => safeSelectedIds.has(p.id));
+  const checkedCount  = modulePerms.filter(p => safeSelectedIds.has(p.id)).length;
 
   return (
     <div className="bg-white border border-[#e7eefe] rounded-xl overflow-hidden">
@@ -129,7 +134,7 @@ function ModuleSection({ module, permissions, selectedIds, onToggle, onToggleAll
             }
           </button>
           <span className="font-bold text-sm text-[#151c27]">
-            {MODULE_LABELS[module] || module}
+            {MODULE_LABELS[module] || module || 'Unknown'}
           </span>
           <span className="text-[0.65rem] font-semibold text-[#777587] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full">
             {checkedCount}/{modulePerms.length}
@@ -143,9 +148,9 @@ function ModuleSection({ module, permissions, selectedIds, onToggle, onToggleAll
         <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-1">
           {modulePerms.map(p => (
             <PermissionCheckbox
-              key={p.id}
+              key={p.id || Math.random()}
               permission={p}
-              checked={selectedIds.has(p.id)}
+              checked={safeSelectedIds.has(p.id)}
               onChange={onToggle}
               disabled={isSystemRole && (module === 'roles' || true) /* root_admin always has all */}
             />
@@ -225,13 +230,14 @@ export default function PermissionMatrix() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // Flatten all permissions into a single array
-  const allPermissions = modulesRaw.flatMap(m =>
-    m.permissions.map(p => ({ ...p, module_key: m.module_key }))
+  // Flatten all permissions into a single array safely
+  const allPermissions = (Array.isArray(modulesRaw) ? modulesRaw : []).flatMap(m =>
+    Array.isArray(m?.permissions) ? m.permissions.map(p => ({ ...p, module_key: m.module_key })) : []
   );
 
-  // Sort modules in defined order
+  // Sort modules in defined order safely
   const sortedModules = [...new Set(allPermissions.map(p => p.module_key))]
+    .filter(Boolean)
     .sort((a, b) => {
       const ai = MODULE_ORDER.indexOf(a);
       const bi = MODULE_ORDER.indexOf(b);
@@ -240,7 +246,7 @@ export default function PermissionMatrix() {
 
   // Initialize selection from role's current permissions
   useEffect(() => {
-    if (role?.permission_ids) {
+    if (role && Array.isArray(role.permission_ids)) {
       setSelectedIds(new Set(role.permission_ids));
       setDirty(false);
     }
@@ -465,7 +471,7 @@ export default function PermissionMatrix() {
                 key={module}
                 module={module}
                 permissions={allPermissions}
-                selectedIds={isRootAdmin ? new Set(allPermissions.map(p => p.id)) : selectedIds}
+                selectedIds={isRootAdmin ? new Set(allPermissions.map(p => p.id)) : (selectedIds || new Set())}
                 onToggle={handleToggle}
                 onToggleAll={handleToggleAll}
                 isSystemRole={isRootAdmin}
