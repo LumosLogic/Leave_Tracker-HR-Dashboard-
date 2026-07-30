@@ -455,8 +455,12 @@ export default function PermissionMatrix() {
             </div>
           )}
 
-          {/* Permission modules */}
-          <div className="space-y-3">
+          {/* Permission modules — own scroll container so header/tabs stay pinned */}
+          <div className={cn(
+            'space-y-3 overflow-y-auto pr-1',
+            'max-h-[calc(100vh-18rem)]',
+            dirty && !isRootAdmin ? 'pb-16' : 'pb-2'
+          )}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
@@ -469,9 +473,6 @@ export default function PermissionMatrix() {
               />
             ))}
           </div>
-
-          {/* Spacer so fixed save bar doesn't cover the last module */}
-          {!isRootAdmin && dirty && <div className="h-16" />}
 
           {/* Bottom save bar — fixed to viewport bottom, clears the sidebar */}
           {!isRootAdmin && dirty && (
