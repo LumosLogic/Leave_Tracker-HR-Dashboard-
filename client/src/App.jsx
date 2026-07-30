@@ -34,7 +34,12 @@ import LeavePolicies    from '@/pages/LeavePolicies';
 import Regularization   from '@/pages/Regularization';
 import Reports          from '@/pages/Reports';
 import Documents        from '@/pages/Documents';
-import Payroll          from '@/pages/Payroll';
+import Payroll             from '@/pages/Payroll';
+import SalaryStructure     from '@/pages/SalaryStructure';
+import PayrollSettings     from '@/pages/PayrollSettings';
+import PayrollGeneration   from '@/pages/PayrollGeneration';
+import PayrollRunDetails   from '@/pages/PayrollRunDetails';
+import PayslipDetails      from '@/pages/PayslipDetails';
 import Assets           from '@/pages/Assets';
 import ExpensesPage     from '@/pages/Expenses';
 import AnnouncementsPage from '@/pages/Announcements';
@@ -207,7 +212,12 @@ function AppRoutes() {
         <Route path="/regularization"   element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/reports"          element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/documents"        element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
-        <Route path="/payroll"          element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/payroll"              element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/payroll/salary"       element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
+        <Route path="/payroll/settings"     element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
+        <Route path="/payroll/generate"     element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
+        <Route path="/payroll/runs/:id"     element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
+        <Route path="/payroll/payslips/:id" element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
         <Route path="/assets"           element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/expenses"         element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/announcements"    element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
@@ -238,7 +248,12 @@ function AppRoutes() {
         <Route path="/root/regularization"  element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/root/reports"         element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/root/documents"       element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
-        <Route path="/root/payroll"         element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/root/payroll"                element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/root/payroll/salary"         element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
+        <Route path="/root/payroll/settings"       element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
+        <Route path="/root/payroll/generate"       element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
+        <Route path="/root/payroll/runs/:id"       element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
+        <Route path="/root/payroll/payslips/:id"   element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
         <Route path="/root/assets"          element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/root/expenses"        element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/root/announcements"   element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />

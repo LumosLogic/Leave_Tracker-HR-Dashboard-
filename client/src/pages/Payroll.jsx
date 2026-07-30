@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
-import { DollarSign, Plus, Play, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { DollarSign, Plus, Play, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Layers } from 'lucide-react';
 import { MONTHS } from '@/lib/utils';
 
 const fmt  = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
@@ -271,7 +272,9 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
 
 // ── Main Payroll Page ─────────────────────────────────────────────────────────
 export default function Payroll() {
-  const { isAdmin, isEmployee } = useAuth();
+  const { isAdmin, isEmployee, user } = useAuth();
+  const location = useLocation();
+  const basePath = user?.role === 'root_admin' ? '/root' : '';
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
@@ -308,13 +311,16 @@ export default function Payroll() {
           <p className="page-subtitle">{isAdmin ? `${payslips.length} payslip${payslips.length !== 1 ? 's' : ''} · total ${fmt(totalNet)}` : 'View your monthly payslips'}</p>
         </div>
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button className="btn btn-outline" onClick={() => setTab(t => t === 'payslips' ? 'structure' : 'payslips')}>
               {tab === 'payslips' ? 'Salary Structures' : '← Payslips'}
             </button>
-            <button className="btn btn-primary" onClick={() => setGenOpen(true)}>
-              <Play size={14} />Generate Payslip
+            <button className="btn btn-outline" onClick={() => setGenOpen(true)}>
+              <Plus size={14} />Quick Payslip
             </button>
+            <Link to={`${basePath}/payroll/generate`} className="btn btn-primary inline-flex items-center gap-1.5">
+              <Layers size={14} />Run Payroll
+            </Link>
           </div>
         )}
       </div>

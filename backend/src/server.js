@@ -11,6 +11,7 @@ const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
 const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
+const payrollScheduler = require('./services/payrollScheduler');
 
 // ── Module routers (extracted from old server.js) ────────────────────────────
 const authRouter       = require('./modules/auth/auth.routes');
@@ -213,6 +214,7 @@ async function start() {
       console.log(`\n🚀 Lumos HRMS v${SERVER_VERSION} running at http://localhost:${PORT}\n`);
     });
     scheduleDailyAt(8, 0, runDailyNotifications);
+    payrollScheduler.start();
   } catch (err) {
     console.error('Failed to start:', err.message);
     process.exit(1);

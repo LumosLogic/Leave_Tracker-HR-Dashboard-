@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
-  Bell, Fingerprint, Link2, ScrollText, X, Search,
+  Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -43,10 +43,13 @@ const BIOMETRIC_ITEMS = [
 ];
 
 const FINANCE_ITEMS = [
-  { to: '/payroll',  label: 'Payroll',  Icon: DollarSign, featureKey: 'payroll' },
-  { to: '/expenses', label: 'Expenses', Icon: Receipt,    featureKey: 'expenses' },
-  { to: '/assets',   label: 'Assets',   Icon: Monitor,    featureKey: 'assets' },
-  { to: '/reports',  label: 'Reports',  Icon: BarChart3,  featureKey: 'reports' },
+  { to: '/payroll',          label: 'Payroll',           Icon: DollarSign,   featureKey: 'payroll' },
+  { to: '/payroll/generate', label: 'Payroll Generation',Icon: Play,         featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/salary',   label: 'Salary Structures', Icon: IndianRupee,  featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/settings', label: 'Payroll Settings',  Icon: Settings,     featureKey: 'payroll', adminOnly: true },
+  { to: '/expenses',         label: 'Expenses',          Icon: Receipt,      featureKey: 'expenses' },
+  { to: '/assets',           label: 'Assets',            Icon: Monitor,      featureKey: 'assets' },
+  { to: '/reports',          label: 'Reports',           Icon: BarChart3,    featureKey: 'reports' },
 ];
 
 const PERFORMANCE_ITEMS = [

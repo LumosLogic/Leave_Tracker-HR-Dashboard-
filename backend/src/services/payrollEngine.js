@@ -1,0 +1,684 @@
+'use strict';
+/**
+ * payrollEngine.js — Phase 3.2
+ * Pure calculation: NO database writes. NO payslip creation.
+ * Every query is scoped to organization_id. No cross-tenant access possible.
+ */
+
+const { pool } = require('../config/db');
+
+// ─── Custom error ─────────────────────────────────────────────────────────────
+class PayrollError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'PayrollError';
+    this.code  = code;
+  }
+}
+
+// ─── Date utilities ───────────────────────────────────────────────────────────
+
+function daysInMonth(year, month) {
+  // month is 1-based. new Date(year, month, 0) = last day of the month.
+  // Handles February, leap years automatically.
+  return new Date(year, month, 0).getDate();
+}
+
+function padZ(n) { return String(n).padStart(2, '0'); }
+
+function toDateStr(year, month, day) {
+  return `${year}-${padZ(month)}-${padZ(day)}`;
+}
+
+function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+// Extract minutes-since-midnight from 'HH:MM', 'HH:MM:SS', or ISO timestamp.
+function toMins(timeValue) {
+  if (!timeValue) return null;
+  const m = String(timeValue).match(/(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const n = parseInt(m[2], 10);
+  return (isNaN(h) || isNaN(n)) ? null : h * 60 + n;
+}
+
+// ─── Weekend detection ────────────────────────────────────────────────────────
+// satSeq = running count of Saturdays seen so far in the month (inclusive).
+function isWeekendDay(dow, weekendPolicy, satSeq) {
+  switch (weekendPolicy) {
+    case 'sat_sun':      return dow === 0 || dow === 6;
+    case 'sun_only':     return dow === 0;
+    case 'none':         return false;
+    case 'alternate_sat':
+      if (dow === 0) return true;
+      if (dow !== 6) return false;
+      return satSeq % 2 === 0;   // 2nd, 4th Saturday = weekend
+    default:
+      return dow === 0 || dow === 6;
+  }
+}
+
+// ─── Build per-day classification map ────────────────────────────────────────
+// Returns Array<{ dateStr, dow, isWeekend, isHoliday, isWorkingDay }>
+function buildDateMap(year, month, weekendPolicy, holidaySet) {
+  const total  = daysInMonth(year, month);
+  const result = [];
+  let satSeq   = 0;
+
+  for (let d = 1; d <= total; d++) {
+    const ds    = toDateStr(year, month, d);
+    const dow   = new Date(year, month - 1, d).getDay(); // 0=Sun,6=Sat
+    if (dow === 6) satSeq++;
+
+    const isWe  = isWeekendDay(dow, weekendPolicy, satSeq);
+    const isHol = !isWe && holidaySet.has(ds);
+
+    result.push({
+      dateStr:     ds,
+      dow,
+      isWeekend:   isWe,
+      isHoliday:   isHol,
+      isWorkingDay: !isWe && !isHol,
+    });
+  }
+  return result;
+}
+
+// ─── Expand leave rows to per-date map ───────────────────────────────────────
+// Returns Map<dateStr, { paid, leave_time, leave_type }>
+function buildLeaveDateMap(leaveRows, year, month) {
+  const map    = new Map();
+  const mStart = toDateStr(year, month, 1);
+  const mEnd   = toDateStr(year, month, daysInMonth(year, month));
+
+  for (const lv of leaveRows) {
+    const s = lv.start_date < mStart ? mStart : lv.start_date;
+    const e = lv.end_date   > mEnd   ? mEnd   : lv.end_date;
+
+    const cur = new Date(s + 'T12:00:00Z');
+    const end = new Date(e + 'T12:00:00Z');
+
+    while (cur <= end) {
+      const ds = cur.toISOString().split('T')[0];
+      // Earlier entries win (same date, multiple leaves shouldn't happen but be safe)
+      if (!map.has(ds)) {
+        map.set(ds, {
+          paid:       lv.paid !== false, // NULL/undefined = true (paid)
+          leave_time: lv.leave_time || 'full',
+          leave_type: lv.leave_type,
+        });
+      }
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+  }
+  return map;
+}
+
+// ─── calculateAttendance ─────────────────────────────────────────────────────
+// Returns counters and daily breakdown. Pure function — no DB access.
+function calculateAttendance({
+  dateMap,
+  attendanceMap,    // Map<dateStr, { status, check_in, check_out }>
+  regularizedSet,   // Set<dateStr> — approved regularizations
+  leaveDateMap,
+  countHolidaysAsPaid,
+  scheduleCheckIn,  // 'HH:MM' or null
+  graceMins,
+}) {
+  const schedMins = toMins(scheduleCheckIn);
+  const g         = Number(graceMins) || 0;
+
+  let presentFull   = 0;  // full present day (including WFH)
+  let presentHalf   = 0;  // half-day attendance record
+  let paidLeave     = 0;  // approved paid leave (full day)
+  let paidHalfLeave = 0;  // approved paid leave (half day)
+  let unpaidLeave   = 0;  // approved unpaid leave
+  let absent        = 0;  // absent / no record on working day
+  let weekoff       = 0;
+  let holiday       = 0;  // paid holidays only
+  let lateCount     = 0;
+  let regularized   = 0;
+  const daily       = [];
+
+  for (const { dateStr: ds, isWeekend: isWe, isHoliday: isHol } of dateMap) {
+    if (isWe) {
+      weekoff++;
+      daily.push({ date: ds, type: 'weekoff' });
+      continue;
+    }
+
+    if (isHol) {
+      if (countHolidaysAsPaid) {
+        holiday++;
+        daily.push({ date: ds, type: 'paid_holiday' });
+      } else {
+        daily.push({ date: ds, type: 'unpaid_holiday' });
+      }
+      continue;
+    }
+
+    // Working day
+    const att   = attendanceMap.get(ds);
+    const leave = leaveDateMap.get(ds);
+    let status  = att?.status ?? null;
+
+    // Approved regularization upgrades absent / missing to present
+    if (regularizedSet.has(ds) && (!status || status === 'absent')) {
+      status = 'present';
+      regularized++;
+    }
+
+    // ── Leave-driven classification ───────────────────────────────────────
+    if (status === 'on_leave' || (!status && leave)) {
+      const lv = leave ?? { paid: true, leave_time: 'full' };
+      const ltime = lv.leave_time || 'full';
+
+      if (ltime === 'wfh') {
+        presentFull++;
+        daily.push({ date: ds, type: 'wfh_leave' });
+      } else if (ltime === 'half') {
+        if (lv.paid !== false) {
+          paidHalfLeave++;
+          daily.push({ date: ds, type: 'paid_half_leave' });
+        } else {
+          // Unpaid half-day leave → treat as half-day present (0.5 payable)
+          presentHalf++;
+          daily.push({ date: ds, type: 'unpaid_half_leave' });
+        }
+      } else {
+        // Full-day leave
+        if (lv.paid !== false) {
+          paidLeave++;
+          daily.push({ date: ds, type: 'paid_leave' });
+        } else {
+          unpaidLeave++;
+          daily.push({ date: ds, type: 'unpaid_leave' });
+        }
+      }
+      continue;
+    }
+
+    // ── Attendance-driven classification ──────────────────────────────────
+    if (status === 'present') {
+      presentFull++;
+      daily.push({ date: ds, type: 'present' });
+
+      if (schedMins !== null && att?.check_in) {
+        const cin = toMins(att.check_in);
+        if (cin !== null && cin > schedMins + g) lateCount++;
+      }
+      continue;
+    }
+
+    if (status === 'wfh' || status === 'work_from_home') {
+      presentFull++;
+      daily.push({ date: ds, type: 'wfh' });
+      continue;
+    }
+
+    if (status === 'half_day') {
+      presentHalf++;
+      daily.push({ date: ds, type: 'half_day' });
+      continue;
+    }
+
+    // Absent or no record
+    absent++;
+    daily.push({ date: ds, type: status === 'absent' ? 'absent' : 'no_record' });
+  }
+
+  return {
+    presentFull,
+    presentHalf,
+    paidLeave,
+    paidHalfLeave,
+    unpaidLeave,
+    absent,
+    weekoff,
+    holiday,
+    lateCount,
+    regularized,
+    daily,
+  };
+}
+
+// ─── calculatePayableDays ─────────────────────────────────────────────────────
+// Returns the number of "credit units" the employee earns (float).
+// Does NOT include weekoffs — those are implicitly in gross already.
+function calculatePayableDays(att, countHolidaysAsPaid) {
+  return round2(
+    att.presentFull +
+    (att.presentHalf  * 0.5) +
+    att.paidLeave +
+    (att.paidHalfLeave * 0.5) +
+    (countHolidaysAsPaid ? att.holiday : 0)
+  );
+}
+
+// ─── calculateLOP ─────────────────────────────────────────────────────────────
+// workingDays = non-weekend days in month (the denominator).
+// LOP = how many of those the employee did NOT earn.
+function calculateLOP(att, settings, workingDays) {
+  const {
+    late_allowance_per_month: lateAllowance,
+    half_day_after_lates:     latesPerHalf,
+    count_holidays_as_paid:   countHolidaysAsPaid,
+  } = settings;
+
+  const payableDays = calculatePayableDays(att, countHolidaysAsPaid);
+  const baseLOP     = round2(Math.max(0, workingDays - payableDays));
+
+  // Excess late arrivals → additional half-day penalties
+  const excessLates    = Math.max(0, att.lateCount - Number(lateAllowance));
+  const lateHalfDays   = Math.floor(excessLates / Math.max(1, Number(latesPerHalf)));
+  const lateHalfDayLOP = round2(lateHalfDays * 0.5);
+
+  const totalLOP = round2(baseLOP + lateHalfDayLOP);
+
+  return {
+    payableDays,
+    baseLOP,
+    excessLates,
+    lateHalfDays,
+    lateHalfDayLOP,
+    totalLOP,
+  };
+}
+
+// ─── calculateGross ───────────────────────────────────────────────────────────
+function calculateGross(sal) {
+  const components = [
+    'basic', 'hra', 'da',
+    'transport_allowance', 'medical_allowance',
+    'special_allowance', 'other_allowance',
+  ];
+  return round2(components.reduce((sum, f) => sum + (Number(sal[f]) || 0), 0));
+}
+
+// ─── calculateDeductions ──────────────────────────────────────────────────────
+function calculateDeductions(sal, settings, lopDays, perDaySalary) {
+  const lopDeduction = round2(lopDays * perDaySalary);
+
+  const pf  = settings.pf_enabled               ? round2(Number(sal.employee_pf)       || 0) : 0;
+  const esi = settings.esi_enabled              ? round2(Number(sal.employee_esi)      || 0) : 0;
+  const pt  = settings.professional_tax_enabled ? round2(Number(sal.professional_tax) || 0) : 0;
+  const tds = settings.tds_enabled              ? round2(Number(sal.tds)              || 0) : 0;
+  const other = round2(Number(sal.other_deductions) || 0);
+
+  const total = round2(pf + esi + pt + tds + other + lopDeduction);
+
+  return { pf, esi, professionalTax: pt, tds, otherDeductions: other, lopDeduction, total };
+}
+
+// ─── calculateEmployerContribution ────────────────────────────────────────────
+function calculateEmployerContribution(sal, settings) {
+  const pf  = settings.pf_enabled  ? round2(Number(sal.employer_pf)  || 0) : 0;
+  const esi = settings.esi_enabled ? round2(Number(sal.employer_esi) || 0) : 0;
+  return { pf, esi, total: round2(pf + esi) };
+}
+
+// ─── DB: fetch all required data in parallel ──────────────────────────────────
+const SETTING_DEFAULTS = {
+  working_days_rule:            'calendar',
+  fixed_working_days:           26,
+  weekend_policy:               'sat_sun',
+  count_holidays_as_paid:       true,
+  grace_minutes:                15,
+  late_allowance_per_month:     3,
+  early_exit_allowance_minutes: 30,
+  half_day_after_lates:         3,
+  lop_after_half_days:          2,
+  pf_enabled:                   true,
+  esi_enabled:                  true,
+  professional_tax_enabled:     true,
+  tds_enabled:                  false,
+};
+
+async function fetchAllData(oId, uId, month, year) {
+  const start = toDateStr(year, month, 1);
+  const end   = toDateStr(year, month, daysInMonth(year, month));
+
+  const [
+    empRes,
+    settingsRes,
+    salaryRes,
+    attRes,
+    leaveRes,
+    holidayRes,
+    scheduleRes,
+    regRes,
+  ] = await Promise.all([
+
+    // Employee — org-scoped
+    pool.query(
+      `SELECT id, name, email, department, position, employee_id, status
+         FROM users
+        WHERE id = $1 AND organization_id = $2`,
+      [uId, oId]
+    ),
+
+    // Payroll settings
+    pool.query(
+      `SELECT * FROM payroll_settings WHERE organization_id = $1`,
+      [oId]
+    ),
+
+    // Active salary structure for the pay period.
+    // effective_from ≤ last day of period AND (effective_to IS NULL OR ≥ first day).
+    pool.query(
+      `SELECT *
+         FROM employee_salary_structures
+        WHERE organization_id = $1
+          AND user_id = $2
+          AND effective_from <= $3
+          AND (effective_to IS NULL OR effective_to >= $4)
+        ORDER BY effective_from DESC
+        LIMIT 1`,
+      [oId, uId, end, start]
+    ),
+
+    // Attendance records
+    pool.query(
+      `SELECT date::text, status, check_in, check_out, work_hours
+         FROM attendance
+        WHERE user_id = $1
+          AND organization_id = $2
+          AND date >= $3 AND date <= $4`,
+      [uId, oId, start, end]
+    ),
+
+    // Approved leaves overlapping this period, with paid flag from leave_policies
+    pool.query(
+      `SELECT l.start_date::text, l.end_date::text,
+              l.leave_type, l.leave_time,
+              COALESCE(lp.paid, true) AS paid
+         FROM leaves l
+         LEFT JOIN leave_policies lp
+                ON lp.leave_type        = l.leave_type
+               AND lp.organization_id   = l.organization_id
+        WHERE l.user_id         = $1
+          AND l.organization_id = $2
+          AND l.status          = 'approved'
+          AND l.start_date      <= $3
+          AND l.end_date        >= $4`,
+      [uId, oId, end, start]
+    ),
+
+    // Org holidays in this month
+    pool.query(
+      `SELECT date::text, name
+         FROM holidays
+        WHERE organization_id = $1
+          AND date >= $2 AND date <= $3`,
+      [oId, start, end]
+    ),
+
+    // Work schedule (for schedule check-in time used in late detection)
+    pool.query(
+      `SELECT check_in, check_out, work_days
+         FROM work_schedule
+        WHERE organization_id = $1
+        LIMIT 1`,
+      [oId]
+    ),
+
+    // Approved regularizations (graceful fallback if schema differs)
+    pool.query(
+      `SELECT date::text
+         FROM regularization
+        WHERE user_id         = $1
+          AND organization_id = $2
+          AND date >= $3 AND date <= $4
+          AND status          = 'approved'`,
+      [uId, oId, start, end]
+    ).catch(() => ({ rows: [] })),
+  ]);
+
+  return {
+    employee:    empRes.rows[0]      ?? null,
+    settings:    settingsRes.rows[0] ?? null,
+    salary:      salaryRes.rows[0]   ?? null,
+    attendance:  attRes.rows         ?? [],
+    leaves:      leaveRes.rows       ?? [],
+    holidays:    holidayRes.rows     ?? [],
+    schedule:    scheduleRes.rows[0] ?? null,
+    regularized: regRes.rows         ?? [],
+    start,
+    end,
+  };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * calculatePayroll — pure calculation for one employee / one pay period.
+ *
+ * @param {object} p
+ * @param {number} p.organizationId
+ * @param {number} p.userId
+ * @param {number} p.month   1–12
+ * @param {number} p.year
+ * @returns {Promise<PayrollResult>}  No writes. No side effects.
+ * @throws  {PayrollError}            Descriptive error with machine-readable .code
+ */
+async function calculatePayroll({ organizationId, userId, month, year }) {
+  // ── Input validation ──────────────────────────────────────────────────────
+  const oId = Number(organizationId);
+  const uId = Number(userId);
+  const m   = Number(month);
+  const y   = Number(year);
+
+  if (!oId || !uId) throw new PayrollError('organizationId and userId are required', 'INVALID_PARAMS');
+  if (m < 1 || m > 12) throw new PayrollError(`Invalid month: ${m}`, 'INVALID_MONTH');
+  if (y < 2000 || y > 2100) throw new PayrollError(`Invalid year: ${y}`, 'INVALID_YEAR');
+
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  const data = await fetchAllData(oId, uId, m, y);
+
+  // ── Domain validation ─────────────────────────────────────────────────────
+  if (!data.employee) {
+    throw new PayrollError(
+      `Employee ${uId} not found in organization ${oId}`,
+      'EMPLOYEE_NOT_FOUND'
+    );
+  }
+  if (data.employee.status === 'inactive') {
+    throw new PayrollError(
+      `Employee "${data.employee.name}" is inactive and cannot be included in payroll`,
+      'EMPLOYEE_INACTIVE'
+    );
+  }
+  if (!data.salary) {
+    throw new PayrollError(
+      `No salary structure found for "${data.employee.name}" effective on or before ${toDateStr(y, m, daysInMonth(y, m))}. ` +
+      'Configure a salary structure first.',
+      'SALARY_NOT_FOUND'
+    );
+  }
+
+  // ── Merge settings with defaults ──────────────────────────────────────────
+  const settings = { ...SETTING_DEFAULTS, ...(data.settings ?? {}) };
+
+  // ── Build lookup structures ───────────────────────────────────────────────
+  const holidaySet = new Set(data.holidays.map(h => h.date));
+
+  const attendanceMap = new Map(data.attendance.map(a => [a.date, a]));
+
+  const regularizedSet = new Set(data.regularized.map(r => r.date));
+
+  const leaveDateMap = buildLeaveDateMap(data.leaves, y, m);
+
+  const dateMap = buildDateMap(y, m, settings.weekend_policy, holidaySet);
+
+  // ── Working days (denominator) ────────────────────────────────────────────
+  // = all non-weekend days in the month (includes holidays — both paid and unpaid).
+  // Using a fixed denominator for stable per-day salary regardless of holiday count.
+  const workingDays = settings.working_days_rule === 'fixed'
+    ? Math.max(1, Number(settings.fixed_working_days))
+    : Math.max(1, dateMap.filter(d => !d.isWeekend).length);
+
+  const perDaySalary = round2(calculateGross(data.salary) / workingDays);
+
+  // ── Attendance ────────────────────────────────────────────────────────────
+  const att = calculateAttendance({
+    dateMap,
+    attendanceMap,
+    regularizedSet,
+    leaveDateMap,
+    countHolidaysAsPaid: settings.count_holidays_as_paid,
+    scheduleCheckIn:     data.schedule?.check_in ?? null,
+    graceMins:           settings.grace_minutes,
+  });
+
+  // ── LOP ───────────────────────────────────────────────────────────────────
+  const lop = calculateLOP(att, settings, workingDays);
+
+  // ── Gross ─────────────────────────────────────────────────────────────────
+  const grossSalary = calculateGross(data.salary);
+
+  // ── Deductions ────────────────────────────────────────────────────────────
+  const deductions = calculateDeductions(data.salary, settings, lop.totalLOP, perDaySalary);
+
+  // ── Employer ──────────────────────────────────────────────────────────────
+  const employerContribution = calculateEmployerContribution(data.salary, settings);
+
+  // ── Net ───────────────────────────────────────────────────────────────────
+  const netSalary = round2(Math.max(0, grossSalary - deductions.total));
+
+  // ── Earnings breakdown ────────────────────────────────────────────────────
+  const sal = data.salary;
+  const earningsBreakdown = [
+    { label: 'Basic',                amount: round2(sal.basic) },
+    { label: 'HRA',                  amount: round2(sal.hra) },
+    { label: 'Dearness Allowance',   amount: round2(sal.da) },
+    { label: 'Transport Allowance',  amount: round2(sal.transport_allowance) },
+    { label: 'Medical Allowance',    amount: round2(sal.medical_allowance) },
+    { label: 'Special Allowance',    amount: round2(sal.special_allowance) },
+    { label: 'Other Allowance',      amount: round2(sal.other_allowance) },
+  ].filter(e => e.amount > 0);
+
+  const deductionBreakdown = [
+    { label: 'PF (Employee)',              amount: deductions.pf },
+    { label: 'ESI (Employee)',             amount: deductions.esi },
+    { label: 'Professional Tax',           amount: deductions.professionalTax },
+    { label: 'TDS',                        amount: deductions.tds },
+    { label: 'Other Deductions',           amount: deductions.otherDeductions },
+    { label: `LOP (${lop.totalLOP} days)`, amount: deductions.lopDeduction },
+  ].filter(e => e.amount > 0);
+
+  const employerBreakdown = [
+    { label: 'PF (Employer)',  amount: employerContribution.pf },
+    { label: 'ESI (Employer)', amount: employerContribution.esi },
+  ].filter(e => e.amount > 0);
+
+  // ── Return structured result ──────────────────────────────────────────────
+  return {
+    organizationId: oId,
+    userId:         uId,
+    month:          m,
+    year:           y,
+    payPeriod:      `${padZ(m)}/${y}`,
+
+    employee: {
+      id:         data.employee.id,
+      name:       data.employee.name,
+      email:      data.employee.email,
+      department: data.employee.department,
+      position:   data.employee.position,
+      employeeId: data.employee.employee_id,
+    },
+
+    salaryStructure: {
+      id:                 sal.id,
+      effectiveFrom:      sal.effective_from,
+      basic:              round2(sal.basic),
+      hra:                round2(sal.hra),
+      da:                 round2(sal.da),
+      transportAllowance: round2(sal.transport_allowance),
+      medicalAllowance:   round2(sal.medical_allowance),
+      specialAllowance:   round2(sal.special_allowance),
+      otherAllowance:     round2(sal.other_allowance),
+      employeePf:         round2(sal.employee_pf),
+      employeeEsi:        round2(sal.employee_esi),
+      professionalTax:    round2(sal.professional_tax),
+      tds:                round2(sal.tds),
+      otherDeductions:    round2(sal.other_deductions),
+      employerPf:         round2(sal.employer_pf),
+      employerEsi:        round2(sal.employer_esi),
+      ctc:                round2(sal.ctc),
+    },
+
+    payrollSettings: {
+      workingDaysRule:        settings.working_days_rule,
+      fixedWorkingDays:       settings.fixed_working_days,
+      weekendPolicy:          settings.weekend_policy,
+      countHolidaysAsPaid:    settings.count_holidays_as_paid,
+      graceMins:              settings.grace_minutes,
+      lateAllowancePerMonth:  settings.late_allowance_per_month,
+      halfDayAfterLates:      settings.half_day_after_lates,
+      lopAfterHalfDays:       settings.lop_after_half_days,
+      pfEnabled:              settings.pf_enabled,
+      esiEnabled:             settings.esi_enabled,
+      professionalTaxEnabled: settings.professional_tax_enabled,
+      tdsEnabled:             settings.tds_enabled,
+    },
+
+    workingDays,
+    perDaySalary,
+    payableDays: lop.payableDays,
+
+    attendance: {
+      totalDays:    daysInMonth(y, m),
+      presentFull:  att.presentFull,
+      presentHalf:  att.presentHalf,
+      paidLeave:    att.paidLeave,
+      paidHalfLeave: att.paidHalfLeave,
+      unpaidLeave:  att.unpaidLeave,
+      absent:       att.absent,
+      weekoff:      att.weekoff,
+      holiday:      att.holiday,
+      lateArrivals: att.lateCount,
+      regularized:  att.regularized,
+      daily:        att.daily,
+    },
+
+    lop: {
+      payableDays:     lop.payableDays,
+      baseLOP:         lop.baseLOP,
+      excessLates:     lop.excessLates,
+      lateHalfDays:    lop.lateHalfDays,
+      lateHalfDayLOP:  lop.lateHalfDayLOP,
+      total:           lop.totalLOP,
+    },
+
+    grossSalary,
+
+    deductions: {
+      pf:              deductions.pf,
+      esi:             deductions.esi,
+      professionalTax: deductions.professionalTax,
+      tds:             deductions.tds,
+      otherDeductions: deductions.otherDeductions,
+      lopDeduction:    deductions.lopDeduction,
+      total:           deductions.total,
+    },
+
+    employerContribution: {
+      pf:    employerContribution.pf,
+      esi:   employerContribution.esi,
+      total: employerContribution.total,
+    },
+
+    netSalary,
+
+    breakdown: {
+      earnings:   earningsBreakdown,
+      deductions: deductionBreakdown,
+      employer:   employerBreakdown,
+    },
+  };
+}
+
+module.exports = { calculatePayroll, PayrollError };
