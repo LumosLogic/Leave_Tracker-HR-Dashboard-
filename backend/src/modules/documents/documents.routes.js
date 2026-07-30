@@ -15,7 +15,24 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
-const SELECT_FIELDS = `*, document_shares(shared_with_user_id)`;
+// Fetch shares for a list of document IDs and attach them as document_shares array.
+// Replaces the broken `document_shares(shared_with_user_id)` inline join — the
+// pg-adapter inferred the wrong FK column (document_share_id vs document_id).
+async function attachShares(docs, oId) {
+  if (!docs || !docs.length) return docs;
+  const ids = docs.map(d => d.id);
+  const { data: shares } = await supabase
+    .from('document_shares')
+    .select('document_id, shared_with_user_id')
+    .in('document_id', ids)
+    .eq('organization_id', oId);
+  const shareMap = {};
+  (shares || []).forEach(s => {
+    if (!shareMap[s.document_id]) shareMap[s.document_id] = [];
+    shareMap[s.document_id].push({ shared_with_user_id: s.shared_with_user_id });
+  });
+  return docs.map(d => ({ ...d, document_shares: shareMap[d.id] || [] }));
+}
 
 // GET /api/documents/colleagues — lightweight employee list for sharing picker
 router.get('/colleagues', auth, async (req, res) => {
@@ -42,38 +59,38 @@ router.get('/', auth, async (req, res) => {
     if (isAdmin(req.user.role)) {
       let query = supabase
         .from('employee_documents')
-        .select(SELECT_FIELDS)
+        .select('*')
         .eq('organization_id', oId)
         .order('created_at', { ascending: false });
       if (userId) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (error) throw error;
-      return res.json(data || []);
+      return res.json(await attachShares(data || [], oId));
     }
 
     // Employee: own docs + visibility='all' + specifically shared docs
     const myId = req.user.id;
 
-    const { data: shares } = await supabase
+    const { data: myShares } = await supabase
       .from('document_shares')
       .select('document_id')
       .eq('shared_with_user_id', myId)
       .eq('organization_id', oId);
 
-    const sharedIds = (shares || []).map(s => s.document_id);
+    const sharedIds = (myShares || []).map(s => s.document_id);
     const orFilters = [`user_id.eq.${myId}`, 'visibility.eq.all'];
     if (sharedIds.length > 0) orFilters.push(`id.in.(${sharedIds.join(',')})`);
 
     const { data, error } = await supabase
       .from('employee_documents')
-      .select(SELECT_FIELDS)
+      .select('*')
       .eq('organization_id', oId)
       .neq('visibility', 'admin_only')
       .or(orFilters.join(','))
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json(data || []);
+    res.json(await attachShares(data || [], oId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
