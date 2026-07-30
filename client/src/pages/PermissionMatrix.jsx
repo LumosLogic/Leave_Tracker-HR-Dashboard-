@@ -349,11 +349,9 @@ export default function PermissionMatrix() {
   }
 
   return (
-    <div className="w-full flex flex-col h-full">
-
-      {/* ── FIXED HEADER — never scrolls ─────────────────────────────────────── */}
-      <div className="flex-shrink-0">
-
+    <div className="w-full">
+      {/* ── HEADER ─────────────────────────────────────── */}
+      <div className="mb-6">
         {/* Title row */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -443,7 +441,7 @@ export default function PermissionMatrix() {
           ))}
         </div>
 
-        {/* Quick select — permissions tab only, stays pinned with the header */}
+        {/* Quick select */}
         {activeTab === 'permissions' && !isRootAdmin && (
           <div className="flex items-center gap-3 mb-4">
             <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
@@ -457,12 +455,11 @@ export default function PermissionMatrix() {
           </div>
         )}
       </div>
-      {/* ── END FIXED HEADER ─────────────────────────────────────────────────── */}
 
-      {/* ── SCROLLABLE BODY — only this region scrolls ───────────────────────── */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      {/* ── BODY ──────────────────────────────────────────────────────── */}
+      <div className="">
         {activeTab === 'permissions' ? (
-          <div className={cn('space-y-3 pr-1', dirty && !isRootAdmin ? 'pb-16' : 'pb-2')}>
+          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
@@ -481,7 +478,6 @@ export default function PermissionMatrix() {
           </div>
         )}
       </div>
-      {/* ── END SCROLLABLE BODY ──────────────────────────────────────────────── */}
 
       {/* Save bar — fixed to viewport bottom */}
       {!isRootAdmin && dirty && (
