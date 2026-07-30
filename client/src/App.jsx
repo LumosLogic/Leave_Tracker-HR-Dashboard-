@@ -40,6 +40,8 @@ import PayrollSettings     from '@/pages/PayrollSettings';
 import PayrollGeneration   from '@/pages/PayrollGeneration';
 import PayrollRunDetails   from '@/pages/PayrollRunDetails';
 import PayslipDetails      from '@/pages/PayslipDetails';
+import PayrollDashboard    from '@/pages/PayrollDashboard';
+import PayrollReports      from '@/pages/PayrollReports';
 import Assets           from '@/pages/Assets';
 import ExpensesPage     from '@/pages/Expenses';
 import AnnouncementsPage from '@/pages/Announcements';
@@ -212,12 +214,14 @@ function AppRoutes() {
         <Route path="/regularization"   element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/reports"          element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/documents"        element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
-        <Route path="/payroll"              element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
-        <Route path="/payroll/salary"       element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
-        <Route path="/payroll/settings"     element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
-        <Route path="/payroll/generate"     element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
-        <Route path="/payroll/runs/:id"     element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
-        <Route path="/payroll/payslips/:id" element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
+        <Route path="/payroll"                  element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/payroll/dashboard"        element={<FeatureRoute featureKey="payroll"><PayrollDashboard /></FeatureRoute>} />
+        <Route path="/payroll/salary"           element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
+        <Route path="/payroll/settings"         element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
+        <Route path="/payroll/generate"         element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
+        <Route path="/payroll/runs/:id"         element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
+        <Route path="/payroll/payslips/:id"     element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
+        <Route path="/payroll/reports"          element={<FeatureRoute featureKey="payroll"><PayrollReports /></FeatureRoute>} />
         <Route path="/assets"           element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/expenses"         element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/announcements"    element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
@@ -248,12 +252,14 @@ function AppRoutes() {
         <Route path="/root/regularization"  element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/root/reports"         element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/root/documents"       element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
-        <Route path="/root/payroll"                element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
-        <Route path="/root/payroll/salary"         element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
-        <Route path="/root/payroll/settings"       element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
-        <Route path="/root/payroll/generate"       element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
-        <Route path="/root/payroll/runs/:id"       element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
-        <Route path="/root/payroll/payslips/:id"   element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
+        <Route path="/root/payroll"                    element={<FeatureRoute featureKey="payroll"><Payroll /></FeatureRoute>} />
+        <Route path="/root/payroll/dashboard"          element={<FeatureRoute featureKey="payroll"><PayrollDashboard /></FeatureRoute>} />
+        <Route path="/root/payroll/salary"             element={<FeatureRoute featureKey="payroll"><SalaryStructure /></FeatureRoute>} />
+        <Route path="/root/payroll/settings"           element={<FeatureRoute featureKey="payroll"><PayrollSettings /></FeatureRoute>} />
+        <Route path="/root/payroll/generate"           element={<FeatureRoute featureKey="payroll"><PayrollGeneration /></FeatureRoute>} />
+        <Route path="/root/payroll/runs/:id"           element={<FeatureRoute featureKey="payroll"><PayrollRunDetails /></FeatureRoute>} />
+        <Route path="/root/payroll/payslips/:id"       element={<FeatureRoute featureKey="payroll"><PayslipDetails /></FeatureRoute>} />
+        <Route path="/root/payroll/reports"            element={<FeatureRoute featureKey="payroll"><PayrollReports /></FeatureRoute>} />
         <Route path="/root/assets"          element={<FeatureRoute featureKey="assets"><Assets /></FeatureRoute>} />
         <Route path="/root/expenses"        element={<FeatureRoute featureKey="expenses"><ExpensesPage /></FeatureRoute>} />
         <Route path="/root/announcements"   element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />

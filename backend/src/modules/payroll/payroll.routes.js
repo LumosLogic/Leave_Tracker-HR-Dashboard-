@@ -878,4 +878,456 @@ router.get('/payslips/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6A — ADJUSTMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const {
+  createAdjustment,
+  updateAdjustment,
+  deleteAdjustment,
+  listAdjustments,
+  createOverride,
+  deleteOverride,
+  listOverrides,
+} = require('../../services/payrollAdjustmentService');
+
+const {
+  getPayrollSummary,
+  getDepartmentSummary,
+  getSalaryRegister,
+  getLopReport,
+  getAdjustmentSummary,
+  getMonthlyTrend,
+  toCsv,
+  SALARY_REGISTER_FIELDS,
+} = require('../../services/payrollReportService');
+
+const { generateBankFile, SUPPORTED_FORMATS } = require('../../services/payrollBankService');
+
+// GET /api/payroll/adjustments
+router.get('/adjustments', auth, hasPermission('payroll', 'manage_adjustments'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { runId, userId, month, year } = req.query;
+    const rows = await listAdjustments({
+      organizationId: oId,
+      payrollRunId: runId ? parseInt(runId, 10) : null,
+      userId:       userId ? parseInt(userId, 10) : null,
+      month:        month  ? parseInt(month,  10) : null,
+      year:         year   ? parseInt(year,   10) : null,
+    });
+    res.json(rows);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+
+// POST /api/payroll/adjustments
+router.post('/adjustments', auth, hasPermission('payroll', 'manage_adjustments'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const {
+      payroll_run_id, payslip_id, user_id,
+      adjustment_type, adjustment_category,
+      amount, addition_or_deduction,
+      effective_month, effective_year, remarks,
+    } = req.body;
+
+    if (!user_id)               return res.status(400).json({ error: 'user_id is required' });
+    if (!adjustment_category)   return res.status(400).json({ error: 'adjustment_category is required' });
+    if (amount === undefined || amount === null) return res.status(400).json({ error: 'amount is required' });
+    if (!effective_month || !effective_year) return res.status(400).json({ error: 'effective_month and effective_year are required' });
+
+    const adj = await createAdjustment({
+      organizationId: oId,
+      payrollRunId:  payroll_run_id || null,
+      payslipId:     payslip_id     || null,
+      userId:        parseInt(user_id, 10),
+      adjustmentType: adjustment_type,
+      adjustmentCategory: adjustment_category,
+      amount:        parseFloat(amount),
+      additionOrDeduction: addition_or_deduction,
+      effectiveMonth: parseInt(effective_month, 10),
+      effectiveYear:  parseInt(effective_year,  10),
+      remarks,
+      createdBy: req.user.id,
+      ip: req.ip,
+    });
+    res.status(201).json(adj);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message, code: err.code }); }
+});
+
+// PUT /api/payroll/adjustments/:id
+router.put('/adjustments/:id', auth, hasPermission('payroll', 'manage_adjustments'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const id  = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'Invalid adjustment ID' });
+    const adj = await updateAdjustment({
+      organizationId: oId,
+      adjustmentId: id,
+      payload: req.body,
+      updatedBy: req.user.id,
+      ip: req.ip,
+    });
+    res.json(adj);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message, code: err.code }); }
+});
+
+// DELETE /api/payroll/adjustments/:id
+router.delete('/adjustments/:id', auth, hasPermission('payroll', 'manage_adjustments'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const id  = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'Invalid adjustment ID' });
+    await deleteAdjustment({ organizationId: oId, adjustmentId: id, deletedBy: req.user.id, ip: req.ip });
+    res.json({ ok: true });
+  } catch (err) { res.status(err.status || 500).json({ error: err.message, code: err.code }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6B — ATTENDANCE OVERRIDES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/payroll/overrides
+router.get('/overrides', auth, hasPermission('payroll', 'manage_overrides'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { runId, userId } = req.query;
+    const rows = await listOverrides({
+      organizationId: oId,
+      payrollRunId: runId ? parseInt(runId, 10) : null,
+      userId:       userId ? parseInt(userId, 10) : null,
+    });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payroll/overrides
+router.post('/overrides', auth, hasPermission('payroll', 'manage_overrides'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { payroll_run_id, user_id, original_values, override_values, reason } = req.body;
+    if (!payroll_run_id) return res.status(400).json({ error: 'payroll_run_id is required' });
+    if (!user_id)        return res.status(400).json({ error: 'user_id is required' });
+    if (!reason)         return res.status(400).json({ error: 'reason is required' });
+
+    const ov = await createOverride({
+      organizationId: oId,
+      payrollRunId:   parseInt(payroll_run_id, 10),
+      userId:         parseInt(user_id, 10),
+      originalValues: original_values || {},
+      overrideValues: override_values || {},
+      reason,
+      createdBy: req.user.id,
+      ip: req.ip,
+    });
+    res.status(201).json(ov);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message, code: err.code }); }
+});
+
+// DELETE /api/payroll/overrides/:id
+router.delete('/overrides/:id', auth, hasPermission('payroll', 'manage_overrides'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const id  = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'Invalid override ID' });
+    await deleteOverride({ organizationId: oId, overrideId: id, deletedBy: req.user.id, ip: req.ip });
+    res.json({ ok: true });
+  } catch (err) { res.status(err.status || 500).json({ error: err.message, code: err.code }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6C — PAYROLL LIFECYCLE (verify / approve / mark-paid)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/payroll/runs/:id/verify — HR Admin marks run as verified
+router.post('/runs/:id/verify', auth, hasPermission('payroll', 'verify'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const runId = parseInt(req.params.id, 10);
+    if (!runId) return res.status(400).json({ error: 'Invalid run ID' });
+
+    const { rows } = await pool.query(
+      `SELECT id, status FROM payroll_runs WHERE id = $1 AND organization_id = $2`,
+      [runId, oId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payroll run not found' });
+    if (!['completed','completed_with_errors'].includes(rows[0].status)) {
+      return res.status(409).json({ error: `Cannot verify a run with status '${rows[0].status}'` });
+    }
+
+    const { rows: updated } = await pool.query(
+      `UPDATE payroll_runs
+          SET status = 'verified', verified_by = $1, verified_at = NOW()
+        WHERE id = $2 AND organization_id = $3
+       RETURNING *`,
+      [req.user.id, runId, oId]
+    );
+
+    logPayroll({ oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'payroll_verified', entityType: 'payroll_run', entityId: runId, ip: req.ip });
+
+    res.json(updated[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payroll/runs/:id/approve — Root Admin approves verified run
+router.post('/runs/:id/approve', auth, hasPermission('payroll', 'approve'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const runId = parseInt(req.params.id, 10);
+    if (!runId) return res.status(400).json({ error: 'Invalid run ID' });
+
+    const { rows } = await pool.query(
+      `SELECT id, status FROM payroll_runs WHERE id = $1 AND organization_id = $2`,
+      [runId, oId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payroll run not found' });
+    if (rows[0].status !== 'verified') {
+      return res.status(409).json({ error: `Cannot approve a run with status '${rows[0].status}'. Run must be verified first.` });
+    }
+
+    const { rows: updated } = await pool.query(
+      `UPDATE payroll_runs
+          SET status = 'approved', approved_by = $1, approved_at = NOW()
+        WHERE id = $2 AND organization_id = $3
+       RETURNING *`,
+      [req.user.id, runId, oId]
+    );
+
+    logPayroll({ oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'payroll_approved', entityType: 'payroll_run', entityId: runId, ip: req.ip });
+
+    res.json(updated[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payroll/runs/:id/mark-paid — Root Admin records salary credited
+router.post('/runs/:id/mark-paid', auth, hasPermission('payroll', 'mark_paid'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const runId = parseInt(req.params.id, 10);
+    if (!runId) return res.status(400).json({ error: 'Invalid run ID' });
+
+    const { rows } = await pool.query(
+      `SELECT id, status FROM payroll_runs WHERE id = $1 AND organization_id = $2`,
+      [runId, oId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payroll run not found' });
+    if (!['locked', 'approved'].includes(rows[0].status)) {
+      return res.status(409).json({ error: `Cannot mark as paid from status '${rows[0].status}'` });
+    }
+
+    const { rows: updated } = await pool.query(
+      `UPDATE payroll_runs
+          SET status = 'paid', paid_by = $1, paid_at = NOW()
+        WHERE id = $2 AND organization_id = $3
+       RETURNING *`,
+      [req.user.id, runId, oId]
+    );
+
+    logPayroll({ oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'payroll_paid', entityType: 'payroll_run', entityId: runId, ip: req.ip });
+
+    res.json(updated[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6D — DASHBOARD DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/payroll/dashboard?month=&year=
+router.get('/dashboard', auth, hasPermission('payroll', 'view'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const month = req.query.month ? parseInt(req.query.month, 10) : null;
+    const year  = req.query.year  ? parseInt(req.query.year,  10) : null;
+
+    const [summary, deptBreakdown, trend] = await Promise.all([
+      getPayrollSummary({ organizationId: oId, month, year }),
+      getDepartmentSummary({ organizationId: oId, month, year }),
+      getMonthlyTrend({ organizationId: oId, months: 6 }),
+    ]);
+
+    // KPI cards — aggregate across all runs in the filter period
+    const kpi = summary.reduce((acc, r) => {
+      acc.totalPayroll    += Number(r.total_gross    || 0);
+      acc.totalNet        += Number(r.total_net      || 0);
+      acc.totalDeductions += Number(r.total_deductions || 0);
+      acc.employeesPaid   += Number(r.employee_count || 0);
+      acc.errorCount      += Number(r.error_count    || 0);
+      return acc;
+    }, { totalPayroll: 0, totalNet: 0, totalDeductions: 0, employeesPaid: 0, errorCount: 0 });
+
+    kpi.avgSalary = kpi.employeesPaid > 0 ? kpi.totalNet / kpi.employeesPaid : 0;
+
+    // Pending runs (not yet paid)
+    const { rows: pending } = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM payroll_runs
+        WHERE organization_id = $1
+          AND status NOT IN ('paid','failed','draft')
+          AND ($2::int IS NULL OR month = $2)
+          AND ($3::int IS NULL OR year  = $3)`,
+      [oId, month, year]
+    );
+    kpi.pendingRuns = pending[0]?.count || 0;
+
+    // Adjustment totals
+    const { rows: adjAgg } = await pool.query(
+      `SELECT
+           SUM(CASE WHEN addition_or_deduction = 'addition' THEN amount ELSE 0 END) AS total_bonuses,
+           SUM(CASE WHEN addition_or_deduction = 'deduction' THEN amount ELSE 0 END) AS total_deduction_adj
+         FROM payroll_adjustments pa
+         JOIN payroll_runs pr ON pr.id = pa.payroll_run_id
+        WHERE pa.organization_id = $1
+          AND pa.deleted_at IS NULL
+          AND ($2::int IS NULL OR pr.month = $2)
+          AND ($3::int IS NULL OR pr.year  = $3)`,
+      [oId, month, year]
+    );
+    kpi.totalBonuses        = Number(adjAgg[0]?.total_bonuses || 0);
+    kpi.totalDeductionAdj   = Number(adjAgg[0]?.total_deduction_adj || 0);
+
+    res.json({ kpi, summary, deptBreakdown, trend });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6E — REPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function reportParams(req) {
+  return {
+    organizationId: orgId(req),
+    month: req.query.month ? parseInt(req.query.month, 10) : null,
+    year:  req.query.year  ? parseInt(req.query.year,  10) : null,
+  };
+}
+
+// GET /api/payroll/reports/summary
+router.get('/reports/summary', auth, hasPermission('payroll', 'run_reports'), async (req, res) => {
+  try {
+    const data = await getPayrollSummary(reportParams(req));
+    if (req.query.format === 'csv') {
+      const fields = [
+        { key: 'run_id', label: 'Run ID' }, { key: 'month', label: 'Month' }, { key: 'year', label: 'Year' },
+        { key: 'status' }, { key: 'employee_count', label: 'Employees' },
+        { key: 'total_gross', label: 'Total Gross' }, { key: 'total_deductions', label: 'Total Deductions' },
+        { key: 'total_net', label: 'Total Net' }, { key: 'total_adjustments', label: 'Adjustments' },
+        { key: 'generated_by_name', label: 'Generated By' },
+      ];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="payroll_summary.csv"');
+      return res.send(toCsv(data, fields));
+    }
+    logPayroll({ oId: orgId(req), actorId: req.user.id, actorName: req.user.name,
+      action: 'report_exported', entityType: 'report', ip: req.ip });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payroll/reports/department
+router.get('/reports/department', auth, hasPermission('payroll', 'run_reports'), async (req, res) => {
+  try {
+    const data = await getDepartmentSummary(reportParams(req));
+    if (req.query.format === 'csv') {
+      const fields = [
+        { key: 'department' }, { key: 'employee_count', label: 'Employees' },
+        { key: 'total_gross', label: 'Total Gross' }, { key: 'total_deductions', label: 'Deductions' },
+        { key: 'total_lop', label: 'LOP Amount' }, { key: 'total_net', label: 'Net Salary' },
+        { key: 'avg_net_salary', label: 'Avg Net' }, { key: 'total_lop_days', label: 'LOP Days' },
+      ];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="dept_summary.csv"');
+      return res.send(toCsv(data, fields));
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payroll/reports/salary-register
+router.get('/reports/salary-register', auth, hasPermission('payroll', 'run_reports'), async (req, res) => {
+  try {
+    const data = await getSalaryRegister(reportParams(req));
+    if (req.query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="salary_register.csv"');
+      return res.send(toCsv(data, SALARY_REGISTER_FIELDS));
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payroll/reports/lop
+router.get('/reports/lop', auth, hasPermission('payroll', 'run_reports'), async (req, res) => {
+  try {
+    const data = await getLopReport(reportParams(req));
+    if (req.query.format === 'csv') {
+      const fields = [
+        { key: 'employee_id', label: 'Emp ID' }, { key: 'employee_name', label: 'Name' },
+        { key: 'department' }, { key: 'month' }, { key: 'year' },
+        { key: 'working_days', label: 'Working Days' }, { key: 'present_days', label: 'Present' },
+        { key: 'absent_days', label: 'Absent' }, { key: 'leave_days', label: 'Leave' },
+        { key: 'lop_days', label: 'LOP Days' }, { key: 'lop_amount', label: 'LOP Amount' },
+        { key: 'gross_salary', label: 'Gross' }, { key: 'net_salary', label: 'Net' },
+      ];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="lop_report.csv"');
+      return res.send(toCsv(data, fields));
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payroll/reports/adjustments
+router.get('/reports/adjustments', auth, hasPermission('payroll', 'run_reports'), async (req, res) => {
+  try {
+    const data = await getAdjustmentSummary(reportParams(req));
+    if (req.query.format === 'csv') {
+      const fields = [
+        { key: 'adjustment_category', label: 'Category' },
+        { key: 'addition_or_deduction', label: 'Type' },
+        { key: 'count' }, { key: 'total_amount', label: 'Total Amount' },
+        { key: 'departments' },
+      ];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="adjustment_report.csv"');
+      return res.send(toCsv(data, fields));
+    }
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3.6F — BANK TRANSFER FILES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/payroll/bank-file/:runId?format=generic|hdfc|icici|sbi|axis
+router.get('/bank-file/:runId', auth, hasPermission('payroll', 'bank_files'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const runId = parseInt(req.params.runId, 10);
+    if (!runId) return res.status(400).json({ error: 'Invalid run ID' });
+
+    const format = req.query.format || 'generic';
+    const result = await generateBankFile({ organizationId: oId, runId, format });
+
+    logPayroll({ oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'bank_file_generated', entityType: 'payroll_run', entityId: runId,
+      newValues: { format, rowCount: result.rowCount, totalAmount: result.totalAmount },
+      ip: req.ip,
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.csv);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+
+// GET /api/payroll/bank-file/formats — list supported formats
+router.get('/bank-file/formats', auth, hasPermission('payroll', 'bank_files'), (req, res) => {
+  res.json({ formats: SUPPORTED_FORMATS });
+});
+
 module.exports = router;

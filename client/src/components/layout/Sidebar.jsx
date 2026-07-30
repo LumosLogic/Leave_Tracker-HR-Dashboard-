@@ -5,6 +5,7 @@ import {
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
   Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee,
+  PieChart, FileBarChart,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -43,13 +44,15 @@ const BIOMETRIC_ITEMS = [
 ];
 
 const FINANCE_ITEMS = [
-  { to: '/payroll',          label: 'Payroll',           Icon: DollarSign,   featureKey: 'payroll' },
-  { to: '/payroll/generate', label: 'Payroll Generation',Icon: Play,         featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/salary',   label: 'Salary Structures', Icon: IndianRupee,  featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/settings', label: 'Payroll Settings',  Icon: Settings,     featureKey: 'payroll', adminOnly: true },
-  { to: '/expenses',         label: 'Expenses',          Icon: Receipt,      featureKey: 'expenses' },
-  { to: '/assets',           label: 'Assets',            Icon: Monitor,      featureKey: 'assets' },
-  { to: '/reports',          label: 'Reports',           Icon: BarChart3,    featureKey: 'reports' },
+  { to: '/payroll',           label: 'Payroll',           Icon: DollarSign,    featureKey: 'payroll' },
+  { to: '/payroll/dashboard', label: 'Payroll Dashboard', Icon: PieChart,      featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/generate',  label: 'Payroll Generation',Icon: Play,          featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/reports',   label: 'Payroll Reports',   Icon: FileBarChart,  featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/salary',    label: 'Salary Structures', Icon: IndianRupee,   featureKey: 'payroll', adminOnly: true },
+  { to: '/payroll/settings',  label: 'Payroll Settings',  Icon: Settings,      featureKey: 'payroll', adminOnly: true },
+  { to: '/expenses',          label: 'Expenses',          Icon: Receipt,       featureKey: 'expenses' },
+  { to: '/assets',            label: 'Assets',            Icon: Monitor,       featureKey: 'assets' },
+  { to: '/reports',           label: 'Reports',           Icon: BarChart3,     featureKey: 'reports' },
 ];
 
 const PERFORMANCE_ITEMS = [

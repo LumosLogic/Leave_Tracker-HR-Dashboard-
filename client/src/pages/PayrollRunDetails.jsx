@@ -1,26 +1,39 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Lock, Unlock, CheckCircle2, AlertCircle, AlertTriangle,
-  Clock, ChevronRight, Users, IndianRupee,
+  Clock, ChevronRight, Users, IndianRupee, ShieldCheck, ThumbsUp,
+  CreditCard, PlusCircle, Trash2, Download,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
-import { MONTHS } from '@/lib/utils';
+import { MONTHS, cn } from '@/lib/utils';
 
 const fmt  = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
 const fmtD = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
 const STATUS_META = {
-  draft:                  { label: 'Draft',               cls: 'bg-[#f0f3ff] text-[#3525cd]', Icon: Clock },
-  processing:             { label: 'Processing',          cls: 'bg-amber-50 text-amber-700',   Icon: Clock },
+  draft:                  { label: 'Draft',               cls: 'bg-[#f0f3ff] text-[#3525cd]',   Icon: Clock },
+  processing:             { label: 'Processing',          cls: 'bg-amber-50 text-amber-700',     Icon: Clock },
   completed:              { label: 'Completed',           cls: 'bg-emerald-50 text-emerald-700', Icon: CheckCircle2 },
-  completed_with_errors:  { label: 'Completed w/ Errors', cls: 'bg-orange-50 text-orange-700',  Icon: AlertTriangle },
-  failed:                 { label: 'Failed',              cls: 'bg-red-50 text-red-700',        Icon: AlertCircle },
-  locked:                 { label: 'Locked',              cls: 'bg-slate-100 text-slate-600',   Icon: Lock },
+  completed_with_errors:  { label: 'Completed w/ Errors', cls: 'bg-orange-50 text-orange-700',   Icon: AlertTriangle },
+  failed:                 { label: 'Failed',              cls: 'bg-red-50 text-red-700',         Icon: AlertCircle },
+  verified:               { label: 'Verified',            cls: 'bg-violet-50 text-violet-700',   Icon: ShieldCheck },
+  approved:               { label: 'Approved',            cls: 'bg-blue-50 text-blue-700',       Icon: ThumbsUp },
+  locked:                 { label: 'Locked',              cls: 'bg-slate-100 text-slate-600',    Icon: Lock },
+  paid:                   { label: 'Paid',                cls: 'bg-teal-50 text-teal-700',       Icon: CreditCard },
+};
+
+const ADJ_CATEGORY_COLORS = {
+  BONUS: 'bg-emerald-50 text-emerald-700', INCENTIVE: 'bg-emerald-50 text-emerald-700',
+  COMMISSION: 'bg-blue-50 text-blue-700',  OVERTIME: 'bg-violet-50 text-violet-700',
+  REIMBURSEMENT: 'bg-cyan-50 text-cyan-700', ARREARS: 'bg-teal-50 text-teal-700',
+  ADVANCE_RECOVERY: 'bg-rose-50 text-rose-700', LOAN_EMI: 'bg-rose-50 text-rose-700',
+  PENALTY: 'bg-red-50 text-red-700', DEDUCTION: 'bg-red-50 text-red-700',
+  OTHER: 'bg-gray-100 text-gray-600',
 };
 
 const EMP_STATUS_META = {
@@ -65,6 +78,14 @@ export default function PayrollRunDetails() {
     enabled:  Boolean(id),
   });
 
+  const [adjOpen, setAdjOpen] = useState(false);
+  const [adjForm, setAdjForm] = useState({
+    user_id: '', adjustment_category: 'BONUS', amount: '',
+    addition_or_deduction: 'addition', remarks: '',
+    effective_month: new Date().getMonth() + 1,
+    effective_year:  new Date().getFullYear(),
+  });
+
   const lockMut = useMutation({
     mutationFn: () => apiPost(`/payroll/lock/${id}`),
     onSuccess:  () => {
@@ -85,8 +106,75 @@ export default function PayrollRunDetails() {
     onError: e => toast(e.message, 'error'),
   });
 
-  const canLock   = run && ['completed', 'completed_with_errors'].includes(run.status);
-  const canUnlock = run?.status === 'locked' && isRootAdmin;
+  const verifyMut = useMutation({
+    mutationFn: () => apiPost(`/payroll/runs/${id}/verify`),
+    onSuccess:  () => {
+      toast('Payroll run verified', 'success');
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const approveMut = useMutation({
+    mutationFn: () => apiPost(`/payroll/runs/${id}/approve`),
+    onSuccess:  () => {
+      toast('Payroll run approved', 'success');
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const markPaidMut = useMutation({
+    mutationFn: () => apiPost(`/payroll/runs/${id}/mark-paid`),
+    onSuccess:  () => {
+      toast('Payroll run marked as paid', 'success');
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const createAdjMut = useMutation({
+    mutationFn: () => apiPost('/payroll/adjustments', {
+      ...adjForm,
+      payroll_run_id: parseInt(id, 10),
+      amount: parseFloat(adjForm.amount),
+      effective_month: parseInt(adjForm.effective_month, 10),
+      effective_year:  parseInt(adjForm.effective_year,  10),
+    }),
+    onSuccess: () => {
+      toast('Adjustment added', 'success');
+      setAdjOpen(false);
+      setAdjForm(f => ({ ...f, user_id: '', amount: '', remarks: '' }));
+      qc.invalidateQueries({ queryKey: ['run-adjustments', id] });
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const deleteAdjMut = useMutation({
+    mutationFn: adjId => apiDelete(`/payroll/adjustments/${adjId}`),
+    onSuccess: () => {
+      toast('Adjustment removed', 'success');
+      qc.invalidateQueries({ queryKey: ['run-adjustments', id] });
+      qc.invalidateQueries({ queryKey: ['payroll-run', id] });
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const { data: adjustments = [] } = useQuery({
+    queryKey: ['run-adjustments', id],
+    queryFn:  () => apiGet('/payroll/adjustments', { runId: id }),
+    enabled:  Boolean(id),
+  });
+
+  const fmt2 = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+  const canLock    = run && ['completed', 'completed_with_errors', 'approved'].includes(run.status);
+  const canUnlock  = run?.status === 'locked' && isRootAdmin;
+  const canVerify  = run && ['completed', 'completed_with_errors'].includes(run.status);
+  const canApprove = run?.status === 'verified' && isRootAdmin;
+  const canPaid    = run && ['locked', 'approved'].includes(run.status) && isRootAdmin;
+  const canAddAdj  = run && !['locked', 'paid'].includes(run.status);
 
   if (isLoading) {
     return (
@@ -141,45 +229,70 @@ export default function PayrollRunDetails() {
             )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canVerify && (
+            <button onClick={() => window.confirm('Mark this run as HR-verified?') && verifyMut.mutate()}
+              disabled={verifyMut.isPending}
+              className="inline-flex items-center gap-2 bg-violet-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50">
+              <ShieldCheck size={14} /> Verify
+            </button>
+          )}
+          {canApprove && (
+            <button onClick={() => window.confirm('Approve this payroll run for payment?') && approveMut.mutate()}
+              disabled={approveMut.isPending}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50">
+              <ThumbsUp size={14} /> Approve
+            </button>
+          )}
           {canLock && (
             <button
-              onClick={() => {
-                if (window.confirm('Lock this payroll run? Payslips will become immutable and cannot be regenerated without unlocking first.')) {
-                  lockMut.mutate();
-                }
-              }}
+              onClick={() => window.confirm('Lock this payroll run? Payslips become immutable.') && lockMut.mutate()}
               disabled={lockMut.isPending}
-              className="inline-flex items-center gap-2 bg-slate-800 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-slate-900 transition-colors disabled:opacity-50"
-            >
+              className="inline-flex items-center gap-2 bg-slate-800 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-slate-900 transition-colors disabled:opacity-50">
               {lockMut.isPending ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Lock size={14} />}
               Lock Run
             </button>
           )}
           {canUnlock && (
             <button
-              onClick={() => {
-                if (window.confirm('Unlock this payroll run? This will allow regeneration of payslips.')) {
-                  unlockMut.mutate();
-                }
-              }}
+              onClick={() => window.confirm('Unlock this payroll run?') && unlockMut.mutate()}
               disabled={unlockMut.isPending}
-              className="inline-flex items-center gap-2 bg-amber-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-amber-700 transition-colors disabled:opacity-50"
-            >
+              className="inline-flex items-center gap-2 bg-amber-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-amber-700 transition-colors disabled:opacity-50">
               {unlockMut.isPending ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Unlock size={14} />}
               Unlock Run
             </button>
+          )}
+          {canPaid && (
+            <button onClick={() => window.confirm('Mark salaries as credited to employees?') && markPaidMut.mutate()}
+              disabled={markPaidMut.isPending}
+              className="inline-flex items-center gap-2 bg-teal-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-teal-700 transition-colors disabled:opacity-50">
+              <CreditCard size={14} /> Mark Paid
+            </button>
+          )}
+          {/* Bank file download */}
+          {['locked','approved','paid'].includes(run?.status) && (
+            <a href={`/api/payroll/bank-file/${id}?format=generic`}
+              download
+              className="inline-flex items-center gap-2 bg-white border border-[#c7c4d8] text-[#464555] rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#f0f3ff] transition-colors">
+              <Download size={14} /> Bank File
+            </a>
           )}
         </div>
       </div>
 
       {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Total Employees" value={run.employee_count} />
-        <StatCard label="Total Gross"     value={fmt(run.total_gross)} />
+        <StatCard label="Total Employees"  value={run.employee_count} />
+        <StatCard label="Total Gross"      value={fmt(run.total_gross)} />
         <StatCard label="Total Deductions" value={fmt(run.total_deductions)} accent="text-rose-600" />
-        <StatCard label="Total Net Pay"    value={fmt(run.total_net)}  accent="text-emerald-700" />
+        <StatCard label="Net Pay"          value={fmt(run.total_net)} accent="text-emerald-700" />
       </div>
+      {Number(run.total_adjustments) !== 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StatCard label="Adjustments (Net)" value={fmt(run.total_adjustments)} accent={Number(run.total_adjustments) >= 0 ? 'text-emerald-700' : 'text-rose-600'} />
+          <StatCard label="Effective Net Pay" value={fmt(Number(run.total_net || 0) + Number(run.total_adjustments || 0))} accent="text-[#3525cd]" />
+        </div>
+      )}
 
       {/* ── Failed employees alert ── */}
       {failed.length > 0 && (
@@ -197,6 +310,110 @@ export default function PayrollRunDetails() {
           </div>
         </div>
       )}
+
+      {/* ── Adjustments Panel ── */}
+      <div className="bg-white border border-[#e2e0f0] rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#e2e0f0] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PlusCircle size={15} className="text-[#3525cd]" />
+            <p className="font-black text-[#151c27]">Adjustments</p>
+            {adjustments.length > 0 && (
+              <span className="text-[0.65rem] font-black bg-[#f0f3ff] text-[#3525cd] px-2 py-0.5 rounded-full">{adjustments.length}</span>
+            )}
+          </div>
+          {canAddAdj && (
+            <button onClick={() => setAdjOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs font-bold text-[#3525cd] px-3 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+              <PlusCircle size={12} /> Add Adjustment
+            </button>
+          )}
+        </div>
+
+        {/* Add form */}
+        {adjOpen && (
+          <div className="px-5 py-4 bg-[#fafaff] border-b border-[#e2e0f0]">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1 block">Employee</label>
+                <select value={adjForm.user_id} onChange={e => setAdjForm(f => ({ ...f, user_id: e.target.value }))}
+                  className="w-full border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3525cd] bg-white">
+                  <option value="">— Select —</option>
+                  {(run.employees || []).filter(e => e.employee_status === 'success').map(e => (
+                    <option key={e.user_id} value={e.user_id}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1 block">Category</label>
+                <select value={adjForm.adjustment_category} onChange={e => setAdjForm(f => ({ ...f, adjustment_category: e.target.value }))}
+                  className="w-full border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3525cd] bg-white">
+                  {['BONUS','INCENTIVE','COMMISSION','OVERTIME','REIMBURSEMENT','ARREARS','ADVANCE_RECOVERY','LOAN_EMI','PENALTY','DEDUCTION','OTHER'].map(c => (
+                    <option key={c} value={c}>{c.replace(/_/g,' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1 block">Type</label>
+                <div className="flex gap-2">
+                  {[['addition','Addition'],['deduction','Deduction']].map(([v, l]) => (
+                    <button key={v} onClick={() => setAdjForm(f => ({ ...f, addition_or_deduction: v }))}
+                      className={cn('px-3 py-1.5 rounded-lg text-xs font-bold border flex-1 transition-all',
+                        adjForm.addition_or_deduction === v
+                          ? v === 'addition' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'
+                      )}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1 block">Amount (₹)</label>
+                <input type="number" min={0} placeholder="0.00"
+                  value={adjForm.amount} onChange={e => setAdjForm(f => ({ ...f, amount: e.target.value }))}
+                  className="w-full border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3525cd]" />
+              </div>
+              <div>
+                <label className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1 block">Remarks</label>
+                <input placeholder="Optional note"
+                  value={adjForm.remarks} onChange={e => setAdjForm(f => ({ ...f, remarks: e.target.value }))}
+                  className="w-full border border-[#c7c4d8] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#3525cd]" />
+              </div>
+              <div className="flex items-end">
+                <button onClick={() => createAdjMut.mutate()}
+                  disabled={createAdjMut.isPending || !adjForm.user_id || !adjForm.amount}
+                  className="w-full bg-[#3525cd] text-white rounded-lg px-4 py-1.5 text-sm font-bold hover:bg-[#2a1fb0] transition-all disabled:opacity-50">
+                  {createAdjMut.isPending ? 'Saving…' : 'Save Adjustment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Adjustment list */}
+        {adjustments.length === 0 ? (
+          <p className="text-center text-sm text-[#777587] py-8">No adjustments for this run.</p>
+        ) : (
+          <div className="divide-y divide-[#f0eef8]">
+            {adjustments.map(adj => (
+              <div key={adj.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafaff]">
+                <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full ${ADJ_CATEGORY_COLORS[adj.adjustment_category] || 'bg-gray-100 text-gray-600'}`}>
+                  {adj.adjustment_category.replace(/_/g,' ')}
+                </span>
+                <span className="text-sm font-semibold text-[#151c27] flex-1 truncate">{adj.employee_name}</span>
+                <span className="text-xs text-[#777587]">{adj.remarks || '—'}</span>
+                <span className={`text-sm font-black min-w-[80px] text-right ${adj.addition_or_deduction === 'addition' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  {adj.addition_or_deduction === 'addition' ? '+' : '−'}{fmt2(adj.amount)}
+                </span>
+                {canAddAdj && (
+                  <button onClick={() => window.confirm('Remove this adjustment?') && deleteAdjMut.mutate(adj.id)}
+                    className="text-[#c7c4d8] hover:text-rose-500 transition-colors ml-1">
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── Employee Breakdown ── */}
       <div className="bg-white border border-[#e2e0f0] rounded-xl overflow-hidden">
