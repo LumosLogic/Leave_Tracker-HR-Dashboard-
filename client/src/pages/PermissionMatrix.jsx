@@ -349,118 +349,120 @@ export default function PermissionMatrix() {
   }
 
   return (
-    <div className="w-full">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <button
-            onClick={() => navigate('/root/roles')}
-            className="flex items-center gap-1.5 text-xs text-[#777587] hover:text-[#3525cd] mb-3 transition-colors font-semibold"
-          >
-            <ArrowLeft size={13} /> Back to Roles
-          </button>
-          <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-[#3525cd]/10 flex items-center justify-center">
-              {isSystemRole ? <Lock size={17} className="text-[#3525cd]" /> : <Shield size={17} className="text-[#3525cd]" />}
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-[#151c27]">{role.name}</h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className={cn(
-                  'text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full',
-                  isSystemRole ? 'bg-purple-50 text-purple-600' : 'bg-[#f0f3ff] text-[#3525cd]'
-                )}>
-                  {isSystemRole ? 'System Role' : 'Custom Role'}
-                </span>
-                <span className="text-xs text-[#777587]">{selectedIds.size} permissions selected</span>
+    <div className="w-full flex flex-col h-full">
+
+      {/* ── FIXED HEADER — never scrolls ─────────────────────────────────────── */}
+      <div className="flex-shrink-0">
+
+        {/* Title row */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <button
+              onClick={() => navigate('/root/roles')}
+              className="flex items-center gap-1.5 text-xs text-[#777587] hover:text-[#3525cd] mb-3 transition-colors font-semibold"
+            >
+              <ArrowLeft size={13} /> Back to Roles
+            </button>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-9 h-9 rounded-xl bg-[#3525cd]/10 flex items-center justify-center">
+                {isSystemRole ? <Lock size={17} className="text-[#3525cd]" /> : <Shield size={17} className="text-[#3525cd]" />}
+              </div>
+              <div>
+                <h1 className="text-xl font-black text-[#151c27]">{role.name}</h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={cn(
+                    'text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full',
+                    isSystemRole ? 'bg-purple-50 text-purple-600' : 'bg-[#f0f3ff] text-[#3525cd]'
+                  )}>
+                    {isSystemRole ? 'System Role' : 'Custom Role'}
+                  </span>
+                  <span className="text-xs text-[#777587]">{selectedIds.size} permissions selected</span>
+                </div>
               </div>
             </div>
+            {role.description && (
+              <p className="text-sm text-[#777587] ml-11.5">{role.description}</p>
+            )}
           </div>
-          {role.description && (
-            <p className="text-sm text-[#777587] ml-11.5">{role.description}</p>
+
+          {!isRootAdmin && (
+            <button
+              onClick={() => saveMutation.mutate()}
+              disabled={!dirty || saveMutation.isPending}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all',
+                dirty
+                  ? 'bg-[#3525cd] text-white hover:bg-[#2a1fb0] shadow-sm'
+                  : 'bg-[#f0f3ff] text-[#777587] cursor-not-allowed'
+              )}
+            >
+              <Save size={15} />
+              {saveMutation.isPending ? 'Saving…' : 'Save Permissions'}
+            </button>
           )}
         </div>
 
-        {!isRootAdmin && (
-          <button
-            onClick={() => saveMutation.mutate()}
-            disabled={!dirty || saveMutation.isPending}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all',
-              dirty
-                ? 'bg-[#3525cd] text-white hover:bg-[#2a1fb0] shadow-sm'
-                : 'bg-[#f0f3ff] text-[#777587] cursor-not-allowed'
-            )}
-          >
-            <Save size={15} />
-            {saveMutation.isPending ? 'Saving…' : 'Save Permissions'}
-          </button>
+        {/* Root Admin banner */}
+        {isRootAdmin && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
+            <Lock size={15} className="text-purple-500 flex-shrink-0" />
+            <p className="text-xs text-purple-700 font-semibold">
+              Root Admin has all permissions by default and cannot be restricted.
+            </p>
+          </div>
+        )}
+
+        {/* System role banner */}
+        {isSystemRole && !isRootAdmin && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
+            <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
+            <p className="text-xs text-amber-700 font-semibold">
+              This is a system role. You can modify its permissions, but it cannot be deleted or renamed.
+            </p>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-5 bg-[#f0f3ff] p-1 rounded-xl w-fit">
+          {[
+            { key: 'permissions', label: 'Permissions', icon: Shield },
+            { key: 'members', label: `Members (${role.members?.length || 0})`, icon: Users },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all',
+                activeTab === tab.key
+                  ? 'bg-white text-[#151c27] shadow-sm border border-[#c7c4d8]'
+                  : 'text-[#777587] hover:text-[#464555]'
+              )}
+            >
+              <tab.icon size={13} /> {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Quick select — permissions tab only, stays pinned with the header */}
+        {activeTab === 'permissions' && !isRootAdmin && (
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
+            <button onClick={handleSelectAll} className="text-xs font-bold text-[#3525cd] hover:underline">
+              Select All
+            </button>
+            <span className="text-[#c7c4d8]">·</span>
+            <button onClick={handleDeselectAll} className="text-xs font-bold text-[#777587] hover:underline">
+              Deselect All
+            </button>
+          </div>
         )}
       </div>
+      {/* ── END FIXED HEADER ─────────────────────────────────────────────────── */}
 
-      {/* Root Admin info banner */}
-      {isRootAdmin && (
-        <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
-          <Lock size={15} className="text-purple-500 flex-shrink-0" />
-          <p className="text-xs text-purple-700 font-semibold">
-            Root Admin has all permissions by default and cannot be restricted.
-          </p>
-        </div>
-      )}
-
-      {/* System role banner */}
-      {isSystemRole && !isRootAdmin && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
-          <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
-          <p className="text-xs text-amber-700 font-semibold">
-            This is a system role. You can modify its permissions, but it cannot be deleted or renamed.
-          </p>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-[#f0f3ff] p-1 rounded-xl w-fit">
-        {[
-          { key: 'permissions', label: 'Permissions', icon: Shield },
-          { key: 'members', label: `Members (${role.members?.length || 0})`, icon: Users },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all',
-              activeTab === tab.key
-                ? 'bg-white text-[#151c27] shadow-sm border border-[#c7c4d8]'
-                : 'text-[#777587] hover:text-[#464555]'
-            )}
-          >
-            <tab.icon size={13} /> {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'permissions' ? (
-        <>
-          {/* Quick actions */}
-          {!isRootAdmin && (
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
-              <button onClick={handleSelectAll} className="text-xs font-bold text-[#3525cd] hover:underline">
-                Select All
-              </button>
-              <span className="text-[#c7c4d8]">·</span>
-              <button onClick={handleDeselectAll} className="text-xs font-bold text-[#777587] hover:underline">
-                Deselect All
-              </button>
-            </div>
-          )}
-
-          {/* Permission modules — own scroll container so header/tabs stay pinned */}
-          <div className={cn(
-            'space-y-3 overflow-y-auto pr-1',
-            'max-h-[calc(100vh-18rem)]',
-            dirty && !isRootAdmin ? 'pb-16' : 'pb-2'
-          )}>
+      {/* ── SCROLLABLE BODY — only this region scrolls ───────────────────────── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {activeTab === 'permissions' ? (
+          <div className={cn('space-y-3 pr-1', dirty && !isRootAdmin ? 'pb-16' : 'pb-2')}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
@@ -473,37 +475,38 @@ export default function PermissionMatrix() {
               />
             ))}
           </div>
+        ) : (
+          <div className="bg-white border border-[#e7eefe] rounded-xl p-4">
+            <MembersPanel members={role.members} roleId={id} />
+          </div>
+        )}
+      </div>
+      {/* ── END SCROLLABLE BODY ──────────────────────────────────────────────── */}
 
-          {/* Bottom save bar — fixed to viewport bottom, clears the sidebar */}
-          {!isRootAdmin && dirty && (
-            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-20 bg-white border-t border-[#e7eefe] py-3 px-4 md:px-7 flex items-center justify-between shadow-lg">
-              <p className="text-xs text-[#777587] font-semibold">
-                You have unsaved permission changes.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setSelectedIds(new Set(role.permission_ids || []));
-                    setDirty(false);
-                  }}
-                  className="text-xs font-semibold text-[#777587] hover:text-[#464555] px-3 py-2"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={() => saveMutation.mutate()}
-                  disabled={saveMutation.isPending}
-                  className="flex items-center gap-1.5 bg-[#3525cd] text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-[#2a1fb0] disabled:opacity-60"
-                >
-                  <Save size={13} /> {saveMutation.isPending ? 'Saving…' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="bg-white border border-[#e7eefe] rounded-xl p-4">
-          <MembersPanel members={role.members} roleId={id} />
+      {/* Save bar — fixed to viewport bottom */}
+      {!isRootAdmin && dirty && (
+        <div className="fixed bottom-0 left-0 md:left-64 right-0 z-20 bg-white border-t border-[#e7eefe] py-3 px-4 md:px-7 flex items-center justify-between shadow-lg">
+          <p className="text-xs text-[#777587] font-semibold">
+            You have unsaved permission changes.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSelectedIds(new Set(role.permission_ids || []));
+                setDirty(false);
+              }}
+              className="text-xs font-semibold text-[#777587] hover:text-[#464555] px-3 py-2"
+            >
+              Discard
+            </button>
+            <button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              className="flex items-center gap-1.5 bg-[#3525cd] text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-[#2a1fb0] disabled:opacity-60"
+            >
+              <Save size={13} /> {saveMutation.isPending ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       )}
 
