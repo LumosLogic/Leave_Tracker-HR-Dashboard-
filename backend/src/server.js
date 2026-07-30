@@ -49,6 +49,10 @@ const biometricRouter      = require('./modules/biometric/biometric.routes');
 const biometricPush        = require('./modules/biometric/biometricPush.handler');
 const biometricHeartbeat   = require('./modules/biometric/biometricHeartbeat.handler');
 
+// ── Phase 1: RBAC ─────────────────────────────────────────────────────────────
+const rolesRouter          = require('./modules/roles/roles.routes');
+const permissionsRouter    = require('./modules/permissions/permissions.routes');
+
 // ── Employee Profile V2 ───────────────────────────────────────────────────────
 const profileOverview      = require('./modules/employee-profile/overview.routes');
 const profilePersonal      = require('./modules/employee-profile/personal.routes');
@@ -165,6 +169,10 @@ app.use('/api/onboarding',     onboardingRouter);
 app.use('/api/exit',           exitRouter);
 app.use('/api/branches',       branchesRouter);
 app.use('/api/biometric',      biometricRouter);
+
+// ── Phase 1: RBAC routes ──────────────────────────────────────────────────────
+app.use('/api/roles',          rolesRouter);
+app.use('/api/permissions',    permissionsRouter);
 
 // ── Employee Profile V2 routes ────────────────────────────────────────────────
 app.use('/api/profile',        profileOverview);

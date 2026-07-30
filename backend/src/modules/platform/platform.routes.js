@@ -6,6 +6,7 @@ const { supabase } = require('../../config/db');
 const { JWT_SECRET, platformAdminAuth } = require('../../middleware/auth');
 const { sendMail, orgApprovedHtml, orgRejectedHtml } = require('../../services/emailService');
 const { generateUniqueSlug } = require('../../utils/helpers');
+const { seedSystemRolesForOrg } = require('../../services/permissionService');
 
 // ─── All Feature Keys ─────────────────────────────────────────────────────────
 const ALL_FEATURE_KEYS = [
@@ -246,6 +247,11 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
       late_threshold: '09:30', early_exit_threshold: '17:00',
       half_day_hours: 4.5, work_days: '1,2,3,4,5',
     });
+
+    // Seed RBAC system roles for the new org (fire-and-forget — non-critical)
+    seedSystemRolesForOrg(org.id, user.id).catch(err =>
+      console.error('[platform] seedSystemRolesForOrg failed for org', org.id, err.message)
+    );
 
     // Update request status
     await supabase.from('org_registration_requests').update({

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
-  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search,
+  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -57,6 +57,7 @@ const NAV_SECTIONS = [
   ]},
   { id: 'tour-nav-account', title: 'Administration', items: [
     { to: '/root/pending-approvals',  label: 'Pending Approvals',   Icon: ClipboardList },
+    { to: '/root/roles',              label: 'Role Management',     Icon: KeyRound },
     { to: '/root/org-settings',       label: 'Org Settings',        Icon: Building2 },
     { to: '/root/manage-root-admins', label: 'Manage Root Admins',  Icon: Shield },
     { to: '/root/settings',           label: 'Settings',            Icon: Settings },

@@ -49,6 +49,8 @@ import BiometricPinMapping   from '@/pages/BiometricPinMapping';
 import BiometricLogs         from '@/pages/BiometricLogs';
 import BiometricSettings     from '@/pages/BiometricSettings';
 import PendingApprovals      from '@/pages/PendingApprovals';
+import RoleManagement        from '@/pages/RoleManagement';
+import PermissionMatrix      from '@/pages/PermissionMatrix';
 
 // ── Employee portal pages ──
 import EmployeeHome            from '@/pages/EmployeeHome';
@@ -249,6 +251,8 @@ function AppRoutes() {
         <Route path="/pending-approvals"       element={<PendingApprovals />} />
         <Route path="/root/manage-hr"            element={<ManageHR />} />
         <Route path="/root/manage-root-admins"  element={<ManageRootAdmins />} />
+        <Route path="/root/roles"               element={<RoleManagement />} />
+        <Route path="/root/roles/:id/permissions" element={<PermissionMatrix />} />
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
         <Route path="/root/org-settings"    element={<OrgSettings />} />
