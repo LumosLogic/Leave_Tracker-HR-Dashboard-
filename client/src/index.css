@@ -6,6 +6,12 @@
 
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  
   html { font-size: 14px; scroll-behavior: smooth; }
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -14,7 +20,10 @@
     background-color: #f9f9ff;
     color: #151c27;
   }
-
+  
+  #root {
+    height: 100%;
+  }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(53,37,205,.15); border-radius: 99px; }
