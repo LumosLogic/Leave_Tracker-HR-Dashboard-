@@ -7,7 +7,7 @@ import { Header } from '@/components/layout/Header';
 import {
   Home, FileText, Clock, UserCircle, LogOut, Menu, X, CalendarDays,
   FolderOpen, Receipt, DollarSign, Target, ClipboardList, UserCheck,
-  LogOut as Exit, Bell, Megaphone, Search,
+  LogOut as Exit, Bell, Megaphone, Search, ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -49,6 +49,23 @@ function EmployeeSidebar({ onClose, onMenuClick, onSearchOpen }) {
     refetchInterval: 30000,
   });
   const unread = countData?.count || 0;
+
+  // Check if this user is a department head — show Team Approvals nav item if yes
+  const { data: deptHeadData } = useQuery({
+    queryKey: ['is-dept-head'],
+    queryFn:  () => apiGet('/leaves/is-dept-head').catch(() => ({ is_dept_head: false })),
+    staleTime: 5 * 60 * 1000,
+  });
+  const isDeptHead = deptHeadData?.is_dept_head === true;
+
+  // Count of pending dept approvals for badge
+  const { data: pendingDept = [] } = useQuery({
+    queryKey: ['dept-pending-leaves'],
+    queryFn:  () => isDeptHead ? apiGet('/leaves/pending-department').catch(() => []) : Promise.resolve([]),
+    enabled:  isDeptHead,
+    refetchInterval: 60000,
+  });
+  const pendingDeptCount = pendingDept.length;
 
   function handleLogout() { logout(); navigate('/login'); }
 
@@ -108,6 +125,34 @@ function EmployeeSidebar({ onClose, onMenuClick, onSearchOpen }) {
             </div>
           </div>
         ))}
+
+        {/* Team Approvals — only visible to Department Heads */}
+        {isDeptHead && (
+          <div className="mb-2">
+            <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">My Team</p>
+            <div className="flex flex-col gap-0.5">
+              <NavLink to="/portal/dept-approvals" onClick={onClose}
+                className={({ isActive }) => cn(
+                  'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+                  isActive
+                    ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+                    : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                )}>
+                {({ isActive }) => (
+                  <>
+                    <ClipboardCheck size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
+                    Team Approvals
+                    {pendingDeptCount > 0 && (
+                      <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full">
+                        {pendingDeptCount > 99 ? '99+' : pendingDeptCount}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            </div>
+          </div>
+        )}
       </nav>
 
       <div id="tour-emp-user-card" className="p-3 border-t border-[#e7eefe]">

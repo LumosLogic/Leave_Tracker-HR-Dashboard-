@@ -10,6 +10,7 @@ import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
 import { countWorkingDaysInRange } from '@/lib/utils';
+import { LeaveTimeline } from '@/components/LeaveTimeline';
 
 const ALL_LEAVE_TYPES = [
   { value: 'annual',      label: 'Annual Leave'    },
@@ -26,10 +27,21 @@ const ALL_LEAVE_TYPES = [
 ];
 
 const STATUS_STYLES = {
-  pending:   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   icon: <Clock size={13} /> },
-  approved:  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCircle2 size={13} /> },
-  rejected:  { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    icon: <XCircle size={13} /> },
-  cancelled: { bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-200',   icon: <XCircle size={13} /> },
+  pending:      { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   icon: <Clock size={13} /> },
+  pending_dept: { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    icon: <Clock size={13} /> },
+  pending_root: { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200',  icon: <Clock size={13} /> },
+  approved:     { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCircle2 size={13} /> },
+  rejected:     { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    icon: <XCircle size={13} /> },
+  cancelled:    { bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-200',   icon: <XCircle size={13} /> },
+};
+
+const STATUS_LABELS = {
+  pending:      'Pending',
+  pending_dept: 'Pending Dept. Approval',
+  pending_root: 'Pending Final Approval',
+  approved:     'Approved',
+  rejected:     'Rejected',
+  cancelled:    'Cancelled',
 };
 
 const LEAVE_TYPE_COLORS = {
@@ -830,10 +842,12 @@ export default function MyLeaves() {
                 return (
                   <div key={l.id}
                     className={`bg-white rounded-xl border border-[#c7c4d8] p-4 shadow-card hover:shadow-card-hover transition-all
-                      ${l.status === 'pending'   ? 'border-l-4 border-l-amber-400'   : ''}
-                      ${l.status === 'approved'  ? 'border-l-4 border-l-emerald-400' : ''}
-                      ${l.status === 'rejected'  ? 'border-l-4 border-l-rose-400'    : ''}
-                      ${l.status === 'cancelled' ? 'border-l-4 border-l-slate-300'   : ''}`}
+                      ${l.status === 'pending'      ? 'border-l-4 border-l-amber-400'   : ''}
+                      ${l.status === 'pending_dept' ? 'border-l-4 border-l-blue-400'    : ''}
+                      ${l.status === 'pending_root' ? 'border-l-4 border-l-violet-400'  : ''}
+                      ${l.status === 'approved'     ? 'border-l-4 border-l-emerald-400' : ''}
+                      ${l.status === 'rejected'     ? 'border-l-4 border-l-rose-400'    : ''}
+                      ${l.status === 'cancelled'    ? 'border-l-4 border-l-slate-300'   : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
@@ -854,7 +868,7 @@ export default function MyLeaves() {
                             </span>
                           )}
                           <span className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border font-bold ${s.bg} ${s.text} ${s.border}`}>
-                            {s.icon} {l.status.charAt(0).toUpperCase() + l.status.slice(1)}
+                            {s.icon} {STATUS_LABELS[l.status] || l.status}
                           </span>
                         </div>
                         {/* Dates + days */}
@@ -869,10 +883,8 @@ export default function MyLeaves() {
                         {/* Applied date */}
                         <p className="text-[0.65rem] text-[#9ca3af]">Applied {l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
 
-                        {/* Approval timeline — shown when not pending */}
-                        {showTimeline && (
-                          <ApprovalTimeline status={l.status} />
-                        )}
+                        {/* Approval timeline — shown for 2-step workflow leaves */}
+                        <LeaveTimeline leave={l} />
 
                         {l.reason && <p className="text-xs text-[#777587] mt-1.5 italic">"{l.reason}"</p>}
                         {/* Approved by */}

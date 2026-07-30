@@ -215,6 +215,66 @@ function holidayReminderHtml(holiday) {
   );
 }
 
+// Email to department head when a new leave request needs their review
+function leaveDeptApprovalHtml(employee, leave, deptHeadName) {
+  const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
+  return WRAP(
+    HEADER('Leave Request Needs Your Approval', 'HR Tracker — Department Head Action Required') +
+    BODY(`
+      <p style="margin:0 0 16px;">Hello <strong>${deptHeadName || 'Department Head'}</strong>,</p>
+      <p style="margin:0 0 16px;">A leave request from your department requires your review before it proceeds to the Root Admin.</p>
+      <table style="width:100%;border-collapse:collapse;">
+        ${ROW('Employee',   `<strong>${employee.name}</strong>`)}
+        ${ROW('Department', employee.department || '-')}
+        ${ROW('Leave Type', type)}
+        ${ROW('From Date',  leave.start_date)}
+        ${ROW('To Date',    leave.end_date)}
+        ${ROW('Duration',   leave.leave_time === 'half' ? 'Half Day' : `${leave.start_date} to ${leave.end_date}`)}
+        ${ROW('Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
+      </table>
+      <div style="margin-top:20px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
+        <strong>Your role:</strong> You can recommend approval by forwarding this request to the Root Admin.
+        You cannot reject — only the Root Admin can reject a leave request.
+      </div>
+      <div style="margin-top:24px;text-align:center;">
+        <a href="${process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com'}/portal/dept-approvals"
+           style="display:inline-block;background:linear-gradient(135deg,#3525cd,#712ae2);color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;">
+          Review Leave Request →
+        </a>
+      </div>
+      ${FOOTER}
+    `)
+  );
+}
+
+// Email to root admin when dept head forwards a leave for final decision
+function leaveForwardedToRootHtml(employee, leave, deptHeadName) {
+  const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
+  return WRAP(
+    HEADER('Leave Request Awaiting Final Approval', 'HR Tracker — Root Admin Action Required') +
+    BODY(`
+      <p style="margin:0 0 16px;">A leave request has been reviewed and forwarded by the Department Head and now requires your final decision.</p>
+      <table style="width:100%;border-collapse:collapse;">
+        ${ROW('Employee',       `<strong>${employee.name}</strong>`)}
+        ${ROW('Department',     employee.department || '-')}
+        ${ROW('Leave Type',     type)}
+        ${ROW('From Date',      leave.start_date)}
+        ${ROW('To Date',        leave.end_date)}
+        ${ROW('Reason',         `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
+        ${ROW('Forwarded By',   `<strong>${deptHeadName}</strong> (Department Head)`)}
+        ${ROW('Dept Head Note', 'Recommended for approval')}
+      </table>
+      <div style="margin-top:24px;text-align:center;">
+        <a href="${process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com'}/root/pending-approvals"
+           style="display:inline-block;background:linear-gradient(135deg,#3525cd,#712ae2);color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 28px;border-radius:8px;">
+          Give Final Decision →
+        </a>
+      </div>
+      ${FOOTER}
+    `)
+  );
+}
+
 // Org registration request received — notify platform admin
 function orgRequestReceivedHtml(req) {
   return WRAP(
@@ -299,4 +359,4 @@ function passwordResetHtml(user, resetLink) {
   );
 }
 
-module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };
+module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };

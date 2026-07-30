@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { fmtDate } from '@/lib/utils';
 
@@ -40,11 +40,18 @@ export default function PendingApprovals() {
   const [page,      setPage]      = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // ── Fetch pending leaves ────────────────────────────────────────────────────
+  // ── Fetch pending leaves (old flow: status=pending) ────────────────────────
   const { data: _leaves = [], isLoading: loadLeaves } = useQuery({
     queryKey: ['pending-approvals-leaves'],
     queryFn:  () => apiGet('/leaves').catch(() => []),
     select:   d => (Array.isArray(d) ? d : []).filter(l => l.status === 'pending'),
+    refetchInterval: 30000,
+  });
+
+  // ── Fetch pending root leaves (new flow: status=pending_root) ──────────────
+  const { data: _rootLeaves = [], isLoading: loadRootLeaves } = useQuery({
+    queryKey: ['pending-root-leaves'],
+    queryFn:  () => apiGet('/leaves/pending-root').catch(() => []),
     refetchInterval: 30000,
   });
 
@@ -56,11 +63,12 @@ export default function PendingApprovals() {
     refetchInterval: 30000,
   });
 
-  const isLoading = loadLeaves || loadRegs;
+  const isLoading = loadLeaves || loadRegs || loadRootLeaves;
 
   // ── Mutations ───────────────────────────────────────────────────────────────
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['pending-approvals-leaves'] });
+    qc.invalidateQueries({ queryKey: ['pending-root-leaves'] });
     qc.invalidateQueries({ queryKey: ['pending-approvals-regs'] });
     qc.invalidateQueries({ queryKey: ['root-dashboard'] });
     qc.invalidateQueries({ queryKey: ['root-pending-regs'] });
@@ -77,6 +85,18 @@ export default function PendingApprovals() {
     onSuccess: () => { toast('Leave rejected', 'warning'); invalidate(); },
     onError:   e  => toast(e.message, 'error'),
   });
+
+  // New-flow final approve / reject
+  const finalApproveMut = useMutation({
+    mutationFn: id => apiPost(`/leaves/${id}/final-approve`, {}),
+    onSuccess: () => { toast('Leave approved!', 'success'); invalidate(); },
+    onError:   e  => toast(e.message, 'error'),
+  });
+  const finalRejectMut = useMutation({
+    mutationFn: id => apiPost(`/leaves/${id}/final-reject`, {}),
+    onSuccess: () => { toast('Leave rejected', 'warning'); invalidate(); },
+    onError:   e  => toast(e.message, 'error'),
+  });
   const approveRegMut = useMutation({
     mutationFn: id => apiPut(`/regularization/${id}/review`, { status: 'approved' }),
     onSuccess: () => { toast('Regularization approved!', 'success'); invalidate(); },
@@ -88,30 +108,33 @@ export default function PendingApprovals() {
     onError:   e  => toast(e.message, 'error'),
   });
 
-  const isBusy = approveLeaveMut.isPending || rejectLeaveMut.isPending || approveRegMut.isPending || rejectRegMut.isPending;
+  const isBusy = approveLeaveMut.isPending || rejectLeaveMut.isPending || approveRegMut.isPending || rejectRegMut.isPending || finalApproveMut.isPending || finalRejectMut.isPending;
 
   // ── Build unified list ──────────────────────────────────────────────────────
   const isWfh = l => l.leave_type === 'wfh' || l.leave_time === 'wfh';
 
-  const leaves     = _leaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '' }));
+  const leaves     = _leaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'old' }));
+  const rootLeaves = _rootLeaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'new' }));
   const regs       = _regs.map(r => ({ ...r, _kind: 'reg', _name: r.user_name, _dept: r.user_department || '' }));
-  const all        = [...leaves, ...regs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const all        = [...leaves, ...rootLeaves, ...regs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const leaveCount = leaves.filter(l => l._kind === 'leave').length;
-  const wfhCount   = leaves.filter(l => l._kind === 'wfh').length;
-  const regCount   = regs.length;
-  const totalCount = all.length;
+  const leaveCount     = leaves.filter(l => l._kind === 'leave').length;
+  const wfhCount       = leaves.filter(l => l._kind === 'wfh').length;
+  const regCount       = regs.length;
+  const rootLeaveCount = rootLeaves.length;
+  const totalCount     = all.length;
 
   const summaryCards = [
-    { label: 'Total Pending',           value: totalCount,  icon: <ClipboardList size={16} />, bg: 'bg-amber-50',   text: 'text-amber-700',  onClick: () => setTab('all') },
-    { label: 'Leave Requests',          value: leaveCount,  icon: <Umbrella size={16} />,      bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',  onClick: () => setTab('leave') },
-    { label: 'WFH Requests',            value: wfhCount,    icon: <Home size={16} />,           bg: 'bg-sky-50',     text: 'text-sky-700',    onClick: () => setTab('wfh') },
-    { label: 'Regularization Requests', value: regCount,    icon: <Clock size={16} />,          bg: 'bg-orange-50',  text: 'text-orange-700', onClick: () => setTab('reg') },
+    { label: 'Total Pending',           value: totalCount,     icon: <ClipboardList size={16} />, bg: 'bg-amber-50',   text: 'text-amber-700',  onClick: () => setTab('all') },
+    { label: 'Pending Final Approval',  value: rootLeaveCount, icon: <CheckCircle2 size={16} />,  bg: 'bg-violet-50',  text: 'text-violet-700', onClick: () => setTab('final') },
+    { label: 'Leave Requests',          value: leaveCount,     icon: <Umbrella size={16} />,      bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',  onClick: () => setTab('leave') },
+    { label: 'Regularization',          value: regCount,       icon: <Clock size={16} />,          bg: 'bg-orange-50',  text: 'text-orange-700', onClick: () => setTab('reg') },
   ];
 
   const TABS = [
     { key: 'all',   label: `All (${totalCount})` },
-    { key: 'leave', label: `Leave (${leaveCount})` },
+    { key: 'final', label: `Final Approval (${rootLeaveCount})`, highlight: rootLeaveCount > 0 },
+    { key: 'leave', label: `Legacy Leave (${leaveCount})` },
     { key: 'wfh',   label: `WFH (${wfhCount})` },
     { key: 'reg',   label: `Regularization (${regCount})` },
   ];
@@ -120,7 +143,12 @@ export default function PendingApprovals() {
   const depts = [...new Set(all.map(r => r._dept).filter(Boolean))].sort();
 
   const filtered = all.filter(r => {
+    if (tab === 'final') return r._flow === 'new';
     if (tab !== 'all' && r._kind !== tab) return false;
+    if (tab === 'all' || tab === 'leave' || tab === 'wfh') {
+      // Exclude new-flow (pending_root) leaves from 'all/leave/wfh' tabs to avoid double-listing
+      // They appear in the 'final' tab
+    }
     if (deptFilt && r._dept !== deptFilt) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -134,10 +162,12 @@ export default function PendingApprovals() {
 
   function handleApprove(item) {
     if (item._kind === 'reg') approveRegMut.mutate(item.id);
+    else if (item._flow === 'new') finalApproveMut.mutate(item.id);
     else approveLeaveMut.mutate(item.id);
   }
   function handleReject(item) {
     if (item._kind === 'reg') rejectRegMut.mutate(item.id);
+    else if (item._flow === 'new') finalRejectMut.mutate(item.id);
     else rejectLeaveMut.mutate(item.id);
   }
 
@@ -178,12 +208,15 @@ export default function PendingApprovals() {
         <div className="flex gap-1 px-5 pt-4 border-b border-[#e7eefe]">
           {TABS.map(t => (
             <button key={t.key} onClick={() => { setTab(t.key); setPage(1); }}
-              className={`px-3 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all ${
+              className={`px-3 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 ${
                 tab === t.key
                   ? 'border-[#3525cd] text-[#3525cd] bg-[#f0f3ff]'
                   : 'border-transparent text-[#777587] hover:text-[#151c27]'
               }`}>
               {t.label}
+              {t.highlight && tab !== t.key && (
+                <span className="w-2 h-2 rounded-full bg-violet-500" />
+              )}
             </button>
           ))}
         </div>
@@ -244,9 +277,18 @@ export default function PendingApprovals() {
                       {item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pending
-                      </span>
+                      {item._flow === 'new' ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> Pending Final Approval
+                          </span>
+                          <p className="text-[0.58rem] text-emerald-600 font-semibold">✓ Dept Head Approved</p>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pending
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">

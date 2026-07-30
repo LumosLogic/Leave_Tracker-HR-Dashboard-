@@ -58,6 +58,7 @@ import MyLeaves                from '@/pages/MyLeaves';
 import MyAttendance            from '@/pages/MyAttendance';
 import TeamCalendar            from '@/pages/TeamCalendar';
 import EmployeePortalProfile   from '@/pages/EmployeePortalProfile';
+import DeptHeadApprovals       from '@/pages/DeptHeadApprovals';
 
 // Shows a locked screen when a feature is disabled for the org
 function FeatureRoute({ featureKey, children }) {
@@ -276,7 +277,8 @@ function AppRoutes() {
         <Route path="/portal/regularization" element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/portal/notifications"  element={<NotificationCenter />} />
         <Route path="/portal/announcements"  element={<FeatureRoute featureKey="announcements"><AnnouncementsPage /></FeatureRoute>} />
-        <Route path="/portal/profile"        element={<EmployeePortalProfile />} />
+        <Route path="/portal/profile"         element={<EmployeePortalProfile />} />
+        <Route path="/portal/dept-approvals"  element={<DeptHeadApprovals />} />
       </Route>
 
       <Route path="*" element={<Navigate to={token ? home : '/'} replace />} />
