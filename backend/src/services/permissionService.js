@@ -13,8 +13,10 @@ const { pool } = require('../config/db');
 
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 // key: `${userId}:${orgId}`   value: { permissions: string[], expiresAt: number }
-const _cache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const _cache    = new Map();
+const CACHE_TTL_MS  = 5 * 60 * 1000;  // 5 minutes per entry
+const CACHE_MAX     = 5000;            // evict oldest when over this size
+const CLEANUP_EVERY = 10 * 60 * 1000; // periodic full sweep every 10 minutes
 
 function _cacheKey(userId, orgId) {
   return `${userId}:${orgId}`;
@@ -31,11 +33,27 @@ function _getCached(userId, orgId) {
 }
 
 function _setCache(userId, orgId, permissions) {
+  // Evict oldest entry when cache is full (prevents unbounded growth)
+  if (_cache.size >= CACHE_MAX) {
+    const firstKey = _cache.keys().next().value;
+    if (firstKey !== undefined) _cache.delete(firstKey);
+  }
   _cache.set(_cacheKey(userId, orgId), {
     permissions,
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
 }
+
+// Periodic cleanup: sweep entire cache and remove expired entries.
+// Prevents memory accumulation from entries that were never re-accessed.
+const _cleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of _cache.entries()) {
+    if (now > entry.expiresAt) _cache.delete(key);
+  }
+}, CLEANUP_EVERY);
+// Allow the process to exit normally even if this timer is active
+if (_cleanupTimer.unref) _cleanupTimer.unref();
 
 // ─── Core: Resolve permissions ────────────────────────────────────────────────
 

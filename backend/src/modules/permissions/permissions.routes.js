@@ -3,11 +3,12 @@ const router  = express.Router();
 const { supabase } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
+// Fix H3: require at module top, not inside handler bodies
+const { resolvePermissions } = require('../../services/permissionService');
 
 // ─── GET /api/permissions ─────────────────────────────────────────────────────
 // Returns all available permissions grouped by module.
-// Used by the Permission Matrix UI to render the grid.
-// Any admin can view — employees do not need to access this.
+// Admin-only: employees never need to browse the permission catalog.
 router.get('/', auth, adminOnly, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -35,29 +36,30 @@ router.get('/', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ─── GET /api/permissions/user/:userId ────────────────────────────────────────
-// Returns the effective permission strings for a user within the org.
-// Useful for debugging and for the "My Permissions" view.
-router.get('/user/:userId', auth, adminOnly, async (req, res) => {
+// ─── GET /api/permissions/me ──────────────────────────────────────────────────
+// Returns the calling user's own effective permissions.
+// Must come before /user/:userId to avoid shadowing.
+router.get('/me', auth, async (req, res) => {
   try {
-    const oId    = orgId(req);
-    const userId = parseInt(req.params.userId);
-
-    const { resolvePermissions } = require('../../services/permissionService');
-    const permissions = await resolvePermissions(userId, oId);
-    res.json({ user_id: userId, org_id: oId, permissions });
+    const permissions = await resolvePermissions(req.user.id, req.user.organization_id);
+    res.json({ permissions });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── GET /api/permissions/me ──────────────────────────────────────────────────
-// Returns the calling user's own effective permissions.
-router.get('/me', auth, async (req, res) => {
+// ─── GET /api/permissions/user/:userId ────────────────────────────────────────
+// Returns effective permission strings for a given user (for debugging / admin review).
+router.get('/user/:userId', auth, adminOnly, async (req, res) => {
   try {
-    const { resolvePermissions } = require('../../services/permissionService');
-    const permissions = await resolvePermissions(req.user.id, req.user.organization_id);
-    res.json({ permissions });
+    const oId    = orgId(req);
+    const userId = parseInt(req.params.userId, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const permissions = await resolvePermissions(userId, oId);
+    res.json({ user_id: userId, org_id: oId, permissions });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

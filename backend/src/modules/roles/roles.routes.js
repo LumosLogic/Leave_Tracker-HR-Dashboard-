@@ -1,3 +1,25 @@
+/**
+ * roles.routes.js
+ *
+ * IMPORTANT — Route ordering is deliberate:
+ *   Static-path routes (/user/:userId) MUST come before parameterised (:id)
+ *   routes, otherwise Express matches /user/5 as /:id with id='user'.
+ *
+ * Order:
+ *   1. GET  /                  — list all roles for org
+ *   2. GET  /user/:userId      — get roles assigned to a user   ← BEFORE /:id
+ *   3. PUT  /user/:userId      — replace roles for a user        ← BEFORE /:id
+ *   4. POST /                  — create custom role
+ *   5. GET  /:id               — get single role detail
+ *   6. PUT  /:id               — rename/edit custom role
+ *   7. DELETE /:id             — delete custom role
+ *   8. GET  /:id/permissions   — get role's permission set
+ *   9. PUT  /:id/permissions   — replace role's permission set
+ *  10. GET  /:id/members       — list members of a role
+ *  11. POST /:id/members       — add member to a role
+ *  12. DELETE /:id/members/:userId — remove member from role
+ */
+
 const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
@@ -5,19 +27,44 @@ const { auth, adminOnly, rootAdminOnly } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { clearUserCache, clearOrgCache } = require('../../services/permissionService');
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Validation helpers ───────────────────────────────────────────────────────
+
+function parseId(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function validatePermissionIds(ids) {
+  if (!Array.isArray(ids)) return 'permission_ids must be an array';
+  for (const id of ids) {
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      return `Invalid permission_id: "${id}" — must be a positive integer`;
+    }
+  }
+  return null; // valid
+}
+
+function validateRoleIds(ids) {
+  if (!Array.isArray(ids)) return 'role_ids must be an array';
+  for (const id of ids) {
+    const n = parseInt(id, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      return `Invalid role_id: "${id}" — must be a positive integer`;
+    }
+  }
+  return null; // valid
+}
 
 function slugify(name) {
   return 'custom_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, '');
 }
 
-// ─── GET /api/roles ───────────────────────────────────────────────────────────
-// List all roles for the org with permission count and member count.
+// ─── 1. GET /api/roles — list all roles for org ───────────────────────────────
 router.get('/', auth, adminOnly, async (req, res) => {
   try {
     const oId = orgId(req);
 
-    // Roles for this org
     const { data: roles, error } = await supabase
       .from('roles')
       .select('id, name, slug, description, is_system_role, created_at')
@@ -30,7 +77,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
 
     const roleIds = roles.map(r => r.id);
 
-    // Permission counts per role
+    // Permission counts per role (single batched query, no N+1)
     const pcRes = await pool.query(
       `SELECT role_id, COUNT(*) AS count
        FROM role_permissions
@@ -39,9 +86,9 @@ router.get('/', auth, adminOnly, async (req, res) => {
       [roleIds]
     );
     const permCounts = {};
-    pcRes.rows.forEach(r => { permCounts[r.role_id] = parseInt(r.count); });
+    pcRes.rows.forEach(r => { permCounts[r.role_id] = parseInt(r.count, 10); });
 
-    // Member counts per role
+    // Member counts per role (single batched query, no N+1)
     const mcRes = await pool.query(
       `SELECT role_id, COUNT(*) AS count
        FROM user_roles
@@ -50,7 +97,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
       [roleIds, oId]
     );
     const memberCounts = {};
-    mcRes.rows.forEach(r => { memberCounts[r.role_id] = parseInt(r.count); });
+    mcRes.rows.forEach(r => { memberCounts[r.role_id] = parseInt(r.count, 10); });
 
     res.json(roles.map(r => ({
       ...r,
@@ -62,412 +109,13 @@ router.get('/', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ─── GET /api/roles/:id ───────────────────────────────────────────────────────
-// Get a single role with its permissions and member list.
-router.get('/:id', auth, adminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-
-    const { data: role, error } = await supabase
-      .from('roles')
-      .select('id, name, slug, description, is_system_role, created_at')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-
-    // Get permission IDs for this role
-    const { data: rp } = await supabase
-      .from('role_permissions')
-      .select('permission_id')
-      .eq('role_id', roleId);
-
-    const permissionIds = (rp || []).map(r => r.permission_id);
-
-    // Get members
-    const { data: members } = await supabase
-      .from('user_roles')
-      .select('user_id, assigned_at, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, role)')
-      .eq('role_id', roleId)
-      .eq('org_id', oId);
-
-    res.json({
-      ...role,
-      permission_ids: permissionIds,
-      members: (members || []).map(m => ({
-        ...m.users,
-        assigned_at: m.assigned_at,
-      })),
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── POST /api/roles ──────────────────────────────────────────────────────────
-// Create a custom role. Root Admin only.
-router.post('/', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId = orgId(req);
-    const { name, description } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Role name is required' });
-    }
-
-    const trimmedName = name.trim();
-    const slug = slugify(trimmedName) + '_' + Date.now();
-
-    const { data, error } = await supabase
-      .from('roles')
-      .insert({
-        org_id:         oId,
-        name:           trimmedName,
-        slug,
-        description:    description || '',
-        is_system_role: false,
-        created_by:     req.user.id,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === '23505') {
-        return res.status(400).json({ error: `A role named "${trimmedName}" already exists in this organization` });
-      }
-      throw error;
-    }
-
-    res.json({ ...data, permission_count: 0, member_count: 0 });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── PUT /api/roles/:id ───────────────────────────────────────────────────────
-// Update name/description of a custom role. Cannot edit system roles' metadata.
-router.put('/:id', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-    const { name, description } = req.body;
-
-    const { data: existing } = await supabase
-      .from('roles')
-      .select('id, is_system_role')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!existing) return res.status(404).json({ error: 'Role not found' });
-    if (existing.is_system_role) {
-      return res.status(400).json({ error: 'System roles cannot be renamed. You can adjust their permissions.' });
-    }
-
-    const update = {};
-    if (name)        update.name        = name.trim();
-    if (description !== undefined) update.description = description;
-
-    const { data, error } = await supabase
-      .from('roles')
-      .update(update)
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === '23505') {
-        return res.status(400).json({ error: `A role named "${name}" already exists` });
-      }
-      throw error;
-    }
-
-    clearOrgCache(oId);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── DELETE /api/roles/:id ────────────────────────────────────────────────────
-// Delete a custom role. System roles cannot be deleted.
-// Fails if users are still assigned to this role.
-router.delete('/:id', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id, name, is_system_role')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-    if (role.is_system_role) {
-      return res.status(400).json({ error: 'System roles cannot be deleted.' });
-    }
-
-    // Check for assigned users
-    const { count } = await supabase
-      .from('user_roles')
-      .select('id', { count: 'exact', head: true })
-      .eq('role_id', roleId)
-      .eq('org_id', oId);
-
-    if (count > 0) {
-      return res.status(400).json({
-        error: `Cannot delete role "${role.name}" — ${count} user(s) are still assigned to it. Remove them first.`,
-        member_count: count,
-      });
-    }
-
-    const { error } = await supabase
-      .from('roles')
-      .delete()
-      .eq('id', roleId)
-      .eq('org_id', oId);
-
-    if (error) throw error;
-
-    clearOrgCache(oId);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/roles/:id/permissions ──────────────────────────────────────────
-// Get all permissions assigned to a role.
-router.get('/:id/permissions', auth, adminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-
-    // Verify role belongs to this org
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-
-    const { data, error } = await supabase
-      .from('role_permissions')
-      .select('permission_id, permissions(id, module_key, action, label)')
-      .eq('role_id', roleId);
-
-    if (error) throw error;
-
-    const permissions = (data || []).map(r => r.permissions).filter(Boolean);
-    res.json(permissions);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── PUT /api/roles/:id/permissions ──────────────────────────────────────────
-// Replace the full permission set for a role.
-// Accepts: { permission_ids: [1, 2, 3, ...] }
-// Clears existing permissions and re-inserts.
-router.put('/:id/permissions', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId          = orgId(req);
-    const roleId       = parseInt(req.params.id);
-    const { permission_ids } = req.body;
-
-    if (!Array.isArray(permission_ids)) {
-      return res.status(400).json({ error: 'permission_ids must be an array' });
-    }
-
-    // Verify role belongs to this org
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id, name')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Delete all existing role permissions
-      await client.query(
-        'DELETE FROM role_permissions WHERE role_id = $1',
-        [roleId]
-      );
-
-      // Insert new permissions (if any)
-      if (permission_ids.length > 0) {
-        const values = permission_ids.map((_, i) => `($1, $${i + 2})`).join(', ');
-        await client.query(
-          `INSERT INTO role_permissions (role_id, permission_id) VALUES ${values}
-           ON CONFLICT (role_id, permission_id) DO NOTHING`,
-          [roleId, ...permission_ids]
-        );
-      }
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-
-    // Invalidate cache for all users who have this role in this org
-    clearOrgCache(oId);
-
-    // Return updated permission list
-    const { data } = await supabase
-      .from('role_permissions')
-      .select('permission_id, permissions(id, module_key, action, label)')
-      .eq('role_id', roleId);
-
-    res.json((data || []).map(r => r.permissions).filter(Boolean));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/roles/:id/members ───────────────────────────────────────────────
-// Get users assigned to a role.
-router.get('/:id/members', auth, adminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('user_id, assigned_at, assigned_by, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, position, role)')
-      .eq('role_id', roleId)
-      .eq('org_id', oId)
-      .order('assigned_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.json((data || []).map(m => ({
-      ...m.users,
-      assigned_at: m.assigned_at,
-      assigned_by: m.assigned_by,
-    })));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── POST /api/roles/:id/members ─────────────────────────────────────────────
-// Assign a user to a role.
-// Body: { user_id: number }
-router.post('/:id/members', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-    const { user_id } = req.body;
-
-    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
-
-    // Verify role belongs to org
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id, name')
-      .eq('id', roleId)
-      .eq('org_id', oId)
-      .maybeSingle();
-
-    if (!role) return res.status(404).json({ error: 'Role not found' });
-
-    // Verify user belongs to org
-    const { data: user } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .eq('id', user_id)
-      .eq('organization_id', oId)
-      .maybeSingle();
-
-    if (!user) return res.status(404).json({ error: 'User not found in this organization' });
-
-    const { data, error } = await supabase
-      .from('user_roles')
-      .insert({ user_id, role_id: roleId, org_id: oId, assigned_by: req.user.id })
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === '23505') {
-        return res.status(400).json({ error: `${user.name} already has the "${role.name}" role` });
-      }
-      throw error;
-    }
-
-    clearUserCache(user_id, oId);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── DELETE /api/roles/:id/members/:userId ────────────────────────────────────
-// Remove a user from a role.
-router.delete('/:id/members/:userId', auth, rootAdminOnly, async (req, res) => {
-  try {
-    const oId    = orgId(req);
-    const roleId = parseInt(req.params.id);
-    const userId = parseInt(req.params.userId);
-
-    // Cannot remove yourself from Root Admin role
-    if (userId === req.user.id) {
-      const { data: role } = await supabase
-        .from('roles')
-        .select('slug')
-        .eq('id', roleId)
-        .maybeSingle();
-      if (role?.slug === 'root_admin') {
-        return res.status(400).json({ error: 'You cannot remove yourself from the Root Admin role.' });
-      }
-    }
-
-    const { error } = await supabase
-      .from('user_roles')
-      .delete()
-      .eq('role_id', roleId)
-      .eq('user_id', userId)
-      .eq('org_id', oId);
-
-    if (error) throw error;
-
-    clearUserCache(userId, oId);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GET /api/roles/user/:userId ──────────────────────────────────────────────
-// Get all roles assigned to a specific user.
+// ─── 2. GET /api/roles/user/:userId — get roles assigned to a user ────────────
+// MUST be before GET /:id to avoid Express shadowing this route.
 router.get('/user/:userId', auth, adminOnly, async (req, res) => {
   try {
     const oId    = orgId(req);
-    const userId = parseInt(req.params.userId);
+    const userId = parseId(req.params.userId);
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
 
     const { data, error } = await supabase
       .from('user_roles')
@@ -483,28 +131,39 @@ router.get('/user/:userId', auth, adminOnly, async (req, res) => {
   }
 });
 
-// ─── PUT /api/roles/user/:userId ──────────────────────────────────────────────
-// Replace all roles for a user (bulk assign).
-// Body: { role_ids: [1, 2, ...] }
+// ─── 3. PUT /api/roles/user/:userId — replace all roles for a user ────────────
+// MUST be before PUT /:id to avoid Express shadowing this route.
 router.put('/user/:userId', auth, rootAdminOnly, async (req, res) => {
   try {
     const oId    = orgId(req);
-    const userId = parseInt(req.params.userId);
-    const { role_ids } = req.body;
+    const userId = parseId(req.params.userId);
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
 
-    if (!Array.isArray(role_ids)) {
-      return res.status(400).json({ error: 'role_ids must be an array' });
-    }
+    const { role_ids } = req.body;
+    const validationError = validateRoleIds(role_ids);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    // Cast to integers
+    const safeRoleIds = role_ids.map(id => parseInt(id, 10));
+
+    // Ensure the target user exists in this org
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('id, name')
+      .eq('id', userId)
+      .eq('organization_id', oId)
+      .maybeSingle();
+    if (!targetUser) return res.status(404).json({ error: 'User not found in this organization' });
 
     // Ensure all provided roles belong to this org
-    if (role_ids.length > 0) {
+    if (safeRoleIds.length > 0) {
       const { count } = await supabase
         .from('roles')
         .select('id', { count: 'exact', head: true })
-        .in('id', role_ids)
+        .in('id', safeRoleIds)
         .eq('org_id', oId);
 
-      if (count !== role_ids.length) {
+      if (count !== safeRoleIds.length) {
         return res.status(400).json({ error: 'One or more roles do not belong to this organization' });
       }
     }
@@ -513,14 +172,14 @@ router.put('/user/:userId', auth, rootAdminOnly, async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // Delete existing role assignments
+      // Delete existing role assignments for this user in this org
       await client.query(
         'DELETE FROM user_roles WHERE user_id = $1 AND org_id = $2',
         [userId, oId]
       );
 
       // Insert new assignments
-      for (const roleId of role_ids) {
+      for (const roleId of safeRoleIds) {
         await client.query(
           `INSERT INTO user_roles (user_id, role_id, org_id, assigned_by)
            VALUES ($1, $2, $3, $4)
@@ -547,6 +206,422 @@ router.put('/user/:userId', auth, rootAdminOnly, async (req, res) => {
       .eq('org_id', oId);
 
     res.json((data || []).map(r => ({ ...r.roles, assigned_at: r.assigned_at })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 4. POST /api/roles — create a custom role ────────────────────────────────
+router.post('/', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { name, description } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Role name is required' });
+    }
+    const trimmedName = name.trim();
+    if (trimmedName.length > 100) {
+      return res.status(400).json({ error: 'Role name must be 100 characters or fewer' });
+    }
+
+    const slug = slugify(trimmedName) + '_' + Date.now();
+
+    const { data, error } = await supabase
+      .from('roles')
+      .insert({
+        org_id:         oId,
+        name:           trimmedName,
+        slug,
+        description:    (description || '').slice(0, 500),
+        is_system_role: false,
+        created_by:     req.user.id,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: `A role named "${trimmedName}" already exists in this organization` });
+      }
+      throw error;
+    }
+
+    res.json({ ...data, permission_count: 0, member_count: 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 5. GET /api/roles/:id — get single role with permissions + members ────────
+router.get('/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    const { data: role, error } = await supabase
+      .from('roles')
+      .select('id, name, slug, description, is_system_role, created_at')
+      .eq('id', roleId)
+      .eq('org_id', oId)    // multi-tenant guard: role must belong to caller's org
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    // Permission IDs for this role
+    const { data: rp, error: rpErr } = await supabase
+      .from('role_permissions')
+      .select('permission_id')
+      .eq('role_id', roleId);
+    if (rpErr) throw rpErr;
+
+    const permissionIds = (rp || []).map(r => r.permission_id);
+
+    // Members of this role — scoped to org via user_roles.org_id
+    const { data: members, error: memErr } = await supabase
+      .from('user_roles')
+      .select('user_id, assigned_at, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, role)')
+      .eq('role_id', roleId)
+      .eq('org_id', oId);   // multi-tenant guard
+    if (memErr) throw memErr;
+
+    res.json({
+      ...role,
+      permission_ids: permissionIds,
+      members: (members || []).map(m => ({
+        ...m.users,
+        assigned_at: m.assigned_at,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 6. PUT /api/roles/:id — update custom role name / description ────────────
+router.put('/:id', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    const { name, description } = req.body;
+
+    const { data: existing } = await supabase
+      .from('roles')
+      .select('id, is_system_role')
+      .eq('id', roleId)
+      .eq('org_id', oId)    // multi-tenant guard
+      .maybeSingle();
+
+    if (!existing) return res.status(404).json({ error: 'Role not found' });
+    if (existing.is_system_role) {
+      return res.status(400).json({ error: 'System roles cannot be renamed. You can adjust their permissions.' });
+    }
+
+    const update = {};
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (!trimmed) return res.status(400).json({ error: 'Role name cannot be empty' });
+      if (trimmed.length > 100) return res.status(400).json({ error: 'Role name must be 100 characters or fewer' });
+      update.name = trimmed;
+    }
+    if (description !== undefined) update.description = description.slice(0, 500);
+
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+
+    const { data, error } = await supabase
+      .from('roles')
+      .update(update)
+      .eq('id', roleId)
+      .eq('org_id', oId)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: `A role named "${update.name}" already exists in this organization` });
+      }
+      throw error;
+    }
+
+    clearOrgCache(oId);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 7. DELETE /api/roles/:id — delete custom role ───────────────────────────
+router.delete('/:id', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    const { data: role } = await supabase
+      .from('roles')
+      .select('id, name, is_system_role')
+      .eq('id', roleId)
+      .eq('org_id', oId)    // multi-tenant guard
+      .maybeSingle();
+
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+    if (role.is_system_role) {
+      return res.status(400).json({ error: 'System roles cannot be deleted.' });
+    }
+
+    // Check for assigned users before deleting
+    const { count } = await supabase
+      .from('user_roles')
+      .select('id', { count: 'exact', head: true })
+      .eq('role_id', roleId)
+      .eq('org_id', oId);
+
+    if (count > 0) {
+      return res.status(400).json({
+        error: `Cannot delete role "${role.name}" — ${count} user(s) are still assigned to it. Remove them first.`,
+        member_count: count,
+      });
+    }
+
+    const { error } = await supabase
+      .from('roles')
+      .delete()
+      .eq('id', roleId)
+      .eq('org_id', oId);   // multi-tenant guard on delete
+
+    if (error) throw error;
+
+    clearOrgCache(oId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 8. GET /api/roles/:id/permissions — get permissions for a role ───────────
+router.get('/:id/permissions', auth, adminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    // Verify role belongs to this org before revealing its permissions
+    const { data: role } = await supabase
+      .from('roles')
+      .select('id')
+      .eq('id', roleId)
+      .eq('org_id', oId)
+      .maybeSingle();
+
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    const { data, error } = await supabase
+      .from('role_permissions')
+      .select('permission_id, permissions(id, module_key, action, label)')
+      .eq('role_id', roleId);
+
+    if (error) throw error;
+
+    res.json((data || []).map(r => r.permissions).filter(Boolean));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 9. PUT /api/roles/:id/permissions — replace permission set for a role ────
+router.put('/:id/permissions', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    const { permission_ids } = req.body;
+    const validationError = validatePermissionIds(permission_ids);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    // Cast to integers after validation
+    const safeIds = permission_ids.map(id => parseInt(id, 10));
+
+    // Verify role belongs to this org
+    const { data: role } = await supabase
+      .from('roles')
+      .select('id, name, slug')
+      .eq('id', roleId)
+      .eq('org_id', oId)
+      .maybeSingle();
+
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    // Root Admin role always has all permissions and cannot be restricted
+    if (role.slug === 'root_admin') {
+      return res.status(400).json({ error: 'The Root Admin role always has all permissions and cannot be restricted.' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Replace entire permission set atomically
+      await client.query('DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
+
+      if (safeIds.length > 0) {
+        const values = safeIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+        await client.query(
+          `INSERT INTO role_permissions (role_id, permission_id)
+           VALUES ${values}
+           ON CONFLICT (role_id, permission_id) DO NOTHING`,
+          [roleId, ...safeIds]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    clearOrgCache(oId);
+
+    // Return updated permission list
+    const { data } = await supabase
+      .from('role_permissions')
+      .select('permission_id, permissions(id, module_key, action, label)')
+      .eq('role_id', roleId);
+
+    res.json((data || []).map(r => r.permissions).filter(Boolean));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 10. GET /api/roles/:id/members — list members of a role ─────────────────
+router.get('/:id/members', auth, adminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    // Verify role belongs to this org
+    const { data: role } = await supabase
+      .from('roles')
+      .select('id')
+      .eq('id', roleId)
+      .eq('org_id', oId)
+      .maybeSingle();
+
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('user_id, assigned_at, assigned_by, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, position, role)')
+      .eq('role_id', roleId)
+      .eq('org_id', oId)    // multi-tenant guard
+      .order('assigned_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json((data || []).map(m => ({
+      ...m.users,
+      assigned_at: m.assigned_at,
+      assigned_by: m.assigned_by,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 11. POST /api/roles/:id/members — add a user to a role ──────────────────
+router.post('/:id/members', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+
+    const userId = parseId(req.body.user_id);
+    if (!userId) return res.status(400).json({ error: 'user_id must be a positive integer' });
+
+    // Verify role belongs to this org
+    const { data: role } = await supabase
+      .from('roles')
+      .select('id, name')
+      .eq('id', roleId)
+      .eq('org_id', oId)
+      .maybeSingle();
+
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    // Verify target user belongs to this org
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .eq('id', userId)
+      .eq('organization_id', oId)
+      .maybeSingle();
+
+    if (!user) return res.status(404).json({ error: 'User not found in this organization' });
+
+    const { data, error } = await supabase
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: roleId, org_id: oId, assigned_by: req.user.id })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: `${user.name} already has the "${role.name}" role` });
+      }
+      throw error;
+    }
+
+    clearUserCache(userId, oId);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 12. DELETE /api/roles/:id/members/:userId — remove a user from a role ───
+router.delete('/:id/members/:userId', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const oId    = orgId(req);
+    const roleId = parseId(req.params.id);
+    const userId = parseId(req.params.userId);
+    if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
+
+    // Prevent root admin from removing themselves from the Root Admin role
+    // Fix: include org_id filter so we're only reading our org's role
+    if (userId === req.user.id) {
+      const { data: role } = await supabase
+        .from('roles')
+        .select('slug')
+        .eq('id', roleId)
+        .eq('org_id', oId)    // FIXED: must include org_id guard
+        .maybeSingle();
+      if (role?.slug === 'root_admin') {
+        return res.status(400).json({ error: 'You cannot remove yourself from the Root Admin role.' });
+      }
+    }
+
+    const { error } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('role_id', roleId)
+      .eq('user_id', userId)
+      .eq('org_id', oId);    // multi-tenant guard on delete
+
+    if (error) throw error;
+
+    clearUserCache(userId, oId);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

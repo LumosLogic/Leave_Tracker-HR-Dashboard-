@@ -5,7 +5,7 @@ import {
   Shield, Plus, Trash2, ChevronRight, Users, Lock,
   Settings, AlertCircle, CheckCircle2, X,
 } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ─── Create Role Modal ────────────────────────────────────────────────────────

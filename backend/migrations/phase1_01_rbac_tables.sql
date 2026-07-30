@@ -12,6 +12,23 @@
 BEGIN;
 
 -- ─────────────────────────────────────────────────────────────
+-- SECTION 0: ENSURE schema_migrations TABLE EXISTS
+-- This migration inserts version records into schema_migrations.
+-- The table is normally created by production_db_hardening_2026_07_29.sql.
+-- This guard ensures the migration is safe to run on any database state.
+-- ─────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version     TEXT        PRIMARY KEY,
+  description TEXT        NOT NULL,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  applied_by  TEXT        NOT NULL DEFAULT current_user
+);
+COMMENT ON TABLE schema_migrations IS
+  'Append-only migration version log. Never delete rows.';
+
+
+-- ─────────────────────────────────────────────────────────────
 -- SECTION 1: CREATE TABLES
 -- ─────────────────────────────────────────────────────────────
 
@@ -73,6 +90,17 @@ CREATE INDEX IF NOT EXISTS idx_ur_user_org
 CREATE INDEX IF NOT EXISTS idx_ur_role
   ON user_roles(role_id);
 COMMENT ON TABLE user_roles IS 'Maps users to roles within their org. Supports multiple roles per user.';
+
+-- ─────────────────────────────────────────────────────────────
+-- SECTION 1E: DISABLE ROW LEVEL SECURITY
+-- Consistent with all other tables in the schema — RLS is
+-- disabled system-wide; app handles auth via JWT middleware.
+-- ─────────────────────────────────────────────────────────────
+
+ALTER TABLE permissions   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE roles         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE role_permissions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles    DISABLE ROW LEVEL SECURITY;
 
 -- Record this migration
 INSERT INTO schema_migrations(version, description)
@@ -225,8 +253,9 @@ DECLARE
   emp_role_id      BIGINT;
 BEGIN
 
+  -- Fix M1: Only seed active/pending orgs. Suspended/inactive orgs don't need roles.
   FOR org_rec IN
-    SELECT id FROM organizations
+    SELECT id FROM organizations WHERE status IN ('active', 'pending')
   LOOP
 
     -- Insert system roles (slug is the stable identifier)
@@ -427,9 +456,11 @@ GROUP BY org_id ORDER BY org_id;
 -- How many users were mapped?
 SELECT COUNT(*) AS total_user_role_mappings FROM user_roles;
 
--- Permissions per system role (spot check org 1):
-SELECT r.name AS role_name, COUNT(rp.id) AS permission_count
+-- Permissions per system role (spot check: first active org):
+-- Fix M2: don't hardcode org_id=1 — use the first seeded org dynamically
+SELECT r.org_id, r.name AS role_name, COUNT(rp.id) AS permission_count
 FROM roles r
 LEFT JOIN role_permissions rp ON rp.role_id = r.id
-WHERE r.org_id = 1
-GROUP BY r.name ORDER BY permission_count DESC;
+WHERE r.is_system_role = true
+GROUP BY r.org_id, r.name ORDER BY r.org_id, permission_count DESC
+LIMIT 20;

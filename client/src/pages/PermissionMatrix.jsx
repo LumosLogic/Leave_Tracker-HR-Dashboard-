@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -201,16 +201,29 @@ export default function PermissionMatrix() {
   const [activeTab, setActiveTab]     = useState('permissions'); // 'permissions' | 'members'
 
   // Fetch role details (with current permissions + members)
-  const { data: role, isLoading: roleLoading } = useQuery({
+  const { data: role, isLoading: roleLoading, isError: roleError } = useQuery({
     queryKey: ['role', id],
     queryFn: () => apiGet(`/roles/${id}`),
+    retry: 1,
   });
 
   // Fetch all available permissions (grouped by module)
-  const { data: modulesRaw = [], isLoading: permsLoading } = useQuery({
+  const { data: modulesRaw = [], isLoading: permsLoading, isError: permsError } = useQuery({
     queryKey: ['all-permissions'],
     queryFn: () => apiGet('/permissions'),
+    retry: 1,
   });
+
+  // Fix M3: Warn user if they try to leave with unsaved changes
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   // Flatten all permissions into a single array
   const allPermissions = modulesRaw.flatMap(m =>
@@ -283,6 +296,34 @@ export default function PermissionMatrix() {
   const isSystemRole  = role?.is_system_role;
   const isRootAdmin   = role?.slug === 'root_admin';
   const isLoading     = roleLoading || permsLoading;
+  const isError       = roleError || permsError;
+
+  // Fix H4: Error state — show a clear error instead of blank page
+  if (isError && !isLoading) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate('/root/roles')}
+          className="flex items-center gap-1.5 text-xs text-[#777587] hover:text-[#3525cd] mb-6 transition-colors font-semibold"
+        >
+          <ArrowLeft size={13} /> Back to Roles
+        </button>
+        <div className="bg-white border border-red-200 rounded-2xl p-10 text-center">
+          <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
+          <h2 className="font-black text-[#151c27] mb-2">Failed to load role</h2>
+          <p className="text-sm text-[#777587] mb-5">
+            Could not connect to the server. Please check your connection and try again.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-[#3525cd] text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#2a1fb0] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
