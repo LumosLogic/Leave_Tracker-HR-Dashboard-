@@ -463,9 +463,9 @@ export default function PermissionMatrix() {
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────────────── */}
-      <div className="w-full">
+      <div className="">
         {activeTab === 'permissions' ? (
-          <div className={cn('space-y-3 overflow-y-auto max-h-[calc(100vh-17rem)] pr-2 -mr-2', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
+          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {sortedModules.map(module => (
               <ModuleSection
                 key={module}
@@ -479,7 +479,7 @@ export default function PermissionMatrix() {
             ))}
           </div>
         ) : (
-          <div className="bg-white border border-[#e7eefe] rounded-xl p-4 mb-2">
+          <div className="bg-white border border-[#e7eefe] rounded-xl p-4">
             <MembersPanel members={role.members} roleId={id} />
           </div>
         )}
