@@ -463,7 +463,7 @@ export default function PermissionMatrix() {
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto pr-2 -mr-2 pb-2">
+      <div className="flex-1 overflow-y-auto min-h-0 pr-2 -mr-2 pb-2">
         {activeTab === 'permissions' ? (
           <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-2')}>
             {sortedModules.map(module => (
