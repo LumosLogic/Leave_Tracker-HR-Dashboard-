@@ -68,7 +68,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
 
   return (
     <label className={cn(
-      'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all select-none',
+      'relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all select-none',
       disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#f0f3ff]',
       checked && !disabled ? 'bg-[#3525cd]/5 border border-[#3525cd]/20' : 'border border-transparent'
     )}>
