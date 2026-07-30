@@ -140,7 +140,7 @@ function ModuleSection({ module, permissions, selectedIds, onToggle, onToggleAll
 
       {/* Permissions grid */}
       {!collapsed && (
-        <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
+        <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-1">
           {modulePerms.map(p => (
             <PermissionCheckbox
               key={p.id}
@@ -301,7 +301,7 @@ export default function PermissionMatrix() {
   // Fix H4: Error state — show a clear error instead of blank page
   if (isError && !isLoading) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div className="w-full">
         <button
           onClick={() => navigate('/root/roles')}
           className="flex items-center gap-1.5 text-xs text-[#777587] hover:text-[#3525cd] mb-6 transition-colors font-semibold"
@@ -327,7 +327,7 @@ export default function PermissionMatrix() {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div className="w-full">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-[#f0f3ff] rounded-xl" />
           <div className="h-4 w-96 bg-[#f0f3ff] rounded" />
@@ -339,7 +339,7 @@ export default function PermissionMatrix() {
 
   if (!role) {
     return (
-      <div className="max-w-5xl mx-auto text-center py-16">
+      <div className="w-full text-center py-16">
         <p className="text-[#777587]">Role not found.</p>
         <button onClick={() => navigate('/root/roles')} className="text-[#3525cd] text-sm font-bold mt-2 hover:underline">
           ← Back to Roles
@@ -349,7 +349,7 @@ export default function PermissionMatrix() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
