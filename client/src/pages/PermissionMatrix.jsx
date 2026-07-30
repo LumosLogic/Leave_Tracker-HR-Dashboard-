@@ -470,9 +470,12 @@ export default function PermissionMatrix() {
             ))}
           </div>
 
-          {/* Bottom save bar (sticky for long pages) */}
+          {/* Spacer so fixed save bar doesn't cover the last module */}
+          {!isRootAdmin && dirty && <div className="h-16" />}
+
+          {/* Bottom save bar — fixed to viewport bottom, clears the sidebar */}
           {!isRootAdmin && dirty && (
-            <div className="sticky bottom-0 mt-6 bg-white border-t border-[#e7eefe] py-3 px-4 -mx-4 flex items-center justify-between shadow-lg">
+            <div className="fixed bottom-0 left-0 md:left-64 right-0 z-20 bg-white border-t border-[#e7eefe] py-3 px-4 md:px-7 flex items-center justify-between shadow-lg">
               <p className="text-xs text-[#777587] font-semibold">
                 You have unsaved permission changes.
               </p>

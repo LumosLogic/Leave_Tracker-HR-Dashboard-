@@ -258,7 +258,7 @@ export default function RoleManagement() {
   const customRoles = roles.filter(r => !r.is_system_role);
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -316,7 +316,7 @@ export default function RoleManagement() {
               <h2 className="text-xs font-black uppercase tracking-widest text-[#777587]">System Roles</h2>
               <span className="text-xs text-[#777587] font-medium">— seeded automatically, cannot be deleted</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {systemRoles.map(role => (
                 <RoleCard
                   key={role.id}
@@ -349,7 +349,7 @@ export default function RoleManagement() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {customRoles.map(role => (
                   <RoleCard
                     key={role.id}
