@@ -119,7 +119,7 @@ router.get('/organizations/:id/members', platformAdminAuth, async (req, res) => 
   try {
     const { id } = req.params;
     const { data: org } = await supabase.from('organizations')
-      .select('id, name, slug, domain, status, plan, created_at, smtp_user, smtp_from, google_calendar_id, total_annual_leaves')
+      .select('id, name, slug, domain, status, plan, created_at, google_calendar_id, total_annual_leaves')
       .eq('id', id).single();
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
