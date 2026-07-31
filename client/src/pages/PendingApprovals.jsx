@@ -73,25 +73,41 @@ export default function PendingApprovals() {
 
   const approveLeaveMut = useMutation({
     mutationFn: id => apiPut(`/leaves/${id}/approve`),
-    onSuccess: () => { toast('Leave approved!', 'success'); invalidate(); },
-    onError:   e  => toast(e.message, 'error'),
+    onSuccess: (_, id) => {
+      toast('Leave approved!', 'success');
+      qc.setQueryData(['pending-approvals-leaves'], old => Array.isArray(old) ? old.filter(l => l.id !== id) : old);
+      invalidate();
+    },
+    onError: e => toast(e.message, 'error'),
   });
   const rejectLeaveMut = useMutation({
     mutationFn: id => apiPut(`/leaves/${id}/reject`),
-    onSuccess: () => { toast('Leave rejected', 'warning'); invalidate(); },
-    onError:   e  => toast(e.message, 'error'),
+    onSuccess: (_, id) => {
+      toast('Leave rejected', 'warning');
+      qc.setQueryData(['pending-approvals-leaves'], old => Array.isArray(old) ? old.filter(l => l.id !== id) : old);
+      invalidate();
+    },
+    onError: e => toast(e.message, 'error'),
   });
 
-  // New-flow final approve / reject
+  // New-flow final approve / reject — backend PUT /approve already handles pending_root status
   const finalApproveMut = useMutation({
-    mutationFn: id => apiPost(`/leaves/${id}/final-approve`, {}),
-    onSuccess: () => { toast('Leave approved!', 'success'); invalidate(); },
-    onError:   e  => toast(e.message, 'error'),
+    mutationFn: id => apiPut(`/leaves/${id}/approve`),
+    onSuccess: (_, id) => {
+      toast('Leave approved!', 'success');
+      qc.setQueryData(['pending-root-leaves'], old => Array.isArray(old) ? old.filter(l => l.id !== id) : old);
+      invalidate();
+    },
+    onError: e => toast(e.message, 'error'),
   });
   const finalRejectMut = useMutation({
-    mutationFn: id => apiPost(`/leaves/${id}/final-reject`, {}),
-    onSuccess: () => { toast('Leave rejected', 'warning'); invalidate(); },
-    onError:   e  => toast(e.message, 'error'),
+    mutationFn: id => apiPut(`/leaves/${id}/reject`),
+    onSuccess: (_, id) => {
+      toast('Leave rejected', 'warning');
+      qc.setQueryData(['pending-root-leaves'], old => Array.isArray(old) ? old.filter(l => l.id !== id) : old);
+      invalidate();
+    },
+    onError: e => toast(e.message, 'error'),
   });
   const approveRegMut = useMutation({
     mutationFn: id => apiPut(`/regularization/${id}/review`, { status: 'approved' }),
