@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Shield, Lock, Save, CheckSquare, Square,
   Users, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
+  UserPlus, X, Search,
 } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ─── Module label map ─────────────────────────────────────────────────────────
@@ -170,34 +171,131 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
 }
 
 // ─── Members Panel ────────────────────────────────────────────────────────────
-function MembersPanel({ members = [], roleId }) {
-  const navigate = useNavigate();
+function MembersPanel({ members = [], roleId, onRefetch }) {
+  const qc             = useQueryClient();
+  const [search, setSearch]     = useState('');
+  const [showPicker, setShowPicker] = useState(false);
 
-  if (!members.length) {
-    return (
-      <div className="text-center py-6">
-        <Users size={24} className="text-[#c7c4d8] mx-auto mb-2" />
-        <p className="text-xs text-[#777587]">No members assigned yet</p>
-      </div>
-    );
-  }
+  // All employees in the org (for the picker)
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['employees-list'],
+    queryFn:  () => apiGet('/employees'),
+    enabled:  showPicker,
+    select:   d => Array.isArray(d) ? d : (d?.employees || []),
+  });
+
+  // Remove a member from this role
+  const removeMut = useMutation({
+    mutationFn: userId => apiDelete(`/roles/${roleId}/members/${userId}`),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['role', String(roleId)] }); onRefetch?.(); },
+  });
+
+  // Add a user to this role: fetch their current roles → append this role → PUT
+  const addMut = useMutation({
+    mutationFn: async (user) => {
+      const currentRoles = await apiGet(`/roles/user/${user.id}`);
+      const currentIds   = (Array.isArray(currentRoles) ? currentRoles : []).map(r => r.id);
+      if (currentIds.includes(Number(roleId))) return; // already assigned
+      await apiPut(`/roles/user/${user.id}`, { role_ids: [...currentIds, Number(roleId)] });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
+      onRefetch?.();
+      setShowPicker(false);
+      setSearch('');
+    },
+  });
+
+  const memberIds  = new Set(members.map(m => m.id));
+  const pickable   = allUsers.filter(u =>
+    !memberIds.has(u.id) &&
+    (!search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()))
+  );
 
   return (
-    <div className="space-y-1.5">
-      {members.map(m => (
-        <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-[0.65rem] font-black text-white flex-shrink-0"
-            style={{ background: m.avatar_color || '#3525cd' }}
-          >
-            {(m.name || '?').slice(0, 2).toUpperCase()}
+    <div className="space-y-3">
+      {/* Assign button */}
+      <button
+        onClick={() => setShowPicker(p => !p)}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border-2 border-dashed border-[#c7c4d8] text-[#3525cd] text-xs font-bold hover:border-[#3525cd] hover:bg-[#f0f3ff] transition-colors"
+      >
+        <UserPlus size={13} /> Assign Member
+      </button>
+
+      {/* User picker */}
+      {showPicker && (
+        <div className="border border-[#e2e0f0] rounded-xl overflow-hidden shadow-sm">
+          <div className="p-2 border-b border-[#e2e0f0] bg-[#f8fafc] flex items-center gap-2">
+            <Search size={12} className="text-[#777587] shrink-0" />
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search employees…"
+              className="flex-1 text-xs bg-transparent outline-none text-[#151c27] placeholder-[#c7c4d8]"
+            />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-[#151c27] truncate">{m.name}</p>
-            <p className="text-[0.65rem] text-[#777587] truncate">{m.department || m.email}</p>
+          <div className="max-h-44 overflow-y-auto">
+            {pickable.length === 0 ? (
+              <p className="text-xs text-[#777587] text-center py-4">
+                {allUsers.length === 0 ? 'Loading…' : 'No more employees to add'}
+              </p>
+            ) : pickable.map(u => (
+              <button
+                key={u.id}
+                disabled={addMut.isPending}
+                onClick={() => addMut.mutate(u)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-[#f0f3ff] transition-colors text-left disabled:opacity-50"
+              >
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[0.6rem] font-black text-white shrink-0"
+                  style={{ background: u.avatar_color || '#3525cd' }}
+                >
+                  {(u.name || '?').slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[#151c27] truncate">{u.name}</p>
+                  <p className="text-[0.6rem] text-[#777587] truncate">{u.department || u.email}</p>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
-      ))}
+      )}
+
+      {/* Current members */}
+      {members.length === 0 && !showPicker ? (
+        <div className="text-center py-4">
+          <Users size={20} className="text-[#c7c4d8] mx-auto mb-1.5" />
+          <p className="text-xs text-[#777587]">No members assigned yet</p>
+          <p className="text-[0.65rem] text-[#c7c4d8]">Click "Assign Member" above to add someone</p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {members.map(m => (
+            <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors group">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[0.65rem] font-black text-white flex-shrink-0"
+                style={{ background: m.avatar_color || '#3525cd' }}
+              >
+                {(m.name || '?').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-[#151c27] truncate">{m.name}</p>
+                <p className="text-[0.65rem] text-[#777587] truncate">{m.department || m.email}</p>
+              </div>
+              <button
+                onClick={() => removeMut.mutate(m.id)}
+                disabled={removeMut.isPending}
+                title="Remove from role"
+                className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -214,7 +312,7 @@ export default function PermissionMatrix() {
   const [activeTab, setActiveTab]     = useState('permissions'); // 'permissions' | 'members'
 
   // Fetch role details (with current permissions + members)
-  const { data: role, isLoading: roleLoading, isError: roleError } = useQuery({
+  const { data: role, isLoading: roleLoading, isError: roleError, refetch: refetchRole } = useQuery({
     queryKey: ['role', id],
     queryFn: () => apiGet(`/roles/${id}`),
     retry: 1,
@@ -488,7 +586,7 @@ export default function PermissionMatrix() {
           </div>
         ) : (
           <div className="bg-white border border-[#e7eefe] rounded-xl p-4">
-            <MembersPanel members={role.members} roleId={id} />
+            <MembersPanel members={role.members} roleId={id} onRefetch={refetchRole} />
           </div>
         )}
       </div>
