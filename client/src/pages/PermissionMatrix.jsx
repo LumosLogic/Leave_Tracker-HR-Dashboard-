@@ -65,7 +65,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
   const labelStr = permission?.label || 'Unnamed permission';
   const permId = permission?.id;
   const colorClass = ACTION_COLORS[actionStr] || 'bg-slate-50 text-slate-600';
-
+  return (
     <div
       role="checkbox"
       aria-checked={checked}
