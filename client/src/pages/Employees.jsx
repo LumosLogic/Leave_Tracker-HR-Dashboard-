@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint, Camera } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useFeature } from '@/context/FeatureFlagContext';
@@ -1139,6 +1139,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     salary_effective_date:employee.salary_effective_date ? employee.salary_effective_date.slice(0, 10) : '',
     role:                 employee.role,
     avatar_color:         employee.avatar_color    || '#3525cd',
+    avatar_url:           employee.avatar_url      || '',
     clockify_user_id:     employee.clockify_user_id || '',
     password:             '',
     // Extended profile
@@ -1263,17 +1264,15 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       {/* ── Edit mode: tabbed layout ── */}
       {isEdit ? (
         <div>
-          {/* Employee identity header */}
-          <div className="flex items-center gap-4 p-4 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] mb-4">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black text-lg flex-shrink-0"
-              style={{ background: form.avatar_color }}>
-              {form.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
-            </div>
-            <div>
-              <p className="font-black text-[#151c27]">{form.name || '—'}</p>
-              <p className="text-xs text-[#777587]">{form.email}</p>
-            </div>
-          </div>
+          {/* Employee identity header with photo upload */}
+          <AdminPhotoUpload
+            employeeId={employee?.id}
+            currentUrl={form.avatar_url || employee?.avatar_url || null}
+            name={form.name}
+            color={form.avatar_color}
+            email={form.email}
+            onUploaded={url => set('avatar_url', url)}
+          />
 
           {/* Tab bar */}
           <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl border border-[#c7c4d8] mb-5">
@@ -1764,6 +1763,73 @@ const EMP_STATUS_CFG = {
   inactive:      { label: 'Inactive',      cls: 'bg-slate-50 text-slate-500 border-slate-200' },
   resigned:      { label: 'Resigned',      cls: 'bg-rose-50 text-rose-600 border-rose-200' },
 };
+
+function AdminPhotoUpload({ employeeId, currentUrl, name, color, email, onUploaded }) {
+  const toast    = useToast();
+  const inputRef = useRef(null);
+  const [preview,   setPreview]   = useState(currentUrl);
+  const [uploading, setUploading] = useState(false);
+
+  const initials = (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB', 'error'); return; }
+    setPreview(URL.createObjectURL(file));
+    setUploading(true);
+    try {
+      const fd    = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const url   = employeeId ? `/api/employees/${employeeId}/avatar` : '/api/auth/upload-avatar';
+      const res   = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const data  = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setPreview(data.avatar_url);
+      onUploaded?.(data.avatar_url);
+      toast('Photo updated!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+      setPreview(currentUrl);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4 p-4 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] mb-4">
+      <div className="relative group flex-shrink-0">
+        {preview ? (
+          <img src={preview} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow" />
+        ) : (
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-black text-lg" style={{ background: color }}>
+            {initials}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Upload photo"
+        >
+          {uploading ? <div className="spinner w-3.5 h-3.5 border-white" /> : <Camera size={13} className="text-white" />}
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-black text-[#151c27] truncate">{name || '—'}</p>
+        <p className="text-xs text-[#777587] truncate">{email}</p>
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="text-[0.65rem] text-[#3525cd] hover:underline mt-0.5">
+          {uploading ? 'Uploading…' : preview ? 'Change photo' : 'Upload photo'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function EmpStatusBadge({ status }) {
   const cfg = EMP_STATUS_CFG[status] || EMP_STATUS_CFG.active;

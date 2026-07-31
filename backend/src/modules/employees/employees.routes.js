@@ -7,6 +7,8 @@ const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml } = require('../../services/emailService');
 const { initOnboarding } = require('../onboarding/onboardingService');
+const upload     = require('../../middleware/upload');
+const cloudinary = require('../../config/cloudinary');
 
 // ─── NEW COLUMNS (biometric / Sanghavi) added to the standard employee fields ──
 const EMPLOYEE_PUBLIC_COLS = [
@@ -348,6 +350,51 @@ router.delete('/:id', auth, hasPermission('employees', 'delete'), async (req, re
       ).catch(() => {});
     }
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /employees/:id/avatar — admin uploads profile photo for any employee ─
+router.post('/:id/avatar', auth, isAdminRole, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: `hrms/${orgId(req)}/avatars`,
+          resource_type: 'image',
+          transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }],
+        },
+        (err, r) => err ? reject(err) : resolve(r)
+      ).end(req.file.buffer);
+    });
+    const { error } = await supabase.from('users')
+      .update({ avatar_url: result.secure_url })
+      .eq('id', req.params.id)
+      .eq('organization_id', orgId(req));
+    if (error) throw new Error(error.message);
+    res.json({ avatar_url: result.secure_url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /employees/me/avatar — employee uploads their own profile photo ──────
+router.post('/me/avatar', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: `hrms/${orgId(req)}/avatars`,
+          resource_type: 'image',
+          transformation: [{ width: 200, height: 200, crop: 'fill', gravity: 'face' }],
+        },
+        (err, r) => err ? reject(err) : resolve(r)
+      ).end(req.file.buffer);
+    });
+    const { error } = await supabase.from('users')
+      .update({ avatar_url: result.secure_url })
+      .eq('id', req.user.id);
+    if (error) throw new Error(error.message);
+    res.json({ avatar_url: result.secure_url });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

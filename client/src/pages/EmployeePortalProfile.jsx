@@ -7,7 +7,7 @@ import {
   Plus, Pencil, Trash2, X, Check, Eye, EyeOff, Save, AlertTriangle,
   ShieldCheck, ShieldAlert, Mail, ChevronRight, Building2, MapPin, Phone,
   CheckCircle2, Download, MoreHorizontal, Calendar, TrendingUp, Activity,
-  Layers, BadgeCheck, ClipboardList, Key, Printer, QrCode,
+  Layers, BadgeCheck, ClipboardList, Key, Printer, QrCode, Camera,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -88,6 +88,67 @@ function timeAgo(dateStr) {
 function SectionHeader({ children }) {
   return (
     <h2 className="text-sm font-black text-[#151c27] uppercase tracking-wider">{children}</h2>
+  );
+}
+
+function PhotoUploadWidget({ currentUrl, initials, color, onUploaded }) {
+  const toast    = useToast();
+  const inputRef = useRef(null);
+  const [preview, setPreview] = useState(currentUrl);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB', 'error'); return; }
+    setPreview(URL.createObjectURL(file));
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const res   = await fetch('/api/auth/upload-avatar', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const data  = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setPreview(data.avatar_url);
+      onUploaded?.(data.avatar_url);
+      toast('Profile photo updated!', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+      setPreview(currentUrl);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4 mb-4">
+      <div className="relative group flex-shrink-0">
+        {preview ? (
+          <img src={preview} alt="Profile" className="w-16 h-16 rounded-full object-cover border-2 border-[#c7c4d8] shadow-md" />
+        ) : (
+          <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-black text-white shadow-md" style={{ background: color }}>
+            {initials}
+          </div>
+        )}
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          {uploading ? <div className="spinner w-4 h-4 border-white" /> : <Camera size={16} className="text-white" />}
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-[#151c27]">Profile Photo</p>
+        <button onClick={() => inputRef.current?.click()} disabled={uploading} className="text-[0.65rem] text-[#3525cd] hover:underline mt-0.5">
+          {uploading ? 'Uploading…' : preview ? 'Change photo' : 'Upload photo'}
+        </button>
+        <p className="text-[0.6rem] text-[#c7c4d8] mt-0.5">JPG, PNG — max 5 MB</p>
+      </div>
+    </div>
   );
 }
 
@@ -377,7 +438,7 @@ function ProfileHeaderCard({ empId, onTabChange }) {
   const email = data.email || '—';
   const status = data.employee_status || 'active';
   const avatarColor = data.avatar_color || '#3525cd';
-  const profilePhoto = data.profile_photo_url || null;
+  const profilePhoto = data.avatar_url || data.profile_photo_url || null;
 
   const workLocation = [data.current_city, data.current_state].filter(Boolean).join(', ')
     || branchName
@@ -1977,15 +2038,12 @@ function AccountSection() {
       {/* Display Settings */}
       <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
         <SectionHeader>Display Settings</SectionHeader>
-        <div className="flex items-center gap-4 my-4">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-black text-white shadow-md flex-shrink-0" style={{ background: color }}>
-            {initials(name || user?.name || '')}
-          </div>
-          <div>
-            <p className="text-sm font-bold text-[#151c27]">{name || user?.name}</p>
-            <p className="text-xs text-[#777587]">Click a color to change your avatar</p>
-          </div>
-        </div>
+        <PhotoUploadWidget
+          currentUrl={user?.avatar_url || null}
+          initials={initials(name || user?.name || '')}
+          color={color}
+          onUploaded={url => saveAuth(token, { ...user, avatar_url: url })}
+        />
         <div className="mb-4">
           <label className="form-label mb-2">Avatar Color</label>
           <div className="flex gap-2 flex-wrap">
