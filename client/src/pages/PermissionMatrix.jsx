@@ -66,25 +66,33 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
   const permId = permission?.id;
   const colorClass = ACTION_COLORS[actionStr] || 'bg-slate-50 text-slate-600';
 
-  return (
-    <label className={cn(
-      'relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all select-none',
-      disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#f0f3ff]',
-      checked && !disabled ? 'bg-[#3525cd]/5 border border-[#3525cd]/20' : 'border border-transparent'
-    )}>
+    <div
+      role="checkbox"
+      aria-checked={checked}
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => !disabled && onChange(permId, !checked)}
+      onMouseDown={(e) => {
+        // Prevent default browser focus algorithm to stop layout jumping in SPA layout
+        e.preventDefault(); 
+      }}
+      onKeyDown={(e) => {
+        if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onChange(permId, !checked);
+        }
+      }}
+      className={cn(
+        'relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all select-none focus:outline-none focus:ring-2 focus:ring-[#3525cd]/20',
+        disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#f0f3ff]',
+        checked && !disabled ? 'bg-[#3525cd]/5 border border-[#3525cd]/20' : 'border border-transparent'
+      )}
+    >
       <div className="flex-shrink-0">
         {checked
           ? <CheckSquare size={16} className={disabled ? 'text-[#777587]' : 'text-[#3525cd]'} />
           : <Square size={16} className="text-[#c7c4d8]" />
         }
       </div>
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={Boolean(checked)}
-        onChange={() => !disabled && onChange(permId, !checked)}
-        disabled={disabled}
-      />
       <div className="min-w-0">
         <span className={cn('text-[0.68rem] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wide', colorClass)}>
           {actionStr.replace(/_/g, ' ')}
@@ -93,7 +101,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
           {labelStr}
         </p>
       </div>
-    </label>
+    </div>
   );
 }
 

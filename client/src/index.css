@@ -9,7 +9,10 @@
   
   html, body {
     height: 100%;
+    width: 100%;
     overflow: hidden;
+    position: fixed;
+    inset: 0;
   }
   
   html { font-size: 14px; scroll-behavior: smooth; }
@@ -23,6 +26,8 @@
   
   #root {
     height: 100%;
+    width: 100%;
+    overflow: hidden;
   }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
