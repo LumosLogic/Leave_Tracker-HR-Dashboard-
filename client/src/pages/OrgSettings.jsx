@@ -88,11 +88,6 @@ export default function OrgSettings() {
       setForm({
         name:                org.name || '',
         domain:              org.domain || '',
-        smtp_host:           org.smtp_host || '',
-        smtp_port:           org.smtp_port || 587,
-        smtp_user:           org.smtp_user || '',
-        smtp_pass:           '',
-        smtp_from:           org.smtp_from || '',
         google_client_id:    org.google_client_id || '',
         google_client_secret:'',
         google_refresh_token:'',
@@ -179,24 +174,16 @@ export default function OrgSettings() {
         </Field>
       </Section>
 
-      {/* Email / SMTP */}
-      <Section icon={<Mail size={18} />} title="Email (SMTP)" subtitle="Configure transactional email for leave notifications, birthday wishes, and welcome emails">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="SMTP Host">
-            <input className="form-control" value={form.smtp_host || ''} onChange={e => set('smtp_host', e.target.value)} placeholder="smtp.gmail.com" />
-          </Field>
-          <Field label="SMTP Port">
-            <input type="number" className="form-control" value={form.smtp_port || 587} onChange={e => set('smtp_port', e.target.value)} placeholder="587" />
-          </Field>
-          <Field label="SMTP Username / Email">
-            <input className="form-control" value={form.smtp_user || ''} onChange={e => set('smtp_user', e.target.value)} placeholder="hr@acmecorp.com" />
-          </Field>
-          <PasswordField label="SMTP Password" hint="Leave blank to keep current" value={form.smtp_pass || ''} onChange={e => set('smtp_pass', e.target.value)} placeholder="Leave blank to keep" />
-          <div className="col-span-2">
-            <Field label="From Address" hint="Display name and address for outgoing emails">
-              <input className="form-control" value={form.smtp_from || ''} onChange={e => set('smtp_from', e.target.value)} placeholder="HR Team <hr@acmecorp.com>" />
-            </Field>
-          </div>
+      {/* Email — centralized, no per-org config needed */}
+      <Section icon={<Mail size={18} />} title="Email Notifications" subtitle="All transactional emails are sent from the platform's centralized mail service. No configuration required.">
+        <div className="p-3 bg-[#f0f3ff] rounded-xl flex items-start gap-3">
+          <Mail size={16} className="text-[#3525cd] mt-0.5 shrink-0" />
+          <p className="text-xs text-[#464555] leading-relaxed">
+            Emails (leave notifications, welcome messages, payslips, onboarding) are delivered via the
+            platform's shared SMTP infrastructure — <strong>hello@lumoslogic.com</strong>.
+            Your organization name appears in the email subject and body.
+            Contact your platform administrator to update the sender configuration.
+          </p>
         </div>
       </Section>
 

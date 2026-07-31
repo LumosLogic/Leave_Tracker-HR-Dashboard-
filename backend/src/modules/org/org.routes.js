@@ -91,7 +91,7 @@ router.get('/org/settings', auth, async (req, res) => {
       targetOrgId = Number(req.query.org_id);
     }
     const { data, error } = await supabase.from('organizations')
-      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
+      .select('id, name, slug, domain, logo_url, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
       .eq('id', targetOrgId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return res.status(404).json({ error: 'Organization not found' });
@@ -106,7 +106,6 @@ router.put('/org/settings', auth, async (req, res) => {
     const {
       org_id,
       name, domain, logo_url,
-      smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from,
       google_client_id, google_client_secret, google_refresh_token, google_calendar_id,
       vapid_public_key, vapid_private_key,
       total_annual_leaves,
@@ -118,11 +117,6 @@ router.put('/org/settings', auth, async (req, res) => {
     if (name)               update.name = name.trim();
     if (domain !== undefined) update.domain = domain;
     if (logo_url !== undefined) update.logo_url = logo_url;
-    if (smtp_host !== undefined) update.smtp_host = smtp_host;
-    if (smtp_port !== undefined) update.smtp_port = parseInt(smtp_port) || 587;
-    if (smtp_user !== undefined) update.smtp_user = smtp_user;
-    if (smtp_pass && smtp_pass.trim() !== '') update.smtp_pass = smtp_pass.trim();
-    if (smtp_from !== undefined) update.smtp_from = smtp_from;
     if (google_client_id !== undefined) update.google_client_id = google_client_id;
     if (google_client_secret && google_client_secret.trim() !== '') update.google_client_secret = google_client_secret.trim();
     if (google_refresh_token && google_refresh_token.trim() !== '') update.google_refresh_token = google_refresh_token.trim();
@@ -135,7 +129,7 @@ router.put('/org/settings', auth, async (req, res) => {
 
     const { data, error } = await supabase.from('organizations')
       .update(update).eq('id', targetOrgId)
-      .select('id, name, slug, domain, logo_url, smtp_host, smtp_port, smtp_user, smtp_from, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status').single();
+      .select('id, name, slug, domain, logo_url, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status').single();
     if (error) throw new Error(error.message);
 
     res.json(data);

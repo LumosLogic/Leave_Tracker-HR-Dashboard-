@@ -1,35 +1,49 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-// Transporter is created lazily so missing creds don't crash the server on startup
+// ─── Centralized SMTP transport ───────────────────────────────────────────────
+// One transport for the entire platform. All orgs share this SMTP config.
+// Credentials come from env vars only — org-level SMTP settings are ignored.
 let _transporter = null;
 function getTransporter() {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
   if (!_transporter) {
-    // Remove spaces from App Password (Google shows it with spaces, but SMTP needs it without)
     const pass = (process.env.SMTP_PASS || '').replace(/\s/g, '');
     _transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',   // works for both @gmail.com and Google Workspace
-      port: 587,
-      secure: false,
-      auth: { user: process.env.SMTP_USER, pass },
+      host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
+      port:   parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth:   { user: process.env.SMTP_USER, pass },
     });
   }
   return _transporter;
 }
 
-async function sendMail({ to, subject, html }) {
+// Reset cached transport (call if SMTP env vars change at runtime)
+function resetTransporter() { _transporter = null; }
+
+// ─── Core send function ───────────────────────────────────────────────────────
+// attachments: nodemailer attachment array (optional)
+// replyTo: override reply-to address (optional)
+async function sendMail({ to, subject, html, attachments, replyTo } = {}) {
   const transport = getTransporter();
-  if (!transport) return; // SMTP not configured — silently skip
+  if (!transport) {
+    console.warn('[Email] SMTP not configured (SMTP_USER / SMTP_PASS missing) — skipping');
+    return;
+  }
+  const fromName = process.env.SMTP_FROM_NAME || 'Lumos Logic HRMS';
+  const fromAddr = process.env.SMTP_FROM      || `"${fromName}" <${process.env.SMTP_USER}>`;
   try {
     await transport.sendMail({
-      from: `"HR Tracker" <${process.env.SMTP_USER}>`,
-      to: Array.isArray(to) ? [...new Set(to.filter(Boolean))].join(', ') : to,
+      from:    fromAddr,
+      to:      Array.isArray(to) ? [...new Set(to.filter(Boolean))].join(', ') : to,
       subject,
       html,
+      ...(replyTo     ? { replyTo }     : {}),
+      ...(attachments ? { attachments } : {}),
     });
   } catch (err) {
-    console.error('[Email] Failed to send:', err.message);
+    console.error('[Email] Failed to send to', to, '—', err.message);
   }
 }
 
@@ -399,4 +413,10 @@ function preOnboardingRequestHtml({ name, orgName, portalUrl }) {
   );
 }
 
-module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml, preOnboardingRequestHtml };
+module.exports = {
+  sendMail, getTransporter, resetTransporter,
+  leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml,
+  welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml,
+  orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml,
+  preOnboardingRequestHtml,
+};

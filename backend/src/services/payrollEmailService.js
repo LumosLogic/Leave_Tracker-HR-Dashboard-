@@ -1,6 +1,7 @@
 'use strict';
 
-const { pool } = require('../config/db');
+const { pool }          = require('../config/db');
+const { getTransporter } = require('./emailService');
 
 const CHUNK_SIZE     = parseInt(process.env.PAYROLL_EMAIL_CHUNK_SIZE     || '10', 10);
 const CHUNK_DELAY_MS = parseInt(process.env.PAYROLL_EMAIL_CHUNK_DELAY_MS || '500', 10);
@@ -9,25 +10,11 @@ const MONTHS = [
   'July','August','September','October','November','December',
 ];
 
-function sleep(ms)   { return new Promise(r => setTimeout(r, ms)); }
-function fmtINR(n)   { return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function fmtINR(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
 
-// ─── Lazy SMTP transport ──────────────────────────────────────────────────────
-// Reuses the same env vars as emailService.js — no separate credentials needed.
-let _transport = null;
-function getTransport() {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  if (_transport) return _transport;
-  const nodemailer = require('nodemailer');
-  const pass = (process.env.SMTP_PASS || '').replace(/\s/g, '');
-  _transport = nodemailer.createTransport({
-    host:   process.env.SMTP_HOST   || 'smtp.gmail.com',
-    port:   parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth:   { user: process.env.SMTP_USER, pass },
-  });
-  return _transport;
-}
+// Uses the shared centralized transporter from emailService — no separate SMTP config.
+function getTransport() { return getTransporter(); }
 
 // ─── PDF generation ───────────────────────────────────────────────────────────
 // Requires pdfkit: npm install pdfkit
