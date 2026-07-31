@@ -16,6 +16,7 @@ function loadStoredAuth() {
   if (!token || isTokenExpired(token)) {
     localStorage.removeItem('lt_token');
     localStorage.removeItem('lt_user');
+    localStorage.removeItem('lt_permissions');
     return { token: null, user: null };
   }
   try {
@@ -23,23 +24,55 @@ function loadStoredAuth() {
   } catch { return { token, user: null }; }
 }
 
+function loadStoredPermissions() {
+  try {
+    const p = localStorage.getItem('lt_permissions');
+    return p ? JSON.parse(p) : [];
+  } catch { return []; }
+}
+
 export function AuthProvider({ children }) {
   const initial = loadStoredAuth();
-  const [user,  setUser]  = useState(initial.user);
-  const [token, setToken] = useState(initial.token);
+  const [user,        setUser]        = useState(initial.user);
+  const [token,       setToken]       = useState(initial.token);
+  const [permissions, setPermissions] = useState(loadStoredPermissions);
+
+  // Fetch the user's effective RBAC permissions whenever the token changes.
+  // Results are stored in localStorage so they survive page refreshes.
+  useEffect(() => {
+    if (!token) {
+      setPermissions([]);
+      localStorage.removeItem('lt_permissions');
+      return;
+    }
+    fetch('/api/permissions/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (Array.isArray(data?.permissions)) {
+          setPermissions(data.permissions);
+          localStorage.setItem('lt_permissions', JSON.stringify(data.permissions));
+        }
+      })
+      .catch(() => {});
+  }, [token]);
 
   const saveAuth = useCallback((newToken, newUser) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('lt_token', newToken);
     localStorage.setItem('lt_user',  JSON.stringify(newUser));
+    // permissions will be fetched automatically via the useEffect above
   }, []);
 
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
+    setPermissions([]);
     localStorage.removeItem('lt_token');
     localStorage.removeItem('lt_user');
+    localStorage.removeItem('lt_permissions');
   }, []);
 
   // Auto-logout when any API call returns 401 (token expired mid-session)
@@ -55,6 +88,13 @@ export function AuthProvider({ children }) {
   // isAdmin = true for both HR admin and root admin (both can manage HR operations)
   const isAdmin = isHR || isRootAdmin;
 
+  // RBAC permission check — use this instead of raw role checks for fine-grained control.
+  // Falls back gracefully: if permissions haven't loaded yet (empty array),
+  // legacy isAdmin/isRootAdmin flags remain available as a UI fallback.
+  const hasPermission = useCallback((module, action) => {
+    return Array.isArray(permissions) && permissions.includes(`${module}.${action}`);
+  }, [permissions]);
+
   // Organization context
   const organization = user ? {
     id:   user.organization_id   || 1,
@@ -64,7 +104,13 @@ export function AuthProvider({ children }) {
   } : null;
 
   return (
-    <AuthContext.Provider value={{ user, token, saveAuth, logout, isAdmin, isHR, isRootAdmin, isEmployee, organization }}>
+    <AuthContext.Provider value={{
+      user, token, saveAuth, logout,
+      isAdmin, isHR, isRootAdmin, isEmployee,
+      organization,
+      permissions,
+      hasPermission,
+    }}>
       {children}
     </AuthContext.Provider>
   );

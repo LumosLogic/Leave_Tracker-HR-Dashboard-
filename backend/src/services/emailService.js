@@ -359,4 +359,44 @@ function passwordResetHtml(user, resetLink) {
   );
 }
 
-module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml };
+// Email sent to a new employee after their account is created, asking them to
+// upload joining documents before onboarding tasks begin.
+function preOnboardingRequestHtml({ name, orgName, portalUrl }) {
+  const docs = [
+    'Government-issued Photo ID (Aadhaar / Passport)',
+    'PAN Card',
+    'Educational Certificates (10th, 12th, Degree)',
+    'Bank Passbook / Cancelled Cheque (for salary transfer)',
+    'Passport-size Photograph',
+    'Address Proof (utility bill / rent agreement)',
+    'Previous Employment Documents (offer letter, relieving letter, if applicable)',
+  ];
+  return WRAP(
+    HEADER(`Welcome, ${name}! 👋`, `${orgName} — Action Required Before Day 1`) +
+    BODY(`
+      <p style="margin:0 0 16px;font-size:14px;">
+        We're excited to have you join <strong>${orgName}</strong>! Before your onboarding begins,
+        please upload the following documents to your employee portal so HR can verify them.
+      </p>
+      <p style="font-weight:bold;margin:0 0 8px;font-size:14px;">Required Documents:</p>
+      <ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:#475569;line-height:1.8;">
+        ${docs.map(d => `<li>${d}</li>`).join('')}
+      </ul>
+      <p style="font-size:13px;color:#64748b;margin:0 0 20px;">
+        Click the button below to log in and upload your documents from the <strong>My Documents</strong> section.
+      </p>
+      <div style="text-align:center;margin-bottom:24px;">
+        <a href="${portalUrl}"
+           style="display:inline-block;background:linear-gradient(135deg,#3525cd,#712ae2);color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 32px;border-radius:8px;box-shadow:0 4px 12px rgba(53,37,205,0.25);">
+          Upload Documents →
+        </a>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin:0;">
+        If you have any questions, please contact your HR team directly.
+      </p>
+      ${FOOTER}
+    `)
+  );
+}
+
+module.exports = { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml, welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml, orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml, preOnboardingRequestHtml };

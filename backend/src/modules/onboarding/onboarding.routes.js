@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -74,7 +75,7 @@ router.get('/overview', auth, async (req, res) => {
 // POST /api/onboarding/init/:userId
 // Uses SELECT FOR UPDATE on the user row to serialize concurrent init requests.
 // All 16 tasks are inserted inside a single transaction — either all succeed or none.
-router.post('/init/:userId', auth, adminOnly, async (req, res) => {
+router.post('/init/:userId', auth, hasPermission('onboarding', 'manage'), async (req, res) => {
   if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
   const oId = req.user.organization_id;
   const uid = parseInt(req.params.userId);
@@ -138,7 +139,7 @@ router.post('/init/:userId', auth, adminOnly, async (req, res) => {
 });
 
 // POST /api/onboarding
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('onboarding', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -179,11 +180,47 @@ router.put('/:id/complete', auth, async (req, res) => {
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);
+
+    // Fire-and-forget: notify next task assignee when a task is completed
+    if (completed) {
+      try {
+        const { data: nextTask } = await supabase
+          .from('onboarding_checklists')
+          .select('id, title, assigned_to')
+          .eq('user_id', task.user_id).eq('organization_id', oId)
+          .eq('completed', false)
+          .order('order_index').limit(1).maybeSingle();
+
+        if (nextTask) {
+          if (nextTask.assigned_to === 'employee') {
+            // Notify the employee their next task is ready
+            supabase.from('notifications').insert({
+              user_id: task.user_id, title: 'Onboarding: Next Step Ready',
+              message: `"${nextTask.title}" is your next onboarding task.`,
+              type: 'onboarding', organization_id: oId,
+            }).then(() => {});
+          } else {
+            // Notify HR admins that an HR/IT/manager onboarding task needs attention
+            const { data: admins } = await supabase.from('users')
+              .select('id').in('role', ['admin', 'root_admin']).eq('organization_id', oId);
+            if (admins?.length) {
+              supabase.from('notifications').insert(
+                admins.map(a => ({
+                  user_id: a.id, title: 'Onboarding Task Ready',
+                  message: `Onboarding: "${nextTask.title}" requires ${nextTask.assigned_to} action.`,
+                  type: 'onboarding', organization_id: oId,
+                }))
+              ).then(() => {});
+            }
+          }
+        }
+      } catch (_) {}
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // DELETE /api/onboarding/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('onboarding', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;

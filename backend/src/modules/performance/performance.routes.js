@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -29,7 +30,7 @@ router.get('/goals', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/goals', auth, adminOnly, async (req, res) => {
+router.post('/goals', auth, hasPermission('performance', 'create'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { title, description, category, target_date, review_cycle, user_id, progress } = req.body;
@@ -72,7 +73,7 @@ router.put('/goals/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/goals/:id', auth, adminOnly, async (req, res) => {
+router.delete('/goals/:id', auth, hasPermission('performance', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { error } = await supabase.from('performance_goals').delete().eq('id', req.params.id).eq('organization_id', oId);
@@ -111,7 +112,7 @@ router.get('/reviews', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/reviews', auth, adminOnly, async (req, res) => {
+router.post('/reviews', auth, hasPermission('performance', 'create'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
@@ -126,7 +127,7 @@ router.post('/reviews', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.put('/reviews/:id', auth, adminOnly, async (req, res) => {
+router.put('/reviews/:id', auth, hasPermission('performance', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { self_rating, self_comments, manager_rating, manager_comments, strengths, improvements, final_rating, status } = req.body;

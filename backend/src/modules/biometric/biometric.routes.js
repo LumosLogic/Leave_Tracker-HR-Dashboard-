@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { pool } = require('../../config/db-pg-adapter');
 const { auth, adminOnly } = require('../../middleware/auth');
+const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuard');
 
 // ─── GET /api/biometric/devices ───────────────────────────────────────────────
 router.get('/devices', auth, adminOnly, async (req, res) => {
@@ -41,6 +42,7 @@ router.post('/devices', auth, adminOnly, async (req, res) => {
       [orgId, serial_number, device_name || null, location || null,
        branch_id || null, area_code || null, device_ip || null]
     );
+    invalidateBiometricIpCache(); // new device IP must take effect immediately
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A device with this serial number already exists' });
@@ -62,6 +64,7 @@ router.put('/devices/:id', auth, adminOnly, async (req, res) => {
        area_code || null, device_ip || null, req.params.id, orgId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Device not found' });
+    invalidateBiometricIpCache(); // IP change must take effect immediately
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

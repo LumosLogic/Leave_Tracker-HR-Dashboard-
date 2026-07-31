@@ -272,9 +272,6 @@ export default function EmployeeHome() {
   const [checkBusy, setCheckBusy]     = useState(false);
   const [breakBusy, setBreakBusy]     = useState(false);
 
-  const clockifySyncs      = false;
-  const clockifyTodayHours = 0;
-
   const nowDate = new Date();
 
   /* ── load today's attendance ── */
@@ -374,6 +371,38 @@ export default function EmployeeHome() {
   const { data: leavePolicies = [] } = useQuery({
     queryKey: ['leave-policies'], queryFn: () => apiGet('/leave-policies'), staleTime: 5 * 60 * 1000,
   });
+  const { data: leaveBalance } = useQuery({
+    queryKey: ['my-leave-balance', new Date().getFullYear()],
+    queryFn:  () => apiGet('/leaves/balance'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch this employee's shift assignment for the current month to show actual shift on the hero chip
+  const currentMonthStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+  const { data: myShiftAssignments = [] } = useQuery({
+    queryKey: ['my-shift-assignments', currentMonthStr],
+    queryFn:  () => apiGet('/shifts/assignments', { month: currentMonthStr }),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  // Find assignment for today specifically
+  const todayShiftRow    = myShiftAssignments.find(a => a.date === today);
+  const todayShift       = todayShiftRow?.shift || null;
+
+  // Dept Head: reuse sidebar cache so no extra request is fired
+  const { data: deptHeadInfo } = useQuery({
+    queryKey: ['is-dept-head'],
+    queryFn:  () => apiGet('/leaves/is-dept-head').catch(() => ({ is_dept_head: false })),
+    staleTime: 5 * 60 * 1000,
+  });
+  const isDeptHead = deptHeadInfo?.is_dept_head === true;
+
+  const { data: teamDashboard } = useQuery({
+    queryKey: ['team-dashboard'],
+    queryFn:  () => apiGet('/leaves/team-dashboard'),
+    enabled:  isDeptHead,
+    staleTime: 60000,
+  });
 
   /* ── derived data ── */
   const allHolidays     = culture?.holidays || [];
@@ -440,9 +469,12 @@ export default function EmployeeHome() {
     const h12  = h % 12 || 12;
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
   }
-  const shiftLabel = workSchedule?.start_time && workSchedule?.end_time
-    ? `${fmt24to12(workSchedule.start_time)} – ${fmt24to12(workSchedule.end_time)}`
-    : '—';
+  // Prefer the employee's actual shift assignment; fall back to org-wide schedule from settings
+  const shiftLabel = todayShift
+    ? `${todayShift.name} · ${fmt24to12(todayShift.start_time)}–${fmt24to12(todayShift.end_time)}`
+    : (workSchedule?.start_time && workSchedule?.end_time
+        ? `${fmt24to12(workSchedule.start_time)} – ${fmt24to12(workSchedule.end_time)}`
+        : '—');
 
   /* recent activity: synthesize from attendance + leaves */
   const recentActivity = [
@@ -548,51 +580,31 @@ export default function EmployeeHome() {
           {/* action buttons */}
           <div className="mt-5 flex flex-wrap gap-2">
             {/* primary: check-in/out */}
-            {clockifySyncs ? (
-              !attRecord?.check_in ? (
-                <button onClick={checkIn} disabled={checkBusy}
-                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
-                  <LogIn size={15} /> {checkBusy ? 'Checking in…' : 'Check In'}
+            {attRecord?.check_out ? (
+              <span className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white/15 text-white/80 border border-white/20">
+                <CheckCircle2 size={15} /> Day Complete
+              </span>
+            ) : isOnBreak ? (
+              <button onClick={breakOut} disabled={breakBusy}
+                className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-amber-600 hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                <Play size={15} /> {breakBusy ? 'Ending…' : 'End Break'}
+              </button>
+            ) : !attRecord?.check_in ? (
+              <button onClick={checkIn} disabled={checkBusy}
+                className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
+                <LogIn size={15} /> {checkBusy ? 'Checking in…' : 'Check In'}
+              </button>
+            ) : (
+              <>
+                <button onClick={breakIn} disabled={breakBusy || checkBusy}
+                  className="flex items-center gap-2 text-sm font-bold px-4 py-2.5 rounded-xl bg-white/15 border border-white/30 text-white hover:bg-white/25 transition-all disabled:opacity-60">
+                  <Coffee size={15} /> {breakBusy ? '…' : 'Break'}
                 </button>
-              ) : !attRecord?.check_out ? (
                 <button onClick={checkOut} disabled={checkBusy}
                   className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
-                  <LogOut size={15} /> {checkBusy ? 'Pausing…' : 'Go on Break'}
+                  <LogOut size={15} /> {checkBusy ? 'Checking out…' : 'Check Out'}
                 </button>
-              ) : (
-                <button onClick={checkIn} disabled={checkBusy}
-                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white/20 border border-white/30 text-white hover:bg-white/30 transition-all disabled:opacity-60">
-                  <Play size={15} /> {checkBusy ? 'Resuming…' : 'Resume Timer'}
-                </button>
-              )
-            ) : (
-              /* Standalone mode */
-              attRecord?.check_out ? (
-                <span className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white/15 text-white/80 border border-white/20">
-                  <CheckCircle2 size={15} /> Day Complete
-                </span>
-              ) : isOnBreak ? (
-                <button onClick={breakOut} disabled={breakBusy}
-                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-amber-600 hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
-                  <Play size={15} /> {breakBusy ? 'Ending…' : 'End Break'}
-                </button>
-              ) : !attRecord?.check_in ? (
-                <button onClick={checkIn} disabled={checkBusy}
-                  className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
-                  <LogIn size={15} /> {checkBusy ? 'Checking in…' : 'Check In'}
-                </button>
-              ) : (
-                <>
-                  <button onClick={breakIn} disabled={breakBusy || checkBusy}
-                    className="flex items-center gap-2 text-sm font-bold px-4 py-2.5 rounded-xl bg-white/15 border border-white/30 text-white hover:bg-white/25 transition-all disabled:opacity-60">
-                    <Coffee size={15} /> {breakBusy ? '…' : 'Break'}
-                  </button>
-                  <button onClick={checkOut} disabled={checkBusy}
-                    className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-white text-[#3525cd] hover:bg-white/90 transition-all disabled:opacity-60 shadow-sm">
-                    <LogOut size={15} /> {checkBusy ? 'Checking out…' : 'Check Out'}
-                  </button>
-                </>
-              )
+              </>
             )}
 
             {/* secondary buttons */}
@@ -753,25 +765,31 @@ export default function EmployeeHome() {
               </div>
             ) : (
               <div className="space-y-3">
-                {activePolicies.slice(0, 4).map(p => {
+                {(leaveBalance?.balances || activePolicies.map(p => {
                   const used = myLeaves
                     .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
                     .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-                  const total     = p.annual_quota;
-                  const remaining = Math.max(0, total - used);
-                  const pct       = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-                  const icon      = LEAVE_ICONS[p.leave_type] || LEAVE_ICONS.other;
-                  const barColor  = pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : icon.bar || '#10b981';
-
+                  return { leave_type: p.leave_type, label: p.label, allocated: p.annual_quota, used, pending: 0, remaining: Math.max(0, p.annual_quota - used) };
+                })).slice(0, 5).map(b => {
+                  const pct      = b.allocated > 0 ? Math.min(100, Math.round((b.used / b.allocated) * 100)) : 0;
+                  const icon     = LEAVE_ICONS[b.leave_type] || LEAVE_ICONS.other;
+                  const barColor = pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : icon.bar || '#10b981';
                   return (
-                    <div key={p.leave_type}>
+                    <div key={b.leave_type}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-[#151c27]">
-                          {icon.emoji} {p.label}
+                          {icon.emoji} {b.label}
                         </span>
-                        <span className="text-[0.65rem] font-bold text-[#3525cd]">
-                          {remaining} <span className="font-normal text-[#9ca3af]">remaining</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {b.pending > 0 && (
+                            <span className="text-[0.58rem] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                              {b.pending}d pending
+                            </span>
+                          )}
+                          <span className="text-[0.65rem] font-bold text-[#3525cd]">
+                            {b.remaining}<span className="font-normal text-[#9ca3af]">/{b.allocated}</span>
+                          </span>
+                        </div>
                       </div>
                       <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
                         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
@@ -788,6 +806,68 @@ export default function EmployeeHome() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          MY TEAM — visible only to Department Heads
+      ═══════════════════════════════════════════════════════════════════ */}
+      {isDeptHead && teamDashboard?.is_dept_head && (
+        <div className="bg-white rounded-xl border border-[#3525cd]/20 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+              <Users size={13} className="text-[#3525cd]" />
+              My Team — {teamDashboard.department?.name}
+            </h2>
+            <Link to="/portal/dept-approvals" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline flex items-center gap-1">
+              {teamDashboard.pending_approvals > 0 && (
+                <span className="bg-amber-500 text-white text-[0.58rem] font-black px-1.5 py-0.5 rounded-full">
+                  {teamDashboard.pending_approvals}
+                </span>
+              )}
+              Team Approvals →
+            </Link>
+          </div>
+          <div className="p-5">
+            {/* KPI row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              {[
+                { label: 'Team Size',        value: teamDashboard.team_count,        icon: '👥', color: 'text-[#3525cd] bg-[#f0f3ff]' },
+                { label: 'Present Today',    value: teamDashboard.present_today,     icon: '✅', color: 'text-emerald-700 bg-emerald-50' },
+                { label: 'On Leave',         value: teamDashboard.on_leave_today,    icon: '🏖️', color: 'text-amber-700 bg-amber-50' },
+                { label: 'Not Checked In',   value: teamDashboard.not_checked_in,    icon: '⏰', color: 'text-slate-500 bg-slate-50' },
+              ].map(({ label, value, icon, color }) => (
+                <div key={label} className="rounded-xl border border-[#e7eefe] p-3 text-center">
+                  <p className="text-base mb-0.5">{icon}</p>
+                  <p className={`text-xl font-black leading-none ${color.split(' ')[0]}`}>{value}</p>
+                  <p className="text-[0.6rem] text-[#777587] font-semibold mt-1 uppercase tracking-wide">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Upcoming team leaves */}
+            {teamDashboard.upcoming_leaves?.length > 0 && (
+              <div>
+                <p className="text-[0.6rem] font-black uppercase tracking-wider text-[#777587] mb-2">Upcoming Leaves (Next 7 Days)</p>
+                <div className="space-y-1.5">
+                  {teamDashboard.upcoming_leaves.map((l, i) => (
+                    <div key={i} className="flex items-center gap-2.5 text-xs px-2 py-1.5 rounded-lg bg-[#f9f9ff]">
+                      <span className="font-bold text-[#151c27] flex-1 truncate">{l.name}</span>
+                      <span className="text-[#777587]">
+                        {l.start_date}{l.end_date !== l.start_date ? ` → ${l.end_date}` : ''}
+                      </span>
+                      <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full capitalize">
+                        {l.leave_time === 'wfh' ? 'WFH' : l.leave_type}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {teamDashboard.upcoming_leaves?.length === 0 && (
+              <p className="text-xs text-[#9ca3af] text-center py-2">No upcoming leaves in the next 7 days.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════
           3. ATTENDANCE CHART + UPCOMING SCHEDULE

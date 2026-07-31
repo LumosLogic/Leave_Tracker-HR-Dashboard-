@@ -320,13 +320,22 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
 
     logPayroll({
       oId, actorId: req.user.id, actorName: req.user.name,
-      action: newRecord ? 'salary_updated' : 'salary_created',
+      action: oldRecord ? 'salary_updated' : 'salary_created',
       entityType: 'salary_structure', entityId: newRecord.id,
       targetUserId: user_id,
       oldValues: null,
       newValues: newRecord,
       ip: req.ip,
     });
+
+    // Notify the employee their compensation has changed (fire-and-forget)
+    supabase.from('notifications').insert({
+      user_id:         parseInt(user_id),
+      title:           oldRecord ? 'Your Salary Structure Has Been Updated' : 'Your Salary Structure Has Been Set',
+      message:         `Your ${oldRecord ? 'updated ' : ''}salary structure is effective from ${effective_from}. Gross pay: ₹${gross_salary.toLocaleString('en-IN')}.`,
+      type:            'payroll',
+      organization_id: oId,
+    }).then(() => {}).catch(() => {});
 
     res.status(201).json(newRecord);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -362,9 +371,27 @@ router.get('/structure', auth, async (req, res) => {
 router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), async (req, res) => {
   try {
     const oId = orgId(req);
-    const body = { ...req.body, organization_id: oId };
-    delete body.id; delete body.created_at;
-    const { data, error } = await supabase.from('payroll_structures').insert(body).select().single();
+    const {
+      user_id, effective_from, basic = 0, hra = 0, da = 0,
+      transport_allowance = 0, medical_allowance = 0, special_allowance = 0, other_allowance = 0,
+      employee_pf = 0, employee_esi = 0, professional_tax = 0, tds = 0, other_deductions = 0,
+      employer_pf = 0, employer_esi = 0, ctc, notes,
+    } = req.body;
+
+    // Validate the target employee belongs to this org before writing
+    if (user_id) {
+      const { data: emp } = await supabase.from('users')
+        .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
+      if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
+    }
+
+    const { data, error } = await supabase.from('payroll_structures').insert({
+      user_id, effective_from, basic, hra, da,
+      transport_allowance, medical_allowance, special_allowance, other_allowance,
+      employee_pf, employee_esi, professional_tax, tds, other_deductions,
+      employer_pf, employer_esi, ctc, notes,
+      organization_id: oId,
+    }).select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -374,8 +401,29 @@ router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), a
 router.put('/structure/:id', auth, hasPermission('payroll', 'manage_structures'), async (req, res) => {
   try {
     const oId = orgId(req);
-    const body = { ...req.body };
-    delete body.id; delete body.created_at; delete body.organization_id;
+    const {
+      user_id, effective_from, basic, hra, da,
+      transport_allowance, medical_allowance, special_allowance, other_allowance,
+      employee_pf, employee_esi, professional_tax, tds, other_deductions,
+      employer_pf, employer_esi, ctc, notes,
+    } = req.body;
+
+    // If user_id is being reassigned, confirm the target employee belongs to this org
+    if (user_id !== undefined) {
+      const { data: emp } = await supabase.from('users')
+        .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
+      if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
+    }
+
+    // Build the update with only the explicitly whitelisted fields
+    const body = {};
+    const ALLOWED = { user_id, effective_from, basic, hra, da, transport_allowance, medical_allowance,
+      special_allowance, other_allowance, employee_pf, employee_esi, professional_tax, tds,
+      other_deductions, employer_pf, employer_esi, ctc, notes };
+    for (const [k, v] of Object.entries(ALLOWED)) {
+      if (v !== undefined) body[k] = v;
+    }
+
     const { data, error } = await supabase.from('payroll_structures')
       .update(body).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
@@ -680,6 +728,25 @@ router.post('/lock/:id', auth, hasPermission('payroll', 'lock'), async (req, res
       ip:        req.ip,
     });
     res.json(result);
+
+    // Fire-and-forget: notify every employee whose payslip is in this locked run
+    pool.query(
+      `SELECT ps.user_id, ps.net_salary, ps.month, ps.year
+         FROM payslips ps
+        WHERE ps.payroll_run_id = $1 AND ps.organization_id = $2`,
+      [runId, oId]
+    ).then(({ rows }) => {
+      if (!rows.length) return;
+      return supabase.from('notifications').insert(
+        rows.map(r => ({
+          user_id:         r.user_id,
+          title:           'Your Payslip is Ready',
+          message:         `Your payslip for ${String(r.month).padStart(2,'0')}/${r.year} has been finalized. Net pay: ₹${Number(r.net_salary).toFixed(2)}.`,
+          type:            'payroll',
+          organization_id: oId,
+        }))
+      );
+    }).catch(() => {});
   } catch (err) { genErrResponse(res, err); }
 });
 

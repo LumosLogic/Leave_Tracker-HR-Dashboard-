@@ -1,7 +1,8 @@
 const express    = require('express');
 const router     = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
 
@@ -140,6 +141,20 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     }).select().single();
     if (error) throw error;
 
+    // Notify HR admins when a non-admin employee uploads a document (pre-onboarding or regular)
+    if (!isAdmin(req.user.role)) {
+      supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
+        .then(({ data: admins }) => {
+          if (!admins?.length) return;
+          return supabase.from('notifications').insert(admins.map(a => ({
+            user_id: a.id,
+            title:   'Employee Document Uploaded',
+            message: `${req.user.name} uploaded "${doc.name}" (${doc.category}). Please review in the Documents section.`,
+            type:    'document', organization_id: oId,
+          })));
+        }).catch(() => {});
+    }
+
     // Insert shares for 'specific' visibility
     if (docVisibility === 'specific' && shared_with) {
       let userIds = [];
@@ -160,7 +175,7 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
 });
 
 // PATCH /api/documents/:id/shares — update visibility and shared recipients (admin only)
-router.patch('/:id/shares', auth, adminOnly, async (req, res) => {
+router.patch('/:id/shares', auth, hasPermission('documents', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const oId = req.user.organization_id;
@@ -193,7 +208,7 @@ router.patch('/:id/shares', auth, adminOnly, async (req, res) => {
 });
 
 // PATCH /api/documents/:id/status — admin only
-router.patch('/:id/status', auth, adminOnly, async (req, res) => {
+router.patch('/:id/status', auth, hasPermission('documents', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const { status } = req.body;
@@ -302,7 +317,7 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
 });
 
 // DELETE /api/documents/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('documents', 'delete'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: doc } = await supabase.from('employee_documents')

@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
 // Fix H3: require at module top, not inside handler bodies
 const { resolvePermissions } = require('../../services/permissionService');
@@ -9,7 +10,7 @@ const { resolvePermissions } = require('../../services/permissionService');
 // ─── GET /api/permissions ─────────────────────────────────────────────────────
 // Returns all available permissions grouped by module.
 // Admin-only: employees never need to browse the permission catalog.
-router.get('/', auth, adminOnly, async (req, res) => {
+router.get('/', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('permissions')
@@ -50,7 +51,7 @@ router.get('/me', auth, async (req, res) => {
 
 // ─── GET /api/permissions/user/:userId ────────────────────────────────────────
 // Returns effective permission strings for a given user (for debugging / admin review).
-router.get('/user/:userId', auth, adminOnly, async (req, res) => {
+router.get('/user/:userId', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const userId = parseInt(req.params.userId, 10);

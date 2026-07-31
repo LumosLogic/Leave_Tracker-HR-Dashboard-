@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 // GET /api/designations
 router.get('/', auth, async (req, res) => {
@@ -20,7 +21,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/designations
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('designations', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, department_id } = req.body;
@@ -34,7 +35,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/designations/:id
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('designations', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, department_id } = req.body;
@@ -48,7 +49,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/designations/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('designations', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { error } = await supabase.from('designations')

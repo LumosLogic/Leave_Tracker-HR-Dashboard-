@@ -30,13 +30,49 @@ async function runDailyNotifications() {
   for (const org of orgs || []) {
     const oId = org.id;
     const { data: employees } = await supabase.from('users')
-      .select('id, name, email, department, date_of_birth')
+      .select('id, name, email, department, date_of_birth, joining_date')
       .eq('role', 'employee').eq('organization_id', oId);
 
     for (const emp of employees || []) {
       if (emp.date_of_birth && emp.date_of_birth.slice(5) === todayMD) {
         if (emp.email) sendMail({ to: emp.email, subject: `Happy Birthday, ${emp.name}! 🎂`, html: birthdayWishHtml(emp) });
         await sendPushToUsers([emp.id], { title: `🎂 Happy Birthday, ${emp.name}!`, body: `Wishing you a wonderful birthday!`, url: '/portal/home' }).catch(() => {});
+      }
+    }
+
+    // ── Work anniversaries (joining_date MM-DD === today, year must differ) ──────
+    const anniversariesToday = (employees || []).filter(e =>
+      e.joining_date && e.joining_date.slice(5) === todayMD && e.joining_date.slice(0, 4) !== today.slice(0, 4)
+    );
+    if (anniversariesToday.length > 0) {
+      const { data: hrAdmins } = await supabase.from('users')
+        .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
+      const hrIds = (hrAdmins || []).map(a => a.id);
+
+      for (const emp of anniversariesToday) {
+        const years      = parseInt(today.slice(0, 4)) - parseInt(emp.joining_date.slice(0, 4));
+        const yearsLabel = `${years} year${years !== 1 ? 's' : ''}`;
+
+        // Notify the employee
+        supabase.from('notifications').insert({
+          user_id: emp.id, title: '🎉 Happy Work Anniversary!',
+          message: `Congratulations on ${yearsLabel} with us! Your contributions make a real difference.`,
+          type: 'general', organization_id: oId,
+        }).then(() => {});
+        sendPushToUsers([emp.id], {
+          title: `🎉 ${years} Year${years !== 1 ? 's' : ''} Work Anniversary!`,
+          body:  `Congratulations on ${yearsLabel} with the company, ${emp.name}!`,
+          url:   '/portal/home',
+        }).catch(() => {});
+
+        // Notify HR admins
+        if (hrIds.length) {
+          await supabase.from('notifications').insert(hrIds.map(id => ({
+            user_id: id, title: `Work Anniversary — ${emp.name}`,
+            message: `${emp.name} completes ${yearsLabel} today. Consider recognising their contribution.`,
+            type: 'general', organization_id: oId,
+          })));
+        }
       }
     }
 

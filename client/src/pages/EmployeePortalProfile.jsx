@@ -474,6 +474,14 @@ function ProfileHeaderCard({ empId, onTabChange }) {
 
 // ─── OVERVIEW TAB ────────────────────────────────────────────────────────────
 
+function fmt12(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 function OverviewTab({ empId }) {
   const { data: overview, isLoading: ovLoading } = useQuery({
     queryKey: ['profile-overview', empId],
@@ -490,6 +498,17 @@ function OverviewTab({ empId }) {
     queryKey: ['leave-policies'],
     queryFn: () => apiGet('/leave-policies'),
   });
+
+  // Fetch today's shift assignment for this employee
+  const todayDate  = new Date().toISOString().split('T')[0];
+  const monthStr   = todayDate.slice(0, 7);
+  const { data: shiftAssignments = [] } = useQuery({
+    queryKey: ['my-shift-profile', monthStr],
+    queryFn:  () => apiGet('/shifts/assignments', { month: monthStr }),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const todayShift = shiftAssignments.find(a => a.date === todayDate)?.shift || null;
 
   if (ovLoading) return <Spinner />;
   if (!overview) return null;
@@ -608,8 +627,14 @@ function OverviewTab({ empId }) {
                 <Activity size={13} className="text-[#3525cd]" />
                 <span className="text-xs font-bold text-[#777587] uppercase tracking-wide">Current Shift</span>
               </div>
-              <p className="text-sm font-bold text-[#151c27]">General Shift</p>
-              <p className="text-xs text-[#777587]">09:00 AM – 06:00 PM</p>
+              <p className="text-sm font-bold text-[#151c27]">
+                {todayShift ? todayShift.name : 'No shift today'}
+              </p>
+              {todayShift && (
+                <p className="text-xs text-[#777587]">
+                  {fmt12(todayShift.start_time)} – {fmt12(todayShift.end_time)}
+                </p>
+              )}
               <Link to="/portal/attendance" className="text-xs text-[#3525cd] font-semibold mt-2 flex items-center gap-0.5 hover:underline">
                 View Schedule <ChevronRight size={11} />
               </Link>

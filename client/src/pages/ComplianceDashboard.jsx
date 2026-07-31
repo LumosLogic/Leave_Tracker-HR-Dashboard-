@@ -45,8 +45,8 @@ function StatusPill({ status }) {
 }
 
 export default function ComplianceDashboard() {
-  const { user } = useAuth();
-  const basePath = user?.role === 'root_admin' ? '/root' : '';
+  const { user, isRootAdmin } = useAuth();
+  const basePath = isRootAdmin ? '/root' : '';
   const now      = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year,  setYear]  = useState(now.getFullYear());

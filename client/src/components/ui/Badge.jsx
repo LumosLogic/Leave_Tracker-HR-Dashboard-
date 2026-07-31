@@ -2,17 +2,35 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 const STATUS_CLASS = {
-  pending:    'badge-pending',
-  approved:   'badge-approved',
-  rejected:   'badge-rejected',
-  cancelled:  'badge-cancelled',
-  present:    'badge-present',
-  absent:     'badge-absent',
-  on_leave:   'badge-on_leave',
-  half_day:   'badge-half_day',
-  late:       'badge-late',
-  early_exit: 'badge-early_exit',
-  wfh:        'badge-wfh',
+  pending:      'badge-pending',
+  pending_dept: 'badge-pending',
+  pending_root: 'badge-pending',
+  approved:     'badge-approved',
+  rejected:     'badge-rejected',
+  cancelled:    'badge-cancelled',
+  present:      'badge-present',
+  absent:       'badge-absent',
+  on_leave:     'badge-on_leave',
+  half_day:     'badge-half_day',
+  late:         'badge-late',
+  early_exit:   'badge-early_exit',
+  wfh:          'badge-wfh',
+};
+
+const STATUS_LABEL = {
+  pending:      'Pending',
+  pending_dept: 'Dept Review',
+  pending_root: 'Root Review',
+  approved:     'Approved',
+  rejected:     'Rejected',
+  cancelled:    'Cancelled',
+  present:      'Present',
+  absent:       'Absent',
+  on_leave:     'On Leave',
+  half_day:     'Half Day',
+  late:         'Late',
+  early_exit:   'Early Exit',
+  wfh:          'WFH',
 };
 
 const LEAVE_CLASS = {
@@ -26,7 +44,7 @@ const LEAVE_CLASS = {
 export function StatusBadge({ status, className }) {
   return (
     <span className={cn('badge', STATUS_CLASS[status] || 'badge-cancelled', className)}>
-      {status?.replace('_', ' ') || '—'}
+      {STATUS_LABEL[status] || status?.replace(/_/g, ' ') || '—'}
     </span>
   );
 }

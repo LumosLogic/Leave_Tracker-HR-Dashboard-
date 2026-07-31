@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 // GET /api/holidays
 router.get('/', auth, async (req, res) => {
@@ -17,7 +18,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/holidays
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('holidays', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, date, type, description, specific_msg } = req.body;
@@ -37,12 +38,26 @@ router.post('/', auth, adminOnly, async (req, res) => {
       .insert({ name, date, type: type || 'public', description: description || '', specific_msg: specific_msg || '', organization_id: oId })
       .select().single();
     if (error) throw error;
+
+    // Auto-mark attendance as 'holiday' for employees who have no record on this date (fire-and-forget)
+    supabase.from('users').select('id').eq('organization_id', oId).eq('role', 'employee').eq('employee_status', 'active')
+      .then(async ({ data: employees }) => {
+        if (!employees?.length) return;
+        const { data: existing } = await supabase.from('attendance')
+          .select('user_id').eq('date', date).eq('organization_id', oId);
+        const markedIds = new Set((existing || []).map(r => r.user_id));
+        const toInsert = employees
+          .filter(e => !markedIds.has(e.id))
+          .map(e => ({ user_id: e.id, organization_id: oId, date, status: 'holiday' }));
+        if (toInsert.length) await supabase.from('attendance').insert(toInsert);
+      }).catch(() => {});
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // PUT /api/holidays/:id
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('holidays', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { name, date, type, description, specific_msg } = req.body;
@@ -56,7 +71,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/holidays/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('holidays', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { error } = await supabase.from('holidays')
@@ -67,7 +82,7 @@ router.delete('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // POST /api/holidays/bulk — import multiple holidays
-router.post('/bulk', auth, adminOnly, async (req, res) => {
+router.post('/bulk', auth, hasPermission('holidays', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { holidays } = req.body;

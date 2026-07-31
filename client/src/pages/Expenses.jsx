@@ -14,9 +14,10 @@ const CATEGORIES = ['travel','meals','accommodation','fuel','office_supplies','i
 const CAT_ICONS  = { travel:'✈️', meals:'🍽️', accommodation:'🏨', fuel:'⛽', office_supplies:'🖊️', internet:'🌐', medical:'🏥', parking:'🅿️', training:'📚', client_entertainment:'🤝', communication:'📱', other:'🧾' };
 const CAT_LABELS = { travel:'Travel', meals:'Meals', accommodation:'Accommodation', fuel:'Fuel', office_supplies:'Office Supplies', internet:'Internet', medical:'Medical', parking:'Parking', training:'Training', client_entertainment:'Client Entertainment', communication:'Communication', other:'Other' };
 const STATUS_CFG = {
-  pending:  { cls: 'badge-pending',  icon: <Clock size={11} />,        label: 'Pending'  },
-  approved: { cls: 'badge-approved', icon: <CheckCircle2 size={11} />, label: 'Approved' },
-  rejected: { cls: 'badge-rejected', icon: <XCircle size={11} />,      label: 'Rejected' },
+  pending:          { cls: 'badge-pending',  icon: <Clock size={11} />,        label: 'Pending'       },
+  manager_approved: { cls: 'badge-warning',  icon: <CheckCircle2 size={11} />, label: 'Mgr Approved'  },
+  approved:         { cls: 'badge-approved', icon: <CheckCircle2 size={11} />, label: 'Approved'      },
+  rejected:         { cls: 'badge-rejected', icon: <XCircle size={11} />,      label: 'Rejected'      },
 };
 
 const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -214,23 +215,63 @@ function ReviewModal({ open, onClose, expense }) {
   );
 }
 
+function ManagerReviewModal({ open, onClose, expense }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const [notes, setNotes] = useState('');
+
+  const mut = useMutation({
+    mutationFn: action => apiPut(`/expenses/${expense.id}/manager-approve`, { action, notes }),
+    onSuccess: () => { toast('Response saved!', 'success'); qc.invalidateQueries({ queryKey: ['expenses'] }); onClose(); },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Review Expense — Manager Approval" size="sm"
+      footer={
+        <div className="flex justify-end gap-3">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-danger" onClick={() => mut.mutate('reject')} disabled={mut.isPending}>Reject</button>
+          <button className="btn btn-primary" onClick={() => mut.mutate('approve')} disabled={mut.isPending}>Approve & Forward to HR</button>
+        </div>
+      }>
+      <div className="space-y-3">
+        <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-2 text-xs">
+          <p className="font-bold text-[#151c27]">{expense.title}</p>
+          <p><span className="text-[#777587]">Amount:</span> <span className="font-black text-[#3525cd] text-base">{fmt(expense.amount)}</span></p>
+          <p><span className="text-[#777587]">Date:</span> <span className="font-semibold">{fmtDate(expense.expense_date)}</span></p>
+          <p><span className="text-[#777587]">Submitted by:</span> <span className="font-semibold">{expense.user_name}</span></p>
+          {expense.receipt_url && (
+            <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#3525cd] hover:underline mt-1"><ExternalLink size={11} />View Receipt</a>
+          )}
+        </div>
+        <div>
+          <label className="form-label">Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — sent to employee)</span></label>
+          <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function ExpensesPage() {
-  const { isAdmin, isEmployee } = useAuth();
+  const { user, isAdmin, isEmployee } = useAuth();
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
   const [searchParams] = useSearchParams();
-  const [addOpen,   setAddOpen]   = useState(false);
-  const [editExp,   setEditExp]   = useState(null);
-  const [reviewExp, setReviewExp] = useState(null);
-  const [confirmDel,setConfirmDel]= useState(null);
-  const [filter,    setFilter]    = useState('all');
+  const [addOpen,          setAddOpen]          = useState(false);
+  const [editExp,          setEditExp]          = useState(null);
+  const [reviewExp,        setReviewExp]        = useState(null);
+  const [managerReviewExp, setManagerReviewExp] = useState(null);
+  const [confirmDel,       setConfirmDel]       = useState(null);
+  const [filter,           setFilter]           = useState('all');
 
   // Auto-open submit form from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
     if (!isAdmin && searchParams.get('action') === 'apply') setAddOpen(true);
     const s = searchParams.get('status');
-    if (s && ['pending', 'approved', 'rejected'].includes(s)) setFilter(s);
+    if (s && ['pending', 'manager_approved', 'approved', 'rejected'].includes(s)) setFilter(s);
   }, []);
 
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });
@@ -243,7 +284,7 @@ export default function ExpensesPage() {
   });
 
   const totalAmt   = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const pendingAmt = expenses.filter(e => e.status === 'pending').reduce((s, e) => s + Number(e.amount || 0), 0);
+  const pendingAmt = expenses.filter(e => ['pending','manager_approved'].includes(e.status)).reduce((s, e) => s + Number(e.amount || 0), 0);
   const approvedAmt= expenses.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount || 0), 0);
 
   return (
@@ -273,10 +314,16 @@ export default function ExpensesPage() {
 
       {/* Filter */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {['all','pending','approved','rejected'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize border transition-all ${filter === f ? 'bg-[#3525cd] text-white border-[#3525cd] shadow-sm' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'}`}>
-            {f}
+        {[
+          { key: 'all',              label: 'All' },
+          { key: 'pending',          label: 'Pending' },
+          { key: 'manager_approved', label: 'Mgr Approved' },
+          { key: 'approved',         label: 'Approved' },
+          { key: 'rejected',         label: 'Rejected' },
+        ].map(f => (
+          <button key={f.key} onClick={() => setFilter(f.key)}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${filter === f.key ? 'bg-[#3525cd] text-white border-[#3525cd] shadow-sm' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'}`}>
+            {f.label}
           </button>
         ))}
       </div>
@@ -324,6 +371,11 @@ export default function ExpensesPage() {
                         )}
                       </div>
                     </div>
+                    {e.manager_notes && (
+                      <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[#464555] mt-2">
+                        <span className="text-amber-700 font-semibold">Manager:</span> {e.manager_notes}
+                      </div>
+                    )}
                     {e.reviewer_notes && (
                       <div className="text-xs bg-[#f9f9ff] border border-[#f0f3ff] rounded-lg px-3 py-2 text-[#464555] mt-2">
                         <span className="text-[#777587]">HR:</span> {e.reviewer_notes}
@@ -331,14 +383,24 @@ export default function ExpensesPage() {
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5 flex-shrink-0">
-                    {isAdmin && e.status === 'pending' && (
+                    {/* HR Admin: review pending (no manager) or manager-approved expenses */}
+                    {isAdmin && ['pending', 'manager_approved'].includes(e.status) && (
                       <button className="btn btn-outline btn-sm" onClick={() => setReviewExp(e)}>Review <ChevronRight size={12} /></button>
                     )}
-                    {!isAdmin && e.status === 'pending' && (
+                    {/* Manager: approve/reject their direct report's pending expense */}
+                    {!isAdmin && e.manager_id === user?.id && e.status === 'pending' && (
+                      <button className="btn btn-primary btn-sm" onClick={() => setManagerReviewExp(e)}>Approve <ChevronRight size={12} /></button>
+                    )}
+                    {/* Employee: edit/delete their own pending claims only */}
+                    {!isAdmin && e.user_id === user?.id && e.status === 'pending' && !e.manager_id && (
                       <>
                         <button className="btn btn-ghost btn-icon text-[#777587] hover:text-[#3525cd]" onClick={() => setEditExp(e)}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                         <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" onClick={() => setConfirmDel({ id: e.id, name: e.title })}><Trash2 size={13} /></button>
                       </>
+                    )}
+                    {/* Employee: can still delete if manager hasn't acted yet */}
+                    {!isAdmin && e.user_id === user?.id && e.status === 'pending' && e.manager_id && (
+                      <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" onClick={() => setConfirmDel({ id: e.id, name: e.title })}><Trash2 size={13} /></button>
                     )}
                   </div>
                 </div>
@@ -348,9 +410,10 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {addOpen    && <ExpenseModal open onClose={() => setAddOpen(false)} />}
-      {editExp    && <ExpenseModal open onClose={() => setEditExp(null)} expense={editExp} />}
-      {reviewExp  && <ReviewModal  open onClose={() => setReviewExp(null)} expense={reviewExp} />}
+      {addOpen           && <ExpenseModal       open onClose={() => setAddOpen(false)} />}
+      {editExp           && <ExpenseModal       open onClose={() => setEditExp(null)} expense={editExp} />}
+      {reviewExp         && <ReviewModal        open onClose={() => setReviewExp(null)} expense={reviewExp} />}
+      {managerReviewExp  && <ManagerReviewModal open onClose={() => setManagerReviewExp(null)} expense={managerReviewExp} />}
       <ConfirmModal open={!!confirmDel} title="Delete Expense" message={`Delete expense "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
     </div>

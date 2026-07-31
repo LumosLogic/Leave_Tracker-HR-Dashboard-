@@ -91,9 +91,11 @@ router.get('/', auth, async (req, res) => {
 
     let pendingLeaveList;
     if (isAdminRole(req.user.role)) {
+      // Include pending_root leaves for visibility — HR sees them but only Root Admin can approve them.
+      // Frontend differentiates action buttons by status.
       const { data: plRaw } = await supabase.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-        .eq('status', 'pending').eq('organization_id', orgId(req))
+        .in('status', ['pending', 'pending_root']).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     } else {

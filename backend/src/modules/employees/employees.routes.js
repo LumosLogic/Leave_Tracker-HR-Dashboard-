@@ -2,9 +2,11 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const { supabase, pool } = require('../../config/db');
-const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
-const { sendMail, welcomeEmployeeHtml } = require('../../services/emailService');
+const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml } = require('../../services/emailService');
+const { initOnboarding } = require('../onboarding/onboardingService');
 
 // ─── NEW COLUMNS (biometric / Sanghavi) added to the standard employee fields ──
 const EMPLOYEE_PUBLIC_COLS = [
@@ -53,7 +55,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // ─── Employees: Create ────────────────────────────────────────────────────────
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('employees', 'create'), async (req, res) => {
   try {
     const { name, email, password, role, department, position, avatar_color, date_of_birth } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, password required' });
@@ -69,7 +71,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
     const {
       device_enrollment_id, branch_id, grade, division, sub_division,
       salutation, middle_name, surname, location, pay_cadre,
-      weekly_off_day, work_hours_per_day,
+      weekly_off_day, work_hours_per_day, designation_id,
     } = req.body;
     // user INSERT + department assignments must be atomic.
     // A user with no department assignments is a valid partial state we must prevent.
@@ -85,14 +87,15 @@ router.post('/', auth, adminOnly, async (req, res) => {
             date_of_birth, force_password_change, organization_id,
             device_enrollment_id, branch_id, grade, division, sub_division,
             salutation, middle_name, surname, location, pay_cadre,
-            weekly_off_day, work_hours_per_day)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+            weekly_off_day, work_hours_per_day, designation_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
          RETURNING id, name, email, role, department, position, avatar_color, date_of_birth`,
         [name, email.toLowerCase(), hashed, role||'employee', department||'General',
          position||'Staff', avatar_color||'#4F46E5', date_of_birth||null, orgId(req),
          device_enrollment_id||null, branch_id||null, grade||null, division||null,
          sub_division||null, salutation||null, middle_name||null, surname||null,
-         location||null, pay_cadre||null, weekly_off_day||null, work_hours_per_day||null]
+         location||null, pay_cadre||null, weekly_off_day||null, work_hours_per_day||null,
+         designation_id ? parseInt(designation_id) : null]
       );
       newUser = userRes.rows[0];
 
@@ -119,13 +122,53 @@ router.post('/', auth, adminOnly, async (req, res) => {
     // Fire-and-forget side effects after COMMIT
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
     supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
+
+    // Auto-initialize onboarding checklist (fire-and-forget)
+    if ((role || 'employee') === 'employee') {
+      initOnboarding(newUser.id, orgId(req)).catch(() => {});
+
+      // Pre-onboarding document request email — ask the new employee to upload
+      // their joining documents before the onboarding checklist begins.
+      if (email) {
+        const { data: org } = await supabase.from('organizations')
+          .select('name').eq('id', orgId(req)).maybeSingle().catch(() => ({ data: null }));
+        const portalUrl = `${process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com'}/portal/documents`;
+        sendMail({
+          to: email,
+          subject: `Action Required — Upload Your Joining Documents`,
+          html: preOnboardingRequestHtml({ name, orgName: org?.name || 'Your Organisation', portalUrl }),
+        });
+      }
+    }
+
+    // Assign matching RBAC system role (fire-and-forget; harmless if RBAC tables not yet migrated)
+    const rbacSlugMap = { employee: 'employee', admin: 'hr_admin', root_admin: 'root_admin' };
+    const rbacSlug = rbacSlugMap[role || 'employee'];
+    if (rbacSlug) {
+      supabase.from('roles')
+        .select('id')
+        .eq('org_id', orgId(req))
+        .eq('slug', rbacSlug)
+        .maybeSingle()
+        .then(({ data: sysRole }) => {
+          if (sysRole?.id) {
+            return supabase.from('user_roles').insert({
+              user_id:     newUser.id,
+              role_id:     sysRole.id,
+              org_id:      orgId(req),
+              assigned_by: req.user.id,
+            });
+          }
+        })
+        .catch(() => {});
+    }
     const data = newUser;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Employees: Update ────────────────────────────────────────────────────────
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) => {
   try {
     const {
       name, email, role, department, position, avatar_color, password, date_of_birth, department_ids,
@@ -133,7 +176,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       // new HRMS columns
       device_enrollment_id, branch_id, grade, division, sub_division,
       salutation, middle_name, surname, location, pay_cadre,
-      weekly_off_day, work_hours_per_day,
+      weekly_off_day, work_hours_per_day, designation_id,
       // personal profile fields
       gender, blood_group, marital_status, nationality, religion,
       citizenship, height, weight,
@@ -173,6 +216,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       pay_cadre:            pay_cadre            || null,
       weekly_off_day:       weekly_off_day       || null,
       work_hours_per_day:   work_hours_per_day   || null,
+      designation_id:       designation_id ? parseInt(designation_id) : null,
       // personal profile fields
       gender:               gender               || null,
       blood_group:          blood_group          || null,
@@ -194,6 +238,18 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       try {
         await client.query('BEGIN');
 
+        // M-12: keep users.department text in sync with the primary department name.
+        // The text column is the legacy denormalized field consumed by leave emails and reports.
+        if (department_ids.length > 0) {
+          const dRes = await client.query(
+            'SELECT name FROM departments WHERE id = $1 AND organization_id = $2',
+            [department_ids[0], orgId(req)]
+          );
+          if (dRes.rows[0]?.name) update.department = dRes.rows[0].name;
+        } else {
+          update.department = '';
+        }
+
         // Update user fields
         const setClauses = Object.entries(update)
           .filter(([, v]) => v !== undefined)
@@ -206,8 +262,12 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
         );
         data = userRes.rows[0];
 
-        // Replace department assignments atomically
-        await client.query(`DELETE FROM user_departments WHERE user_id = $1`, [empId]);
+        // Guard: if the UPDATE matched no rows the empId belongs to another org — abort now.
+        // Without this check the DELETE below would execute on a cross-tenant user and commit.
+        if (!userRes.rows[0]) throw new Error('Employee not found in this organisation');
+
+        // Replace department assignments atomically (org-scoped to prevent cross-tenant wipe)
+        await client.query(`DELETE FROM user_departments WHERE user_id = $1 AND organization_id = $2`, [empId, orgId(req)]);
         for (const dId of department_ids) {
           await client.query(
             `INSERT INTO user_departments (user_id, department_id, role_in_dept, organization_id)
@@ -240,7 +300,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 
 // ─── Employees: Update Statutory Fields ──────────────────────────────────────
 // PUT /api/employees/:id/statutory — admin only, accepts PF/ESI/OT statutory fields
-router.put('/:id/statutory', auth, adminOnly, async (req, res) => {
+router.put('/:id/statutory', auth, hasPermission('employees', 'edit'), async (req, res) => {
   try {
     const {
       pf_applicable, pf_no, esi_applicable, esi_no,
@@ -275,10 +335,11 @@ router.put('/:id/statutory', auth, adminOnly, async (req, res) => {
 });
 
 // ─── Employees: Delete ────────────────────────────────────────────────────────
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('employees', 'delete'), async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
-    const { data: emp } = await supabase.from('users').select('name, email').eq('id', req.params.id).maybeSingle();
+    // Org-scoped pre-fetch prevents reading PII from another org's employee for the audit log
+    const { data: emp } = await supabase.from('users').select('name, email').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
     await supabase.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     // Log member removed event
     if (emp) {

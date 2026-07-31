@@ -141,13 +141,13 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     ] = await Promise.all([
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', oid),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
-      supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', oid),
+      supabase.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root']).eq('organization_id', oid),
       supabase.from('leaves')
         .select('id, user_id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
       supabase.from('leaves')
         .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-        .eq('organization_id', oid).eq('status', 'pending').order('created_at', { ascending: false }).limit(15),
+        .eq('organization_id', oid).in('status', ['pending', 'pending_root']).order('created_at', { ascending: false }).limit(15),
       supabase.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
       supabase.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
@@ -426,6 +426,13 @@ router.post('/hr', auth, rootAdminOnly, async (req, res) => {
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your HR Admin Account', html: welcomeEmployeeHtml({ name, email, department: department||'Human Resources', position: position||'HR Manager' }, password) });
+    // Assign hr_admin RBAC role (fire-and-forget; harmless if RBAC tables not yet migrated)
+    supabase.from('roles').select('id').eq('org_id', orgId(req)).eq('slug', 'hr_admin').maybeSingle()
+      .then(({ data: sysRole }) => {
+        if (sysRole?.id) {
+          return supabase.from('user_roles').insert({ user_id: data.id, role_id: sysRole.id, org_id: orgId(req), assigned_by: req.user.id });
+        }
+      }).catch(() => {});
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

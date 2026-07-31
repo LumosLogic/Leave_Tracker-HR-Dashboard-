@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { localDateStr, localTimeStr, flat, orgId, toMinutes, getSettings, isWorkingDay } = require('../../utils/helpers');
 
 // ─── Attendance: List ─────────────────────────────────────────────────────────
@@ -45,10 +46,22 @@ router.get('/today', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Attendance: Check-in Mode (manual only) ──────────────────────────────────
-router.get('/checkin-mode', auth, async (req, res) => {
-  res.json({ has_clockify: false, user_clockify_id: null, syncs_clockify: false });
-});
+// Fetch the employee's currently active shift start/end times.
+// Returns null when no shift assignment applies today.
+async function getActiveShiftTimes(userId, today) {
+  try {
+    const { data } = await supabase
+      .from('shift_assignments')
+      .select('shift:shifts(start_time, end_time)')
+      .eq('user_id', userId)
+      .lte('effective_from', today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.shift || null;
+  } catch { return null; }
+}
 
 // ─── Attendance: Check-in ─────────────────────────────────────────────────────
 router.post('/checkin', auth, async (req, res) => {
@@ -63,7 +76,10 @@ router.post('/checkin', auth, async (req, res) => {
     if (existing?.check_in && !existing?.check_out) return res.status(400).json({ error: 'Already checked in today' });
     if (existing?.check_in && existing?.check_out)  return res.status(400).json({ error: 'You have already checked out today' });
 
-    const is_late = toMinutes(timeStr) > toMinutes(settings.late_threshold);
+    // Use employee's shift start time if available; fall back to org-wide late_threshold
+    const shift = await getActiveShiftTimes(req.user.id, today);
+    const lateThreshold = shift?.start_time || settings.late_threshold;
+    const is_late = toMinutes(timeStr) > toMinutes(lateThreshold);
 
     let record;
     if (existing) {
@@ -106,7 +122,10 @@ router.post('/checkout', auth, async (req, res) => {
       breakUpdateFields.total_break_minutes = totalBreakMins;
     }
     const effectiveHours = Math.max(0, grossHours - totalBreakMins / 60);
-    const is_early_exit = toMinutes(timeStr) < toMinutes(settings.early_exit_threshold);
+    // Use employee's shift end time if available; fall back to org-wide early_exit_threshold
+    const shift = await getActiveShiftTimes(req.user.id, today);
+    const earlyExitThreshold = shift?.end_time || settings.early_exit_threshold;
+    const is_early_exit = toMinutes(timeStr) < toMinutes(earlyExitThreshold);
     const status        = effectiveHours < settings.half_day_hours ? 'half_day' : 'present';
 
     const { data: updated } = await supabase.from('attendance')
@@ -159,7 +178,7 @@ router.post('/break-out', auth, async (req, res) => {
 });
 
 // ─── Attendance: Admin Edit (by ID) ──────────────────────────────────────────
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { check_in, check_out, status, is_late, is_early_exit, notes } = req.body;
     // gross_hours = raw span between check_in and check_out (no break deduction)
@@ -182,7 +201,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // ─── Attendance: Mark Absent ──────────────────────────────────────────────────
-router.post('/mark-absent', auth, adminOnly, async (req, res) => {
+router.post('/mark-absent', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { user_id, date } = req.body;
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
@@ -198,7 +217,7 @@ router.post('/mark-absent', auth, adminOnly, async (req, res) => {
 
 // ─── Attendance: Admin Create or Full Edit ────────────────────────────────────
 // Admin create or fully edit any attendance record
-router.post('/admin-edit', auth, adminOnly, async (req, res) => {
+router.post('/admin-edit', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { user_id, date, check_in, check_out, status, is_late, is_early_exit, notes } = req.body;
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
@@ -226,7 +245,7 @@ router.post('/admin-edit', auth, adminOnly, async (req, res) => {
 
 // ─── Attendance: Mark Late/Early (POST — create/update) ──────────────────────
 // Mark late come / early exit for an employee on a given date
-router.post('/late-early', auth, adminOnly, async (req, res) => {
+router.post('/late-early', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { user_id, date, late_come, late_come_time, early_exit, early_exit_time } = req.body;
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date are required' });
@@ -300,7 +319,7 @@ router.get('/late-early', auth, async (req, res) => {
 
 // ─── Attendance: Update Late/Early Flags (PUT by ID) ─────────────────────────
 // Update late/early flags on an existing attendance record
-router.put('/late-early/:id', auth, adminOnly, async (req, res) => {
+router.put('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { late_come, late_come_time, early_exit, early_exit_time } = req.body;
 
@@ -325,7 +344,7 @@ router.put('/late-early/:id', auth, adminOnly, async (req, res) => {
 
 // ─── Attendance: Clear Late/Early Flags (DELETE by ID) ───────────────────────
 // Clear late/early flags from an attendance record
-router.delete('/late-early/:id', auth, adminOnly, async (req, res) => {
+router.delete('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
     const { data: existing } = await supabase.from('attendance')
       .select('*').eq('id', req.params.id).single();

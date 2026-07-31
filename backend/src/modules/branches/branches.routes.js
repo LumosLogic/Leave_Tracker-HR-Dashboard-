@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { pool } = require('../../config/db-pg-adapter');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 // GET /api/branches
 router.get('/', auth, async (req, res) => {
@@ -15,7 +16,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/branches
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('branches', 'create'), async (req, res) => {
   try {
     const { name, code, location, address, is_active } = req.body;
     if (!name) return res.status(400).json({ error: 'Branch name is required' });
@@ -30,7 +31,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/branches/:id
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('branches', 'manage'), async (req, res) => {
   try {
     const { name, code, location, address, is_active } = req.body;
     const result = await pool.query(
@@ -45,7 +46,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/branches/:id
-router.delete('/:id', auth, adminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('branches', 'manage'), async (req, res) => {
   try {
     const empCheck = await pool.query(
       `SELECT id FROM users WHERE branch_id=$1 AND organization_id=$2 LIMIT 1`,

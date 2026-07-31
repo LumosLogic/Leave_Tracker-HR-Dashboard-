@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 function toCSV(rows, cols) {
   const header = cols.map(c => c.label).join(',');
@@ -190,7 +191,7 @@ router.get('/headcount', auth, async (req, res) => {
 });
 
 // GET /api/reports/employees?format=csv (admin only — contains PII)
-router.get('/employees', auth, adminOnly, async (req, res) => {
+router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { format } = req.query;

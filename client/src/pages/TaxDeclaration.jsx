@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileText, Save, CheckCircle2, Clock, AlertCircle,
-  ChevronDown, ChevronUp, Info, Upload,
+  ChevronDown, ChevronUp, Info, Upload, ExternalLink, RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -164,6 +164,138 @@ function HRReviewPanel({ declarations }) {
   );
 }
 
+// ── Investment Proof HR Review Panel ─────────────────────────────────────────
+const PROOF_STATUS_CLS = {
+  pending:        'bg-amber-50 text-amber-700 border-amber-200',
+  approved:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+  rejected:       'bg-rose-50 text-rose-700 border-rose-200',
+  needs_reupload: 'bg-orange-50 text-orange-700 border-orange-200',
+};
+
+function InvestmentProofReviewPanel({ proofs, onReviewed }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const [notes, setNotes] = useState({});
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, status, rejection_reason }) =>
+      apiPut(`/statutory/proofs/${id}/review`, { status, rejection_reason }),
+    onSuccess: () => {
+      toast('Proof reviewed', 'success');
+      qc.invalidateQueries({ queryKey: ['proofs-hr'] });
+      onReviewed?.();
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const pending = (proofs || []).filter(p => p.status === 'pending');
+
+  return (
+    <div className="bg-white rounded-xl border border-[#e2e0f0] shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
+        <p className="text-sm font-bold text-[#151c27] flex items-center gap-2">
+          <Upload size={14} className="text-[#3525cd]" />
+          Investment Proof Review
+          {pending.length > 0 && (
+            <span className="text-[0.6rem] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
+              {pending.length}
+            </span>
+          )}
+        </p>
+        <span className="text-xs text-[#777587]">{(proofs || []).length} proofs total</span>
+      </div>
+
+      {pending.length === 0 ? (
+        <div className="py-10 text-center">
+          <CheckCircle2 size={24} className="text-emerald-400 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-[#464555]">No pending proofs</p>
+          <p className="text-xs text-[#9ca3af] mt-0.5">All investment proofs have been reviewed.</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-[#f0f3ff]">
+          {pending.map(p => (
+            <div key={p.id} className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-[#151c27] text-sm">{p.employee_name}</p>
+                  <p className="text-xs text-[#777587] mt-0.5 capitalize">
+                    {p.proof_type?.replace(/_/g, ' ')}
+                    {p.claimed_amount > 0 && ` · ₹${Number(p.claimed_amount).toLocaleString('en-IN')}`}
+                  </p>
+                  {p.description && (
+                    <p className="text-xs text-[#464555] mt-1 italic">"{p.description}"</p>
+                  )}
+                </div>
+                <span className={`text-[0.6rem] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${PROOF_STATUS_CLS[p.status] || ''}`}>
+                  {p.status}
+                </span>
+              </div>
+
+              {p.document_url && (
+                <a href={p.document_url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#3525cd] hover:underline">
+                  <ExternalLink size={12} />
+                  {p.document_name || 'View Document'}
+                </a>
+              )}
+
+              <textarea rows={2} placeholder="Review notes (required for reject / needs re-upload)…"
+                value={notes[p.id] || ''}
+                onChange={e => setNotes(n => ({ ...n, [p.id]: e.target.value }))}
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3525cd] resize-none" />
+
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => reviewMut.mutate({ id: p.id, status: 'approved', rejection_reason: notes[p.id] })}
+                  disabled={reviewMut.isPending}
+                  className="flex-1 bg-emerald-600 text-white rounded-lg py-2 text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                  Approve
+                </button>
+                <button
+                  onClick={() => {
+                    if (!notes[p.id]) { toast('Add rejection reason first', 'error'); return; }
+                    reviewMut.mutate({ id: p.id, status: 'needs_reupload', rejection_reason: notes[p.id] });
+                  }}
+                  disabled={reviewMut.isPending}
+                  className="flex-1 bg-amber-500 text-white rounded-lg py-2 text-xs font-bold hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                  Needs Re-upload
+                </button>
+                <button
+                  onClick={() => {
+                    if (!notes[p.id]) { toast('Add rejection reason first', 'error'); return; }
+                    reviewMut.mutate({ id: p.id, status: 'rejected', rejection_reason: notes[p.id] });
+                  }}
+                  disabled={reviewMut.isPending}
+                  className="flex-1 bg-rose-600 text-white rounded-lg py-2 text-xs font-bold hover:bg-rose-700 disabled:opacity-50 transition-colors">
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reviewed proofs summary */}
+      {(proofs || []).filter(p => p.status !== 'pending').length > 0 && (
+        <div className="border-t border-[#f0f3ff] px-5 py-3">
+          <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] mb-2">Reviewed</p>
+          <div className="space-y-1.5">
+            {(proofs || []).filter(p => p.status !== 'pending').map(p => (
+              <div key={p.id} className="flex items-center justify-between text-xs text-[#464555]">
+                <span className="font-semibold">{p.employee_name}</span>
+                <span className="capitalize text-[#777587]">{p.proof_type?.replace(/_/g, ' ')}</span>
+                <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full border ${PROOF_STATUS_CLS[p.status] || ''}`}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function TaxDeclaration() {
   const toast   = useToast();
@@ -199,6 +331,13 @@ export default function TaxDeclaration() {
     queryKey: ['declarations-hr'],
     queryFn:  () => apiGet('/statutory/declarations'),
     enabled:  isHR,
+  });
+
+  const { data: allProofs = [], refetch: refetchProofs } = useQuery({
+    queryKey: ['proofs-hr'],
+    queryFn:  () => apiGet('/statutory/proofs'),
+    enabled:  isHR,
+    staleTime: 60000,
   });
 
   useEffect(() => {
@@ -253,6 +392,7 @@ export default function TaxDeclaration() {
           <p className="text-sm text-[#777587]">{allDecl.length} declarations · FY {fy}</p>
         </div>
         <HRReviewPanel declarations={allDecl} />
+        <InvestmentProofReviewPanel proofs={allProofs} onReviewed={refetchProofs} />
         {allDecl.filter(d => !['submitted','hr_review'].includes(d.status)).length > 0 && (
           <div className="bg-white rounded-xl border border-[#e2e0f0] shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-[#f0f3ff]">

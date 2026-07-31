@@ -1,7 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
+const { initOffboarding } = require('../offboarding/offboardingService');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -85,17 +87,47 @@ router.post('/', auth, async (req, res) => {
         type: 'exit', organization_id: oId,
       })));
     }
+
+    // Notify the employee's department head — they need to plan for the departure (fire-and-forget)
+    ;(async () => {
+      try {
+        const { data: emp } = await supabase.from('users')
+          .select('department_id').eq('id', targetUserId).maybeSingle();
+        if (!emp?.department_id) return;
+        const { data: dept } = await supabase.from('departments')
+          .select('head_user_id').eq('id', emp.department_id).maybeSingle();
+        const dhId = dept?.head_user_id;
+        if (!dhId || dhId === targetUserId) return;
+        await supabase.from('notifications').insert({
+          user_id: dhId, title: 'Team Member Resignation',
+          message: `${targetName} has submitted a resignation. Last working day: ${lwd.toISOString().split('T')[0]}. Please plan for handover.`,
+          type: 'exit', organization_id: oId,
+        });
+      } catch {}
+    })();
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // PUT /api/exit/:id
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const updates = { ...req.body };
-    delete updates.id; delete updates.organization_id; delete updates.created_at;
+    // Explicit field whitelist — prevents mass assignment of user_id, reviewed_by, reviewed_at, etc.
+    const { resignation_date, reason, notice_period_days, last_working_day, notes, status } = req.body;
+    const updates = {};
+    if (resignation_date   !== undefined) updates.resignation_date   = resignation_date;
+    if (reason             !== undefined) updates.reason             = reason || '';
+    if (notice_period_days !== undefined) updates.notice_period_days = Number(notice_period_days) || 30;
+    if (last_working_day   !== undefined) updates.last_working_day   = last_working_day;
+    if (notes              !== undefined) updates.notes              = notes || '';
+    if (status             !== undefined) {
+      if (!['approved', 'rejected'].includes(status))
+        return res.status(400).json({ error: "status must be 'approved' or 'rejected'" });
+      updates.status = status;
+    }
     const isStatusChange = updates.status === 'approved' || updates.status === 'rejected';
 
     if (isStatusChange) {
@@ -122,14 +154,53 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
       .update(updates).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
 
-    // Fire-and-forget notification after successful update
+    // Fire-and-forget side effects after successful update
     if (isStatusChange) {
+      // Notify the employee
       supabase.from('notifications').insert({
         user_id: data.user_id,
         title:   `Exit Request ${updates.status === 'approved' ? 'Accepted' : 'Reviewed'}`,
         message: `Your resignation has been ${updates.status}.`,
         type:    'exit', organization_id: oId,
       }).then(() => {});
+
+      // On approval: mark employee inactive + broadcast to all admins for IT/asset/payroll action
+      if (updates.status === 'approved') {
+        supabase.from('users')
+          .update({ employee_status: 'inactive' })
+          .eq('id', current.user_id)
+          .eq('organization_id', oId)
+          .then(() => {});
+
+        // Look up the departing employee's name for the notification message
+        supabase.from('users').select('name').eq('id', current.user_id).maybeSingle()
+          .then(({ data: emp }) => {
+            const empName = emp?.name || 'An employee';
+            return supabase.from('users').select('id')
+              .in('role', ['admin', 'root_admin']).eq('organization_id', oId);
+          })
+          .then(({ data: admins }) => {
+            if (!admins?.length) return;
+            // Fetch name again for the message (chain is separate from above)
+            return supabase.from('users').select('name').eq('id', current.user_id).maybeSingle()
+              .then(({ data: emp }) => {
+                const empName = emp?.name || 'An employee';
+                return supabase.from('notifications').insert(
+                  admins.map(a => ({
+                    user_id: a.id,
+                    title:   'Exit Approved — Action Required',
+                    message: `${empName}'s resignation is approved (LWD: ${data.last_working_day || 'TBD'}). Please complete: IT access revocation, asset return, and final settlement.`,
+                    type:    'exit',
+                    organization_id: oId,
+                  }))
+                );
+              });
+          })
+          .catch(() => {});
+
+        // Trigger offboarding checklist (requires phase_d_offboarding_checklists.sql migration)
+        initOffboarding(current.user_id, oId).catch(() => {});
+      }
     }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

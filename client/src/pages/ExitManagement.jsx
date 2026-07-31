@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LogOut, CheckSquare, Square, Plus, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { LogOut, CheckSquare, Square, Plus, AlertTriangle, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
@@ -61,6 +61,69 @@ function ResignModal({ open, onClose }) {
         <div><label className="form-label">Reason <span className="font-normal text-[#777587] normal-case tracking-normal">(optional)</span></label><textarea className="form-control" rows={3} placeholder="Share your reasons…" value={form.reason} onChange={e => set('reason', e.target.value)} /></div>
       </div>
     </Modal>
+  );
+}
+
+// ── Offboarding checklist for approved exits ──────────────────────────────────
+function OffboardingTasks({ userId, isAdmin }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ['offboarding-tasks', userId],
+    queryFn:  () => apiGet('/offboarding', { userId }),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const completeMut = useMutation({
+    mutationFn: ({ id, completed }) => apiPut(`/offboarding/${id}/complete`, { completed }),
+    onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ['offboarding-tasks', userId] }),
+    onError: e => toast(e.message, 'error'),
+  });
+
+  if (isLoading) return <p className="text-xs text-[#9ca3af]">Loading offboarding tasks…</p>;
+
+  if (!tasks.length) return (
+    <div className="text-xs text-[#9ca3af] bg-[#f9f9ff] rounded-lg px-3 py-2 border border-[#f0f3ff]">
+      No offboarding tasks found. Run <code>phase_d_offboarding_checklists.sql</code> migration to enable.
+    </div>
+  );
+
+  const doneCount = tasks.filter(t => t.completed).length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587] flex items-center gap-1.5">
+          <ClipboardList size={11} /> Offboarding Checklist
+        </p>
+        <span className="text-xs font-bold text-[#3525cd]">{doneCount}/{tasks.length} done</span>
+      </div>
+      <div className="space-y-1.5 max-h-52 overflow-y-auto">
+        {tasks.map(t => (
+          <div key={t.id}
+            onClick={() => isAdmin && completeMut.mutate({ id: t.id, completed: !t.completed })}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-xs transition-all
+              ${t.completed ? 'bg-emerald-50 border-emerald-200' : 'bg-[#f9f9ff] border-[#e7eefe]'}
+              ${isAdmin ? 'cursor-pointer hover:shadow-sm' : ''}`}>
+            {t.completed
+              ? <CheckSquare size={13} className="text-emerald-500 flex-shrink-0" />
+              : <Square size={13} className="text-[#c7c4d8] flex-shrink-0" />}
+            <span className={`flex-1 ${t.completed ? 'text-emerald-700 line-through' : 'text-[#464555]'}`}>
+              {t.title}
+            </span>
+            <span className="text-[0.58rem] font-semibold text-[#9ca3af] uppercase tracking-wide flex-shrink-0">
+              {t.assigned_to}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2.5 h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
+        <div className="h-full bg-[#3525cd] rounded-full transition-all"
+          style={{ width: `${tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -143,6 +206,11 @@ function ExitCard({ req, isAdmin }) {
                 <div className="h-full bg-[#3525cd] rounded-full transition-all" style={{ width: `${(clearanceCount / CLEARANCE_FIELDS.length) * 100}%` }} />
               </div>
             </div>
+
+            {/* Offboarding checklist — only for approved exits */}
+            {req.status === 'approved' && (
+              <OffboardingTasks userId={req.user_id} isAdmin={isAdmin} />
+            )}
 
             {/* Admin actions */}
             {isAdmin && (

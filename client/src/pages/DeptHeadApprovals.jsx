@@ -8,14 +8,16 @@ import { apiGet, apiPost } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 import { cn } from '@/lib/utils';
 
-const LEAVE_TYPE_LABELS = {
-  annual: 'Annual', casual: 'Casual', sick: 'Sick', emergency: 'Emergency',
-  maternity: 'Maternity', paternity: 'Paternity', bereavement: 'Bereavement',
-  comp_off: 'Comp Off', earned: 'Earned', unpaid: 'Unpaid', other: 'Other',
+// Fallback map for common types — used when leave_policies haven't loaded yet.
+const LEAVE_TYPE_LABELS_FALLBACK = {
+  annual: 'Annual Leave', casual: 'Casual Leave', sick: 'Sick Leave', emergency: 'Emergency Leave',
+  maternity: 'Maternity Leave', paternity: 'Paternity Leave', bereavement: 'Bereavement Leave',
+  comp_off: 'Comp Off', earned: 'Earned Leave', unpaid: 'Unpaid Leave', other: 'Other Leave',
 };
 
-function leaveLabel(type) {
-  return LEAVE_TYPE_LABELS[type] || (type ? type.replace(/_/g,' ') : 'Leave');
+// policyMap: { [leave_type]: label } built from live leave_policies data.
+function leaveLabel(type, policyMap = {}) {
+  return policyMap[type] || LEAVE_TYPE_LABELS_FALLBACK[type] || (type ? type.replace(/_/g, ' ') : 'Leave');
 }
 
 function Avatar({ name = '', color }) {
@@ -28,9 +30,9 @@ function Avatar({ name = '', color }) {
   );
 }
 
-function ConfirmModal({ leave, onConfirm, onCancel, loading }) {
+function ConfirmModal({ leave, onConfirm, onCancel, loading, policyMap = {} }) {
   const empName  = leave.name || 'Employee';
-  const leaveStr = `${leaveLabel(leave.leave_type)} — ${leave.start_date}${leave.start_date !== leave.end_date ? ` to ${leave.end_date}` : ''}`;
+  const leaveStr = `${leaveLabel(leave.leave_type, policyMap)} — ${leave.start_date}${leave.start_date !== leave.end_date ? ` to ${leave.end_date}` : ''}`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(4,6,14,.6)', backdropFilter: 'blur(4px)' }}>
@@ -60,7 +62,7 @@ function ConfirmModal({ leave, onConfirm, onCancel, loading }) {
   );
 }
 
-function LeaveCard({ leave, onApprove, busy }) {
+function LeaveCard({ leave, onApprove, busy, policyMap = {} }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [approving, setApproving]     = useState(false);
 
@@ -96,7 +98,7 @@ function LeaveCard({ leave, onApprove, busy }) {
         <div className="mt-3 pt-3 border-t border-[#f0f3ff] grid grid-cols-2 gap-2">
           <div className="flex items-center gap-1.5 text-xs text-[#464555]">
             <FileText size={12} className="text-[#777587]" />
-            <span className="font-semibold">{leaveLabel(leave.leave_type)}</span>
+            <span className="font-semibold">{leaveLabel(leave.leave_type, policyMap)}</span>
             {isHalf && <span className="text-[0.6rem] bg-amber-50 text-amber-600 px-1 rounded">Half Day</span>}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[#464555]">
@@ -132,6 +134,7 @@ function LeaveCard({ leave, onApprove, busy }) {
           onConfirm={handleConfirm}
           onCancel={() => setShowConfirm(false)}
           loading={approving}
+          policyMap={policyMap}
         />
       )}
     </>
@@ -147,6 +150,16 @@ export default function DeptHeadApprovals() {
     queryFn:  () => apiGet('/leaves/pending-department'),
     refetchInterval: 30000,
   });
+
+  // Build dynamic label map from live leave policies — falls back to LEAVE_TYPE_LABELS_FALLBACK
+  const { data: leavePolicies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn:  () => apiGet('/leave-policies'),
+    staleTime: 10 * 60 * 1000,
+  });
+  const policyMap = Object.fromEntries(
+    leavePolicies.map(p => [p.leave_type, p.label]).filter(([k]) => !!k)
+  );
 
   const { data: deptInfo } = useQuery({
     queryKey: ['is-dept-head'],
@@ -168,6 +181,21 @@ export default function DeptHeadApprovals() {
         <AlertCircle size={32} className="text-rose-400 mb-3" />
         <p className="font-bold text-[#151c27] mb-1">Failed to load</p>
         <button onClick={() => window.location.reload()} className="text-[#3525cd] text-sm font-bold hover:underline mt-2">Retry</button>
+      </div>
+    );
+  }
+
+  // Guard: only department heads should see this page
+  if (deptInfo && deptInfo.is_dept_head === false) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center max-w-sm mx-auto">
+        <div className="w-14 h-14 rounded-2xl bg-[#f0f3ff] flex items-center justify-center mx-auto mb-4">
+          <AlertCircle size={26} className="text-[#3525cd]" />
+        </div>
+        <h2 className="text-base font-black text-[#151c27] mb-1">Not a Department Head</h2>
+        <p className="text-sm text-[#777587]">
+          This page is only accessible to employees who are assigned as the head of a department.
+        </p>
       </div>
     );
   }
@@ -247,6 +275,7 @@ export default function DeptHeadApprovals() {
               leave={leave}
               onApprove={(id) => approveMut.mutateAsync(id)}
               busy={approveMut.isPending}
+              policyMap={policyMap}
             />
           ))}
         </div>

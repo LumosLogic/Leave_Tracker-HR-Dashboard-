@@ -169,7 +169,7 @@ export default function PayrollRunDetails() {
 
   const fmt2 = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-  const canLock    = run && ['completed', 'completed_with_errors', 'approved'].includes(run.status);
+  const canLock    = run && isRootAdmin && ['completed', 'completed_with_errors', 'approved'].includes(run.status);
   const canUnlock  = run?.status === 'locked' && isRootAdmin;
   const canVerify  = run && ['completed', 'completed_with_errors'].includes(run.status);
   const canApprove = run?.status === 'verified' && isRootAdmin;

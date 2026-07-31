@@ -719,6 +719,20 @@ export default function Dashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // HR Work Items — onboarding in-progress + exit clearances pending
+  const { data: onboardingOverview = [] } = useQuery({
+    queryKey: ['onboarding-overview-dash'],
+    queryFn:  () => apiGet('/onboarding/overview').catch(() => []),
+    enabled:  isAdmin,
+    staleTime: 3 * 60 * 1000,
+  });
+  const { data: exitRequestsDash = [] } = useQuery({
+    queryKey: ['exit-requests-dash'],
+    queryFn:  () => apiGet('/exit').catch(() => []),
+    enabled:  isAdmin,
+    staleTime: 3 * 60 * 1000,
+  });
+
   const { d, culture } = data || {};
   const isToday = d?.isToday ?? true;
   const now = new Date();
@@ -755,6 +769,13 @@ export default function Dashboard() {
   const newThis = d?.newThisMonth   ?? 0;
 
   const pct = v => total > 0 ? `${Math.round((v / total) * 100)}% of total` : '0% of total';
+
+  // Work Items — derived counts for admin action prompts
+  const onboardingPending = onboardingOverview.filter(e => e.completed < e.total).length;
+  const exitClearancePending = exitRequestsDash.filter(r =>
+    r.status === 'approved' &&
+    [r.clearance_it, r.clearance_hr, r.clearance_finance, r.clearance_admin].filter(Boolean).length < 4
+  ).length;
 
   const kpiCards = [
     {
@@ -876,6 +897,46 @@ export default function Dashboard() {
       {/* ─── HR INSIGHTS ─────────────────────────────────────────────────── */}
       {isAdmin && <HRInsightsRow d={d} culture={culture} navigate={navigate} />}
 
+      {/* ─── PENDING WORK ITEMS — actionable, admin-only, conditional ────── */}
+      {isAdmin && (onboardingPending > 0 || exitClearancePending > 0) && (
+        <div className={`grid gap-3 ${onboardingPending > 0 && exitClearancePending > 0 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+          {onboardingPending > 0 && (
+            <button onClick={() => navigate('/onboarding')}
+              className="flex items-center gap-3 bg-white border border-amber-200 rounded-xl px-5 py-3.5 text-left hover:border-amber-400 hover:shadow-sm transition-all group">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+                <UserPlus size={18} className="text-amber-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-[#151c27]">
+                  {onboardingPending} Onboarding{onboardingPending > 1 ? 's' : ''} in Progress
+                </p>
+                <p className="text-xs text-[#777587] mt-0.5">
+                  {onboardingPending === 1 ? '1 employee has' : `${onboardingPending} employees have`} incomplete onboarding tasks
+                </p>
+              </div>
+              <ChevronRight size={15} className="text-[#c7c4d8] group-hover:text-amber-500 shrink-0 transition-colors" />
+            </button>
+          )}
+          {exitClearancePending > 0 && (
+            <button onClick={() => navigate('/exit-management')}
+              className="flex items-center gap-3 bg-white border border-rose-200 rounded-xl px-5 py-3.5 text-left hover:border-rose-400 hover:shadow-sm transition-all group">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
+                <LogOut size={18} className="text-rose-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-[#151c27]">
+                  {exitClearancePending} Exit Clearance{exitClearancePending > 1 ? 's' : ''} Pending
+                </p>
+                <p className="text-xs text-[#777587] mt-0.5">
+                  Approved resignation{exitClearancePending > 1 ? 's' : ''} with incomplete IT / finance clearance
+                </p>
+              </div>
+              <ChevronRight size={15} className="text-[#c7c4d8] group-hover:text-rose-500 shrink-0 transition-colors" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ─── LIVE ATTENDANCE | TREND | LEAVE REQUESTS ──────────────────── */}
       <div className="grid lg:grid-cols-[1fr_300px_280px] gap-4">
 
@@ -977,6 +1038,28 @@ export default function Dashboard() {
                         <X size={9} /> Reject
                       </button>
                     </div>
+                  )}
+                  {isAdmin && l.status === 'pending_root' && user?.role === 'root_admin' && (
+                    <div className="flex gap-1 mt-1.5" onClick={e => e.stopPropagation()}>
+                      <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+                        onClick={() => handleApprove(l.id)}>
+                        <CheckCircle2 size={9} /> Approve
+                      </button>
+                      <button className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[0.6rem] font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-all"
+                        onClick={() => handleReject(l.id)}>
+                        <X size={9} /> Reject
+                      </button>
+                    </div>
+                  )}
+                  {isAdmin && l.status === 'pending_root' && user?.role !== 'root_admin' && (
+                    <span className="inline-block mt-1.5 text-[0.58rem] font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
+                      Awaiting Root Admin
+                    </span>
+                  )}
+                  {isAdmin && l.status === 'pending_dept' && (
+                    <span className="inline-block mt-1.5 text-[0.58rem] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                      Awaiting Dept Head
+                    </span>
                   )}
                 </div>
               </div>

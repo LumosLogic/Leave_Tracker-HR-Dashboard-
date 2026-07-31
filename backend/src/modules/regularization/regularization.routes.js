@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -71,7 +72,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // PUT /api/regularization/:id/review
-router.put('/:id/review', auth, async (req, res) => {
+router.put('/:id/review', auth, hasPermission('attendance', 'approve_regularization'), async (req, res) => {
   if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
   const oId = req.user.organization_id;
   const { status, reviewer_notes } = req.body;

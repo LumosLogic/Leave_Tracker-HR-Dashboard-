@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
 
 // ─── Settings: Get Work Schedule ─────────────────────────────────────────────
@@ -13,7 +14,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // ─── Settings: Update Work Schedule ──────────────────────────────────────────
-router.put('/', auth, adminOnly, async (req, res) => {
+router.put('/', auth, hasPermission('settings', 'manage'), async (req, res) => {
   try {
     const { start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days } = req.body;
     // Try to update existing; insert if none
@@ -35,7 +36,7 @@ router.put('/', auth, adminOnly, async (req, res) => {
 });
 
 // ─── Settings: Biometric Config ───────────────────────────────────────────────
-router.get('/biometric-config', auth, adminOnly, (req, res) => {
+router.get('/biometric-config', auth, hasPermission('biometric', 'view'), (req, res) => {
   const ip   = process.env.BIOMETRIC_SERVER_IP   || '';
   const port = process.env.BIOMETRIC_SERVER_PORT  || '8080';
   res.json({

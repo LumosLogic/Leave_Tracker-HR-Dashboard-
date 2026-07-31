@@ -1,20 +1,34 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
-const { auth, adminOnly, rootAdminOnly, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { flat, flatOne, orgId, getSettings, isWorkingDay, getRecipients } = require('../../utils/helpers');
 const { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml } = require('../../services/emailService');
-const gcal = require('../../services/googleCalendar');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildWorkingDates(startDate, endDate, settings) {
+// Returns a Set of 'YYYY-MM-DD' strings for all org holidays in the given year range.
+async function fetchHolidaySet(oId, startDate, endDate) {
+  try {
+    const { data } = await supabase
+      .from('holidays')
+      .select('date')
+      .eq('organization_id', oId)
+      .gte('date', startDate)
+      .lte('date', endDate);
+    return new Set((data || []).map(h => h.date));
+  } catch { return new Set(); }
+}
+
+// holidayDates is an optional Set<'YYYY-MM-DD'> — dates to skip even if they are working days.
+function buildWorkingDates(startDate, endDate, settings, holidayDates = new Set()) {
   const dates = [];
   const start = new Date(startDate + 'T12:00:00');
   const end   = new Date(endDate   + 'T12:00:00');
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const ds = d.toISOString().split('T')[0];
-    if (isWorkingDay(ds, settings)) dates.push(ds);
+    if (isWorkingDay(ds, settings) && !holidayDates.has(ds)) dates.push(ds);
   }
   return dates;
 }
@@ -22,24 +36,32 @@ function buildWorkingDates(startDate, endDate, settings) {
 // Find the department head user_id for a given employee.
 // Returns null if: no department, no dept head, or employee IS the dept head.
 async function findDeptHead(userId, oId) {
+  // Fetch both in a single query for efficiency
   const { data: user } = await supabase
     .from('users')
-    .select('department_id')
+    .select('department_id, reporting_to')
     .eq('id', userId)
     .eq('organization_id', oId)
     .maybeSingle();
-  if (!user?.department_id) return null;
+  if (!user) return null;
 
-  const { data: dept } = await supabase
-    .from('departments')
-    .select('head_user_id')
-    .eq('id', user.department_id)
-    .eq('organization_id', oId)
-    .maybeSingle();
+  // Primary: department head via primary department
+  if (user.department_id) {
+    const { data: dept } = await supabase
+      .from('departments')
+      .select('head_user_id')
+      .eq('id', user.department_id)
+      .eq('organization_id', oId)
+      .maybeSingle();
 
-  const headId = dept?.head_user_id;
-  if (!headId || headId === userId) return null;
-  return headId;
+    const headId = dept?.head_user_id;
+    if (headId && headId !== userId) return headId;
+  }
+
+  // Fallback: reporting manager (avoids circular self-reporting edge case)
+  if (user.reporting_to && user.reporting_to !== userId) return user.reporting_to;
+
+  return null;
 }
 
 // Append an immutable audit record to leave_approval_log.
@@ -173,6 +195,216 @@ router.get('/team', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── ROUTE: GET /balance ─────────────────────────────────────────────────────
+// Returns per-leave-type balance for the requesting employee (or ?userId=X for admins).
+// Must be before GET /:id to avoid being captured by the ID route.
+router.get('/balance', auth, async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const year  = parseInt(req.query.year) || new Date().getFullYear();
+    const targetId = (isAdminRole(req.user.role) && req.query.userId)
+      ? parseInt(req.query.userId)
+      : req.user.id;
+
+    const [policiesRes, leavesRes, settings, adjRes] = await Promise.all([
+      supabase.from('leave_policies')
+        .select('leave_type, label, annual_quota')
+        .eq('organization_id', oId).eq('active', true).gt('annual_quota', 0),
+      supabase.from('leaves')
+        .select('leave_type, leave_time, start_date, end_date, status')
+        .eq('user_id', targetId).eq('organization_id', oId)
+        .in('status', ['approved', 'pending', 'pending_dept', 'pending_root'])
+        .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`)
+        .neq('leave_type', 'wfh'),
+      getSettings(oId),
+      supabase.from('leave_balance_adjustments')
+        .select('leave_type, delta')
+        .eq('user_id', targetId).eq('org_id', oId).eq('year', year),
+    ]);
+
+    const policies = policiesRes.data || [];
+    const leaves   = (leavesRes.data || []).filter(l => l.leave_time !== 'wfh');
+
+    // Sum HR adjustments per leave type (positive = extra days granted, negative = deducted)
+    const adjByType = {};
+    (adjRes.data || []).forEach(a => { adjByType[a.leave_type] = (adjByType[a.leave_type] || 0) + Number(a.delta); });
+
+    function workDays(leave) {
+      if (leave.leave_time === 'half') return 0.5;
+      return buildWorkingDates(leave.start_date, leave.end_date, settings).length;
+    }
+
+    const balances = policies.map(p => {
+      const approved = leaves.filter(l => l.leave_type === p.leave_type && l.status === 'approved');
+      const pending  = leaves.filter(l => l.leave_type === p.leave_type && l.status !== 'approved');
+      const used     = approved.reduce((s, l) => s + workDays(l), 0);
+      const inProg   = pending.reduce((s, l) => s + workDays(l), 0);
+      const adj      = adjByType[p.leave_type] || 0;
+      return {
+        leave_type:  p.leave_type,
+        label:       p.label || p.leave_type,
+        allocated:   p.annual_quota,
+        adjustment:  Math.round(adj  * 2) / 2,
+        used:        Math.round(used  * 2) / 2,
+        pending:     Math.round(inProg * 2) / 2,
+        remaining:   Math.max(0, p.annual_quota + adj - used),
+      };
+    });
+
+    res.json({ year, balances });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── ROUTE: GET /balance/adjustments ─────────────────────────────────────────
+// Returns the log of manual balance adjustments for one employee.
+// Admins: can view any user's history via ?userId=X. Employees: see own history only.
+router.get('/balance/adjustments', auth, async (req, res) => {
+  try {
+    const oId      = orgId(req);
+    const year     = parseInt(req.query.year) || new Date().getFullYear();
+    const targetId = (isAdminRole(req.user.role) && req.query.userId)
+      ? parseInt(req.query.userId)
+      : req.user.id;
+
+    const { data: rows, error } = await supabase
+      .from('leave_balance_adjustments')
+      .select('*')
+      .eq('user_id', targetId)
+      .eq('org_id', oId)
+      .eq('year', year)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    if (!rows?.length) return res.json([]);
+
+    const adjByIds = [...new Set(rows.map(r => r.adjusted_by).filter(Boolean))];
+    const { data: adjUsers } = adjByIds.length
+      ? await supabase.from('users').select('id, name, avatar_color').in('id', adjByIds)
+      : { data: [] };
+    const adjMap = {};
+    (adjUsers || []).forEach(u => { adjMap[u.id] = u; });
+
+    res.json(rows.map(r => ({
+      ...r,
+      adjusted_by_name:  adjMap[r.adjusted_by]?.name         || 'HR',
+      adjusted_by_color: adjMap[r.adjusted_by]?.avatar_color || '#3525cd',
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── ROUTE: POST /balance/adjust ─────────────────────────────────────────────
+// HR Admin: manually add or deduct days from an employee's leave balance for a given year.
+// Positive delta = grant extra days. Negative delta = deduct days.
+router.post('/balance/adjust', auth, hasPermission('leaves', 'manage'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const { userId, leave_type, delta, reason, year } = req.body;
+    const targetYear  = parseInt(year)  || new Date().getFullYear();
+    const parsedDelta = parseFloat(delta);
+
+    if (!userId || !leave_type || !reason?.trim())
+      return res.status(400).json({ error: 'userId, leave_type, delta, and reason are required' });
+    if (isNaN(parsedDelta) || parsedDelta === 0)
+      return res.status(400).json({ error: 'delta must be a non-zero number' });
+    if (Math.abs(parsedDelta) > 365)
+      return res.status(400).json({ error: 'delta cannot exceed 365 days' });
+
+    // Verify the employee belongs to this org
+    const { data: emp } = await supabase.from('users')
+      .select('id').eq('id', parseInt(userId)).eq('organization_id', oId).maybeSingle();
+    if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
+
+    // Verify the leave_type exists as an active policy for this org
+    const { data: policy } = await supabase.from('leave_policies')
+      .select('id').eq('organization_id', oId).eq('leave_type', leave_type).eq('active', true).maybeSingle();
+    if (!policy) return res.status(400).json({ error: 'Leave type not found in active policies' });
+
+    const { data, error } = await supabase.from('leave_balance_adjustments').insert({
+      user_id:     parseInt(userId),
+      org_id:      oId,
+      leave_type,
+      year:        targetYear,
+      delta:       parsedDelta,
+      reason:      reason.trim(),
+      adjusted_by: req.user.id,
+    }).select().single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── ROUTE: GET /team-dashboard ──────────────────────────────────────────────
+// Department Head: aggregated team view — attendance, pending leaves, upcoming leaves.
+// Must be before GET /:id to avoid route conflict.
+router.get('/team-dashboard', auth, async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const today = localDateStr ? localDateStr() : new Date().toISOString().split('T')[0];
+
+    // Verify caller is a dept head
+    const { data: dept } = await supabase
+      .from('departments').select('id, name')
+      .eq('head_user_id', req.user.id).eq('organization_id', oId).maybeSingle();
+    if (!dept) return res.json({ is_dept_head: false });
+
+    // All active members of this department (primary department_id, excluding self)
+    const { data: memberRows } = await supabase
+      .from('users')
+      .select('id, name, avatar_color, employee_status')
+      .eq('department_id', dept.id).eq('organization_id', oId)
+      .neq('id', req.user.id)
+      .in('employee_status', ['active', 'probation']);
+    const members   = memberRows || [];
+    const memberIds = members.map(m => m.id);
+
+    // Today's attendance for the team
+    let attMap = {};
+    if (memberIds.length > 0) {
+      const { data: attRows } = await supabase
+        .from('attendance').select('user_id, status')
+        .eq('date', today).in('user_id', memberIds);
+      for (const a of attRows || []) attMap[a.user_id] = a.status;
+    }
+
+    const present   = Object.values(attMap).filter(s => ['present', 'wfh', 'half_day'].includes(s)).length;
+    const onLeave   = Object.values(attMap).filter(s => s === 'on_leave').length;
+    const notIn     = memberIds.length - Object.keys(attMap).length;
+
+    // Pending leaves waiting for this dept head to forward
+    const { count: pendingCount } = memberIds.length > 0
+      ? await supabase.from('leaves').select('*', { count: 'exact', head: true })
+          .eq('status', 'pending_dept').in('user_id', memberIds).eq('organization_id', oId)
+      : { count: 0 };
+
+    // Upcoming approved leaves in the next 7 days
+    const next7 = new Date(today); next7.setDate(next7.getDate() + 7);
+    const next7Str = next7.toISOString().split('T')[0];
+    let upcomingLeaves = [];
+    if (memberIds.length > 0) {
+      const memberMap = {};
+      for (const m of members) memberMap[m.id] = m.name;
+      const { data: upcoming } = await supabase.from('leaves')
+        .select('user_id, start_date, end_date, leave_type, leave_time')
+        .eq('status', 'approved').in('user_id', memberIds)
+        .gte('start_date', today).lte('start_date', next7Str)
+        .order('start_date').limit(5);
+      upcomingLeaves = (upcoming || []).map(l => ({ ...l, name: memberMap[l.user_id] || '' }));
+    }
+
+    res.json({
+      is_dept_head:     true,
+      department:       dept,
+      team_count:       memberIds.length,
+      present_today:    present,
+      on_leave_today:   onLeave,
+      not_checked_in:   notIn,
+      pending_approvals: pendingCount || 0,
+      upcoming_leaves:  upcomingLeaves,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── ROUTE 3: GET /is-dept-head ───────────────────────────────────────────────
 // Returns whether the calling user is a department head in their org.
 // MUST be before GET /:id.
@@ -192,31 +424,40 @@ router.get('/is-dept-head', auth, async (req, res) => {
 });
 
 // ─── ROUTE 4: GET /pending-department ────────────────────────────────────────
-// Dept Head: leaves from their department employees pending dept approval.
+// Dept Head / Reporting Manager: leaves pending dept approval from their team.
+// Scope: employees in their department(s) + employees where reporting_to = caller.
 // MUST be before GET /:id.
 router.get('/pending-department', auth, async (req, res) => {
   try {
     const oId = orgId(req);
 
-    // Find department(s) where this user is the head
+    // Path A: departments where this user is the head
     const { data: myDepts } = await supabase
       .from('departments')
-      .select('id, name')
+      .select('id')
       .eq('head_user_id', req.user.id)
       .eq('organization_id', oId);
 
-    if (!myDepts?.length) return res.json([]);
+    const deptEmpIds = [];
+    if (myDepts?.length) {
+      const deptIds = myDepts.map(d => d.id);
+      const empRes = await pool.query(
+        `SELECT id FROM users WHERE department_id = ANY($1::bigint[]) AND organization_id = $2 AND id != $3`,
+        [deptIds, oId, req.user.id]
+      );
+      deptEmpIds.push(...empRes.rows.map(r => r.id));
+    }
 
-    const deptIds = myDepts.map(d => d.id);
-
-    // Find employees in those departments (via primary department_id FK)
-    const empRes = await pool.query(
-      `SELECT id FROM users WHERE department_id = ANY($1::bigint[]) AND organization_id = $2 AND id != $3`,
-      [deptIds, oId, req.user.id]
+    // Path B: employees who directly report to this user
+    const reporteeRes = await pool.query(
+      `SELECT id FROM users WHERE reporting_to = $1 AND organization_id = $2 AND id != $1`,
+      [req.user.id, oId]
     );
-    if (!empRes.rows.length) return res.json([]);
+    const reporteeIds = reporteeRes.rows.map(r => r.id);
 
-    const empIds = empRes.rows.map(r => r.id);
+    // Union both sets — deduplicated
+    const allEmpIds = [...new Set([...deptEmpIds, ...reporteeIds])];
+    if (!allEmpIds.length) return res.json([]);
 
     const { data, error } = await supabase
       .from('leaves')
@@ -224,7 +465,7 @@ router.get('/pending-department', auth, async (req, res) => {
       .eq('organization_id', oId)
       .eq('status', 'pending_dept')
       .is('deleted_at', null)
-      .in('user_id', empIds)
+      .in('user_id', allEmpIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -236,7 +477,7 @@ router.get('/pending-department', auth, async (req, res) => {
 // ─── ROUTE 5: GET /pending-root ───────────────────────────────────────────────
 // Root Admin: all leaves pending final approval.
 // MUST be before GET /:id.
-router.get('/pending-root', auth, adminOnly, async (req, res) => {
+router.get('/pending-root', auth, hasPermission('leaves', 'approve'), async (req, res) => {
   try {
     const oId = orgId(req);
     const { data, error } = await supabase
@@ -309,7 +550,8 @@ router.post('/', auth, async (req, res) => {
     if (isOnBehalf) {
       const settings  = await getSettings(orgId(req));
       const attStatus = leave_time === 'half' ? 'half_day' : (leave_time === 'wfh' || leave_type === 'wfh') ? 'wfh' : 'on_leave';
-      const workDates = buildWorkingDates(start_date, end_date, settings);
+      const holidayDates = await fetchHolidaySet(orgId(req), start_date, end_date);
+      const workDates = buildWorkingDates(start_date, end_date, settings, holidayDates);
       const approvedAt = new Date().toISOString();
 
       const client = await pool.connect();
@@ -447,7 +689,7 @@ router.put('/:id', auth, async (req, res) => {
 // Handles: status='pending' (old flow) → direct approve by admin.
 // Handles: status='pending_root' → treated as final-approve (same logic).
 // Blocks:  status='pending_dept' → dept head must act first.
-router.put('/:id/approve', auth, adminOnly, async (req, res) => {
+router.put('/:id/approve', auth, hasPermission('leaves', 'approve'), async (req, res) => {
   const { data: leave, error: le } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   if (le || !leave) return res.status(404).json({ error: 'Leave not found' });
 
@@ -472,9 +714,10 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
     return res.status(403).json({ error: 'Only Root Admin can give final approval. This leave is pending root admin decision.' });
   }
 
-  const settings   = await getSettings(orgId(req));
-  const workDates  = buildWorkingDates(leave.start_date, leave.end_date, settings);
-  const attStatus  = leave.leave_time === 'half' ? 'half_day'
+  const settings     = await getSettings(orgId(req));
+  const holidayDates = await fetchHolidaySet(orgId(req), leave.start_date, leave.end_date);
+  const workDates    = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
+  const attStatus    = leave.leave_time === 'half' ? 'half_day'
     : (leave.leave_time === 'wfh' || leave.leave_type === 'wfh') ? 'wfh'
     : 'on_leave';
   const approvedAt = new Date().toISOString();
@@ -513,18 +756,21 @@ router.put('/:id/approve', auth, adminOnly, async (req, res) => {
 
   notify(leave.user_id, 'Leave Approved', `Your leave request from ${leave.start_date} to ${leave.end_date} has been approved.`, orgId(req));
 
+  // Notify dept head for team-roster visibility (fire-and-forget)
+  findDeptHead(leave.user_id, orgId(req)).then(dhId => {
+    if (dhId) notify(dhId, 'Team Leave Approved',
+      `${data.users?.name || 'An employee'}'s leave from ${leave.start_date} to ${leave.end_date} has been approved.`,
+      orgId(req));
+  }).catch(() => {});
+
   if (data.users?.email) {
     sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
   }
-  gcal.createLeaveEvent(leave, data.users?.name || 'Employee')
-    .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', req.params.id).eq('organization_id', orgId(req)).then(() => {}); })
-    .catch(() => {});
-
   res.json(flatOne(data));
 });
 
 // ─── ROUTE 10: PUT /:id/reject ────────────────────────────────────────────────
-router.put('/:id/reject', auth, adminOnly, async (req, res) => {
+router.put('/:id/reject', auth, hasPermission('leaves', 'reject'), async (req, res) => {
   const { data: leave } = await supabase.from('leaves').select('*').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   if (!leave) return res.status(404).json({ error: 'Leave not found' });
   if (leave.status === 'rejected') return res.json(leave);
@@ -545,8 +791,9 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
 
   let workDates = [];
   if (leave.status === 'approved') {
-    const settings = await getSettings(orgId(req));
-    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+    const settings     = await getSettings(orgId(req));
+    const holidayDates = await fetchHolidaySet(orgId(req), leave.start_date, leave.end_date);
+    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
   }
 
   const client = await pool.connect();
@@ -564,7 +811,7 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
     await client.query(
       `UPDATE leaves SET
          status = 'rejected', approved_by = $1, approved_at = $2,
-         google_event_id = NULL, remarks = $3,
+         remarks = $3,
          root_admin_status = 'rejected', root_admin_id = $1, root_admin_reviewed_at = $2
        WHERE id = $4 AND organization_id = $5`,
       [req.user.id, rejectedAt, remarks || null, req.params.id, orgId(req)]
@@ -579,8 +826,6 @@ router.put('/:id/reject', auth, adminOnly, async (req, res) => {
     leaveId: leave.id, oId: orgId(req), actorId: req.user.id, actorName: req.user.name,
     action: 'root_rejected', fromStatus: leave.status, toStatus: 'rejected', notes: remarks,
   });
-
-  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
 
   notify(leave.user_id, 'Leave Request Rejected', `Your leave request from ${leave.start_date} to ${leave.end_date} has been rejected.`, orgId(req));
 
@@ -599,8 +844,9 @@ router.put('/:id/revert', auth, async (req, res) => {
   if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
   if (leave.status !== 'approved') return res.status(400).json({ error: 'Only approved leaves can be reverted' });
 
-  const settings  = await getSettings(orgId(req));
-  const workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+  const settings     = await getSettings(orgId(req));
+  const holidayDates = await fetchHolidaySet(orgId(req), leave.start_date, leave.end_date);
+  const workDates    = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
 
   const client = await pool.connect();
   try {
@@ -615,7 +861,7 @@ router.put('/:id/revert', auth, async (req, res) => {
       );
     }
     await client.query(
-      `UPDATE leaves SET status = 'cancelled', google_event_id = NULL WHERE id = $1 AND organization_id = $2`,
+      `UPDATE leaves SET status = 'cancelled' WHERE id = $1 AND organization_id = $2`,
       [req.params.id, orgId(req)]
     );
     await client.query('COMMIT');
@@ -629,7 +875,6 @@ router.put('/:id/revert', auth, async (req, res) => {
     action: 'cancelled', fromStatus: 'approved', toStatus: 'cancelled',
   });
 
-  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
   const { data } = await supabase.from('leaves')
     .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).eq('organization_id', orgId(req)).single();
   res.json(flatOne(data));
@@ -644,8 +889,9 @@ router.delete('/:id', auth, async (req, res) => {
 
   let workDates = [];
   if (leave.status === 'approved') {
-    const settings = await getSettings(orgId(req));
-    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+    const settings     = await getSettings(orgId(req));
+    const holidayDates = await fetchHolidaySet(orgId(req), leave.start_date, leave.end_date);
+    workDates = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
   }
 
   const client = await pool.connect();
@@ -667,7 +913,6 @@ router.delete('/:id', auth, async (req, res) => {
     return res.status(500).json({ error: 'Delete failed. ' + err.message });
   } finally { client.release(); }
 
-  if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
   res.json({ success: true });
 });
 
@@ -694,20 +939,33 @@ router.post('/:id/department-approve', auth, async (req, res) => {
       });
     }
 
-    // Security: verify the caller is the dept head for THIS employee's department
+    // Security: verify caller is EITHER the dept head OR the employee's reporting manager
     const empDeptId = leave.users?.department_id;
-    if (!empDeptId) {
-      return res.status(400).json({ error: 'Employee has no department assigned. Cannot process department approval.' });
+    let isAuthorized = false;
+    let approverLabel = '';
+
+    // Check A: dept head via department
+    if (empDeptId) {
+      const { data: dept } = await supabase.from('departments')
+        .select('id, head_user_id, name').eq('id', empDeptId).eq('organization_id', oId).maybeSingle();
+      if (dept?.head_user_id === req.user.id) {
+        isAuthorized = true;
+        approverLabel = dept.name + ' Head';
+      }
     }
 
-    const { data: dept } = await supabase.from('departments')
-      .select('id, head_user_id, name')
-      .eq('id', empDeptId)
-      .eq('organization_id', oId)
-      .maybeSingle();
+    // Check B: reporting manager (fallback when no dept head match)
+    if (!isAuthorized) {
+      const { data: empUser } = await supabase.from('users')
+        .select('reporting_to').eq('id', leave.user_id).eq('organization_id', oId).maybeSingle();
+      if (empUser?.reporting_to === req.user.id) {
+        isAuthorized = true;
+        approverLabel = 'Reporting Manager';
+      }
+    }
 
-    if (!dept?.head_user_id || dept.head_user_id !== req.user.id) {
-      return res.status(403).json({ error: 'You are not the Department Head for this employee\'s department.' });
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'You are not authorized to forward this leave. You must be the Department Head or Reporting Manager for this employee.' });
     }
 
     const now = new Date().toISOString();
@@ -732,10 +990,10 @@ router.post('/:id/department-approve', auth, async (req, res) => {
 
     const empName = leave.users?.name || 'Employee';
 
-    // Notify employee: dept head approved, now waiting for root admin
+    // Notify employee: their leave has been forwarded, now waiting for root admin
     notify(leave.user_id,
-      'Department Head Approved Your Leave',
-      `${req.user.name} (${dept.name} Head) has forwarded your leave request to the Root Admin for final approval.`,
+      'Leave Forwarded for Final Approval',
+      `${req.user.name} (${approverLabel}) has forwarded your leave request to the Root Admin for final approval.`,
       oId
     );
 
@@ -775,7 +1033,7 @@ router.post('/:id/department-approve', auth, async (req, res) => {
 
 // ─── ROUTE 14: POST /:id/final-approve ───────────────────────────────────────
 // Root Admin gives final approval to a leave in pending_root status.
-router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
+router.post('/:id/final-approve', auth, hasPermission('leaves', 'approve'), async (req, res) => {
   try {
     const oId     = orgId(req);
     const leaveId = parseInt(req.params.id, 10);
@@ -794,9 +1052,10 @@ router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
       });
     }
 
-    const settings   = await getSettings(oId);
-    const workDates  = buildWorkingDates(leave.start_date, leave.end_date, settings);
-    const attStatus  = leave.leave_time === 'half' ? 'half_day'
+    const settings     = await getSettings(oId);
+    const holidayDates = await fetchHolidaySet(oId, leave.start_date, leave.end_date);
+    const workDates    = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
+    const attStatus    = leave.leave_time === 'half' ? 'half_day'
       : (leave.leave_time === 'wfh' || leave.leave_type === 'wfh') ? 'wfh'
       : 'on_leave';
     const approvedAt = new Date().toISOString();
@@ -835,20 +1094,23 @@ router.post('/:id/final-approve', auth, rootAdminOnly, async (req, res) => {
 
     notify(leave.user_id, 'Leave Approved', `Your leave from ${leave.start_date} to ${leave.end_date} has been approved by ${req.user.name}.`, oId);
 
+    // Notify dept head for team-roster visibility (fire-and-forget)
+    findDeptHead(leave.user_id, oId).then(dhId => {
+      if (dhId) notify(dhId, 'Team Leave Approved',
+        `${data.users?.name || 'An employee'}'s leave from ${leave.start_date} to ${leave.end_date} has been approved.`,
+        oId);
+    }).catch(() => {});
+
     if (data.users?.email) {
       sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
     }
-    gcal.createLeaveEvent(leave, data.users?.name || 'Employee')
-      .then(gcalId => { if (gcalId) supabase.from('leaves').update({ google_event_id: gcalId }).eq('id', leaveId).eq('organization_id', oId).then(() => {}); })
-      .catch(() => {});
-
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── ROUTE 15: POST /:id/final-reject ────────────────────────────────────────
 // Root Admin rejects a leave (pending_root or legacy pending).
-router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
+router.post('/:id/final-reject', auth, hasPermission('leaves', 'reject'), async (req, res) => {
   try {
     const oId     = orgId(req);
     const leaveId = parseInt(req.params.id, 10);
@@ -872,8 +1134,9 @@ router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
 
     let workDates = [];
     if (leave.status === 'approved') {
-      const settings = await getSettings(oId);
-      workDates = buildWorkingDates(leave.start_date, leave.end_date, settings);
+      const settings     = await getSettings(oId);
+      const holidayDates = await fetchHolidaySet(oId, leave.start_date, leave.end_date);
+      workDates = buildWorkingDates(leave.start_date, leave.end_date, settings, holidayDates);
     }
 
     const client = await pool.connect();
@@ -891,7 +1154,7 @@ router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
       await client.query(
         `UPDATE leaves SET
            status = 'rejected', approved_by = $1, approved_at = $2,
-           google_event_id = NULL, remarks = $3,
+           remarks = $3,
            root_admin_status = 'rejected', root_admin_id = $1, root_admin_reviewed_at = $2
          WHERE id = $4 AND organization_id = $5`,
         [req.user.id, rejectedAt, remarks || null, leaveId, oId]
@@ -906,8 +1169,6 @@ router.post('/:id/final-reject', auth, rootAdminOnly, async (req, res) => {
       leaveId, oId, actorId: req.user.id, actorName: req.user.name,
       action: 'root_rejected', fromStatus: leave.status, toStatus: 'rejected', notes: remarks,
     });
-
-    if (leave.google_event_id) gcal.deleteLeaveEvent(leave.google_event_id);
 
     notify(leave.user_id, 'Leave Request Rejected', `Your leave from ${leave.start_date} to ${leave.end_date} has been rejected.`, oId);
 

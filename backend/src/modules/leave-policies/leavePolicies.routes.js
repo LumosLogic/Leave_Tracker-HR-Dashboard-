@@ -1,7 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
-const { auth, adminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 
 const DEFAULT_POLICIES = [
   { leave_type: 'annual',    label: 'Annual Leave',    annual_quota: 18, carry_forward: true,  max_carry_forward: 5,  paid: true },
@@ -30,7 +31,7 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/leave-policies — atomic replace-all using a PostgreSQL transaction (admin only).
 // HIGH-19: DELETE then INSERT must be atomic — if INSERT fails, no policies should be lost.
-router.post('/', auth, adminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('settings', 'manage'), async (req, res) => {
   const oId = req.user.organization_id;
   const { policies } = req.body;
   if (!Array.isArray(policies) || policies.length === 0)
@@ -66,7 +67,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
 });
 
 // PUT /api/leave-policies/:id (admin only)
-router.put('/:id', auth, adminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('settings', 'manage'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const fields = req.body;

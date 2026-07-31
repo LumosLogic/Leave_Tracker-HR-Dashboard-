@@ -10,6 +10,7 @@ const { ALLOWED_ORIGINS } = require('./middleware/auth');
 const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
+const { biometricIpGuard }     = require('./middleware/biometricIpGuard');
 const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
 const payrollScheduler = require('./services/payrollScheduler');
 
@@ -44,6 +45,7 @@ const announcementsRouter  = require('./modules/announcements/announcements.rout
 const shiftsRouter         = require('./modules/shifts/shifts.routes');
 const performanceRouter    = require('./modules/performance/performance.routes');
 const onboardingRouter     = require('./modules/onboarding/onboarding.routes');
+const offboardingRouter    = require('./modules/offboarding/offboarding.routes');
 const exitRouter           = require('./modules/exit/exit.routes');
 const branchesRouter       = require('./modules/branches/branches.routes');
 const biometricRouter      = require('./modules/biometric/biometric.routes');
@@ -167,6 +169,7 @@ app.use('/api/announcements',  announcementsRouter);
 app.use('/api/shifts',         shiftsRouter);
 app.use('/api/performance',    performanceRouter);
 app.use('/api/onboarding',     onboardingRouter);
+app.use('/api/offboarding',    offboardingRouter);
 app.use('/api/exit',           exitRouter);
 app.use('/api/branches',       branchesRouter);
 app.use('/api/biometric',      biometricRouter);
@@ -198,6 +201,9 @@ app.use('/api/profile',        profileTraining);
 app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
+// biometricIpGuard allows only registered device IPs + BIOMETRIC_IP_WHITELIST env var.
+// Fails OPEN if DB is unreachable so devices are never blocked during outages.
+app.use('/iclock/', biometricIpGuard);
 app.post('/iclock/cdata',      biometricPush);
 app.get('/iclock/getrequest',  biometricHeartbeat);
 

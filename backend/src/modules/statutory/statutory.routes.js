@@ -370,6 +370,23 @@ router.post('/declarations', auth, hasPermission('statutory', 'declare'), async 
       action: 'declaration_submitted', entityType: 'tds_declaration',
       entityId: rows[0].id, newValues: { fy: targetFY, regime }, ip: req.ip });
 
+    // Fire-and-forget: notify HR admins so they know a declaration is pending review
+    pool.query(
+      `SELECT id FROM users WHERE role IN ('admin','root_admin') AND organization_id = $1`,
+      [oId]
+    ).then(({ rows: admins }) => {
+      if (!admins.length) return;
+      const ids = admins.map(a => a.id);
+      return pool.query(
+        `INSERT INTO notifications (user_id, title, message, type, organization_id)
+         SELECT unnest($1::bigint[]), $2, $3, 'statutory', $4`,
+        [ids,
+         'TDS Declaration Submitted',
+         `${req.user.name} submitted a tax declaration for FY ${targetFY}. Review required.`,
+         oId]
+      );
+    }).catch(() => {});
+
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -476,6 +493,17 @@ router.post('/proofs', auth, hasPermission('statutory', 'declare'), async (req, 
       [oId, parseInt(declaration_id, 10), req.user.id, proof_type,
        description || '', claimed_amount || 0, document_url || null, document_name || null]
     );
+
+    // Notify HR admins: investment proof awaiting review (fire-and-forget)
+    pool.query(
+      `INSERT INTO notifications (user_id, title, message, type, organization_id)
+       SELECT id, $1, $2, 'statutory', $3
+       FROM users WHERE organization_id = $3 AND role IN ('admin','root_admin')`,
+      [`Investment Proof Uploaded — Review Needed`,
+       `${req.user.name} uploaded a ${proof_type.replace(/_/g,' ')} investment proof. Please review it in the TDS declarations section.`,
+       oId]
+    ).catch(() => {});
+
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -23,7 +23,8 @@
 const express = require('express');
 const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
-const { auth, adminOnly, rootAdminOnly } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
+const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
 const { clearUserCache, clearOrgCache } = require('../../services/permissionService');
 
@@ -61,7 +62,7 @@ function slugify(name) {
 }
 
 // ─── 1. GET /api/roles — list all roles for org ───────────────────────────────
-router.get('/', auth, adminOnly, async (req, res) => {
+router.get('/', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId = orgId(req);
 
@@ -111,7 +112,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
 
 // ─── 2. GET /api/roles/user/:userId — get roles assigned to a user ────────────
 // MUST be before GET /:id to avoid Express shadowing this route.
-router.get('/user/:userId', auth, adminOnly, async (req, res) => {
+router.get('/user/:userId', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const userId = parseId(req.params.userId);
@@ -133,7 +134,7 @@ router.get('/user/:userId', auth, adminOnly, async (req, res) => {
 
 // ─── 3. PUT /api/roles/user/:userId — replace all roles for a user ────────────
 // MUST be before PUT /:id to avoid Express shadowing this route.
-router.put('/user/:userId', auth, rootAdminOnly, async (req, res) => {
+router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const userId = parseId(req.params.userId);
@@ -212,7 +213,7 @@ router.put('/user/:userId', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 4. POST /api/roles — create a custom role ────────────────────────────────
-router.post('/', auth, rootAdminOnly, async (req, res) => {
+router.post('/', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId = orgId(req);
     const { name, description } = req.body;
@@ -254,7 +255,7 @@ router.post('/', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 5. GET /api/roles/:id — get single role with permissions + members ────────
-router.get('/:id', auth, adminOnly, async (req, res) => {
+router.get('/:id', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -301,7 +302,7 @@ router.get('/:id', auth, adminOnly, async (req, res) => {
 });
 
 // ─── 6. PUT /api/roles/:id — update custom role name / description ────────────
-router.put('/:id', auth, rootAdminOnly, async (req, res) => {
+router.put('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -357,7 +358,7 @@ router.put('/:id', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 7. DELETE /api/roles/:id — delete custom role ───────────────────────────
-router.delete('/:id', auth, rootAdminOnly, async (req, res) => {
+router.delete('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -405,7 +406,7 @@ router.delete('/:id', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 8. GET /api/roles/:id/permissions — get permissions for a role ───────────
-router.get('/:id/permissions', auth, adminOnly, async (req, res) => {
+router.get('/:id/permissions', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -435,7 +436,7 @@ router.get('/:id/permissions', auth, adminOnly, async (req, res) => {
 });
 
 // ─── 9. PUT /api/roles/:id/permissions — replace permission set for a role ────
-router.put('/:id/permissions', auth, rootAdminOnly, async (req, res) => {
+router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -503,7 +504,7 @@ router.put('/:id/permissions', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 10. GET /api/roles/:id/members — list members of a role ─────────────────
-router.get('/:id/members', auth, adminOnly, async (req, res) => {
+router.get('/:id/members', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -539,7 +540,7 @@ router.get('/:id/members', auth, adminOnly, async (req, res) => {
 });
 
 // ─── 11. POST /api/roles/:id/members — add a user to a role ──────────────────
-router.post('/:id/members', auth, rootAdminOnly, async (req, res) => {
+router.post('/:id/members', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);
@@ -589,7 +590,7 @@ router.post('/:id/members', auth, rootAdminOnly, async (req, res) => {
 });
 
 // ─── 12. DELETE /api/roles/:id/members/:userId — remove a user from a role ───
-router.delete('/:id/members/:userId', auth, rootAdminOnly, async (req, res) => {
+router.delete('/:id/members/:userId', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
     const roleId = parseId(req.params.id);

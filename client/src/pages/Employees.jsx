@@ -19,9 +19,9 @@ import {
 
 const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
-/* Clockify AttendanceDayTimeline component removed */
-function _attendanceDayTimelineRemoved() { return null; }
-function _deadCodeBlock() {
+// ── Clockify integration removed 2026-07-22 ───────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _removedClockifyTimeline() {
   async function toggle() {
     if (open) { setOpen(false); return; }
     if (!loaded.current) {
@@ -186,6 +186,13 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
   const [customStart, setCustomStart] = useState('');
   const [customEnd,   setCustomEnd]   = useState('');
   const [recordsTab,  setRecordsTab]  = useState('attendance');
+  const [adjModal,       setAdjModal]       = useState(false);
+  const [adjForm,        setAdjForm]        = useState({ leave_type: '', direction: 'add', amount: '', reason: '' });
+  const [adjHistoryModal, setAdjHistoryModal] = useState(false);
+
+  const { isAdmin }  = useAuth();
+  const toast        = useToast();
+  const qc           = useQueryClient();
 
   const today      = now.toISOString().split('T')[0];
   const monthValue = `${year}-${String(month).padStart(2, '0')}`;
@@ -234,6 +241,32 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
     queryKey: ['leave-policies'],
     queryFn:  () => apiGet('/leave-policies'),
     staleTime: 300000,
+  });
+
+  // API balance (includes HR adjustments); updates automatically after an adjustment is saved
+  const { data: apiBalance } = useQuery({
+    queryKey: ['emp-balance', emp.id, curYear],
+    queryFn:  () => apiGet('/leaves/balance', { userId: emp.id, year: curYear }),
+    staleTime: 60000,
+  });
+
+  const adjMut = useMutation({
+    mutationFn: ({ leave_type, delta, reason }) =>
+      apiPost('/leaves/balance/adjust', { userId: emp.id, leave_type, delta, reason, year: curYear }),
+    onSuccess: () => {
+      toast('Leave balance adjusted', 'success');
+      qc.invalidateQueries({ queryKey: ['emp-balance', emp.id, curYear] });
+      setAdjModal(false);
+      setAdjForm({ leave_type: '', direction: 'add', amount: '', reason: '' });
+    },
+    onError: err => toast(err?.message || 'Failed to adjust balance', 'error'),
+  });
+
+  const { data: adjHistory = [], isFetching: adjHistFetching } = useQuery({
+    queryKey: ['emp-balance-adjustments', emp.id, curYear],
+    queryFn:  () => apiGet('/leaves/balance/adjustments', { userId: emp.id, year: curYear }),
+    enabled:  adjHistoryModal,
+    staleTime: 30000,
   });
 
   const { data: schedule } = useQuery({
@@ -306,11 +339,21 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
       usedByType[l.leave_type] = (usedByType[l.leave_type] || 0) + countLeaveDaysInRange(l, `${curYear}-01-01`, `${curYear}-12-31`, activeWorkDays);
     }
   });
-  // Use policyMap from DB when available; fall back to LEAVE_DEFAULTS only if no policies configured
+  // API balance takes precedence (includes HR adjustments); fall back to local computation while loading
   const balanceSource = Object.keys(policyMap).length > 0 ? policyMap : LEAVE_DEFAULTS;
-  const leaveBalance = Object.entries(balanceSource).map(([type, info]) => ({
-    type, label: info.label, used: usedByType[type] || 0, total: info.quota || 20, color: LEAVE_COLORS[type] || '#94a3b8',
-  }));
+  const apiBalanceItems = (apiBalance?.balances || [])
+    .filter(b => b.leave_type !== 'wfh')
+    .map(b => ({
+      type: b.leave_type, label: b.label, used: b.used, total: b.allocated,
+      remaining: b.remaining, adjustment: b.adjustment || 0,
+      color: LEAVE_COLORS[b.leave_type] || '#94a3b8',
+    }));
+  const leaveBalance = apiBalanceItems.length > 0 ? apiBalanceItems
+    : Object.entries(balanceSource).map(([type, info]) => ({
+        type, label: info.label, used: usedByType[type] || 0, total: info.quota || 20,
+        remaining: Math.max(0, (info.quota || 20) - (usedByType[type] || 0)),
+        adjustment: 0, color: LEAVE_COLORS[type] || '#94a3b8',
+      }));
 
   // Helpers
   const empId     = `EMP-${String(emp.id).padStart(4, '0')}`;
@@ -661,12 +704,26 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             <div className="bg-white rounded-2xl border border-[#e7eefe] shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-black text-[#151c27] text-sm">Leave Balance</h3>
-                <span className="text-[0.65rem] text-[#777587] font-semibold">{curYear}</span>
+                <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => setAdjModal(true)}
+                        className="text-[0.65rem] font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e0e7ff] px-2 py-0.5 rounded-md transition-colors">
+                        Adjust
+                      </button>
+                      <button onClick={() => setAdjHistoryModal(true)}
+                        className="text-[0.65rem] font-bold text-[#777587] hover:text-[#3525cd] transition-colors">
+                        History
+                      </button>
+                    </>
+                  )}
+                  <span className="text-[0.65rem] text-[#777587] font-semibold">{curYear}</span>
+                </div>
               </div>
               <div className="space-y-3.5">
                 {leaveBalance.map(lb => {
                   const pct       = Math.min(100, Math.round((lb.used / lb.total) * 100));
-                  const remaining = Math.max(0, lb.total - lb.used);
+                  const remaining = lb.remaining ?? Math.max(0, lb.total - lb.used);
                   const isLow     = remaining <= 2 && lb.total > 0;
                   const isWarning = remaining <= Math.ceil(lb.total * 0.25) && !isLow;
                   const barColor  = isLow ? '#ef4444' : isWarning ? '#f59e0b' : lb.color;
@@ -680,6 +737,11 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                           )}
                           {isWarning && (
                             <span className="text-[0.6rem] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Running low</span>
+                          )}
+                          {lb.adjustment !== 0 && (
+                            <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full border ${lb.adjustment > 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-rose-700 bg-rose-50 border-rose-200'}`}>
+                              {lb.adjustment > 0 ? `+${lb.adjustment}d` : `${lb.adjustment}d`} adj
+                            </span>
                           )}
                         </div>
                         <div className="text-right">
@@ -907,6 +969,106 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
           )}
         </div>
       )}
+
+      {/* ── Adjustment History Modal ── */}
+      {adjHistoryModal && (
+        <Modal open={adjHistoryModal} onClose={() => setAdjHistoryModal(false)} title={`Leave Balance Adjustments — ${curYear}`}>
+          <div className="p-1">
+            {adjHistFetching ? (
+              <div className="py-8 flex justify-center"><span className="w-5 h-5 border-2 border-[#3525cd]/20 border-t-[#3525cd] rounded-full animate-spin" /></div>
+            ) : adjHistory.length === 0 ? (
+              <p className="text-xs text-[#9ca3af] text-center py-6">No manual adjustments recorded for {curYear}.</p>
+            ) : (
+              <div className="divide-y divide-[#f0f3ff]">
+                {adjHistory.map(a => (
+                  <div key={a.id} className="flex items-start gap-3 py-3">
+                    <span className={`text-sm font-black w-14 flex-shrink-0 ${a.delta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {a.delta > 0 ? `+${a.delta}d` : `${a.delta}d`}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#151c27]">
+                        {policyMap[a.leave_type]?.label || a.leave_type}
+                      </p>
+                      <p className="text-[0.68rem] text-[#464555] mt-0.5 leading-relaxed">{a.reason}</p>
+                      <p className="text-[0.62rem] text-[#9ca3af] mt-1">
+                        {a.adjusted_by_name} · {fmtDate(a.created_at?.slice(0, 10))}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Leave Balance Adjustment Modal ── */}
+      {adjModal && (
+        <Modal open={adjModal} onClose={() => setAdjModal(false)} title="Adjust Leave Balance">
+          <div className="space-y-4 p-1">
+            <p className="text-xs text-[#777587]">
+              Grant extra days or deduct days from <span className="font-bold text-[#151c27]">{emp.name}</span>'s {curYear} leave balance.
+              This is recorded as an HR adjustment and shown separately from approved leaves.
+            </p>
+
+            <div>
+              <label className="form-label">Leave Type</label>
+              <select className="form-control" value={adjForm.leave_type}
+                onChange={e => setAdjForm(f => ({ ...f, leave_type: e.target.value }))}>
+                <option value="">— Select leave type —</option>
+                {(leavePolicies || []).filter(p => p.leave_type !== 'wfh' && p.active).map(p => (
+                  <option key={p.leave_type} value={p.leave_type}>{p.label || p.leave_type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="form-label">Adjustment</label>
+              <div className="flex gap-2 items-center">
+                <div className="flex rounded-lg border border-[#c7c4d8] overflow-hidden text-xs font-bold">
+                  <button onClick={() => setAdjForm(f => ({ ...f, direction: 'add' }))}
+                    className={`px-3 py-2 transition-colors ${adjForm.direction === 'add' ? 'bg-emerald-500 text-white' : 'bg-white text-[#464555] hover:bg-[#f0f3ff]'}`}>
+                    + Add days
+                  </button>
+                  <button onClick={() => setAdjForm(f => ({ ...f, direction: 'deduct' }))}
+                    className={`px-3 py-2 transition-colors ${adjForm.direction === 'deduct' ? 'bg-rose-500 text-white' : 'bg-white text-[#464555] hover:bg-[#f0f3ff]'}`}>
+                    − Deduct days
+                  </button>
+                </div>
+                <input type="number" min="0.5" step="0.5" placeholder="0.5"
+                  className="form-control w-24"
+                  value={adjForm.amount}
+                  onChange={e => setAdjForm(f => ({ ...f, amount: e.target.value }))} />
+              </div>
+            </div>
+
+            <div>
+              <label className="form-label">Reason <span className="text-rose-500">*</span></label>
+              <input type="text" className="form-control" placeholder="e.g. Carry-forward from previous year"
+                value={adjForm.reason}
+                onChange={e => setAdjForm(f => ({ ...f, reason: e.target.value }))} />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setAdjModal(false)}
+                className="px-4 py-2 text-xs font-bold text-[#777587] border border-[#c7c4d8] rounded-lg hover:bg-[#f9f9ff] transition-colors">
+                Cancel
+              </button>
+              <button
+                disabled={!adjForm.leave_type || !adjForm.amount || !adjForm.reason.trim() || adjMut.isPending}
+                onClick={() => {
+                  const amount = parseFloat(adjForm.amount);
+                  if (!amount || amount <= 0) return;
+                  const delta = adjForm.direction === 'add' ? amount : -amount;
+                  adjMut.mutate({ leave_type: adjForm.leave_type, delta, reason: adjForm.reason });
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#3525cd] rounded-lg hover:bg-[#4f46e5] disabled:opacity-50 transition-colors">
+                {adjMut.isPending ? 'Saving…' : 'Save Adjustment'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -968,6 +1130,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     department:           employee.department      || '',
     department_ids:       initDeptIds,
     position:             employee.position        || '',
+    designation_id:       employee.designation_id  || '',
     joining_date:         employee.joining_date         ? employee.joining_date.slice(0, 10)         : '',
     employment_type:      employee.employment_type || 'full_time',
     work_mode:            employee.work_mode       || 'office',
@@ -999,7 +1162,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     height:               employee.height               || '',
     weight:               employee.weight               || '',
   } : {
-    name: '', email: '', password: '', department: '', position: '',
+    name: '', email: '', password: '', department: '', position: '', designation_id: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
     phone: '', personal_email: '', joining_date: '', employment_type: 'full_time',
     work_mode: 'office', employee_status: 'active', ctc: '', salary_effective_date: '',
@@ -1064,6 +1227,15 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     queryFn:  () => apiGet('/branches'),
   });
   const branches = Array.isArray(_branchData) ? _branchData : [];
+
+  // Fetch designations filtered by selected department(s)
+  const primaryDeptId = form.department_ids?.[0] || null;
+  const { data: _desigData = [] } = useQuery({
+    queryKey: ['designations', primaryDeptId],
+    queryFn:  () => apiGet('/designations', primaryDeptId ? { department_id: primaryDeptId } : {}),
+    staleTime: 2 * 60 * 1000,
+  });
+  const designations = Array.isArray(_desigData) ? _desigData : [];
 
   // Tab definitions (only for edit mode)
   const TABS = [
@@ -1292,28 +1464,25 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="form-label">Designation / Position</label>
-                  {(() => {
-                    const selectedDeptNames = departments.filter(d => form.department_ids.includes(d.id)).map(d => d.name);
-                    const desigs = getDesignationsForDepts(selectedDeptNames);
-                    return (
-                      <>
-                        <input className="form-control" list="designation-list-emp" placeholder="e.g. Senior Developer"
-                          value={form.position} onChange={e => set('position', e.target.value)} />
-                        <datalist id="designation-list-emp">
-                          {desigs.map(d => <option key={d} value={d} />)}
-                        </datalist>
-                        {selectedDeptNames.length > 0 && (
-                          <p className="text-[0.65rem] text-[#3525cd] mt-1">Showing designations for: {selectedDeptNames.join(', ')}</p>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <label className="form-label">Designation</label>
+                  <select className="form-control" value={form.designation_id} onChange={e => {
+                    const desig = designations.find(d => String(d.id) === e.target.value);
+                    set('designation_id', e.target.value);
+                    if (desig && !form.position) set('position', desig.name);
+                  }}>
+                    <option value="">— Select designation —</option>
+                    {designations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
                 </div>
                 <div>
-                  <label className="form-label">Joining Date</label>
-                  <input className="form-control" type="date" value={form.joining_date} onChange={e => set('joining_date', e.target.value)} />
+                  <label className="form-label">Job Title / Position</label>
+                  <input className="form-control" placeholder="e.g. Senior Developer"
+                    value={form.position} onChange={e => set('position', e.target.value)} />
                 </div>
+              </div>
+              <div>
+                <label className="form-label">Joining Date</label>
+                <input className="form-control" type="date" value={form.joining_date} onChange={e => set('joining_date', e.target.value)} />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -1506,17 +1675,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   </button>
                 </div>
               </div>
-              <div>
-                <label className="form-label">
-                  Clockify User ID
-                  <span className="font-normal text-[#777587] normal-case text-xs ml-1">(from Clockify workspace member settings)</span>
-                </label>
-                <input className="form-control" placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1"
-                  value={form.clockify_user_id} onChange={e => set('clockify_user_id', e.target.value)} />
-                {form.clockify_user_id && (
-                  <p className="text-[0.68rem] text-emerald-600 mt-1 font-semibold">Clockify sync will be enabled for this employee.</p>
-                )}
-              </div>
+              {/* Clockify User ID field removed — Clockify integration was removed 2026-07-22 */}
             </div>
           )}
         </div>
@@ -1566,20 +1725,20 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               )}
             </div>
             <div>
-              <label className="form-label">Designation <span className="text-rose-500">*</span></label>
-              {(() => {
-                const selectedDeptNames = departments.filter(d => form.department_ids.includes(d.id)).map(d => d.name);
-                const desigs = getDesignationsForDepts(selectedDeptNames);
-                return (
-                  <>
-                    <input className="form-control" list="designation-list-add" placeholder="e.g. Software Developer"
-                      value={form.position} onChange={e => set('position', e.target.value)} />
-                    <datalist id="designation-list-add">
-                      {desigs.map(d => <option key={d} value={d} />)}
-                    </datalist>
-                  </>
-                );
-              })()}
+              <label className="form-label">Designation</label>
+              <select className="form-control" value={form.designation_id} onChange={e => {
+                const desig = designations.find(d => String(d.id) === e.target.value);
+                set('designation_id', e.target.value);
+                if (desig && !form.position) set('position', desig.name);
+              }}>
+                <option value="">— Select designation —</option>
+                {designations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Job Title / Position <span className="text-rose-500">*</span></label>
+              <input className="form-control" placeholder="e.g. Software Developer"
+                value={form.position} onChange={e => set('position', e.target.value)} />
             </div>
           </div>
           <div>

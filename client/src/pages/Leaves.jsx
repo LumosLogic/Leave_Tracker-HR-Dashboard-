@@ -120,12 +120,13 @@ export default function Leaves() {
     return src;
   })();
 
-  const pendingCount    = allLeaves.filter(l => l.status === 'pending' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
-  const wfhPendingCount = allLeaves.filter(l => l.status === 'pending' && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
+  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root'];
+  const pendingCount    = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
+  const wfhPendingCount = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
 
-  // When navigated with ?status=pending, narrow the list to pending leaves only
+  // When navigated with ?status=pending, narrow the list to all unresolved leaves
   const pendingOnly = statusParam === 'pending';
-  const displayList = pendingOnly ? activeList.filter(l => l.status === 'pending') : activeList;
+  const displayList = pendingOnly ? activeList.filter(l => PENDING_STATUSES.includes(l.status)) : activeList;
 
   return (
     <div>
@@ -334,14 +335,17 @@ function TabBtn({ active, onClick, children }) {
 
 // ── Leave Card ────────────────────────────────────────────────────────────────
 const STATUS_CARD = {
-  pending:   { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
-  approved:  { border: 'border-l-4 border-l-emerald-400', bg: '' },
-  rejected:  { border: 'border-l-4 border-l-rose-400',    bg: '' },
-  cancelled: { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
+  pending:      { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
+  pending_dept: { border: 'border-l-4 border-l-blue-400',    bg: 'bg-blue-50/30' },
+  pending_root: { border: 'border-l-4 border-l-violet-400',  bg: 'bg-violet-50/30' },
+  approved:     { border: 'border-l-4 border-l-emerald-400', bg: '' },
+  rejected:     { border: 'border-l-4 border-l-rose-400',    bg: '' },
+  cancelled:    { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
 };
 
 function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
   const sc = STATUS_CARD[l.status] || {};
+  const isRootAdmin = user?.role === 'root_admin';
   return (
     <div className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''}`}>
       <Avatar name={l.name} color={l.avatar_color} size={36} />
@@ -372,11 +376,30 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
         {l.reason && <div className="text-xs text-[#777587] italic mt-0.5">"{l.reason}"</div>}
         {l.approver_name && <div className="text-xs text-[#777587] mt-0.5">By: {l.approver_name}</div>}
         <div className="flex gap-2 mt-2.5 flex-wrap">
+          {/* Old-flow pending — both HR Admin and Root Admin can approve */}
           {isAdmin && l.status === 'pending' && (
             <>
               <button className="btn btn-success btn-sm text-xs" onClick={() => onApprove(l.id)}><CheckCircle size={12} /> Approve</button>
               <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
             </>
+          )}
+          {/* New-flow: waiting for dept head — show info, no action for admins */}
+          {isAdmin && l.status === 'pending_dept' && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
+              Awaiting Dept Head Forwarding
+            </span>
+          )}
+          {/* New-flow: Root Admin final decision */}
+          {isAdmin && l.status === 'pending_root' && isRootAdmin && (
+            <>
+              <button className="btn btn-success btn-sm text-xs" onClick={() => onApprove(l.id)}><CheckCircle size={12} /> Approve</button>
+              <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
+            </>
+          )}
+          {isAdmin && l.status === 'pending_root' && !isRootAdmin && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2.5 py-1 rounded-lg">
+              Awaiting Root Admin Decision
+            </span>
           )}
           {l.status === 'approved' && (isAdmin || l.user_id === user?.id) && (
             <button className="btn btn-outline btn-sm text-xs border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => onRevert(l.id)}>
