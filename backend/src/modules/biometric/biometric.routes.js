@@ -69,6 +69,20 @@ router.put('/devices/:id', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── DELETE /api/biometric/devices/:id ───────────────────────────────────────
+router.delete('/devices/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `DELETE FROM biometric_devices WHERE id = $1 AND org_id = $2 RETURNING id, device_name`,
+      [req.params.id, orgId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Device not found' });
+    invalidateBiometricIpCache();
+    res.json({ ok: true, deleted: result.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── GET /api/biometric/logs ──────────────────────────────────────────────────
 router.get('/logs', auth, adminOnly, async (req, res) => {
   try {

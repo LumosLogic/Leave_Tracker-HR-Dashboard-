@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye } from 'lucide-react';
+import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 function timeAgo(dateStr) {
   if (!dateStr) return 'Never';
@@ -97,8 +98,21 @@ function RegisterDeviceModal({ open, onClose, branches }) {
 
 export default function BiometricDevices() {
   const { isAdmin } = useAuth();
+  const toast       = useToast();
+  const qc          = useQueryClient();
   const navigate    = useNavigate();
-  const [regOpen, setRegOpen] = useState(false);
+  const [regOpen,    setRegOpen]    = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // device to confirm-delete
+
+  const deleteMut = useMutation({
+    mutationFn: id => apiDelete(`/biometric/devices/${id}`),
+    onSuccess: () => {
+      toast('Device removed', 'success');
+      qc.invalidateQueries({ queryKey: ['biometric-devices'] });
+      setDeleteTarget(null);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
 
   const { data: _devices, isLoading } = useQuery({
     queryKey: ['biometric-devices'],
@@ -218,12 +232,20 @@ export default function BiometricDevices() {
                 </div>
 
                 {/* Footer action */}
-                <div className="flex items-center px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff]">
+                <div className="flex items-center px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] gap-2">
                   <button
                     onClick={() => navigate(`/biometric/logs?device=${device.serial_number}`)}
                     className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] hover:bg-[#f0f3ff] transition-colors">
                     <Eye size={12} /> View Logs
                   </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setDeleteTarget(device)}
+                      className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+                      title="Remove device">
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -234,6 +256,16 @@ export default function BiometricDevices() {
       {regOpen && (
         <RegisterDeviceModal open onClose={() => setRegOpen(false)} branches={branches} />
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Remove Device"
+        message={`Remove "${deleteTarget?.device_name}" (${deleteTarget?.serial_number}) from the system? This will also remove it from the IP allowlist.`}
+        confirmLabel={deleteMut.isPending ? 'Removing…' : 'Remove'}
+        variant="danger"
+        onConfirm={() => deleteMut.mutate(deleteTarget.id)}
+        onCancel={() => !deleteMut.isPending && setDeleteTarget(null)}
+      />
     </div>
   );
 }
