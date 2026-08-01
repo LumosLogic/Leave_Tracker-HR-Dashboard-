@@ -10,7 +10,7 @@ const { ALLOWED_ORIGINS } = require('./middleware/auth');
 const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
-const { biometricIpGuard }     = require('./middleware/biometricIpGuard');
+const { biometricSnGuard, biometricAuditLog } = require('./middleware/biometricSecurity');
 const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
 const payrollScheduler = require('./services/payrollScheduler');
 
@@ -201,10 +201,10 @@ app.use('/api/profile',        profileTraining);
 app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
-// Security is via serial number validation in each handler — unknown SNs are ignored.
-// IP guard removed because branches use dynamic IPs.
+// Security layers: rate limit → SN allowlist → audit log → handler
+app.use('/iclock/', rateLimiter(LIMITS.BIOMETRIC), biometricAuditLog, biometricSnGuard);
 app.post('/iclock/cdata',      biometricPush);
-app.get('/iclock/cdata',       (req, res) => { const sn = req.query.SN; if (sn) console.log(`[biometric] GET /iclock/cdata handshake SN=${sn}`); res.send('OK'); });
+app.get('/iclock/cdata',       (req, res) => res.send('OK'));
 app.get('/iclock/getrequest',  biometricHeartbeat);
 
 // ── Platform admin SPA (served at /admin/*) ───────────────────────────────────

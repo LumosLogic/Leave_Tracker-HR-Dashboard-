@@ -21,6 +21,7 @@ const pool = new Pool({
 const MIGRATIONS = [
   'backend/migrations/full_schema.sql',
   'backend/migrations/sanghavi_migration.sql',
+  'backend/migrations/biometric_audit_log.sql',
   // seed_sanghavi_data.sql is one-time setup — data already in DB, do not re-run
 ];
 

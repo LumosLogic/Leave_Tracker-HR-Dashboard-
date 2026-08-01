@@ -107,6 +107,11 @@ const LIMITS = {
     max: 300, windowMs: 60 * 1000, prefix: 'api',
     message: 'Request rate exceeded. Please slow down.',
   },
+  // Biometric ADMS — ZKTeco devices poll every ~30s; cap at 5 req/sec per IP
+  BIOMETRIC: {
+    max: 300, windowMs: 60 * 1000, prefix: 'biometric',
+    message: 'Too many biometric requests.',
+  },
 };
 
 module.exports = { rateLimiter, LIMITS };
