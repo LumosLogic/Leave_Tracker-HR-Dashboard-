@@ -201,9 +201,8 @@ app.use('/api/profile',        profileTraining);
 app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
-// biometricIpGuard allows only registered device IPs + BIOMETRIC_IP_WHITELIST env var.
-// Fails OPEN if DB is unreachable so devices are never blocked during outages.
-app.use('/iclock/', biometricIpGuard);
+// Security is via serial number validation in each handler — unknown SNs are ignored.
+// IP guard removed because branches use dynamic IPs.
 app.post('/iclock/cdata',      biometricPush);
 app.get('/iclock/cdata',       (req, res) => { const sn = req.query.SN; if (sn) console.log(`[biometric] GET /iclock/cdata handshake SN=${sn}`); res.send('OK'); });
 app.get('/iclock/getrequest',  biometricHeartbeat);
