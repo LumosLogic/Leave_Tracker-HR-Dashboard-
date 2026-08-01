@@ -56,8 +56,10 @@ async function biometricIpGuard(req, res, next) {
   if (!allowedIps) return next();
 
   // Resolve the real client IP (behind nginx proxy or direct)
+  // Strip IPv4-mapped IPv6 prefix (::ffff:1.2.3.4 → 1.2.3.4) for consistent matching
   const forwarded = req.headers['x-forwarded-for'];
-  const clientIp  = (forwarded ? forwarded.split(',')[0] : req.ip || '').trim();
+  const rawIp    = (forwarded ? forwarded.split(',')[0] : req.ip || '').trim();
+  const clientIp = rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
 
   if (allowedIps.has(clientIp)) return next();
 
