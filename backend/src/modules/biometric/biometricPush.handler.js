@@ -16,23 +16,18 @@
 const { pool } = require('../../config/db-pg-adapter');
 
 module.exports = async function biometricPushHandler(req, res) {
-  // Always respond immediately
+  // Always respond immediately — ZKTeco requires response within 2s
   res.send('OK');
 
   const sn    = req.query.SN    || (typeof req.body === 'object' ? req.body.SN : null);
   const table = req.query.table || (typeof req.body === 'object' ? req.body.table : null);
 
-  // Debug: log what the device is actually sending
-  console.log(`[biometric debug] POST /iclock/cdata SN=${sn} table=${table} content-type=${req.headers['content-type']}`);
-  console.log(`[biometric debug] body type=${typeof req.body} body=${JSON.stringify(req.body)?.slice(0, 300)}`);
-  console.log(`[biometric debug] query=${JSON.stringify(req.query)}`);
-
-  if (!sn) return;                   // nothing to do
-  if (table && table !== 'ATTLOG') return; // ignore non-attendance payloads
+  if (!sn) return;
+  if (table && table !== 'ATTLOG') return;
 
   const rawLines = extractAttlogLines(req.body, req.query);
 
-  console.log(`[biometric debug] parsed ${rawLines.length} ATTLOG lines`);
+  console.log(`[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`);
 
   if (!rawLines.length) return;
 
