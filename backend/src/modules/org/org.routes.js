@@ -9,6 +9,15 @@ const { rateLimiter, LIMITS } = require('../../middleware/rateLimiter');
 // GST format: 2-digit state code + 10-char PAN + entity digit + 'Z' + check char (15 chars total)
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
+const PERSONAL_DOMAINS = new Set([
+  'gmail.com','yahoo.com','yahoo.co.in','hotmail.com','outlook.com',
+  'live.com','msn.com','aol.com','icloud.com','me.com','mac.com',
+  'protonmail.com','proton.me','ymail.com','rediffmail.com',
+  'zoho.com','tutanota.com','gmx.com','gmx.net',
+]);
+const HTML_RE  = /<|>/;
+const PHONE_RE = /^[+]?[\d\s()\-.]{6,20}$/;
+
 // ─── Organization Registration (creates pending request, not live org) ────────
 router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) => {
   try {
@@ -18,6 +27,28 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
 
     const norm        = email.toLowerCase().trim();
     const companyTrim = company_name.trim();
+    const nameTrim    = name.trim();
+    const phoneTrim   = phone ? phone.trim() : null;
+
+    // ── 0. Input validation ──────────────────────────────────────────────────
+    if (companyTrim.length > 100)
+      return res.status(400).json({ error: 'Company name must be 100 characters or fewer.' });
+    if (!/[a-zA-Z]/.test(companyTrim))
+      return res.status(400).json({ error: 'Company name must contain at least one letter.' });
+    if (HTML_RE.test(companyTrim))
+      return res.status(400).json({ error: 'Company name must not contain HTML or script characters.' });
+
+    if (nameTrim.length > 100)
+      return res.status(400).json({ error: 'Full name must be 100 characters or fewer.' });
+    if (HTML_RE.test(nameTrim))
+      return res.status(400).json({ error: 'Full name must not contain HTML or script characters.' });
+
+    const emailDomain = norm.split('@')[1] || '';
+    if (PERSONAL_DOMAINS.has(emailDomain))
+      return res.status(400).json({ error: 'Please use a company/work email. Personal addresses (Gmail, Yahoo, Outlook, etc.) are not accepted.' });
+
+    if (phoneTrim && !PHONE_RE.test(phoneTrim))
+      return res.status(400).json({ error: 'Phone must contain only digits, spaces, +, -, (, or ).' });
 
     // ── 1. Validate GST format if provided ───────────────────────────────────
     const gstNorm = gst_number ? gst_number.trim().toUpperCase() : null;
@@ -54,8 +85,8 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
 
     const { data: request, error: reqErr } = await supabase.from('org_registration_requests')
       .insert({
-        company_name: companyTrim, contact_name: name.trim(), email: norm,
-        phone:        phone        || null,
+        company_name: companyTrim, contact_name: nameTrim, email: norm,
+        phone:        phoneTrim    || null,
         website:      website      || null,
         message:      message      || null,
         gst_number:   gstNorm      || null,
@@ -69,14 +100,14 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
     // Log activity
     await supabase.from('platform_activity').insert({
       event_type: 'org_request_submitted',
-      description: `New registration request from ${name.trim()} (${company_name.trim()})`,
+      description: `New registration request from ${nameTrim} (${companyTrim})`,
       metadata: { request_id: request.id, email: norm, company: company_name.trim() },
     });
 
     // Notify platform admin via email (using LumosLogic SMTP)
     const platformAdminEmail = process.env.PLATFORM_ADMIN_EMAIL || process.env.SMTP_USER;
     if (platformAdminEmail) {
-      sendMail({ to: platformAdminEmail, subject: `[LeaveTracker] New Org Request: ${company_name.trim()}`, html: orgRequestReceivedHtml(request) });
+      sendMail({ to: platformAdminEmail, subject: `[LeaveTracker] New Org Request: ${companyTrim}`, html: orgRequestReceivedHtml(request) });
     }
 
     res.json({ success: true, message: 'Your registration request has been submitted. Our team will review and email you within 24 hours.', request_id: request.id });

@@ -19,6 +19,50 @@ const INDUSTRIES = [
   'Legal & Professional Services', 'Agriculture', 'Other',
 ];
 
+const PERSONAL_DOMAINS = new Set([
+  'gmail.com','yahoo.com','yahoo.co.in','hotmail.com','outlook.com',
+  'live.com','msn.com','aol.com','icloud.com','me.com','mac.com',
+  'protonmail.com','proton.me','ymail.com','rediffmail.com',
+  'zoho.com','tutanota.com','gmx.com','gmx.net',
+]);
+const HTML_RE  = /<|>/;
+const PHONE_RE = /^[+]?[\d\s()\-.]{6,20}$/;
+
+function validate(form) {
+  const errs = {};
+
+  const company = form.company_name.trim();
+  if (!company)
+    errs.company_name = 'Company name is required.';
+  else if (company.length > 100)
+    errs.company_name = 'Must be 100 characters or fewer.';
+  else if (!/[a-zA-Z]/.test(company))
+    errs.company_name = 'Must contain at least one letter — numeric-only names are not valid.';
+  else if (HTML_RE.test(company))
+    errs.company_name = 'Must not contain HTML or script characters (< or >).';
+
+  const fullName = form.name.trim();
+  if (!fullName)
+    errs.name = 'Full name is required.';
+  else if (fullName.length > 100)
+    errs.name = 'Must be 100 characters or fewer.';
+  else if (HTML_RE.test(fullName))
+    errs.name = 'Must not contain HTML or script characters (< or >).';
+
+  const email = form.email.trim().toLowerCase();
+  if (email) {
+    const domain = email.split('@')[1] || '';
+    if (PERSONAL_DOMAINS.has(domain))
+      errs.email = 'Please use your company/work email — personal addresses (Gmail, Yahoo, etc.) are not accepted.';
+  }
+
+  const phone = form.phone.trim();
+  if (phone && !PHONE_RE.test(phone))
+    errs.phone = 'Phone may only contain digits, spaces, +, −, (, or ).';
+
+  return errs;
+}
+
 export default function Register() {
   const [step, setStep] = useState(1); // 1 = form, 2 = success
 
@@ -33,14 +77,21 @@ export default function Register() {
     company_size: '',
     industry:     '',
   });
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    setFieldErrors(fe => { const n = { ...fe }; delete n[k]; return n; });
+  };
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    const errs = validate(form);
+    if (Object.keys(errs).length) { setFieldErrors(errs); return; }
+    setFieldErrors({});
     setLoading(true);
     try {
       await apiPost('/register-org', {
@@ -163,6 +214,7 @@ export default function Register() {
                   placeholder="Acme Corp" value={form.company_name}
                   onChange={e => set('company_name', e.target.value)} />
               </div>
+              {fieldErrors.company_name && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.company_name}</p>}
             </div>
 
             {/* Contact Name */}
@@ -174,6 +226,7 @@ export default function Register() {
                   placeholder="Jane Smith" value={form.name}
                   onChange={e => set('name', e.target.value)} />
               </div>
+              {fieldErrors.name && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.name}</p>}
             </div>
 
             {/* Work Email */}
@@ -185,6 +238,7 @@ export default function Register() {
                   placeholder="jane@acmecorp.com" value={form.email}
                   onChange={e => set('email', e.target.value)} />
               </div>
+              {fieldErrors.email && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.email}</p>}
             </div>
 
             {/* Phone + Website */}
@@ -197,6 +251,7 @@ export default function Register() {
                     placeholder="+91 98765…" value={form.phone}
                     onChange={e => set('phone', e.target.value)} />
                 </div>
+                {fieldErrors.phone && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.phone}</p>}
               </div>
               <div>
                 <label className="form-label">Website <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
