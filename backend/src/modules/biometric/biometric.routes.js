@@ -3,6 +3,7 @@ const router  = express.Router();
 const { pool } = require('../../config/db-pg-adapter');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuard');
+const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
 
 // ─── GET /api/biometric/devices ───────────────────────────────────────────────
 router.get('/devices', auth, adminOnly, async (req, res) => {
@@ -191,6 +192,23 @@ router.delete('/employee-map/:id', auth, adminOnly, async (req, res) => {
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Mapping not found' });
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /api/biometric/devices/:id/force-sync ──────────────────────────────
+// Schedules a C:DATA UPDATE command for the device's next heartbeat,
+// forcing it to re-upload all stored attendance records.
+router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const devRes = await pool.query(
+      `SELECT serial_number, device_name FROM biometric_devices WHERE id = $1 AND org_id = $2`,
+      [req.params.id, orgId]
+    );
+    if (!devRes.rows.length) return res.status(404).json({ error: 'Device not found' });
+    const { serial_number, device_name } = devRes.rows[0];
+    scheduleSyncForSn(serial_number);
+    res.json({ ok: true, message: `Force-sync scheduled for ${device_name} (${serial_number}). Will trigger on next heartbeat (~60s).` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
