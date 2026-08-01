@@ -201,6 +201,8 @@ app.use('/api/profile',        profileTraining);
 app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
+// Accept text/plain bodies too — some ZKTeco firmware sends Content-Type: text/plain
+app.use('/iclock/', express.text({ type: '*/*' }));
 // Security layers: rate limit → SN allowlist → audit log → handler
 app.use('/iclock/', rateLimiter(LIMITS.BIOMETRIC), biometricAuditLog, biometricSnGuard);
 app.post('/iclock/cdata',      biometricPush);

@@ -19,19 +19,20 @@ module.exports = async function biometricPushHandler(req, res) {
   // Always respond immediately
   res.send('OK');
 
-  const sn    = req.query.SN    || req.body.SN;
-  const table = req.query.table || req.body.table;
+  const sn    = req.query.SN    || (typeof req.body === 'object' ? req.body.SN : null);
+  const table = req.query.table || (typeof req.body === 'object' ? req.body.table : null);
+
+  // Debug: log what the device is actually sending
+  console.log(`[biometric debug] POST /iclock/cdata SN=${sn} table=${table} content-type=${req.headers['content-type']}`);
+  console.log(`[biometric debug] body type=${typeof req.body} body=${JSON.stringify(req.body)?.slice(0, 300)}`);
+  console.log(`[biometric debug] query=${JSON.stringify(req.query)}`);
 
   if (!sn) return;                   // nothing to do
   if (table && table !== 'ATTLOG') return; // ignore non-attendance payloads
 
-  // The attendance lines are in the raw body text (after the URL-encoded fields).
-  // express.urlencoded() puts the KV pairs in req.body; for ZKTeco the log lines
-  // come as the value of a key that matches "PIN\t..." or as separate body text.
-  // ZKTeco ADMS actually POSTs the lines as the raw body content with
-  // Content-Type: text/plain or as part of the form body keyed by the first field.
-  // We handle both: check all body values + the raw text.
   const rawLines = extractAttlogLines(req.body, req.query);
+
+  console.log(`[biometric debug] parsed ${rawLines.length} ATTLOG lines`);
 
   if (!rawLines.length) return;
 
@@ -66,7 +67,8 @@ module.exports = async function biometricPushHandler(req, res) {
 
 // ─── Parse ATTLOG lines ────────────────────────────────────────────────────────
 // ZKTeco sends attendance data as tab-separated lines.
-// Depending on firmware, these can appear as:
+// Depending on firmware, body arrives as:
+//   - A raw string (express.text middleware, Content-Type: text/plain)
 //   - KEYS in URL-encoded body (when line has no '=' separator)
 //   - VALUES in URL-encoded body
 //   - Query string parameters
@@ -84,14 +86,23 @@ function extractAttlogLines(body, query = {}) {
     }
   }
 
-  // Check keys (attendance lines with no '=' become keys with empty values)
-  for (const key of Object.keys(body)) {
-    if (/^\d+\t/.test(key)) parseLine(key);
+  // Raw string body (express.text captured it — most reliable path)
+  if (typeof body === 'string') {
+    parseLine(body);
+    return lines;
   }
-  // Check values (some firmware versions encode lines as values)
-  for (const val of Object.values(body)) {
-    parseLine(val);
+
+  if (body && typeof body === 'object') {
+    // Check keys (attendance lines with no '=' become keys with empty values)
+    for (const key of Object.keys(body)) {
+      if (/^\d+\t/.test(key)) parseLine(key);
+    }
+    // Check values (some firmware versions encode lines as values)
+    for (const val of Object.values(body)) {
+      parseLine(val);
+    }
   }
+
   // Check query string (some firmware sends lines via query params)
   for (const val of Object.values(query)) {
     parseLine(val);
