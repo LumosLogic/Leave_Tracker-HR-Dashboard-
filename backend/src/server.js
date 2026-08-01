@@ -205,6 +205,7 @@ app.use('/api/profile',        profileCerts);
 // Fails OPEN if DB is unreachable so devices are never blocked during outages.
 app.use('/iclock/', biometricIpGuard);
 app.post('/iclock/cdata',      biometricPush);
+app.get('/iclock/cdata',       (req, res) => { const sn = req.query.SN; if (sn) console.log(`[biometric] GET /iclock/cdata handshake SN=${sn}`); res.send('OK'); });
 app.get('/iclock/getrequest',  biometricHeartbeat);
 
 // ── Platform admin SPA (served at /admin/*) ───────────────────────────────────
