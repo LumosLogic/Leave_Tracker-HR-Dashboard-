@@ -4,10 +4,34 @@ import { Search, Users, Umbrella, FileText, Megaphone, ArrowRight, X } from 'luc
 import { apiGet } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
+const SYSTEM_MODULES = [
+  { name: 'My Leaves', description: 'View leave history, leave balances, and request status', path: '/portal/leaves', forEmployee: true },
+  { name: 'Apply Leave', description: 'Submit a new leave or WFH application', path: '/portal/leaves?action=apply', forEmployee: true },
+  { name: 'Leave Balance', description: 'Check remaining annual, sick, and casual leave quotas', path: '/portal/leaves', forEmployee: true },
+  { name: 'My Attendance', description: 'Check-in/out logs, work hours, and daily status', path: '/portal/attendance', forEmployee: true },
+  { name: 'Attendance Correction / Regularization', description: 'Request attendance regularization for missed check-ins', path: '/portal/regularization', forEmployee: true },
+  { name: 'My Expenses', description: 'View and submit expense claims and receipts', path: '/portal/expenses', forEmployee: true },
+  { name: 'Submit Expense Claim', description: 'Upload receipts and claim work-related expenses', path: '/portal/expenses?action=apply', forEmployee: true },
+  { name: 'My Payslips & Payroll', description: 'Download monthly payslips and salary statements', path: '/portal/payslips', forEmployee: true },
+  { name: 'My Documents', description: 'Access organization policies, contracts, and letters', path: '/portal/documents', forEmployee: true },
+  { name: 'My Profile', description: 'View personal details, bank info, and emergency contacts', path: '/portal/profile', forEmployee: true },
+
+  { name: 'Leave Management', description: 'Review and approve employee leave applications', path: '/leaves', forAdmin: true },
+  { name: 'Leave Balances & Policies', description: 'View org-wide leave balances and policies', path: '/leaves', forAdmin: true },
+  { name: 'Attendance Management', description: 'Monitor daily employee attendance and logs', path: '/attendance', forAdmin: true },
+  { name: 'Regularization Requests', description: 'Approve employee attendance regularization requests', path: '/regularization', forAdmin: true },
+  { name: 'Expense Claims', description: 'Review and approve employee expense claims', path: '/expenses', forAdmin: true },
+  { name: 'Employee Directory', description: 'Manage employee profiles, roles, and departments', path: '/employees', forAdmin: true },
+  { name: 'Payroll & Reports', description: 'Generate salary slips and payroll summaries', path: '/payroll', forAdmin: true },
+  { name: 'Document Center', description: 'Upload and share organization documents', path: '/documents', forAdmin: true },
+  { name: 'Company Calendar & Holidays', description: 'Manage holidays, shifts, and company events', path: '/calendar', forAdmin: true },
+  { name: 'Organization Settings', description: 'Configure HR rules, shifts, and integrations', path: '/settings', forAdmin: true },
+];
+
 export function GlobalSearchModal({ open, onClose }) {
   const { isEmployee, isRootAdmin } = useAuth();
   const [query,   setQuery]   = useState('');
-  const [results, setResults] = useState({ employees: [], leaves: [], documents: [], announcements: [] });
+  const [results, setResults] = useState({ modules: [], employees: [], leaves: [], documents: [], announcements: [] });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -24,14 +48,19 @@ export function GlobalSearchModal({ open, onClose }) {
   // Clear results when modal closes or query is empty
   useEffect(() => {
     if (!query.trim() || !open) {
-      setResults({ employees: [], leaves: [], documents: [], announcements: [] });
+      setResults({ modules: [], employees: [], leaves: [], documents: [], announcements: [] });
       return;
     }
 
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const q = query.toLowerCase();
+        const q = query.toLowerCase().trim();
+
+        const matchingModules = SYSTEM_MODULES.filter(m => {
+          const roleOk = isEmployee ? m.forEmployee : m.forAdmin;
+          return roleOk && (m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q));
+        }).slice(0, 4);
 
         if (isEmployee) {
           // Employee: search only own data
@@ -41,6 +70,7 @@ export function GlobalSearchModal({ open, onClose }) {
             apiGet('/announcements').catch(() => []),
           ]);
           setResults({
+            modules: matchingModules,
             employees: [],
             leaves: (lvs || []).filter(l =>
               l.leave_type?.toLowerCase().includes(q) ||
@@ -65,6 +95,7 @@ export function GlobalSearchModal({ open, onClose }) {
             apiGet('/announcements').catch(() => []),
           ]);
           setResults({
+            modules: matchingModules,
             employees: (emps || []).filter(e =>
               e.name?.toLowerCase().includes(q) ||
               e.email?.toLowerCase().includes(q) ||
@@ -104,7 +135,9 @@ export function GlobalSearchModal({ open, onClose }) {
 
   const handleSelect = (section, item) => {
     onClose();
-    if (section === 'employees' && item?.id && !isEmployee) {
+    if (section === 'modules' && item?.path) {
+      navigate(item.path);
+    } else if (section === 'employees' && item?.id && !isEmployee) {
       navigate(`/employees?view=${item.id}`);
     } else if (section === 'documents' && item?.id) {
       navigate(`${basePaths.documents}?doc=${item.id}`);
@@ -113,7 +146,7 @@ export function GlobalSearchModal({ open, onClose }) {
     }
   };
 
-  const hasResults = results.employees.length > 0 || results.leaves.length > 0 ||
+  const hasResults = results.modules.length > 0 || results.employees.length > 0 || results.leaves.length > 0 ||
                      results.documents.length > 0  || results.announcements.length > 0;
 
   return (
@@ -163,6 +196,26 @@ export function GlobalSearchModal({ open, onClose }) {
           {query.trim() && !loading && !hasResults && (
             <div className="py-8 text-center text-xs text-[#777587]">
               No matching records found for <strong>"{query}"</strong>.
+            </div>
+          )}
+
+          {/* Navigation / Modules */}
+          {results.modules.length > 0 && (
+            <div className="py-2.5">
+              <div className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] flex items-center gap-1.5 mb-2">
+                <Search size={12} className="text-[#3525cd]" /> Modules & Pages
+              </div>
+              <div className="space-y-1">
+                {results.modules.map(m => (
+                  <div key={m.name} onClick={() => handleSelect('modules', m)} className="flex items-center justify-between p-2 rounded-xl hover:bg-[#f0f3ff] cursor-pointer transition-colors group">
+                    <div>
+                      <div className="text-xs font-bold text-[#151c27] group-hover:text-[#3525cd]">{m.name}</div>
+                      <div className="text-[0.65rem] text-[#777587]">{m.description}</div>
+                    </div>
+                    <ArrowRight size={14} className="text-[#c7c4d8] group-hover:text-[#3525cd] transition-colors" />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

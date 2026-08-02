@@ -25,40 +25,62 @@ const PERSONAL_DOMAINS = new Set([
   'protonmail.com','proton.me','ymail.com','rediffmail.com',
   'zoho.com','tutanota.com','gmx.com','gmx.net',
 ]);
-const HTML_RE  = /<|>/;
-const PHONE_RE = /^[+]?[\d\s()\-.]{6,20}$/;
+const HTML_RE  = /[<>;`\\\-]|<script>|drop\s+table/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validate(form) {
-  const errs = {};
+function validateNameVal(val) {
+  if (!val || !val.trim()) return 'Full Name is required.';
+  if (val.startsWith(' ')) return 'Full Name cannot start with a space.';
+  if (/\s{2,}/.test(val)) return 'Full Name cannot contain consecutive spaces.';
+  if (val.length < 2) return 'Full Name must be at least 2 characters.';
+  if (val.length > 100) return 'Full Name cannot exceed 100 characters.';
+  if (/\d/.test(val)) return 'Full Name can only contain alphabetic characters.';
+  if (/[^a-zA-Z\s'-]/.test(val)) return 'Full Name can only contain alphabetic characters.';
+  return '';
+}
 
-  const company = form.company_name.trim();
-  if (!company)
-    errs.company_name = 'Company name is required.';
-  else if (company.length > 100)
-    errs.company_name = 'Must be 100 characters or fewer.';
-  else if (!/[a-zA-Z]/.test(company))
-    errs.company_name = 'Must contain at least one letter — numeric-only names are not valid.';
-  else if (HTML_RE.test(company))
-    errs.company_name = 'Must not contain HTML or script characters (< or >).';
-
-  const fullName = form.name.trim();
-  if (!fullName)
-    errs.name = 'Full name is required.';
-  else if (fullName.length > 100)
-    errs.name = 'Must be 100 characters or fewer.';
-  else if (HTML_RE.test(fullName))
-    errs.name = 'Must not contain HTML or script characters (< or >).';
-
-  const email = form.email.trim().toLowerCase();
-  if (email) {
-    const domain = email.split('@')[1] || '';
-    if (PERSONAL_DOMAINS.has(domain))
-      errs.email = 'Please use your company/work email — personal addresses (Gmail, Yahoo, etc.) are not accepted.';
+function validateEmailVal(val) {
+  if (!val || !val.trim()) return 'Email is required.';
+  if (val.length > 254) return 'Email cannot exceed 254 characters.';
+  if (!EMAIL_RE.test(val.trim())) return 'Enter a valid email address.';
+  const domain = val.trim().toLowerCase().split('@')[1] || '';
+  if (PERSONAL_DOMAINS.has(domain)) {
+    return 'Please use your company/work email — personal addresses (Gmail, Yahoo, etc.) are not accepted.';
   }
+  return '';
+}
 
-  const phone = form.phone.trim();
-  if (phone && !PHONE_RE.test(phone))
-    errs.phone = 'Phone may only contain digits, spaces, +, −, (, or ).';
+function validatePhoneVal(val) {
+  if (!val) return '';
+  if (!/^\d+$/.test(val)) return 'Only numeric values are allowed.';
+  if (val.length !== 10) return 'Phone Number must contain exactly 10 digits.';
+  if (!/^[6-9]/.test(val)) return 'Enter a valid Indian mobile number.';
+  return '';
+}
+
+function validateCompanyVal(val) {
+  if (!val || !val.trim()) return 'Company Name is required.';
+  if (val.length < 2) return 'Company Name must be at least 2 characters.';
+  if (val.length > 255) return 'Company Name cannot exceed 255 characters.';
+  if (HTML_RE.test(val)) return 'Company Name contains invalid or unsafe characters.';
+  if (!/[a-zA-Z]/.test(val)) return 'Company Name must contain at least one letter.';
+  if (/^[^a-zA-Z0-9]+$/.test(val.trim())) return 'Company Name cannot contain only special characters.';
+  return '';
+}
+
+function validateAll(form) {
+  const errs = {};
+  const nErr = validateNameVal(form.name);
+  if (nErr) errs.name = nErr;
+
+  const cErr = validateCompanyVal(form.company_name);
+  if (cErr) errs.company_name = cErr;
+
+  const eErr = validateEmailVal(form.email);
+  if (eErr) errs.email = eErr;
+
+  const pErr = validatePhoneVal(form.phone);
+  if (pErr) errs.phone = pErr;
 
   return errs;
 }
@@ -81,7 +103,53 @@ export default function Register() {
   const [error,       setError]       = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const set = (k, v) => {
+  const handleNameChange = (e) => {
+    let val = e.target.value;
+    // Allow A-Z, a-z, space, -, '
+    val = val.replace(/[^a-zA-Z\s'-]/g, '');
+    val = val.replace(/^\s+/, '');
+    val = val.replace(/\s{2,}/g, ' ');
+    if (val.length > 100) val = val.slice(0, 100);
+
+    setForm(f => ({ ...f, name: val }));
+    const err = validateNameVal(val);
+    setFieldErrors(fe => ({ ...fe, name: err }));
+  };
+
+  const handleCompanyChange = (e) => {
+    let val = e.target.value;
+    // Remove HTML script/SQL tags
+    val = val.replace(/[<>;`\\\-]/g, '');
+    // Allow letters, numbers, space, &, ., ,, (, )
+    val = val.replace(/[^a-zA-Z0-9\s&.,()]/g, '');
+    val = val.replace(/^\s+/, '');
+    val = val.replace(/\s{2,}/g, ' ');
+    if (val.length > 255) val = val.slice(0, 255);
+
+    setForm(f => ({ ...f, company_name: val }));
+    const err = validateCompanyVal(val);
+    setFieldErrors(fe => ({ ...fe, company_name: err }));
+  };
+
+  const handleEmailChange = (e) => {
+    let val = e.target.value.replace(/\s+/g, '');
+    if (val.length > 254) val = val.slice(0, 254);
+
+    setForm(f => ({ ...f, email: val }));
+    const err = validateEmailVal(val);
+    setFieldErrors(fe => ({ ...fe, email: err }));
+  };
+
+  const handlePhoneChange = (e) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length > 10) val = val.slice(0, 10);
+
+    setForm(f => ({ ...f, phone: val }));
+    const err = validatePhoneVal(val);
+    setFieldErrors(fe => ({ ...fe, phone: err }));
+  };
+
+  const setOther = (k, v) => {
     setForm(f => ({ ...f, [k]: v }));
     setFieldErrors(fe => { const n = { ...fe }; delete n[k]; return n; });
   };
@@ -89,7 +157,7 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    const errs = validate(form);
+    const errs = validateAll(form);
     if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     setFieldErrors({});
     setLoading(true);
@@ -210,9 +278,10 @@ export default function Register() {
               <label className="form-label">Company Name <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                <input type="text" className="form-control pl-9" required
+                <input type="text" className={`form-control pl-9 ${fieldErrors.company_name ? 'border-rose-500 focus:border-rose-500' : ''}`} required
                   placeholder="Acme Corp" value={form.company_name}
-                  onChange={e => set('company_name', e.target.value)} />
+                  maxLength={255}
+                  onChange={handleCompanyChange} />
               </div>
               {fieldErrors.company_name && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.company_name}</p>}
             </div>
@@ -222,9 +291,10 @@ export default function Register() {
               <label className="form-label">Your Full Name <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                <input type="text" className="form-control pl-9" required
+                <input type="text" className={`form-control pl-9 ${fieldErrors.name ? 'border-rose-500 focus:border-rose-500' : ''}`} required
                   placeholder="Jane Smith" value={form.name}
-                  onChange={e => set('name', e.target.value)} />
+                  maxLength={100}
+                  onChange={handleNameChange} />
               </div>
               {fieldErrors.name && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.name}</p>}
             </div>
@@ -234,9 +304,10 @@ export default function Register() {
               <label className="form-label">Work Email <span className="text-rose-500">*</span></label>
               <div className="relative">
                 <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                <input type="email" className="form-control pl-9" required
+                <input type="email" className={`form-control pl-9 ${fieldErrors.email ? 'border-rose-500 focus:border-rose-500' : ''}`} required
                   placeholder="jane@acmecorp.com" value={form.email}
-                  onChange={e => set('email', e.target.value)} />
+                  maxLength={254}
+                  onChange={handleEmailChange} />
               </div>
               {fieldErrors.email && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.email}</p>}
             </div>
@@ -247,9 +318,10 @@ export default function Register() {
                 <label className="form-label">Phone <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
                 <div className="relative">
                   <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
-                  <input type="tel" className="form-control pl-9"
-                    placeholder="+91 98765…" value={form.phone}
-                    onChange={e => set('phone', e.target.value)} />
+                  <input type="tel" className={`form-control pl-9 ${fieldErrors.phone ? 'border-rose-500 focus:border-rose-500' : ''}`}
+                    placeholder="9876543210" value={form.phone}
+                    maxLength={10}
+                    onChange={handlePhoneChange} />
                 </div>
                 {fieldErrors.phone && <p className="text-[0.72rem] text-rose-600 mt-1">{fieldErrors.phone}</p>}
               </div>
@@ -259,7 +331,7 @@ export default function Register() {
                   <Globe size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
                   <input type="url" className="form-control pl-9"
                     placeholder="https://…" value={form.website}
-                    onChange={e => set('website', e.target.value)} />
+                    onChange={e => setOther('website', e.target.value)} />
                 </div>
               </div>
             </div>
@@ -272,7 +344,7 @@ export default function Register() {
                   <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
                   <select className="form-control pl-9 appearance-none"
                     value={form.company_size}
-                    onChange={e => set('company_size', e.target.value)}>
+                    onChange={e => setOther('company_size', e.target.value)}>
                     <option value="">Select…</option>
                     {COMPANY_SIZES.map(s => (
                       <option key={s.value} value={s.value}>{s.label}</option>
@@ -286,7 +358,7 @@ export default function Register() {
                   <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
                   <select className="form-control pl-9 appearance-none"
                     value={form.industry}
-                    onChange={e => set('industry', e.target.value)}>
+                    onChange={e => setOther('industry', e.target.value)}>
                     <option value="">Select…</option>
                     {INDUSTRIES.map(i => (
                       <option key={i} value={i}>{i}</option>
@@ -307,7 +379,7 @@ export default function Register() {
                   placeholder="22AAAAA0000A1Z5"
                   maxLength={15}
                   value={form.gst_number}
-                  onChange={e => set('gst_number', e.target.value.toUpperCase())} />
+                  onChange={e => setOther('gst_number', e.target.value.toUpperCase())} />
               </div>
               <p className="text-[0.7rem] text-[#777587] mt-1">15-character GST Identification Number</p>
             </div>
@@ -319,7 +391,7 @@ export default function Register() {
                 <MessageSquare size={15} className="absolute left-3 top-3 text-[#777587]" />
                 <textarea className="form-control pl-9 resize-none" rows={2}
                   placeholder="Tell us about your company…" value={form.message}
-                  onChange={e => set('message', e.target.value)} />
+                  onChange={e => setOther('message', e.target.value)} />
               </div>
             </div>
 

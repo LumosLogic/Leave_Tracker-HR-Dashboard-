@@ -85,9 +85,10 @@ export const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2',
 
 export function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return '☀️ Good morning';
-  if (h < 17) return '👋 Good afternoon';
-  return '🌙 Good evening';
+  if (h >= 5 && h < 12) return 'Good Morning';
+  if (h >= 12 && h < 17) return 'Good Afternoon';
+  if (h >= 17 && h < 21) return 'Good Evening';
+  return 'Good Night';
 }
 
 export function liveElapsed(startTime) {

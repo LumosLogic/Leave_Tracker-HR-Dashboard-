@@ -83,9 +83,10 @@ function fmtDateShort(dateStr) {
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good Morning';
-  if (h < 17) return 'Good Afternoon';
-  return 'Good Evening';
+  if (h >= 5 && h < 12) return 'Good Morning';
+  if (h >= 12 && h < 17) return 'Good Afternoon';
+  if (h >= 17 && h < 21) return 'Good Evening';
+  return 'Good Night';
 }
 
 function parseWorkMins(timeStr) {
@@ -496,8 +497,14 @@ export default function EmployeeHome() {
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
     .slice(0, 5);
 
+  const { data: myExpenses = [] } = useQuery({
+    queryKey: ['my-expenses-recent'],
+    queryFn:  () => apiGet('/expenses').catch(() => []),
+    staleTime: 2 * 60 * 1000,
+  });
+
   /* ── pending actions count ── */
-  const pendingExpenses = 0; // placeholder — connect when expenses query exists
+  const pendingExpenses = myExpenses.filter(e => e.status === 'pending' || e.status === 'manager_approved').length;
 
   /* ── quick action items ── */
   const quickActions = [

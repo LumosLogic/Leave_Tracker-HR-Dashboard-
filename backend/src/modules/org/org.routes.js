@@ -31,24 +31,30 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
     const phoneTrim   = phone ? phone.trim() : null;
 
     // ── 0. Input validation ──────────────────────────────────────────────────
-    if (companyTrim.length > 100)
-      return res.status(400).json({ error: 'Company name must be 100 characters or fewer.' });
+    if (companyTrim.length < 2 || companyTrim.length > 255)
+      return res.status(400).json({ error: 'Company name must be between 2 and 255 characters.' });
     if (!/[a-zA-Z]/.test(companyTrim))
       return res.status(400).json({ error: 'Company name must contain at least one letter.' });
-    if (HTML_RE.test(companyTrim))
-      return res.status(400).json({ error: 'Company name must not contain HTML or script characters.' });
+    if (/[<>;`\\\-]|<script>|drop\s+table/i.test(companyTrim))
+      return res.status(400).json({ error: 'Company name contains invalid or unsafe characters.' });
 
-    if (nameTrim.length > 100)
-      return res.status(400).json({ error: 'Full name must be 100 characters or fewer.' });
-    if (HTML_RE.test(nameTrim))
-      return res.status(400).json({ error: 'Full name must not contain HTML or script characters.' });
+    if (nameTrim.length < 2 || nameTrim.length > 100)
+      return res.status(400).json({ error: 'Full name must be between 2 and 100 characters.' });
+    if (/[^a-zA-Z\s'-]/.test(nameTrim))
+      return res.status(400).json({ error: 'Full name can only contain alphabetic characters, spaces, hyphens, and apostrophes.' });
 
+    if (norm.length > 254)
+      return res.status(400).json({ error: 'Email cannot exceed 254 characters.' });
     const emailDomain = norm.split('@')[1] || '';
     if (PERSONAL_DOMAINS.has(emailDomain))
       return res.status(400).json({ error: 'Please use a company/work email. Personal addresses (Gmail, Yahoo, Outlook, etc.) are not accepted.' });
 
-    if (phoneTrim && !PHONE_RE.test(phoneTrim))
-      return res.status(400).json({ error: 'Phone must contain only digits, spaces, +, -, (, or ).' });
+    if (phoneTrim) {
+      if (!/^\d{10}$/.test(phoneTrim))
+        return res.status(400).json({ error: 'Phone Number must contain exactly 10 digits.' });
+      if (!/^[6-9]/.test(phoneTrim))
+        return res.status(400).json({ error: 'Enter a valid Indian mobile number.' });
+    }
 
     // ── 1. Validate GST format if provided ───────────────────────────────────
     const gstNorm = gst_number ? gst_number.trim().toUpperCase() : null;

@@ -301,6 +301,12 @@ export default function MyAttendance() {
   });
   const activeWorkDays = schedule?.work_days ? schedule.work_days.split(',').map(Number) : [1,2,3,4,5];
 
+  const { data: holidays = [] } = useQuery({
+    queryKey: ['holidays-att'],
+    queryFn: () => apiGet('/holidays').catch(() => []),
+    staleTime: 5 * 60 * 1000,
+  });
+
   function prevMonth() {
     setStatusFilter(null); setDateSearch('');
     if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1);
@@ -338,14 +344,41 @@ export default function MyAttendance() {
 
   const todayStr = toDSString(new Date());
 
-  // Full sorted table records (status merged)
+  // Full sorted table records (status merged + absent calculation for past working days)
   const tableRecords = useMemo(() => {
-    return records.map(r => {
-      const merged = recMap[r.date];
-      return merged ? { ...r, status: merged.status } : r;
-    }).sort((a, b) => b.date.localeCompare(a.date));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, allLeaves, schedule]);
+    const map = { ...recMap };
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const holidaysSet = new Set((holidays || []).map(h => h.date));
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const ds = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (ds > todayStr) continue;
+
+      const d = new Date(ds + 'T12:00:00');
+      const dow = d.getDay();
+      const isWorkingDay = activeWorkDays.includes(dow) && !holidaysSet.has(ds);
+
+      if (isWorkingDay) {
+        const existing = map[ds];
+        if (!existing || (!existing.check_in && !['present', 'half_day', 'on_leave', 'wfh'].includes(existing?.status))) {
+          if (ds < todayStr) {
+            map[ds] = {
+              ...(existing || {}),
+              date: ds,
+              status: 'absent',
+              check_in: null,
+              check_out: null,
+              work_hours: 0,
+              gross_hours: 0,
+              _synthetic: !existing,
+            };
+          }
+        }
+      }
+    }
+
+    return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
+  }, [records, allLeaves, schedule, holidays, year, month, todayStr]);
 
   // Summary counts — derived from tableRecords so KPI card counts match the filtered list
   const summary = useMemo(() => {
