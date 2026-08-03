@@ -468,7 +468,7 @@ function Footer() {
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen">
+    <div className="h-screen overflow-y-auto w-full">
       <Navbar />
       <HeroSection />
       <FeaturesSection />
