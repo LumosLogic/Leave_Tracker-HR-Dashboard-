@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
-  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound,
+  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound, Terminal
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -40,6 +40,7 @@ const NAV_SECTIONS = [
     { to: '/root/biometric/devices', label: 'Devices',    Icon: Fingerprint, featureKey: 'biometric' },
     { to: '/root/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
     { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
+    { to: '/root/biometric/live-logs', label: 'Live Logs', Icon: Terminal,    featureKey: 'biometric' },
   ]},
   { id: 'tour-nav-finance', title: 'Finance', items: [
     { to: '/root/payroll',  label: 'Payroll',  Icon: DollarSign },

@@ -243,7 +243,6 @@ function AppRoutes() {
         <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
         <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
-        <Route path="/biometric/live-logs" element={<FeatureRoute featureKey="biometric"><BiometricLiveLogs /></FeatureRoute>} />
         <Route path="/biometric/settings" element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
       </Route>
 
@@ -292,6 +291,7 @@ function AppRoutes() {
         <Route path="/root/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/root/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
         <Route path="/root/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/root/biometric/live-logs" element={<FeatureRoute featureKey="biometric"><BiometricLiveLogs /></FeatureRoute>} />
       </Route>
 
       {/* ── Employee portal (employee only) ── */}

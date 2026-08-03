@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
-  Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee, Terminal,
+  Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee,
   PieChart, FileBarChart, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -41,7 +41,6 @@ const BIOMETRIC_ITEMS = [
   { to: '/biometric/devices', label: 'Devices',    Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/live-logs', label: 'Live Logs', Icon: Terminal,    adminOnly: true, featureKey: 'biometric' },
 ];
 
 const FINANCE_ITEMS = [
