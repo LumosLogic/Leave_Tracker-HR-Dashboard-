@@ -13,7 +13,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
-import { todayStr, fmtDate, fmtTime, fmtHours, countWorkingDaysInRange } from '@/lib/utils';
+import { todayStr, fmtDate, fmtTime, fmtHours, countWorkingDaysInRange, toISODate } from '@/lib/utils';
 
 /* ─── constants ──────────────────────────────────────────────────────────── */
 
@@ -107,7 +107,7 @@ function WeekBarChart({ recentAttendance, today }) {
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = toISODate(d);
     const rec = recentAttendance.find(r => r.date === dateStr);
     const hours = parseFloat(rec?.work_hours ?? 0) || 0;
     return { label: DAY_LABELS[(d.getDay())], dateStr, hours, isToday: dateStr === today, isFuture: dateStr > today };
@@ -364,9 +364,13 @@ export default function EmployeeHome() {
   const { data: regularizations = [] } = useQuery({
     queryKey: ['my-regularization'], queryFn: () => apiGet('/regularization'), staleTime: 2 * 60 * 1000, retry: 1,
   });
+  const thirtyDaysAgo = new Date(nowDate);
+  thirtyDaysAgo.setDate(nowDate.getDate() - 30);
+  const nextWeek = new Date(nowDate);
+  nextWeek.setDate(nowDate.getDate() + 7);
   const { data: recentAttendance = [] } = useQuery({
-    queryKey: ['my-att-recent', nowDate.getFullYear(), nowDate.getMonth() + 1],
-    queryFn: () => apiGet('/attendance', { year: nowDate.getFullYear(), month: nowDate.getMonth() + 1 }),
+    queryKey: ['my-att-recent', toISODate(thirtyDaysAgo), toISODate(nextWeek)],
+    queryFn: () => apiGet('/attendance', { startDate: toISODate(thirtyDaysAgo), endDate: toISODate(nextWeek) }),
     staleTime: 2 * 60 * 1000,
   });
   const { data: leavePolicies = [] } = useQuery({

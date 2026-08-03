@@ -3,7 +3,7 @@ const router  = express.Router();
 const { supabase, pool } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
-const { flat, flatOne, orgId, getSettings, isWorkingDay, getRecipients } = require('../../utils/helpers');
+const { flat, flatOne, orgId, getSettings, isWorkingDay, getRecipients, localDateStr } = require('../../utils/helpers');
 const { sendMail, leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml } = require('../../services/emailService');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

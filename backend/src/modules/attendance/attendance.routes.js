@@ -24,9 +24,13 @@ router.get('/', auth, async (req, res) => {
     if (date) {
       query = query.eq('date', date);
     } else if (year && month) {
-      query = query.like('date', `${year}-${String(month).padStart(2,'0')}-%`);
+      const start = `${year}-${String(month).padStart(2,'0')}-01`;
+      const end = new Date(year, month, 0).toISOString().split('T')[0];
+      query = query.gte('date', start).lte('date', end);
     } else if (year) {
-      query = query.like('date', `${year}-%`);
+      const start = `${year}-01-01`;
+      const end = `${year}-12-31`;
+      query = query.gte('date', start).lte('date', end);
     } else if (req.query.startDate && req.query.endDate) {
       query = query.gte('date', req.query.startDate).lte('date', req.query.endDate);
     }
