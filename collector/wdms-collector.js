@@ -51,7 +51,7 @@ const CONFIG = {
   },
 
   // Lumos HRMS API
-  apiUrl:    (process.env.HRMS_API_URL || 'https://hrms.lumoslogic.com').replace(/\/$/, ''),
+  apiUrl:    (process.env.HRMS_API_URL || 'https://hrms.recruitx-ai.com').replace(/\/$/, ''),
   apiKey:    process.env.HRMS_COLLECTOR_KEY || '',
 
   // How often to poll (milliseconds)
