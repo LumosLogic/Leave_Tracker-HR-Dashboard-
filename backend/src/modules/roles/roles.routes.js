@@ -357,7 +357,7 @@ router.put('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
   }
 });
 
-// ─── 7. DELETE /api/roles/:id — delete custom role ───────────────────────────
+// ─── 7. DELETE /api/roles/:id — delete custom role (cascade: revokes all member assignments + permissions) ─
 router.delete('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
   try {
     const oId    = orgId(req);
@@ -376,30 +376,48 @@ router.delete('/:id', auth, hasPermission('roles', 'manage'), async (req, res) =
       return res.status(400).json({ error: 'System roles cannot be deleted.' });
     }
 
-    // Check for assigned users before deleting
-    const { count } = await supabase
-      .from('user_roles')
-      .select('id', { count: 'exact', head: true })
-      .eq('role_id', roleId)
-      .eq('org_id', oId);
+    // Collect affected user IDs before deletion so we can clear their permission caches
+    const { rows: affectedUsers } = await pool.query(
+      'SELECT user_id FROM user_roles WHERE role_id = $1 AND org_id = $2',
+      [roleId, oId]
+    );
 
-    if (count > 0) {
-      return res.status(400).json({
-        error: `Cannot delete role "${role.name}" — ${count} user(s) are still assigned to it. Remove them first.`,
-        member_count: count,
-      });
+    // Cascade everything in a single transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Revoke all member assignments for this role (within this org)
+      await client.query(
+        'DELETE FROM user_roles WHERE role_id = $1 AND org_id = $2',
+        [roleId, oId]
+      );
+
+      // 2. Revoke all permissions granted to this role
+      await client.query(
+        'DELETE FROM role_permissions WHERE role_id = $1',
+        [roleId]
+      );
+
+      // 3. Delete the role itself
+      await client.query(
+        'DELETE FROM roles WHERE id = $1 AND org_id = $2',
+        [roleId, oId]
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
 
-    const { error } = await supabase
-      .from('roles')
-      .delete()
-      .eq('id', roleId)
-      .eq('org_id', oId);   // multi-tenant guard on delete
-
-    if (error) throw error;
-
+    // Clear permission caches for all users who had this role
+    affectedUsers.forEach(u => clearUserCache(u.user_id, oId));
     clearOrgCache(oId);
-    res.json({ ok: true });
+
+    res.json({ ok: true, members_removed: affectedUsers.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

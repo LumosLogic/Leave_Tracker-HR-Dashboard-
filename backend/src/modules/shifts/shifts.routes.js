@@ -78,6 +78,90 @@ router.get('/assignments', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/shifts/assignments/range — assign a shift to selected employees across a date range
+// Generates one row per employee per matching day. Returns conflict info before saving.
+router.post('/assignments/range', auth, hasPermission('shifts', 'manage'), async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
+    const oId = req.user.organization_id;
+    const { shift_id, employee_ids, from_date, to_date, days_of_week, force } = req.body;
+
+    // ── Input validation ──────────────────────────────────────────────────────
+    if (!shift_id)
+      return res.status(400).json({ error: 'shift_id is required' });
+    if (!Array.isArray(employee_ids) || employee_ids.length === 0)
+      return res.status(400).json({ error: 'At least one employee must be selected' });
+    if (!from_date)
+      return res.status(400).json({ error: 'from_date is required (YYYY-MM-DD)' });
+    if (!to_date)
+      return res.status(400).json({ error: 'to_date is required (YYYY-MM-DD)' });
+
+    const from = new Date(from_date + 'T12:00:00');
+    const to   = new Date(to_date   + 'T12:00:00');
+    if (isNaN(from.getTime())) return res.status(400).json({ error: 'Invalid from_date — use YYYY-MM-DD' });
+    if (isNaN(to.getTime()))   return res.status(400).json({ error: 'Invalid to_date — use YYYY-MM-DD' });
+    if (from > to)             return res.status(400).json({ error: 'from_date must be on or before to_date' });
+
+    const daysDiff = Math.round((to - from) / (1000 * 60 * 60 * 24));
+    if (daysDiff > 366) return res.status(400).json({ error: 'Date range cannot exceed 1 year' });
+
+    const safeShiftId = parseInt(shift_id, 10);
+    const safeEmpIds  = employee_ids.map(id => parseInt(id, 10)).filter(n => n > 0);
+    if (!safeEmpIds.length)
+      return res.status(400).json({ error: 'employee_ids must be valid positive integers' });
+
+    // ── Generate date list ────────────────────────────────────────────────────
+    const allowedDays = Array.isArray(days_of_week) && days_of_week.length > 0
+      ? days_of_week.map(Number)
+      : null; // null = all days
+
+    const validDates = [];
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      if (!allowedDays || allowedDays.includes(d.getDay()))
+        validDates.push(d.toISOString().slice(0, 10));
+    }
+
+    if (!validDates.length)
+      return res.status(400).json({ error: 'No valid dates in selected range for the chosen days' });
+
+    // ── Conflict check: employees already on a DIFFERENT shift on these dates ─
+    const { data: existing } = await supabase
+      .from('shift_assignments')
+      .select('user_id, date, shift_id, shifts!inner(name)')
+      .eq('organization_id', oId)
+      .in('user_id', safeEmpIds)
+      .in('date', validDates)
+      .neq('shift_id', safeShiftId);
+
+    const conflicts = (existing || []).map(c => ({
+      user_id:    c.user_id,
+      date:       c.date,
+      shift_name: c.shifts?.name || 'Another Shift',
+    }));
+
+    // If conflicts exist and not forcing, return preview without saving
+    if (conflicts.length > 0 && !force) {
+      return res.json({ conflicts, created: 0, needs_confirmation: true });
+    }
+
+    // ── Upsert all rows ───────────────────────────────────────────────────────
+    const rows = [];
+    validDates.forEach(date =>
+      safeEmpIds.forEach(userId =>
+        rows.push({ user_id: userId, shift_id: safeShiftId, date, organization_id: oId })
+      )
+    );
+
+    const { data, error } = await supabase
+      .from('shift_assignments')
+      .upsert(rows, { onConflict: 'user_id,date,organization_id' })
+      .select();
+    if (error) throw error;
+
+    res.json({ created: data?.length || 0, conflicts_overwritten: conflicts.length, needs_confirmation: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // POST /api/shifts/assignments/bulk — assign shifts to multiple employees
 router.post('/assignments/bulk', auth, hasPermission('shifts', 'manage'), async (req, res) => {
   try {

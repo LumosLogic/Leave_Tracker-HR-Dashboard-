@@ -10,15 +10,31 @@ import { cn } from '@/lib/utils';
 
 // ─── Create Role Modal ────────────────────────────────────────────────────────
 
+function validateRoleName(val) {
+  if (!val || !val.trim()) return 'Role name is required';
+  if (val.trim().length < 2) return 'Must be at least 2 characters';
+  if (val.trim().length > 100) return 'Must be 100 characters or fewer';
+  if (/[^a-zA-Z0-9\s\-_]/.test(val)) return 'Only letters, numbers, spaces, hyphens, and underscores are allowed';
+  return '';
+}
+
 function CreateRoleModal({ onClose, onCreate }) {
-  const [name, setName]     = useState('');
-  const [desc, setDesc]     = useState('');
-  const [error, setError]   = useState('');
-  const [saving, setSaving] = useState(false);
+  const [name, setName]       = useState('');
+  const [desc, setDesc]       = useState('');
+  const [nameErr, setNameErr] = useState('');
+  const [error, setError]     = useState('');
+  const [saving, setSaving]   = useState(false);
+
+  function handleNameChange(e) {
+    const val = e.target.value;
+    setName(val);
+    setNameErr(validateRoleName(val));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!name.trim()) { setError('Role name is required'); return; }
+    const err = validateRoleName(name);
+    if (err) { setNameErr(err); return; }
     setSaving(true);
     setError('');
     try {
@@ -31,6 +47,8 @@ function CreateRoleModal({ onClose, onCreate }) {
       setSaving(false);
     }
   }
+
+  const nameOk = !nameErr && name.trim().length >= 2;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -50,22 +68,51 @@ function CreateRoleModal({ onClose, onCreate }) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-bold text-[#464555] mb-1.5">Role Name *</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#464555]">Role Name <span className="text-rose-500">*</span></label>
+              <span className={cn('text-[0.65rem] font-semibold', name.length > 90 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {name.length}/100
+              </span>
+            </div>
             <input
               autoFocus
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={handleNameChange}
               placeholder="e.g. Finance Manager"
-              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+              maxLength={100}
+              className={cn(
+                'w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:ring-1 transition-colors',
+                nameErr
+                  ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                  : nameOk
+                    ? 'border-green-400 focus:border-green-500 focus:ring-green-100'
+                    : 'border-[#c7c4d8] focus:border-[#3525cd] focus:ring-[#3525cd]/20'
+              )}
             />
+            {nameErr && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <AlertCircle size={11} className="text-rose-500 shrink-0" />
+                <p className="text-[0.68rem] text-rose-600">{nameErr}</p>
+              </div>
+            )}
+            {!nameErr && name.trim() && (
+              <p className="text-[0.68rem] text-[#777587] mt-1">Allowed: letters, numbers, spaces, hyphens, underscores</p>
+            )}
           </div>
+
           <div>
-            <label className="block text-xs font-bold text-[#464555] mb-1.5">Description</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#464555]">Description <span className="text-[#c7c4d8] font-normal">(optional)</span></label>
+              <span className={cn('text-[0.65rem] font-semibold', desc.length > 450 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {desc.length}/500
+              </span>
+            </div>
             <textarea
               value={desc}
-              onChange={e => setDesc(e.target.value)}
-              placeholder="What does this role do?"
+              onChange={e => setDesc(e.target.value.slice(0, 500))}
+              placeholder="What does this role do? Who should have it?"
               rows={3}
+              maxLength={500}
               className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] resize-none focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
             />
           </div>
@@ -81,8 +128,8 @@ function CreateRoleModal({ onClose, onCreate }) {
               className="flex-1 border border-[#c7c4d8] rounded-lg py-2.5 text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 bg-[#3525cd] text-white rounded-lg py-2.5 text-sm font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-60">
+            <button type="submit" disabled={saving || !!nameErr || !name.trim()}
+              className="flex-1 bg-[#3525cd] text-white rounded-lg py-2.5 text-sm font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {saving ? 'Creating…' : 'Create Role'}
             </button>
           </div>
@@ -103,9 +150,11 @@ function DeleteConfirm({ role, onCancel, onConfirm, loading }) {
           <Trash2 size={22} className="text-red-500" />
         </div>
         <h3 className="text-center font-black text-[#151c27] mb-1">Delete Role</h3>
-        <p className="text-center text-sm text-[#777587] mb-6">
+        <p className="text-center text-sm text-[#777587] mb-2">
           Are you sure you want to delete <strong className="text-[#151c27]">{role.name}</strong>?
-          This action cannot be undone.
+        </p>
+        <p className="text-center text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+          All member assignments and permissions for this role will be permanently revoked. This cannot be undone.
         </p>
         <div className="flex gap-2.5">
           <button onClick={onCancel}

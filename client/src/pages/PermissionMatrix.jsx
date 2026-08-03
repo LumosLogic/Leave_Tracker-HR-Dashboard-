@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useFeature } from '@/context/FeatureFlagContext';
 
 // ─── Module label map ─────────────────────────────────────────────────────────
 const MODULE_LABELS = {
@@ -341,9 +342,10 @@ export default function PermissionMatrix() {
     Array.isArray(m?.permissions) ? m.permissions.map(p => ({ ...p, module_key: m.module_key })) : []
   );
 
-  // Sort modules in defined order safely
+  // Sort modules in defined order; hide biometric if not enabled for this org
   const sortedModules = [...new Set(allPermissions.map(p => p.module_key))]
     .filter(Boolean)
+    .filter(m => m !== 'biometric' || biometricEnabled)
     .sort((a, b) => {
       const ai = MODULE_ORDER.indexOf(a);
       const bi = MODULE_ORDER.indexOf(b);
@@ -405,6 +407,7 @@ export default function PermissionMatrix() {
     setDirty(true);
   }
 
+  const biometricEnabled = useFeature('biometric');
   const isSystemRole  = role?.is_system_role;
   const isRootAdmin   = role?.slug === 'root_admin';
   const isLoading     = roleLoading || permsLoading;
