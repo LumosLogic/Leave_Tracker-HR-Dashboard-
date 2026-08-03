@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2 } from 'lucide-react';
+import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
@@ -111,6 +111,12 @@ export default function BiometricDevices() {
       qc.invalidateQueries({ queryKey: ['biometric-devices'] });
       setDeleteTarget(null);
     },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const syncMut = useMutation({
+    mutationFn: id => apiPost(`/biometric/devices/${id}/force-sync`, {}),
+    onSuccess: (res) => toast(res.message || 'Force-sync scheduled', 'success'),
     onError: e => toast(e.message, 'error'),
   });
 
@@ -239,12 +245,21 @@ export default function BiometricDevices() {
                     <Eye size={12} /> View Logs
                   </button>
                   {isAdmin && (
-                    <button
-                      onClick={() => setDeleteTarget(device)}
-                      className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
-                      title="Remove device">
-                      <Trash2 size={12} />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => syncMut.mutate(device.id)}
+                        disabled={syncMut.isPending}
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-[#464555] hover:bg-[#e7eefe] transition-colors"
+                        title="Fetch missed historical punches">
+                        <RefreshCw size={12} className={syncMut.isPending ? "animate-spin" : ""} /> Sync
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(device)}
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+                        title="Remove device">
+                        <Trash2 size={12} />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
