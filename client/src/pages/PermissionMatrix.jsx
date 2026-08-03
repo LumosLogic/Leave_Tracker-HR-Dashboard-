@@ -112,12 +112,12 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
   const [collapsed, setCollapsed] = useState(false);
   const safeSelectedIds = (selectedIds && typeof selectedIds.has === 'function') ? selectedIds : new Set();
   
-  const modulePerms = permissions.filter(p => p.module_key === module);
+  const modulePerms = permissions.filter(perm => perm.module_key === module);
   if (!modulePerms.length) return null;
 
-  const allChecked    = modulePerms.every(p => safeSelectedIds.has(p.id));
-  const someChecked   = modulePerms.some(p => safeSelectedIds.has(p.id));
-  const checkedCount  = modulePerms.filter(p => safeSelectedIds.has(p.id)).length;
+  const allChecked    = modulePerms.every(perm => safeSelectedIds.has(perm.id));
+  const someChecked   = modulePerms.some(perm => safeSelectedIds.has(perm.id));
+  const checkedCount  = modulePerms.filter(perm => safeSelectedIds.has(perm.id)).length;
 
   return (
     <div className="bg-white border border-[#e7eefe] rounded-xl overflow-hidden">
@@ -156,11 +156,11 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
       {/* Permissions grid */}
       {!collapsed && (
         <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-1">
-          {modulePerms.map(p => (
+          {modulePerms.map(permItem => (
             <PermissionCheckbox
-              key={p.id || Math.random()}
-              permission={p}
-              checked={safeSelectedIds.has(p.id)}
+              key={permItem.id || Math.random()}
+              permission={permItem}
+              checked={safeSelectedIds.has(permItem.id)}
               onChange={onToggle}
               disabled={isSystemRole && (module === 'roles' || true) /* root_admin always has all */}
             />
@@ -217,7 +217,7 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
     <div className="space-y-3">
       {/* Assign button */}
       <button
-        onClick={() => setShowPicker(p => !p)}
+        onClick={() => setShowPicker(prev => !prev)}
         className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border-2 border-dashed border-[#c7c4d8] text-[#3525cd] text-xs font-bold hover:border-[#3525cd] hover:bg-[#f0f3ff] transition-colors"
       >
         <UserPlus size={13} /> Assign Member
@@ -339,11 +339,11 @@ export default function PermissionMatrix() {
 
   // Flatten all permissions into a single array safely
   const allPermissions = (Array.isArray(modulesRaw) ? modulesRaw : []).flatMap(m =>
-    Array.isArray(m?.permissions) ? m.permissions.map(p => ({ ...p, module_key: m.module_key })) : []
+    Array.isArray(m?.permissions) ? m.permissions.map(perm => ({ ...perm, module_key: m.module_key })) : []
   );
 
   // Sort modules in defined order; hide biometric if not enabled for this org
-  const sortedModules = [...new Set(allPermissions.map(p => p.module_key))]
+  const sortedModules = [...new Set(allPermissions.map(perm => perm.module_key))]
     .filter(Boolean)
     .filter(m => m !== 'biometric' || biometricEnabled)
     .sort((a, b) => {
@@ -391,14 +391,14 @@ export default function PermissionMatrix() {
   function handleToggleAll(perms, checked) {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      perms.forEach(p => checked ? next.add(p.id) : next.delete(p.id));
+      perms.forEach(perm => checked ? next.add(perm.id) : next.delete(perm.id));
       return next;
     });
     setDirty(true);
   }
 
   function handleSelectAll() {
-    setSelectedIds(new Set(allPermissions.map(p => p.id)));
+    setSelectedIds(new Set(allPermissions.map(perm => perm.id)));
     setDirty(true);
   }
 
@@ -580,7 +580,7 @@ export default function PermissionMatrix() {
                 key={module}
                 module={module}
                 permissions={allPermissions}
-                selectedIds={isRootAdmin ? new Set(allPermissions.map(p => p.id)) : (selectedIds || new Set())}
+                selectedIds={isRootAdmin ? new Set(allPermissions.map(perm => perm.id)) : (selectedIds || new Set())}
                 onToggle={handleToggle}
                 onToggleAll={handleToggleAll}
                 isSystemRole={isRootAdmin}
