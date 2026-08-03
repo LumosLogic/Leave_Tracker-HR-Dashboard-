@@ -29,7 +29,11 @@ module.exports = async function biometricPushHandler(req, res) {
 
   console.log(`[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`);
 
-  if (!rawLines.length) return;
+  if (!rawLines.length) {
+    const debugBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    console.log(`[biometric] REJECTED/EMPTY PAYLOAD SN=${sn}:`, debugBody);
+    return;
+  }
 
   setImmediate(async () => {
     try {
@@ -74,8 +78,8 @@ function extractAttlogLines(body, query = {}) {
     if (!text || typeof text !== 'string') return;
     for (const line of text.split('\n')) {
       const trimmed = line.trim();
-      // Valid ATTLOG line: starts with numeric PIN, tab-separated
-      if (trimmed && trimmed.includes('\t') && /^\d+\t/.test(trimmed)) {
+      // Valid ATTLOG line: starts with alphanumeric PIN, tab-separated
+      if (trimmed && trimmed.includes('\t') && /^[a-zA-Z0-9_\-]+\t/.test(trimmed)) {
         lines.push(trimmed);
       }
     }
@@ -90,7 +94,7 @@ function extractAttlogLines(body, query = {}) {
   if (body && typeof body === 'object') {
     // Check keys (attendance lines with no '=' become keys with empty values)
     for (const key of Object.keys(body)) {
-      if (/^\d+\t/.test(key)) parseLine(key);
+      if (/^[a-zA-Z0-9_\-]+\t/.test(key)) parseLine(key);
     }
     // Check values (some firmware versions encode lines as values)
     for (const val of Object.values(body)) {
