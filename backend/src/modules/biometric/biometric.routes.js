@@ -376,6 +376,12 @@ router.post('/collector-push', async (req, res) => {
       const pt = new Date(punch_time);
       if (isNaN(pt.getTime())) { skipped++; continue; }
 
+      // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
+      if (pt < new Date('2026-08-01T00:00:00+05:30')) { 
+        skipped++; 
+        continue; 
+      }
+
       // Format as ATTLOG line (PIN\tTime\tType) — same format the device uses
       const punchTypeInt = parseInt(punch_type ?? 0, 10);
       const timeStr      = pt.toISOString().replace('T', ' ').slice(0, 19); // "YYYY-MM-DD HH:MM:SS"
