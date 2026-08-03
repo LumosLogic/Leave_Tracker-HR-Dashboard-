@@ -9,6 +9,8 @@ if (!JWT_SECRET) {
 
 const ALLOWED_ORIGINS = [
   'https://hrms.lumoslogic.com',
+  'http://hrms.recruitx-ai.com',
+  'https://hrms.recruitx-ai.com',
   'https://leavetrackerbylumos.web.app',
   'https://leavetrackerbylumos.firebaseapp.com',
   'https://leavetracker-platform-admin.web.app',
