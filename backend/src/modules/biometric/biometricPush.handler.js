@@ -130,6 +130,11 @@ async function processAttlogLine(line, orgId, deviceSerial) {
     return;
   }
 
+  // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
+  if (punchTime < new Date('2026-08-01T00:00:00+05:30')) { 
+    return; 
+  }
+
   const punchDate    = punchTime.toISOString().slice(0, 10);          // YYYY-MM-DD
   const punchTimeStr = punchTime.toTimeString().slice(0, 8);          // HH:MM:SS
 

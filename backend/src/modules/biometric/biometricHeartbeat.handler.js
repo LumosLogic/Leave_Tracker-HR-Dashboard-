@@ -46,7 +46,7 @@ module.exports = async function biometricHeartbeatHandler(req, res) {
       const msg = `[biometric] Sending C:1:DATA QUERY ATTLOG to SN=${sn}`;
       console.log(msg);
       biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
-      return res.status(200).send('C:1:DATA QUERY ATTLOG StartTime=2026-08-01 00:00:00\tEndTime=2030-01-01 00:00:00');
+      return res.status(200).send('C:1:DATA QUERY ATTLOG');
     } else {
       const msg = `[biometric] Sending C:2:DATA UPDATE to SN=${sn}`;
       console.log(msg);
