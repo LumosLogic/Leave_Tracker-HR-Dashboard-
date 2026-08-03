@@ -4,6 +4,7 @@ const { pool } = require('../../config/db-pg-adapter');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuard');
 const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
+const biometricEmitter = require('../../utils/biometricEmitter');
 
 // ─── GET /api/biometric/devices ───────────────────────────────────────────────
 router.get('/devices', auth, adminOnly, async (req, res) => {
@@ -82,6 +83,43 @@ router.delete('/devices/:id', auth, adminOnly, async (req, res) => {
     invalidateBiometricIpCache();
     res.json({ ok: true, deleted: result.rows[0] });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── GET /api/biometric/live-logs ─────────────────────────────────────────────
+router.get('/live-logs', auth, adminOnly, async (req, res) => {
+  const orgId = req.user.organization_id;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  // Load allowed SNs for this organization
+  let allowedSns = new Set();
+  try {
+    const devRes = await pool.query(`SELECT serial_number FROM biometric_devices WHERE org_id = $1`, [orgId]);
+    devRes.rows.forEach(d => { if (d.serial_number) allowedSns.add(d.serial_number); });
+  } catch (err) {
+    console.error('[biometric] SSE DB error:', err);
+  }
+
+  const logListener = (data) => {
+    // Only send logs if they belong to this org's devices
+    if (!data.sn || allowedSns.has(data.sn)) {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+  };
+
+  biometricEmitter.on('log', logListener);
+
+  const keepAlive = setInterval(() => {
+    res.write(':\n\n');
+  }, 15000);
+
+  req.on('close', () => {
+    biometricEmitter.off('log', logListener);
+    clearInterval(keepAlive);
+  });
 });
 
 // ─── GET /api/biometric/logs ──────────────────────────────────────────────────

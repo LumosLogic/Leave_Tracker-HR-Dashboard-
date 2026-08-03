@@ -57,6 +57,7 @@ import Branches              from '@/pages/Branches';
 import BiometricDevices      from '@/pages/BiometricDevices';
 import BiometricPinMapping   from '@/pages/BiometricPinMapping';
 import BiometricLogs         from '@/pages/BiometricLogs';
+import BiometricLiveLogs     from '@/pages/BiometricLiveLogs';
 import BiometricSettings     from '@/pages/BiometricSettings';
 import PendingApprovals      from '@/pages/PendingApprovals';
 import RoleManagement        from '@/pages/RoleManagement';
@@ -242,6 +243,7 @@ function AppRoutes() {
         <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
         <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/biometric/live-logs" element={<FeatureRoute featureKey="biometric"><BiometricLiveLogs /></FeatureRoute>} />
         <Route path="/biometric/settings" element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
       </Route>
 

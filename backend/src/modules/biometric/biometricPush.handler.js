@@ -14,6 +14,7 @@
  */
 
 const { pool } = require('../../config/db-pg-adapter');
+const biometricEmitter = require('../../utils/biometricEmitter');
 
 module.exports = async function biometricPushHandler(req, res) {
   // Always respond immediately — ZKTeco requires response within 2s
@@ -27,11 +28,15 @@ module.exports = async function biometricPushHandler(req, res) {
 
   const rawLines = extractAttlogLines(req.body, req.query);
 
-  console.log(`[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`);
+  const msg = `[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`;
+  console.log(msg);
+  biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
 
   if (!rawLines.length) {
     const debugBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    console.log(`[biometric] REJECTED/EMPTY PAYLOAD SN=${sn}:`, debugBody);
+    const debugMsg = `[biometric] REJECTED/EMPTY PAYLOAD SN=${sn}: ${debugBody}`;
+    console.log(debugMsg);
+    biometricEmitter.emit('log', { sn, message: debugMsg, timestamp: new Date().toISOString() });
     return;
   }
 

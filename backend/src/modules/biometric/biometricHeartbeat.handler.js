@@ -8,13 +8,16 @@
  */
 
 const { pool } = require('../../config/db-pg-adapter');
+const biometricEmitter = require('../../utils/biometricEmitter');
 
 // SN → sync mode ('attlog' | 'update')
 const pendingSyncs = new Map();
 
 function scheduleSyncForSn(sn, mode = 'attlog') {
   pendingSyncs.set(sn, mode);
-  console.log(`[biometric] Force-sync scheduled for SN=${sn} mode=${mode}`);
+  const msg = `[biometric] Force-sync scheduled for SN=${sn} mode=${mode}`;
+  console.log(msg);
+  biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
 }
 
 module.exports = async function biometricHeartbeatHandler(req, res) {
@@ -22,7 +25,9 @@ module.exports = async function biometricHeartbeatHandler(req, res) {
   const stamp = req.query.Stamp;
 
   if (sn) {
-    console.log(`[biometric] Heartbeat SN=${sn} Stamp=${stamp}`);
+    const msg = `[biometric] Heartbeat SN=${sn} Stamp=${stamp}`;
+    console.log(msg);
+    biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
     pool.query(
       `UPDATE biometric_devices SET last_seen = NOW(), status = 'online'
        WHERE serial_number = $1`,
@@ -38,10 +43,14 @@ module.exports = async function biometricHeartbeatHandler(req, res) {
 
     if (mode === 'attlog') {
       // Tells device to re-upload ALL stored ATTLOG records from record 0
-      console.log(`[biometric] Sending GET ATTLOG Stamp=0 to SN=${sn} (full re-upload)`);
+      const msg = `[biometric] Sending GET ATTLOG Stamp=0 to SN=${sn} (full re-upload)`;
+      console.log(msg);
+      biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
       return res.status(200).send('GET ATTLOG Stamp=0');
     } else {
-      console.log(`[biometric] Sending C:DATA UPDATE to SN=${sn}`);
+      const msg = `[biometric] Sending C:DATA UPDATE to SN=${sn}`;
+      console.log(msg);
+      biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
       return res.status(200).send('C:DATA UPDATE');
     }
   }
