@@ -42,16 +42,16 @@ module.exports = async function biometricHeartbeatHandler(req, res) {
     pendingSyncs.delete(sn);
 
     if (mode === 'attlog') {
-      // Tells device to re-upload ALL stored ATTLOG records from record 0
-      const msg = `[biometric] Sending GET ATTLOG Stamp=0 to SN=${sn} (full re-upload)`;
+      // Tells device to re-upload ALL stored ATTLOG records
+      const msg = `[biometric] Sending C:1:DATA QUERY ATTLOG to SN=${sn}`;
       console.log(msg);
       biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
-      return res.status(200).send('GET ATTLOG Stamp=0');
+      return res.status(200).send('C:1:DATA QUERY ATTLOG StartTime=2026-08-01 00:00:00\tEndTime=2030-01-01 00:00:00');
     } else {
-      const msg = `[biometric] Sending C:DATA UPDATE to SN=${sn}`;
+      const msg = `[biometric] Sending C:2:DATA UPDATE to SN=${sn}`;
       console.log(msg);
       biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
-      return res.status(200).send('C:DATA UPDATE');
+      return res.status(200).send('C:2:DATA UPDATE');
     }
   }
 
