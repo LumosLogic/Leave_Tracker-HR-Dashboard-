@@ -226,3 +226,6 @@ async function processAttlogLine(line, orgId, deviceSerial) {
   // 8. Mark raw log processed
   await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
 }
+
+// Exported for use by the collector-push endpoint (bulk import from EasyWDMS agent)
+module.exports.processAttlogLine = processAttlogLine;

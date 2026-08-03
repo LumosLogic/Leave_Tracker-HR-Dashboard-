@@ -1,0 +1,16 @@
+{
+  "name": "lumos-wdms-collector",
+  "version": "1.0.0",
+  "description": "EasyWDMS → Lumos HRMS attendance sync agent",
+  "main": "wdms-collector.js",
+  "scripts": {
+    "start": "node wdms-collector.js",
+    "pm2:start": "pm2 start wdms-collector.js --name lumos-collector --restart-delay=5000",
+    "pm2:stop": "pm2 stop lumos-collector",
+    "pm2:logs": "pm2 logs lumos-collector"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "mssql": "^11.0.1"
+  }
+}

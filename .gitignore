@@ -27,3 +27,21 @@ Thumbs.db
 
 # Claude memory
 .claude/
+
+# Client docs & binary assets — Sanghavi / Relitrade materials (never commit)
+docs/
+Console/
+*.bak
+*.exe
+*.pdb
+*.xlsx
+*.pdf
+*.docx
+*.doc
+Sanghavi-*.md
+biometric-*.md
+relitrade-*.md
+requirements-hrms.md
+implementation-spec.md
+postgresql-and-project-setup.md
+client-feature-gap-analysis.md

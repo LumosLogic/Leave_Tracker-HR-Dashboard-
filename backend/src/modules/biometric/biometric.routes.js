@@ -4,6 +4,7 @@ const { pool } = require('../../config/db-pg-adapter');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuard');
 const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
+const { processAttlogLine } = require('./biometricPush.handler');
 const biometricEmitter = require('../../utils/biometricEmitter');
 
 // ─── GET /api/biometric/devices ───────────────────────────────────────────────
@@ -320,6 +321,83 @@ router.post('/reprocess', auth, adminOnly, async (req, res) => {
 
     res.json({ ok: true, processed, total: logsRes.rows.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /api/biometric/collector-push ──────────────────────────────────────
+// Authenticated bulk-import from the EasyWDMS collector agent running on the
+// client's Windows machine. Uses a static API key — no JWT (service account).
+//
+// Body: { device_serial: "BYEL194660080", punches: [{ employee_pin, punch_time, punch_type }] }
+router.post('/collector-push', async (req, res) => {
+  try {
+    // ── API key auth ──────────────────────────────────────────────────────────
+    const key = req.headers['x-collector-key'];
+    if (!key || key !== process.env.BIOMETRIC_COLLECTOR_KEY) {
+      return res.status(401).json({ error: 'Invalid or missing collector API key' });
+    }
+    if (!process.env.BIOMETRIC_COLLECTOR_KEY) {
+      return res.status(503).json({ error: 'BIOMETRIC_COLLECTOR_KEY not configured on server' });
+    }
+
+    const { device_serial, punches } = req.body;
+    if (!device_serial || typeof device_serial !== 'string')
+      return res.status(400).json({ error: 'device_serial is required' });
+    if (!Array.isArray(punches) || punches.length === 0)
+      return res.status(400).json({ error: 'punches must be a non-empty array' });
+    if (punches.length > 5000)
+      return res.status(400).json({ error: 'Max 5000 punches per request' });
+
+    // ── Look up device ────────────────────────────────────────────────────────
+    const devRes = await pool.query(
+      'SELECT id, org_id FROM biometric_devices WHERE serial_number = $1 LIMIT 1',
+      [device_serial.trim()]
+    );
+    if (!devRes.rows.length)
+      return res.status(404).json({ error: `Device ${device_serial} not registered in HRMS` });
+
+    const { id: deviceId, org_id: orgId } = devRes.rows[0];
+
+    // Mark device online
+    await pool.query(
+      `UPDATE biometric_devices SET last_seen = NOW(), status = 'online' WHERE id = $1`,
+      [deviceId]
+    );
+
+    // ── Process each punch ────────────────────────────────────────────────────
+    let imported = 0;
+    let skipped  = 0;
+    const errors = [];
+
+    for (const punch of punches) {
+      const { employee_pin, punch_time, punch_type } = punch;
+
+      if (!employee_pin || !punch_time) { skipped++; continue; }
+
+      const pt = new Date(punch_time);
+      if (isNaN(pt.getTime())) { skipped++; continue; }
+
+      // Format as ATTLOG line (PIN\tTime\tType) — same format the device uses
+      const punchTypeInt = parseInt(punch_type ?? 0, 10);
+      const timeStr      = pt.toISOString().replace('T', ' ').slice(0, 19); // "YYYY-MM-DD HH:MM:SS"
+      const attlogLine   = `${String(employee_pin).trim()}\t${timeStr}\t${punchTypeInt}`;
+
+      try {
+        await processAttlogLine(attlogLine, orgId, device_serial.trim());
+        imported++;
+      } catch (err) {
+        skipped++;
+        if (errors.length < 5) errors.push(`PIN ${employee_pin}: ${err.message}`);
+      }
+    }
+
+    const msg = `[collector] ${device_serial}: imported ${imported}, skipped ${skipped} of ${punches.length}`;
+    console.log(msg);
+    biometricEmitter.emit('log', { sn: device_serial, message: msg, timestamp: new Date().toISOString() });
+
+    res.json({ ok: true, imported, skipped, total: punches.length, errors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
