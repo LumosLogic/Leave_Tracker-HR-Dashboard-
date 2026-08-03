@@ -1,21 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Terminal as TerminalIcon, ShieldCheck, HardDrive } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function BiometricLiveLogs() {
-  const { token, user, org } = useAuth();
+  const { token, user } = useAuth();
   const [logs, setLogs] = useState([
-    { text: `Lumos Logic ADMS v4.2.0 - Core Engine initialized.`, type: 'info' },
-    { text: `Authenticating stream as ${user?.name}... [OK]`, type: 'info' },
-    { text: `Establishing encrypted socket to device queue for Org ID ${user?.organization_id}...`, type: 'info' }
+    { text: `Lumos Logic ADMS - Engine Initialized`, type: 'info', time: new Date().toLocaleTimeString('en-US', {hour12:false}) },
+    { text: `Socket channel secured for ${user?.name}`, type: 'success', time: new Date().toLocaleTimeString('en-US', {hour12:false}) }
   ]);
+  const [isConnected, setIsConnected] = useState(false);
   
   const endRef = useRef(null);
   const containerRef = useRef(null);
 
   useEffect(() => {
-    // Auto-scroll logic if user hasn't scrolled up manually
     if (containerRef.current) {
         const { scrollHeight, clientHeight, scrollTop } = containerRef.current;
         const isNearBottom = scrollHeight - clientHeight - scrollTop < 150;
@@ -28,11 +27,17 @@ export default function BiometricLiveLogs() {
   useEffect(() => {
     if (!token) return;
 
-    const url = `${import.meta.env.VITE_API_URL}/biometric/live-logs?token=${token}`;
+    // Use the absolute path directly so Vite proxy reliably catches it as /api rules
+    const url = `/api/biometric/live-logs?token=${token}`;
     const source = new EventSource(url);
 
     source.onopen = () => {
-        setLogs(prev => [...prev.slice(-200), { text: `[SYSTEM] SSE Tunnel connected. Listening for real-time packets...`, type: 'success' }]);
+        setIsConnected(true);
+        setLogs(prev => [...prev.slice(-200), { 
+            text: `Connected to live device queue. Waiting for packets...`, 
+            type: 'info', 
+            time: new Date().toLocaleTimeString('en-US', {hour12:false}) 
+        }]);
     };
 
     source.onmessage = (e) => {
@@ -44,60 +49,67 @@ export default function BiometricLiveLogs() {
         if (data.message.includes('REJECTED/EMPTY PAYLOAD')) type = 'warning';
         if (data.message.includes('Force-sync scheduled')) type = 'accent';
         if (data.message.includes('Sending GET ATTLOG')) type = 'accent';
+        if (data.message.includes('received 0 ATTLOG lines')) type = 'warning';
         
         setLogs(prev => {
-          const newLogs = [...prev, { text: `[${time}] ${data.message}`, type }];
-          return newLogs.slice(-200); // keep max 200 logs to prevent memory leak
+          const newLogs = [...prev, { text: data.message, type, time }];
+          return newLogs.slice(-200);
         });
       } catch (err) {}
     };
 
     source.onerror = (e) => {
-      setLogs(prev => [...prev.slice(-200), { text: `[ERROR] Connection to remote server interrupted. Attempting reconnect...`, type: 'error' }]);
-      // EventSource auto-reconnects, no explicit logic needed unless it hangs
+      setIsConnected(false);
+      setLogs(prev => [...prev.slice(-200), { 
+          text: `Connection lost. Automatically reconnecting...`, 
+          type: 'error',
+          time: new Date().toLocaleTimeString('en-US', {hour12:false}) 
+      }]);
     };
 
     return () => source.close();
   }, [token]);
 
   return (
-    <div className="flex flex-col h-full bg-[#111] rounded-xl overflow-hidden shadow-2xl border border-[#333]">
-      {/* Shell Header */}
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1a1a1a] border-b border-[#222]">
-        <div className="flex gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
+    <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-[#e7eefe] overflow-hidden">
+      <div className="px-6 py-5 border-b border-[#e7eefe] flex items-center justify-between bg-white z-10 flex-shrink-0">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold text-[#151c27] tracking-tight flex items-center gap-2">
+            <Activity className="text-[#3525cd]" size={22} />
+            Device Live Stream
+          </h1>
+          <p className="text-sm text-[#777587]">Monitor physical device communication packets in real-time.</p>
         </div>
-        <div className="text-xs text-[#a0a0a0] flex items-center justify-center gap-2 flex-col md:flex-row md:mx-auto font-mono opacity-80 select-none">
-          <span className="flex items-center gap-1.5"><TerminalIcon size={13} />  /var/log/adms-stream</span>
-          <span className="hidden md:inline px-2">|</span>
-          <span className="flex items-center gap-1.5"><ShieldCheck size={13} /> TLS Verified</span>
-          <span className="hidden md:inline px-2">|</span>
-          <span className="flex items-center gap-1.5"><HardDrive size={13} /> Socket Mode</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#f9f9ff] text-xs font-semibold border border-[#e7eefe]">
+          <div className={cn("w-2 h-2 rounded-full animate-pulse", isConnected ? "bg-emerald-500" : "bg-rose-500")} />
+          <span className="text-[#464555]">{isConnected ? 'Socket Active' : 'Connecting...'}</span>
         </div>
       </div>
 
-      {/* Terminal View area */}
       <div 
         ref={containerRef}
-        className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#090909] font-mono text-[13px] leading-relaxed selection:bg-[#3525cd] selection:text-white pb-10"
+        className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#f9f9ff]"
       >
-        <div className="space-y-1">
+        <div className="max-w-5xl mx-auto space-y-3 pb-10">
             {logs.map((L, i) => (
-            <div key={i} className={cn(
-                "break-all whitespace-pre-wrap tracking-wide transition-opacity duration-200",
-                L.type === 'error' ? "text-red-400" :
-                L.type === 'warning' ? "text-[#fcd34d]" :
-                L.type === 'success' ? "text-green-400 font-bold" :
-                L.type === 'accent' ? "text-[#3be8b0] font-bold" :
-                "text-[#a5b4fc]"
-            )}>
-                {L.text}
+            <div key={i} className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 p-4 rounded-xl bg-white border border-[#e7eefe] shadow-sm transition-all hover:border-[#c7c4d8]">
+                <div className="flex items-center gap-2 w-auto md:w-28 flex-shrink-0 text-[#777587]">
+                    <span className="text-[0.7rem] font-mono bg-[#f0f3ff] px-2 py-1 rounded font-black tracking-wide text-[#3525cd]">
+                        {L.time}
+                    </span>
+                </div>
+                <div className={cn(
+                    "flex-1 text-[0.85rem] font-semibold tracking-wide",
+                    L.type === 'error' ? "text-rose-600 font-bold" :
+                    L.type === 'warning' ? "text-amber-600" :
+                    L.type === 'success' ? "text-emerald-600" :
+                    L.type === 'accent' ? "text-[#3525cd] font-bold" :
+                    "text-[#464555]"
+                )}>
+                    {L.text}
+                </div>
             </div>
             ))}
-            {/* Blinking cursor */}
-            <div className="inline-block w-2 h-4 bg-white/60 animate-pulse mt-2 ml-1" />
         </div>
         <div ref={endRef} />
       </div>
