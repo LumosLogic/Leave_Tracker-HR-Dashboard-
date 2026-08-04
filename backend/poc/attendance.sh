@@ -78,7 +78,7 @@ fmt=sys.argv[3]
 zk=ZK(
     ip,
     port=port,
-    timeout=10,
+    timeout=100,
     password=0,
     force_udp=False,
     ommit_ping=False
