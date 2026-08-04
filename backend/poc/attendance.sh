@@ -81,7 +81,7 @@ zk=ZK(
     timeout=100,
     password=0,
     force_udp=True,
-    ommit_ping=False
+    ommit_ping=True
 )
 
 try:
