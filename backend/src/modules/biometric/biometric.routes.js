@@ -434,4 +434,95 @@ router.post('/collector-ping', async (req, res) => {
   }
 });
 
+// ─── POST /api/biometric/bulk-import ─────────────────────────────────────────
+// One-time or scheduled historical data import. Accepts raw EasyWDMS records
+// (same schema as att_attlog) and processes them exactly like collector-push.
+//
+// Body: {
+//   records: [{ employee_pin, punch_time, punch_type, device_serial }],
+//   dry_run: false   // if true, validates without writing
+// }
+//
+// Auth: same x-collector-key as collector-push (no JWT needed — runs server-to-server)
+router.post('/bulk-import', async (req, res) => {
+  try {
+    const key = req.headers['x-collector-key'];
+    if (!key || key !== process.env.BIOMETRIC_COLLECTOR_KEY) {
+      return res.status(401).json({ error: 'Invalid or missing collector API key' });
+    }
+
+    const { records, dry_run = false } = req.body;
+    if (!Array.isArray(records) || !records.length)
+      return res.status(400).json({ error: 'records must be a non-empty array' });
+    if (records.length > 50000)
+      return res.status(400).json({ error: 'Max 50000 records per request' });
+
+    // Group by device_serial
+    const byDevice = {};
+    let skippedValidation = 0;
+    for (const r of records) {
+      const sn  = (r.device_serial || '').trim();
+      const pin = (r.employee_pin  || '').trim();
+      if (!sn || !pin || !r.punch_time) { skippedValidation++; continue; }
+      if (!byDevice[sn]) byDevice[sn] = [];
+      byDevice[sn].push({ employee_pin: pin, punch_time: r.punch_time, punch_type: parseInt(r.punch_type ?? 0, 10) });
+    }
+
+    if (dry_run) {
+      return res.json({
+        ok: true,
+        dry_run: true,
+        devices: Object.keys(byDevice),
+        valid: records.length - skippedValidation,
+        skipped_validation: skippedValidation,
+        total: records.length,
+      });
+    }
+
+    let totalImported = 0;
+    let totalSkipped  = 0;
+    const errors      = [];
+
+    for (const [sn, punches] of Object.entries(byDevice)) {
+      const devRes = await pool.query(
+        'SELECT id, org_id FROM biometric_devices WHERE serial_number = $1 LIMIT 1',
+        [sn]
+      );
+      if (!devRes.rows.length) {
+        errors.push(`Device ${sn} not registered — skipped ${punches.length} records`);
+        totalSkipped += punches.length;
+        continue;
+      }
+      const { org_id: orgId } = devRes.rows[0];
+
+      for (const punch of punches) {
+        const pt = new Date(punch.punch_time);
+        if (isNaN(pt.getTime())) { totalSkipped++; continue; }
+        if (pt < new Date('2026-08-01T00:00:00+05:30')) { totalSkipped++; continue; }
+
+        const timeStr    = pt.toISOString().replace('T', ' ').slice(0, 19);
+        const attlogLine = `${punch.employee_pin}\t${timeStr}\t${punch.punch_type}`;
+        try {
+          await processAttlogLine(attlogLine, orgId, sn);
+          totalImported++;
+        } catch (err) {
+          totalSkipped++;
+          if (errors.length < 10) errors.push(`PIN ${punch.employee_pin}: ${err.message}`);
+        }
+      }
+
+      // Mark device online after any data from it
+      await pool.query(
+        `UPDATE biometric_devices SET last_seen = NOW(), status = 'online' WHERE serial_number = $1`,
+        [sn]
+      );
+    }
+
+    console.log(`[bulk-import] imported=${totalImported} skipped=${totalSkipped} of ${records.length}`);
+    res.json({ ok: true, imported: totalImported, skipped: totalSkipped, total: records.length, errors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

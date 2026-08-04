@@ -26,9 +26,6 @@ module.exports = async function biometricPushHandler(req, res) {
   if (!sn) return;
   if (table && table !== 'ATTLOG') return;
 
-  // Temporary debug — remove after ZKTeco body format is confirmed
-  console.log(`[biometric-debug] SN=${sn} content-type="${req.headers['content-type']}" body-type=${typeof req.body} body=${JSON.stringify(req.body)?.slice(0,200)} query=${JSON.stringify(req.query)}`);
-
   const rawLines = extractAttlogLines(req.body, req.query);
 
   const msg = `[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`;
