@@ -11,11 +11,8 @@
 #   ./attendance.sh 192.168.1.120 4370 json
 #   ./attendance.sh 192.168.1.120 4370 csv
 # ============================================================
-
 set -e
-
 IP=${1}
-
 if [ -z "$IP" ]; then
     echo "Usage:"
     echo "./attendance.sh <DEVICE_IP> [PORT] [json|csv]"
