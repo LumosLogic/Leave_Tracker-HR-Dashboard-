@@ -311,8 +311,10 @@ export default function MyProfile() {
   function handlePwSubmit() {
     if (newPw !== confPw) { toast('Passwords do not match.', 'error'); return; }
     if (newPw.length < 8) { toast('Password must be at least 8 characters.', 'error'); return; }
-    const s = getPasswordStrength(newPw);
-    if (s && s.score < 2) { toast('Please choose a stronger password.', 'warning'); return; }
+    if (!/[A-Z]/.test(newPw)) { toast('Password must contain at least one uppercase letter.', 'error'); return; }
+    if (!/[a-z]/.test(newPw)) { toast('Password must contain at least one lowercase letter.', 'error'); return; }
+    if (!/[0-9]/.test(newPw)) { toast('Password must contain at least one number.', 'error'); return; }
+    if (!/[^A-Za-z0-9]/.test(newPw)) { toast('Password must contain at least one special character.', 'error'); return; }
     changePw.mutate();
   }
 
@@ -474,7 +476,7 @@ export default function MyProfile() {
                 <label className="form-label">Current Password</label>
                 <div className="relative">
                   <input className="form-control pr-10" type={showCur ? 'text' : 'password'} value={curPw} onChange={e => setCurPw(e.target.value)} placeholder="••••••••" />
-                  <button type="button" onClick={() => setShowCur(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
+                  <button type="button" onClick={() => setShowCur(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-[#777587] hover:text-[#151c27] focus:outline-none">
                     {showCur ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
@@ -494,7 +496,7 @@ export default function MyProfile() {
                 </div>
                 <div className="relative">
                   <input className="form-control pr-10" type={showNew ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 8 characters" />
-                  <button type="button" onClick={() => setShowNew(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
+                  <button type="button" onClick={() => setShowNew(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-[#777587] hover:text-[#151c27] focus:outline-none">
                     {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
@@ -506,7 +508,7 @@ export default function MyProfile() {
                 <label className="form-label">Confirm New Password</label>
                 <div className="relative">
                   <input className="form-control pr-10" type={showConf ? 'text' : 'password'} value={confPw} onChange={e => setConfPw(e.target.value)} placeholder="Repeat new password" />
-                  <button type="button" onClick={() => setShowConf(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
+                  <button type="button" onClick={() => setShowConf(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-[#777587] hover:text-[#151c27] focus:outline-none">
                     {showConf ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
@@ -537,7 +539,7 @@ export default function MyProfile() {
                 </div>
               )}
 
-              <button onClick={handlePwSubmit} disabled={changePw.isPending || !curPw || !newPw || !confPw || newPw !== confPw}
+              <button onClick={handlePwSubmit} disabled={changePw.isPending || !curPw || !newPw || !confPw || newPw !== confPw || newPw.length < 8 || !/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/[0-9]/.test(newPw) || !/[^A-Za-z0-9]/.test(newPw)}
                 className="btn btn-primary flex items-center gap-2">
                 {changePw.isPending ? <><span className="spinner w-4 h-4" /> Updating…</> : <><Check size={14} /> Update Password</>}
               </button>

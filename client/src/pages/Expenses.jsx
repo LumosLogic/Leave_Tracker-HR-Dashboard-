@@ -47,10 +47,11 @@ function ExpenseModal({ open, onClose, expense }) {
   }
 
   async function handleReceipt(file) {
+    if (!file || !file.type) { toast('Invalid file. Please select a valid file.', 'error'); return; }
     const maxBytes = 5 * 1024 * 1024;
-    if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
     const ok = ['application/pdf','image/jpeg','image/png','image/jpg'].includes(file.type);
-    if (!ok) { toast('Unsupported format — use PDF, JPG, or PNG', 'error'); return; }
+    if (!ok) { toast('Unsupported file format. Please upload a PDF, JPG, or PNG file.', 'error'); return; }
+    if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
     setPendingFile(file);
     setUploading(true);
     try {
@@ -78,6 +79,7 @@ function ExpenseModal({ open, onClose, expense }) {
 
   function handleSubmit() {
     if (!form.title.trim()) { toast('Enter a title for the expense', 'warning'); return; }
+    if (!/[a-zA-Z0-9]/.test(form.title.trim())) { toast('Expense title must contain at least one letter or number.', 'error'); return; }
     if (!validateAmount(form.amount)) { return; }
     if (!form.expense_date) { toast('Select an expense date', 'warning'); return; }
     if (!form.receipt_url) { toast('Receipt is required. Please upload a receipt before submitting.', 'warning'); return; }
@@ -97,14 +99,20 @@ function ExpenseModal({ open, onClose, expense }) {
         </div>
       }>
       <div className="space-y-4">
+        {/* Required fields note */}
+        <p className="text-[0.65rem] text-[#9ca3af]"><span className="text-rose-500">*</span> Indicates required fields</p>
+
         {/* Title with char counter */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="form-label mb-0">Title <span className="text-rose-500">*</span></label>
             <span className="text-[0.65rem] text-[#9ca3af]">{form.title.length}/80</span>
           </div>
-          <input className="form-control" maxLength={80} placeholder="e.g. Cab to client office" value={form.title}
+          <input className={`form-control ${form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) ? 'border-rose-400' : ''}`} maxLength={80} placeholder="e.g. Cab to client office" value={form.title}
             onChange={e => set('title', e.target.value)} />
+          {form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) && (
+            <p className="text-xs text-rose-600 mt-1">Title must contain at least one letter or number.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -133,7 +141,7 @@ function ExpenseModal({ open, onClose, expense }) {
         {/* Description with char counter */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="form-label mb-0">Description</label>
+            <label className="form-label mb-0">Description <span className="font-normal text-[#777587] text-xs normal-case">(Optional)</span></label>
             <span className="text-[0.65rem] text-[#9ca3af]">{form.description.length}/200</span>
           </div>
           <textarea className="form-control" rows={2} maxLength={200} placeholder="Additional details about this expense…"
@@ -148,7 +156,7 @@ function ExpenseModal({ open, onClose, expense }) {
             <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG</strong> · Max size: <strong className="text-[#464555]">5 MB</strong></span>
           </div>
           <input type="file" ref={fileRef} className="hidden" accept=".pdf,.jpg,.jpeg,.png"
-            onChange={e => e.target.files[0] && handleReceipt(e.target.files[0])} />
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleReceipt(f); e.target.value = ''; }} />
           {form.receipt_url ? (
             <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
               <div className="flex items-center gap-3">

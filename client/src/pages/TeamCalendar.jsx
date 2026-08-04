@@ -272,9 +272,11 @@ export default function TeamCalendar() {
   const [eventTypeFilter,setEventTypeFilter] = useState('all'); // 'all' | 'leave' | 'wfh'
 
   // UI state
-  const [showPicker,     setShowPicker]    = useState(false);
-  const [morePopupDay,   setMorePopupDay]  = useState(null);
-  const [detailLeave,    setDetailLeave]   = useState(null);
+  const [showPicker,         setShowPicker]        = useState(false);
+  const [morePopupDay,       setMorePopupDay]      = useState(null);
+  const [detailLeave,        setDetailLeave]       = useState(null);
+  const [showPeopleAffected, setShowPeopleAffected] = useState(false);
+  const [showHolidays,       setShowHolidays]      = useState(false);
 
   const pickerAnchorRef = useRef(null);
 
@@ -929,21 +931,27 @@ export default function TeamCalendar() {
                 </span>
               </button>
 
-              {/* People affected */}
-              <div className="flex items-center justify-between text-xs p-1.5 rounded-lg">
-                <span className="text-[#777587]">People affected</span>
+              {/* People affected — clickable */}
+              <button
+                onClick={() => setShowPeopleAffected(true)}
+                className={`w-full flex items-center justify-between text-xs p-1.5 rounded-lg transition-colors hover:bg-purple-50 ${showPeopleAffected ? 'bg-purple-50 ring-1 ring-purple-200' : ''}`}
+              >
+                <span className="font-semibold text-[#777587]">People affected ↗</span>
                 <span className="font-black px-2 py-0.5 rounded-full text-purple-600 bg-purple-50">
                   {onLeaveThisMonth.length}
                 </span>
-              </div>
+              </button>
 
-              {/* Public holidays */}
-              <div className="flex items-center justify-between text-xs p-1.5 rounded-lg">
-                <span className="text-[#777587]">Public holidays</span>
+              {/* Public holidays — clickable */}
+              <button
+                onClick={() => setShowHolidays(true)}
+                className={`w-full flex items-center justify-between text-xs p-1.5 rounded-lg transition-colors hover:bg-emerald-50 ${showHolidays ? 'bg-emerald-50 ring-1 ring-emerald-200' : ''}`}
+              >
+                <span className="font-semibold text-[#777587]">Public holidays ↗</span>
                 <span className="font-black px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-50">
                   {summaryHolidayCount}
                 </span>
-              </div>
+              </button>
             </div>
 
             {eventTypeFilter !== 'all' && (
@@ -960,6 +968,57 @@ export default function TeamCalendar() {
 
       {/* ── Leave Detail Modal ─────────────────────────────────────────────── */}
       <LeaveDetailModal leave={detailLeave} onClose={() => setDetailLeave(null)} />
+
+      {/* ── People Affected Modal ──────────────────────────────────────────── */}
+      <Modal open={showPeopleAffected} onClose={() => setShowPeopleAffected(false)} title={`People Affected — ${MONTHS[month - 1]} ${year}`} size="sm">
+        {onLeaveThisMonth.length === 0 ? (
+          <p className="text-sm text-[#9ca3af] text-center py-6">
+            {hasFilters ? 'No matches with current filters' : 'No employees on leave this month'}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {onLeaveThisMonth.map(p => (
+              <div key={p.user_id} className="flex items-center gap-3 p-2.5 rounded-xl bg-[#f9f9ff] border border-[#f0f3ff]">
+                <Avatar name={p.name || '?'} color={p.avatar_color} size={32} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-[#151c27] truncate">{p.name}</p>
+                  {p.department && <p className="text-xs text-[#9ca3af]">{p.department}</p>}
+                </div>
+                <span className="text-xs font-bold text-[#3525cd] bg-[#f0f3ff] px-2 py-0.5 rounded-full flex-shrink-0">
+                  {leaveDayCount[p.user_id] || 1}d
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Public Holidays Modal ──────────────────────────────────────────── */}
+      <Modal open={showHolidays} onClose={() => setShowHolidays(false)} title={`Public Holidays — ${MONTHS[month - 1]} ${year}`} size="sm">
+        {(() => {
+          const monthHolidays = holidays.filter(h => h.date >= monthStart && h.date <= monthEnd);
+          return monthHolidays.length === 0 ? (
+            <p className="text-sm text-[#9ca3af] text-center py-6">No public holidays this month</p>
+          ) : (
+            <div className="space-y-2">
+              {monthHolidays.map(h => (
+                <div key={h.date} className="flex items-center gap-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-lg shrink-0">🎉</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#151c27] truncate">{h.name}</p>
+                    <p className="text-xs text-emerald-700">{formatDate(h.date)}</p>
+                  </div>
+                  {new Date(h.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) && (
+                    <span className="text-[0.65rem] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+                      {new Date(h.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }

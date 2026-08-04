@@ -112,6 +112,14 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     const { name, category, userId, expiry_date, visibility, shared_with } = req.body;
     const targetId = isAdmin(req.user.role) && userId ? Number(userId) : req.user.id;
 
+    // Check for duplicate document (same name + category for same user)
+    const { data: dupDoc } = await supabase.from('employee_documents')
+      .select('id').eq('organization_id', oId).eq('user_id', targetId)
+      .eq('name', name || req.file.originalname).eq('category', category || 'other').maybeSingle();
+    if (dupDoc) {
+      return res.status(409).json({ error: `A document named "${name || req.file.originalname}" in this category already exists for this employee. Please rename it or delete the existing document first.` });
+    }
+
     // Resolve visibility
     let docVisibility = 'self';
     if (isAdmin(req.user.role)) {
@@ -316,8 +324,8 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/documents/:id
-router.delete('/:id', auth, hasPermission('documents', 'delete'), async (req, res) => {
+// DELETE /api/documents/:id — employees can delete their own; admins can delete any
+router.delete('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: doc } = await supabase.from('employee_documents')

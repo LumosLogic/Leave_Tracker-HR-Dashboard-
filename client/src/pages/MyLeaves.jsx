@@ -154,9 +154,9 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
     const total   = policy.annual_quota;
     const used    = (leaves || []).filter(l => l.leave_type === typeVal && l.status === 'approved' && !isWFHRecord(l))
       .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-    const pending = (leaves || []).filter(l => l.leave_type === typeVal && l.status === 'pending' && !isWFHRecord(l))
+    const pending = (leaves || []).filter(l => l.leave_type === typeVal && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
       .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-    return { used, pending, total, remaining: Math.max(0, total - used) };
+    return { used, pending, total, remaining: Math.max(0, total - used - pending) };
   }
 
   const isWFH          = form.request_type === 'wfh';
@@ -555,12 +555,18 @@ export default function MyLeaves() {
     queryKey: ['leave-policies'],
     queryFn:  () => apiGet('/leave-policies'),
   });
+  const { data: leaveBalance } = useQuery({
+    queryKey: ['my-leave-balance', new Date().getFullYear()],
+    queryFn:  () => apiGet('/leaves/balance'),
+    staleTime: 2 * 60 * 1000,
+  });
 
   const apply = useMutation({
     mutationFn: (payload) => apiPost('/leaves', payload),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['my-leaves'] });
-      qc.invalidateQueries({ queryKey: ['my-leaves-recent'] });
+    onSuccess: (newLeave, vars) => {
+      qc.invalidateQueries({ queryKey: ['my-leaves'], refetchType: 'active' });
+      qc.invalidateQueries({ queryKey: ['my-leaves-recent'], refetchType: 'active' });
+      qc.invalidateQueries({ queryKey: ['my-leave-balance'], refetchType: 'active' });
       toast(vars.leave_type === 'wfh' ? 'WFH request submitted. HR will be notified.' : 'Leave request submitted. HR will be notified.', 'success');
       setApplyOpen(false);
     },
@@ -581,7 +587,11 @@ export default function MyLeaves() {
   const isWFHRecord = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
 
   const counts = { pending: 0, approved: 0, rejected: 0 };
-  leaves.filter(l => !isWFHRecord(l)).forEach(l => { if (counts[l.status] !== undefined) counts[l.status]++; });
+  leaves.filter(l => !isWFHRecord(l)).forEach(l => {
+    if (['pending', 'pending_dept', 'pending_root'].includes(l.status)) counts.pending++;
+    else if (l.status === 'approved') counts.approved++;
+    else if (l.status === 'rejected') counts.rejected++;
+  });
 
   const activePolicies = policies.filter(p => p.active && p.annual_quota > 0);
 
@@ -960,38 +970,57 @@ export default function MyLeaves() {
               <span className="font-black text-[#151c27] text-sm">Leave Balance</span>
             </div>
             <div className="p-4 space-y-0">
-              {activePolicies.length === 0 ? (
-                <p className="text-xs text-[#777587] text-center py-4">No policies configured</p>
-              ) : activePolicies.map(p => {
-                const used = leaves
-                  .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
-                  .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-                const pending = leaves
-                  .filter(l => l.leave_type === p.leave_type && l.status === 'pending' && !isWFHRecord(l))
-                  .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-                const total     = p.annual_quota;
-                const remaining = Math.max(0, total - used);
-                const pct       = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-                return (
-                  <div key={p.leave_type} className="py-3 border-b border-[#f0f3ff] last:border-0">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold text-[#151c27]">{p.label}</span>
-                      <span className="text-xs font-black text-[#3525cd]">{used} <span className="font-normal text-[#777587]">/ {total}</span></span>
+              {(() => {
+                // Use API balance data as primary; fall back to computing from policies+leaves
+                const balanceItems = leaveBalance?.balances?.length > 0
+                  ? leaveBalance.balances.map(b => ({
+                      leave_type: b.leave_type,
+                      label: b.label,
+                      total: b.allocated,
+                      used: b.used,
+                      pending: b.pending ?? leaves
+                        .filter(l => l.leave_type === b.leave_type && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
+                        .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0),
+                      carry_forward: b.carry_forward,
+                    }))
+                  : activePolicies.map(p => {
+                      const used = leaves
+                        .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
+                        .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+                      const pending = leaves
+                        .filter(l => l.leave_type === p.leave_type && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
+                        .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+                      return { leave_type: p.leave_type, label: p.label, total: p.annual_quota, used, pending, carry_forward: p.carry_forward };
+                    });
+
+                if (balanceItems.length === 0) {
+                  return <p className="text-xs text-[#777587] text-center py-4">No leave policies configured for your account</p>;
+                }
+
+                return balanceItems.map(item => {
+                  const remaining = Math.max(0, item.total - item.used - (item.pending || 0));
+                  const pct = item.total > 0 ? Math.min(100, Math.round((item.used / item.total) * 100)) : 0;
+                  return (
+                    <div key={item.leave_type} className="py-3 border-b border-[#f0f3ff] last:border-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-[#151c27]">{item.label}</span>
+                        <span className="text-xs font-black text-[#3525cd]">{item.used} <span className="font-normal text-[#777587]">/ {item.total}</span></span>
+                      </div>
+                      <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden mb-1">
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#10b981' }} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[0.65rem] text-[#9ca3af]">{remaining} day{remaining !== 1 ? 's' : ''} available</span>
+                        {item.pending > 0 && <span className="text-[0.65rem] font-bold text-amber-600">{item.pending}d pending</span>}
+                      </div>
+                      {item.carry_forward && (
+                        <span className="text-[0.6rem] text-emerald-600 font-semibold">↗ Carry forward enabled</span>
+                      )}
                     </div>
-                    <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden mb-1">
-                      <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#10b981' }} />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[0.65rem] text-[#9ca3af]">{remaining} days left</span>
-                      {pending > 0 && <span className="text-[0.65rem] font-bold text-amber-600">{pending} pending</span>}
-                    </div>
-                    {p.carry_forward && (
-                      <span className="text-[0.6rem] text-emerald-600 font-semibold">↗ Carry forward enabled</span>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
 

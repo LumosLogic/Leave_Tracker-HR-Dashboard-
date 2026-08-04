@@ -53,7 +53,12 @@ router.post('/', auth, async (req, res) => {
     const { data, error } = await supabase.from('attendance_regularization')
       .insert({ user_id: req.user.id, date, requested_check_in: requested_check_in || null, requested_check_out: requested_check_out || null, reason, organization_id: oId })
       .select().single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505' || (error.message && error.message.includes('unique constraint'))) {
+        return res.status(409).json({ error: 'You already have a pending request for this date. Please wait for it to be reviewed before submitting another.' });
+      }
+      throw error;
+    }
 
     // Notify admins
     const { data: admins } = await supabase.from('users')

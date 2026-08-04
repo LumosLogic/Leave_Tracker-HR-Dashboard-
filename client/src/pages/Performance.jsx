@@ -48,18 +48,26 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
     : { title: '', description: '', category: 'individual', target_date: '', review_cycle: String(new Date().getFullYear()), progress: 0, status: 'active', user_id: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const hasValidTitle = /[a-zA-Z0-9]/.test(form.title.trim());
+
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/performance/goals/${goal.id}`, form) : apiPost('/performance/goals', form),
     onSuccess: () => { toast(isEdit ? 'Goal updated!' : 'Goal added!', 'success'); qc.invalidateQueries({ queryKey: ['perf-goals'] }); onClose(); },
     onError: e => toast(e.message, 'error'),
   });
 
+  function handleSave() {
+    if (!form.title.trim()) { toast('Goal Title is required.', 'error'); return; }
+    if (!hasValidTitle) { toast('Goal Title must contain at least one letter or number.', 'error'); return; }
+    mut.mutate();
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Goal' : 'Add Goal'} size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.title}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={mut.isPending || !form.title || !hasValidTitle}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Save Goal'}
           </button>
         </div>
@@ -76,7 +84,10 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
         )}
         <div>
           <label className="form-label">Goal Title *</label>
-          <input className="form-control" placeholder="e.g. Complete React certification" value={form.title} onChange={e => set('title', e.target.value)} />
+          <input className={`form-control ${form.title && !hasValidTitle ? 'border-rose-400' : ''}`} placeholder="e.g. Complete React certification" value={form.title} onChange={e => set('title', e.target.value)} />
+          {form.title && !hasValidTitle && (
+            <p className="text-xs text-rose-600 mt-1">Goal Title must contain at least one letter or number.</p>
+          )}
         </div>
         <div>
           <label className="form-label">Description</label>
@@ -101,9 +112,6 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
           <div className="flex items-center gap-3">
             <input type="range" className="flex-1 accent-[#3525cd]" min={0} max={100} step={5} value={form.progress} onChange={e => set('progress', e.target.value)} />
             <span className="text-sm font-black text-[#3525cd] min-w-[2.5rem] text-right">{form.progress}%</span>
-          </div>
-          <div className="h-2 bg-[#f0f3ff] rounded-full mt-2 overflow-hidden">
-            <div className="h-full bg-[#3525cd] rounded-full transition-all" style={{ width: `${form.progress}%` }} />
           </div>
         </div>
         {isEdit && (

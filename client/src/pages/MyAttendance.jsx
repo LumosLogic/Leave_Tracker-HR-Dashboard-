@@ -397,7 +397,7 @@ export default function MyAttendance() {
     const presentCount  = summary.present;
     const halfDayCount  = summary.half_day;
     const attPct = workingDaysCount > 0
-      ? Math.round(((presentCount + halfDayCount * 0.5) / workingDaysCount) * 100)
+      ? Math.min(100, Math.round(((presentCount + halfDayCount * 0.5) / workingDaysCount) * 100))
       : 0;
 
     // Average work hours for present/half_day rows

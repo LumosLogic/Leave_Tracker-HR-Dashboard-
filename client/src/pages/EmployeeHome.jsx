@@ -44,10 +44,21 @@ function leaveLabel(type) {
 }
 
 const STATUS_BADGE = {
-  pending:   'border border-amber-300 text-amber-700 bg-amber-50',
-  approved:  'bg-emerald-500 text-white border border-emerald-500',
-  rejected:  'bg-rose-500 text-white border border-rose-500',
-  cancelled: 'border border-[#c7c4d8] text-[#777587] bg-[#f9f9ff]',
+  pending:      'border border-amber-300 text-amber-700 bg-amber-50',
+  pending_dept: 'border border-blue-300 text-blue-700 bg-blue-50',
+  pending_root: 'border border-violet-300 text-violet-700 bg-violet-50',
+  approved:     'bg-emerald-500 text-white border border-emerald-500',
+  rejected:     'bg-rose-500 text-white border border-rose-500',
+  cancelled:    'border border-[#c7c4d8] text-[#777587] bg-[#f9f9ff]',
+};
+
+const STATUS_DISPLAY_LABEL = {
+  pending:      'Pending',
+  pending_dept: 'Pending Dept. Approval',
+  pending_root: 'Pending Final Approval',
+  approved:     'Approved',
+  rejected:     'Rejected',
+  cancelled:    'Cancelled',
 };
 
 const ATT_STATUS_CONFIG = {
@@ -438,7 +449,7 @@ export default function EmployeeHome() {
     .slice(0, 7);
 
   const pendingReg    = regularizations.filter(r => r.status === 'pending');
-  const pendingLeaves = myLeaves.filter(l => l.status === 'pending' && !isWFHRecord(l));
+  const pendingLeaves = myLeaves.filter(l => ['pending', 'pending_dept', 'pending_root'].includes(l.status) && !isWFHRecord(l));
   const recentLeaves  = myLeaves.slice(0, 4);
   const upcomingLeaves = myLeaves
     .filter(l => l.status === 'approved' && l.start_date >= today && !isWFHRecord(l))
@@ -1105,8 +1116,8 @@ export default function EmployeeHome() {
                     <span className="text-sm font-semibold text-[#151c27] truncate">{isWfh ? 'WFH' : leaveLabel(l.leave_type)}</span>
                   </div>
                   <span className="text-xs text-[#464555] leading-tight">{fmtLeaveDate(l.start_date, l.end_date)}</span>
-                  <span className={`text-[0.7rem] font-bold px-3 py-1 rounded-full capitalize whitespace-nowrap ${badge}`}>
-                    {l.status === 'cancelled' ? 'Cancelled' : l.status.charAt(0).toUpperCase() + l.status.slice(1)}
+                  <span className={`text-[0.7rem] font-bold px-3 py-1 rounded-full whitespace-nowrap ${badge}`}>
+                    {STATUS_DISPLAY_LABEL[l.status] || (l.status ? l.status.charAt(0).toUpperCase() + l.status.slice(1) : 'Unknown')}
                   </span>
                 </div>
               );

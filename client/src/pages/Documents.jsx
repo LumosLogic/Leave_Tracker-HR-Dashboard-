@@ -970,7 +970,7 @@ function RightPanel({ isEmployee, hrEmail }) {
         </div>
         <div className="p-4 space-y-2">
           {[
-            'Supported formats: PDF, JPG, JPEG, PNG, WEBP',
+            'Supported formats: PDF, JPG, JPEG, PNG, WEBP, DOC, DOCX',
             'Maximum file size: 10 MB per document',
             'Upload clear, legible copies of originals.',
             'Documents are shared with HR by default.',

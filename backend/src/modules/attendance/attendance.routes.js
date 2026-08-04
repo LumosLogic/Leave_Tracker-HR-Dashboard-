@@ -115,7 +115,11 @@ router.post('/checkout', auth, async (req, res) => {
     if (!record?.check_in) return res.status(400).json({ error: 'You have not checked in today' });
     if (record.check_out)  return res.status(400).json({ error: 'Already checked out today' });
 
-    const grossHours = Math.max(0, (toMinutes(timeStr) - toMinutes(record.check_in)) / 60);
+    const grossMinutes = Math.max(0, toMinutes(timeStr) - toMinutes(record.check_in));
+    if (grossMinutes < 1) {
+      return res.status(400).json({ error: 'You cannot check out immediately after checking in. Please wait at least 1 minute.' });
+    }
+    const grossHours = grossMinutes / 60;
     // Auto-close any open break at checkout time
     let totalBreakMins = record.total_break_minutes || 0;
     const breakUpdateFields = {};

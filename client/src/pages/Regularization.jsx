@@ -76,7 +76,22 @@ function ApplyModal({ open, onClose }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const [form, setForm] = useState({ date: '', requested_check_in: '', requested_check_out: '', reason: '' });
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [timeErr, setTimeErr] = useState('');
+  const set = (k, v) => {
+    setForm(f => {
+      const updated = { ...f, [k]: v };
+      if (k === 'requested_check_in' || k === 'requested_check_out') {
+        const ci = k === 'requested_check_in' ? v : updated.requested_check_in;
+        const co = k === 'requested_check_out' ? v : updated.requested_check_out;
+        if (ci && co && co <= ci) {
+          setTimeErr('Check-Out time cannot be earlier than or equal to Check-In time.');
+        } else {
+          setTimeErr('');
+        }
+      }
+      return updated;
+    });
+  };
 
   const mut = useMutation({
     mutationFn: () => apiPost('/regularization', form),
@@ -84,12 +99,20 @@ function ApplyModal({ open, onClose }) {
     onError: e => toast(e.message, 'error'),
   });
 
+  function handleSubmit() {
+    if (form.requested_check_in && form.requested_check_out && form.requested_check_out <= form.requested_check_in) {
+      toast('Check-Out time cannot be earlier than or equal to Check-In time.', 'error');
+      return;
+    }
+    mut.mutate();
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Request Attendance Correction" size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.date || !form.reason}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.date || !form.reason || !!timeErr}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Submitting…</> : 'Submit Request'}
           </button>
         </div>
@@ -106,9 +129,15 @@ function ApplyModal({ open, onClose }) {
           </div>
           <div>
             <label className="form-label">Correct Check-out</label>
-            <input type="time" className="form-control" value={form.requested_check_out} onChange={e => set('requested_check_out', e.target.value)} />
+            <input type="time" className={`form-control ${timeErr ? 'border-rose-400' : ''}`} value={form.requested_check_out} onChange={e => set('requested_check_out', e.target.value)} />
           </div>
         </div>
+        {timeErr && (
+          <p className="text-xs text-rose-600 flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full bg-rose-100 flex items-center justify-center text-[0.6rem] shrink-0">!</span>
+            {timeErr}
+          </p>
+        )}
         <div>
           <label className="form-label">Reason *</label>
           <textarea className="form-control" rows={3} placeholder="Explain why the attendance needs correction…" value={form.reason} onChange={e => set('reason', e.target.value)} />
