@@ -51,6 +51,7 @@ const branchesRouter       = require('./modules/branches/branches.routes');
 const biometricRouter      = require('./modules/biometric/biometric.routes');
 const biometricPush        = require('./modules/biometric/biometricPush.handler');
 const biometricHeartbeat   = require('./modules/biometric/biometricHeartbeat.handler');
+const biometricDeviceCmd   = require('./modules/biometric/biometricDeviceCmd.handler');
 
 // ── Phase 1: RBAC ─────────────────────────────────────────────────────────────
 const rolesRouter          = require('./modules/roles/roles.routes');
@@ -205,9 +206,10 @@ app.use('/api/profile',        profileCerts);
 app.use('/iclock/', express.text({ type: '*/*' }));
 // Security layers: rate limit → SN allowlist → audit log → handler
 app.use('/iclock/', rateLimiter(LIMITS.BIOMETRIC), biometricAuditLog, biometricSnGuard);
-app.post('/iclock/cdata',      biometricPush);
-app.get('/iclock/cdata',       (req, res) => res.send('OK'));
-app.get('/iclock/getrequest',  biometricHeartbeat);
+app.post('/iclock/cdata',       biometricPush);
+app.get('/iclock/cdata',        (req, res) => res.send('OK'));
+app.get('/iclock/getrequest',   biometricHeartbeat);
+app.post('/iclock/devicecmd',   biometricDeviceCmd);  // device posts command results here
 
 // ── Platform admin SPA (served at /admin/*) ───────────────────────────────────
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../../public/admin', 'index.html')));
