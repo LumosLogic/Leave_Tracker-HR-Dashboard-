@@ -406,4 +406,32 @@ router.post('/collector-push', async (req, res) => {
   }
 });
 
+// ─── POST /api/biometric/collector-ping ──────────────────────────────────────
+// Called by the collector every poll cycle (even when no new records exist) to
+// keep the device's last_seen timestamp fresh so the UI shows it as online.
+router.post('/collector-ping', async (req, res) => {
+  try {
+    const key = req.headers['x-collector-key'];
+    if (!key || key !== process.env.BIOMETRIC_COLLECTOR_KEY) {
+      return res.status(401).json({ error: 'Invalid or missing collector API key' });
+    }
+
+    const { device_serial } = req.body;
+    if (!device_serial || typeof device_serial !== 'string')
+      return res.status(400).json({ error: 'device_serial is required' });
+
+    const result = await pool.query(
+      `UPDATE biometric_devices SET last_seen = NOW(), status = 'online'
+       WHERE serial_number = $1 RETURNING id`,
+      [device_serial.trim()]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ error: `Device ${device_serial} not registered in HRMS` });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -92,7 +92,7 @@ function loadState() {
     }
   } catch (_) {}
   // Default: start from 1 Aug 2026 (as per client requirement)
-  return { lastSync: '2026-08-01T00:00:00.000Z', totalImported: 0 };
+  return { lastSync: '2026-08-01T00:00:00.000Z', totalImported: 0, knownSerials: [] };
 }
 
 function saveState(state) {
@@ -117,6 +117,26 @@ async function connectWithRetry() {
       log(`Connection failed: ${err.message}`);
       log('Retrying in 30 seconds...');
       await sleep(30000);
+    }
+  }
+}
+
+// ── Ping known device serials to keep last_seen fresh when idle ───────────────
+async function pingKnownDevices() {
+  const state = loadState();
+  const serials = state.knownSerials || [];
+  if (!serials.length) return;
+
+  for (const sn of serials) {
+    try {
+      await axios.post(
+        `${CONFIG.apiUrl}/api/biometric/collector-ping`,
+        { device_serial: sn },
+        { headers: { 'Content-Type': 'application/json', 'x-collector-key': CONFIG.apiKey }, timeout: 10000 }
+      );
+      log(`  Heartbeat ping sent for device ${sn}`);
+    } catch (err) {
+      log(`  Ping failed for ${sn}: ${err.response?.data?.error || err.message}`);
     }
   }
 }
@@ -149,6 +169,7 @@ async function poll(pool) {
 
   if (!records.length) {
     log('No new records found.');
+    await pingKnownDevices();
     return;
   }
 
@@ -209,7 +230,11 @@ async function poll(pool) {
   const newSync = new Date(latestTime instanceof Date ? latestTime.getTime() + 1 : latestTime);
   const newTotal = (state.totalImported || 0) + totalImported;
 
-  saveState({ lastSync: newSync.toISOString(), totalImported: newTotal });
+  // Merge any new device serials seen this cycle into the known set (for idle pings)
+  const prevSerials = new Set(state.knownSerials || []);
+  Object.keys(byDevice).forEach(sn => prevSerials.add(sn));
+
+  saveState({ lastSync: newSync.toISOString(), totalImported: newTotal, knownSerials: [...prevSerials] });
 
   log(`Done. Cycle total: imported=${totalImported} skipped=${totalSkipped}. All-time: ${newTotal}`);
 }
