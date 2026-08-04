@@ -80,7 +80,7 @@ zk=ZK(
     port=port,
     timeout=100,
     password=0,
-    force_udp=False,
+    force_udp=True,
     ommit_ping=False
 )
 
