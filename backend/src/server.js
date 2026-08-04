@@ -79,8 +79,12 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Core middleware ───────────────────────────────────────────────────────────
+// ZKTeco ADMS body parser MUST come before express.urlencoded — devices send
+// tab-separated ATTLOG lines which urlencoded parses as {} (empty), consuming
+// the stream before our express.text middleware can read it.
+app.use('/iclock/', express.text({ type: '*/*' }));
 app.use(express.json());
-app.use(express.urlencoded({ extended: false })); // required for ZKTeco ADMS (biometric)
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, '../../public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
@@ -202,8 +206,6 @@ app.use('/api/profile',        profileTraining);
 app.use('/api/profile',        profileCerts);
 
 // ── ADMS endpoints — no JWT auth (ZKTeco devices cannot send JWT) ─────────────
-// Accept text/plain bodies too — some ZKTeco firmware sends Content-Type: text/plain
-app.use('/iclock/', express.text({ type: '*/*' }));
 // Security layers: rate limit → SN allowlist → audit log → handler
 app.use('/iclock/', rateLimiter(LIMITS.BIOMETRIC), biometricAuditLog, biometricSnGuard);
 app.post('/iclock/cdata',       biometricPush);
