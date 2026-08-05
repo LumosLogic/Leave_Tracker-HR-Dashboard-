@@ -41,7 +41,7 @@ const BIOMETRIC_ITEMS = [
   { to: '/biometric/devices',   label: 'Devices',    Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,      adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText, adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,      adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,      adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
 ];
 
 const FINANCE_ITEMS = [
@@ -75,10 +75,11 @@ const ADMIN_ITEMS = [
   { to: '/profile',  label: 'Profile',  Icon: UserCircle },
 ];
 
-function NavSection({ title, items, onClose, isAdmin, prefix = '', unreadCount = 0 }) {
+function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', unreadCount = 0 }) {
   const featureFlags = useContext(FeatureFlagContext);
   const filtered = items.filter(i => {
     if (i.adminOnly && !isAdmin) return false;
+    if (i.hideFromRootAdmin && isRootAdmin) return false;
     if (i.featureKey) {
       const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
       if (!enabled) return false;
@@ -133,7 +134,7 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
 
   function handleLogout() { logout(); navigate('/login'); }
 
-  const sharedProps = { onClose, isAdmin, prefix, unreadCount: unread };
+  const sharedProps = { onClose, isAdmin, isRootAdmin, prefix, unreadCount: unread };
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">

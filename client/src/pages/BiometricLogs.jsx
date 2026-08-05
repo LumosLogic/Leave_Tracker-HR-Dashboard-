@@ -34,20 +34,32 @@ function ProcessedBadge({ processed }) {
   );
 }
 
-function fmtDateTime(str) {
+function fmtDateOnly(str) {
   if (!str) return '—';
-  return new Date(str).toLocaleString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
+  return new Date(str).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
   });
 }
+
+function fmtTimeOnly(str) {
+  if (!str) return '—';
+  return new Date(str).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
+const getToday = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
 
 export default function BiometricLogs() {
   const [searchParams] = useSearchParams();
   const initDevice = searchParams.get('device') || '';
 
-  const [dateFrom,   setDateFrom]   = useState('');
-  const [dateTo,     setDateTo]     = useState('');
+  const [dateFrom,   setDateFrom]   = useState(getToday());
+  const [dateTo,     setDateTo]     = useState(getToday());
   const [device,     setDevice]     = useState(initDevice);
   const [pin,        setPin]        = useState('');
   const [processed,  setProcessed]  = useState('');
@@ -80,7 +92,7 @@ export default function BiometricLogs() {
   const devices     = Array.isArray(_devices) ? _devices : [];
 
   function resetFilters() {
-    setDateFrom(''); setDateTo(''); setDevice(initDevice); setPin(''); setProcessed(''); setPage(1);
+    setDateFrom(getToday()); setDateTo(getToday()); setDevice(initDevice); setPin(''); setProcessed(''); setPage(1);
   }
 
   const hasFilter = dateFrom || dateTo || (device && device !== initDevice) || pin || processed !== '';
@@ -111,6 +123,19 @@ export default function BiometricLogs() {
             <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">To</label>
             <input type="date" className="form-control text-xs py-1.5"
               value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+          </div>
+          <div className="flex flex-col gap-1 border-l border-[#e7eefe] pl-3 ml-1 mr-1">
+            <label className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-wider">Quick Month</label>
+            <input type="month" className="form-control text-xs py-1.5 w-32 cursor-pointer"
+              onChange={e => {
+                if (!e.target.value) return;
+                const [y, m] = e.target.value.split('-');
+                setDateFrom(`${y}-${m}-01`);
+                const lastDay = new Date(y, m, 0);
+                const dd = String(lastDay.getDate()).padStart(2, '0');
+                setDateTo(`${y}-${m}-${dd}`);
+                setPage(1);
+              }} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">Device</label>
@@ -163,12 +188,12 @@ export default function BiometricLogs() {
               <table className="w-full text-sm">
                 <thead className="bg-[#f8f9fe] border-b border-[#e7eefe]">
                   <tr>
+                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Date</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Time</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">PIN</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Employee Name</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Device</th>
+                    {/* Device hidden from UI, Verify Type removed */}
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Punch Type</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Verify Type</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Processed</th>
                   </tr>
                 </thead>
@@ -176,24 +201,22 @@ export default function BiometricLogs() {
                   {logs.map((log, idx) => (
                     <tr key={log.id ?? idx} className="hover:bg-[#f9f9ff] transition-colors">
                       <td className="px-5 py-3 text-xs text-[#464555] whitespace-nowrap font-mono">
-                        {fmtDateTime(log.punch_time || log.timestamp)}
+                        {fmtDateOnly(log.punch_time || log.timestamp)}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-[#464555] whitespace-nowrap font-mono">
+                        {fmtTimeOnly(log.punch_time || log.timestamp)}
                       </td>
                       <td className="px-5 py-3">
                         <span className="font-mono text-xs font-bold bg-[#f0f3ff] text-[#3525cd] px-2 py-0.5 rounded">
-                          {log.pin}
+                          {log.employee_pin || log.pin}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-xs font-semibold text-[#151c27]">
                         {log.employee_name || log.user?.name || <span className="text-[#c7c4d8] italic">Unmatched</span>}
                       </td>
-                      <td className="px-5 py-3 text-xs text-[#464555]">
-                        {log.device_name || log.serial_number || '—'}
-                      </td>
+                      {/* Device hidden from UI via exclusion of td */}
                       <td className="px-5 py-3">
                         <PunchTypeBadge type={log.punch_type ?? log.punch_state} />
-                      </td>
-                      <td className="px-5 py-3 text-xs text-[#777587]">
-                        {log.verify_type !== undefined ? log.verify_type : '—'}
                       </td>
                       <td className="px-5 py-3">
                         <ProcessedBadge processed={log.processed || log.is_processed} />
