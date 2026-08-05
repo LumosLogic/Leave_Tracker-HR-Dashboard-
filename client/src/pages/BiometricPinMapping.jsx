@@ -23,7 +23,7 @@ function AddMappingModal({ open, onClose, employees, existingPins }) {
   });
 
   const mut = useMutation({
-    mutationFn: () => apiPost('/biometric/employee-map', form),
+    mutationFn: (variables) => apiPost('/biometric/employee-map', variables),
     onSuccess: () => {
       toast('Mapping added!', 'success');
       qc.invalidateQueries({ queryKey: ['biometric-map'] });
@@ -39,7 +39,7 @@ function AddMappingModal({ open, onClose, employees, existingPins }) {
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()}
+          <button className="btn btn-primary" onClick={() => mut.mutate({ user_id: form.employee_id, employee_pin: form.pin })}
             disabled={mut.isPending || !form.employee_id || !form.pin || !!pinExists}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Add Mapping'}
           </button>
