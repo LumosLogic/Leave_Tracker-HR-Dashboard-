@@ -337,6 +337,12 @@ export default function PermissionMatrix() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
+  const biometricEnabled = useFeature('biometric');
+  const isSystemRole  = role?.is_system_role;
+  const isRootAdmin   = role?.slug === 'root_admin';
+  const isLoading     = roleLoading || permsLoading;
+  const isError       = roleError || permsError;
+
   // Flatten all permissions into a single array safely
   const allPermissions = (Array.isArray(modulesRaw) ? modulesRaw : []).flatMap(m =>
     Array.isArray(m?.permissions) ? m.permissions.map(perm => ({ ...perm, module_key: m.module_key })) : []
@@ -407,11 +413,7 @@ export default function PermissionMatrix() {
     setDirty(true);
   }
 
-  const biometricEnabled = useFeature('biometric');
-  const isSystemRole  = role?.is_system_role;
-  const isRootAdmin   = role?.slug === 'root_admin';
-  const isLoading     = roleLoading || permsLoading;
-  const isError       = roleError || permsError;
+
 
   // Fix H4: Error state — show a clear error instead of blank page
   if (isError && !isLoading) {
