@@ -157,8 +157,8 @@ async function processAttlogLine(line, orgId, deviceSerial) {
   try {
     const logRes = await pool.query(
       `INSERT INTO biometric_raw_logs
-         (org_id, device_serial, employee_pin, punch_time, punch_type, processed)
-       VALUES ($1, $2, $3, $4, $5, false)
+         (org_id, device_serial, employee_pin, punch_time, punch_type, processed, source)
+       VALUES ($1, $2, $3, $4, $5, false, 'adms_live')
        ON CONFLICT (device_serial, punch_time, employee_pin) DO NOTHING
        RETURNING id`,
       [orgId, deviceSerial, pin, punchTime.toISOString(), punchType]

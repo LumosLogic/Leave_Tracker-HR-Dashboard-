@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ScrollText, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { apiGet } from '@/lib/api';
+import { ScrollText, ChevronLeft, ChevronRight, Filter, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { apiGet, apiUpload } from '@/lib/api';
 
 const PAGE_SIZE = 20;
 
@@ -57,12 +57,50 @@ const getToday = () => {
 export default function BiometricLogs() {
   const [searchParams] = useSearchParams();
   const initDevice = searchParams.get('device') || '';
+  const queryClient = useQueryClient();
 
   const [dateFrom,   setDateFrom]   = useState(getToday());
   const [dateTo,     setDateTo]     = useState(getToday());
   const [device,     setDevice]     = useState(initDevice);
   const [pin,        setPin]        = useState('');
   const [page,       setPage]       = useState(1);
+
+  // ── Import modal state ─────────────────────────────────────────────────────
+  const [showImport,    setShowImport]    = useState(false);
+  const [importFile,    setImportFile]    = useState(null);
+  const [importing,     setImporting]     = useState(false);
+  const [importResult,  setImportResult]  = useState(null);
+  const [importError,   setImportError]   = useState('');
+  const fileInputRef = useRef(null);
+
+  function openImport() {
+    setShowImport(true);
+    setImportFile(null);
+    setImportResult(null);
+    setImportError('');
+  }
+  function closeImport() {
+    if (importing) return;
+    setShowImport(false);
+  }
+
+  async function handleImport() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      const result = await apiUpload('/biometric/import-easywdms', fd);
+      setImportResult(result);
+      queryClient.invalidateQueries({ queryKey: ['biometric-logs'] });
+    } catch (err) {
+      setImportError(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   const params = {
     page,
@@ -102,6 +140,15 @@ export default function BiometricLogs() {
         <div>
           <h1 className="page-title">Punch Logs</h1>
           <p className="page-subtitle">Raw biometric punch records from all devices</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openImport}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors shadow-sm"
+          >
+            <Upload size={15} />
+            Import EasyWDMS Data
+          </button>
         </div>
       </div>
 
@@ -244,6 +291,139 @@ export default function BiometricLogs() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Import EasyWDMS Modal ─────────────────────────────────────────── */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7eefe]">
+              <div className="flex items-center gap-2">
+                <Upload size={18} className="text-[#3525cd]" />
+                <h2 className="text-base font-black text-[#151c27]">Import EasyWDMS Data</h2>
+              </div>
+              <button onClick={closeImport} disabled={importing}
+                className="p-1.5 rounded-lg hover:bg-[#f0f3ff] text-[#777587] transition-colors disabled:opacity-40">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-5 space-y-4">
+              {!importResult ? (
+                <>
+                  <p className="text-xs text-[#777587] leading-relaxed">
+                    Export the <strong className="text-[#464555]">Transaction Report</strong> from EasyWDMS
+                    and upload it here. Supported formats: <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.xlsx</code>,{' '}
+                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.xls</code>,{' '}
+                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.csv</code>,{' '}
+                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.tsv</code>,{' '}
+                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.txt</code>.
+                    Duplicates are automatically skipped.
+                  </p>
+
+                  {/* File drop zone */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors
+                      ${importFile ? 'border-[#3525cd] bg-[#f0f3ff]' : 'border-[#c7c4d8] hover:border-[#3525cd] hover:bg-[#fafafe]'}`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv,.tsv,.txt"
+                      className="hidden"
+                      onChange={e => {
+                        setImportFile(e.target.files?.[0] || null);
+                        setImportError('');
+                      }}
+                    />
+                    {importFile ? (
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-[#3525cd]">{importFile.name}</p>
+                        <p className="text-xs text-[#777587]">{(importFile.size / 1024).toFixed(1)} KB · Click to change</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <Upload size={24} className="mx-auto text-[#c7c4d8]" />
+                        <p className="text-sm font-semibold text-[#464555]">Click to select file</p>
+                        <p className="text-xs text-[#777587]">EasyWDMS Transaction Report export</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {importError && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                      <span>{importError}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Result view */
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <CheckCircle size={18} className="shrink-0" />
+                    <span className="font-bold text-sm">Import completed</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: 'Total rows',    value: importResult.total },
+                      { label: 'Inserted',      value: importResult.inserted,    cls: 'text-green-700' },
+                      { label: 'Skipped (dup)', value: importResult.skipped,     cls: 'text-amber-700' },
+                      { label: 'Reprocessed',   value: importResult.reprocessed, cls: 'text-blue-700'  },
+                    ].map(({ label, value, cls }) => (
+                      <div key={label} className="bg-[#f8f9fe] rounded-xl px-4 py-3">
+                        <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">{label}</p>
+                        <p className={`text-xl font-black mt-0.5 ${cls || 'text-[#151c27]'}`}>{value ?? '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[0.65rem] text-[#777587]">
+                    Batch ID: <span className="font-mono">{importResult.batch_id}</span>
+                  </p>
+                  {importResult.errors?.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
+                      <p className="text-xs font-bold text-amber-700">Warnings ({importResult.errors.length})</p>
+                      {importResult.errors.slice(0, 5).map((e, i) => (
+                        <p key={i} className="text-xs text-amber-600 font-mono">{e}</p>
+                      ))}
+                      {importResult.errors.length > 5 && (
+                        <p className="text-xs text-amber-500">…and {importResult.errors.length - 5} more</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#e7eefe]">
+              {importResult ? (
+                <button onClick={closeImport}
+                  className="px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors">
+                  Done
+                </button>
+              ) : (
+                <>
+                  <button onClick={closeImport} disabled={importing}
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-[#464555] hover:bg-[#f0f3ff] border border-[#c7c4d8] transition-colors disabled:opacity-40">
+                    Cancel
+                  </button>
+                  <button onClick={handleImport} disabled={!importFile || importing}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {importing ? (
+                      <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing…</>
+                    ) : (
+                      <><Upload size={14} /> Import</>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

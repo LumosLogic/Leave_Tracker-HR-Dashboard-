@@ -1,4 +1,5 @@
 const express = require('express');
+const multer  = require('multer');
 const router  = express.Router();
 const { pool } = require('../../config/db-pg-adapter');
 const { auth, adminOnly } = require('../../middleware/auth');
@@ -6,6 +7,17 @@ const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuar
 const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
 const { processAttlogLine } = require('./biometricPush.handler');
 const biometricEmitter = require('../../utils/biometricEmitter');
+const { reprocessPin } = require('./biometricReprocess.util');
+const { importEasyWDMS } = require('./biometricEasyWDMSImport.handler');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(xlsx|xls|csv|tsv|txt)$/i;
+    cb(null, allowed.test(file.originalname));
+  },
+});
 
 // ─── GET /api/biometric/devices ───────────────────────────────────────────────
 router.get('/devices', auth, adminOnly, async (req, res) => {
@@ -258,68 +270,9 @@ router.post('/reprocess', auth, adminOnly, async (req, res) => {
     const { employee_pin } = req.body;
     if (!employee_pin) return res.status(400).json({ error: 'employee_pin is required' });
 
-    const mapRes = await pool.query(
-      `SELECT user_id FROM biometric_employee_map WHERE org_id = $1 AND employee_pin = $2 LIMIT 1`,
-      [orgId, String(employee_pin)]
-    );
-    if (!mapRes.rows.length) {
-      return res.status(404).json({ error: 'No employee mapping found for this PIN' });
-    }
-    const userId = mapRes.rows[0].user_id;
-
-    const logsRes = await pool.query(
-      `SELECT * FROM biometric_raw_logs
-       WHERE org_id = $1 AND employee_pin = $2 AND processed = false
-       ORDER BY punch_time`,
-      [orgId, String(employee_pin)]
-    );
-
-    let processed = 0;
-    for (const log of logsRes.rows) {
-      const punchDate    = new Date(log.punch_time).toISOString().slice(0, 10);
-      const punchTimeStr = new Date(log.punch_time).toTimeString().slice(0, 8);
-
-      const attRes = await pool.query(
-        `SELECT id, status, check_in, total_break_minutes FROM attendance
-         WHERE user_id = $1 AND date = $2 LIMIT 1`,
-        [userId, punchDate]
-      );
-      const att = attRes.rows[0] || null;
-
-      if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
-        await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [log.id]);
-        processed++;
-        continue;
-      }
-
-      if (log.punch_type === 0 || log.punch_type === '0') {
-        if (!att) {
-          await pool.query(
-            `INSERT INTO attendance (user_id, date, check_in, status, source, organization_id)
-             VALUES ($1, $2, $3, 'present', 'biometric', $4)
-             ON CONFLICT (user_id, date, organization_id) DO NOTHING`,
-            [userId, punchDate, punchTimeStr, orgId]
-          );
-        }
-      } else if (log.punch_type === 1 || log.punch_type === '1') {
-        if (att && att.check_in) {
-          const checkInMs  = new Date(`${punchDate}T${att.check_in}`).getTime();
-          const checkOutMs = new Date(log.punch_time).getTime();
-          const grossHours = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
-          const breakMins  = att.total_break_minutes || 0;
-          const workHours  = parseFloat(Math.max(0, grossHours - breakMins / 60).toFixed(2));
-          await pool.query(
-            `UPDATE attendance SET check_out = $1, gross_hours = $2, work_hours = $3, source = 'biometric' WHERE id = $4`,
-            [punchTimeStr, grossHours, workHours, att.id]
-          );
-        }
-      }
-
-      await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [log.id]);
-      processed++;
-    }
-
-    res.json({ ok: true, processed, total: logsRes.rows.length });
+    const result = await reprocessPin(orgId, employee_pin);
+    if (result.noMapping) return res.status(404).json({ error: 'No employee mapping found for this PIN' });
+    res.json({ ok: true, processed: result.processed, total: result.total });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -523,6 +476,61 @@ router.post('/bulk-import', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── POST /api/biometric/import-easywdms ─────────────────────────────────────
+// Upload an EasyWDMS Transaction Report file (.xlsx/.xls/.csv/.tsv/.txt).
+// Parses, inserts historical raw logs (bypassing go-live cutoff), auto-reprocesses.
+router.post('/import-easywdms', auth, adminOnly, upload.single('file'), importEasyWDMS);
+
+// ─── GET /api/biometric/import-batches ───────────────────────────────────────
+router.get('/import-batches', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `SELECT b.*, u.name AS imported_by_name
+       FROM biometric_import_batches b
+       LEFT JOIN users u ON u.id = b.imported_by
+       WHERE b.org_id = $1
+       ORDER BY b.created_at DESC
+       LIMIT 50`,
+      [orgId]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── DELETE /api/biometric/import-batches/:id ────────────────────────────────
+// Rollback: deletes raw logs for this batch and marks the batch rolled_back.
+// Attendance records already created are left in place (admin must fix manually).
+router.delete('/import-batches/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+
+    const batchRes = await pool.query(
+      `SELECT * FROM biometric_import_batches WHERE id = $1 AND org_id = $2 LIMIT 1`,
+      [req.params.id, orgId]
+    );
+    if (!batchRes.rows.length) return res.status(404).json({ error: 'Batch not found' });
+    if (batchRes.rows[0].status === 'rolled_back') {
+      return res.status(409).json({ error: 'Batch already rolled back' });
+    }
+
+    const deleted = await pool.query(
+      `DELETE FROM biometric_raw_logs
+       WHERE import_batch_id = $1 AND org_id = $2
+       RETURNING id`,
+      [req.params.id, orgId]
+    );
+
+    await pool.query(
+      `UPDATE biometric_import_batches SET status = 'rolled_back' WHERE id = $1`,
+      [req.params.id]
+    );
+
+    console.log(`[import-rollback] batch=${req.params.id} deleted ${deleted.rowCount} raw logs`);
+    res.json({ ok: true, deleted_logs: deleted.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

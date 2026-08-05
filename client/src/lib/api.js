@@ -40,3 +40,16 @@ export const apiPost   = (ep, body) => apiFetch('POST',   ep, body);
 export const apiPut    = (ep, body) => apiFetch('PUT',    ep, body);
 export const apiPatch  = (ep, body) => apiFetch('PATCH',  ep, body);
 export const apiDelete = (ep)       => apiFetch('DELETE', ep);
+
+// Multipart file upload — does not set Content-Type (browser sets boundary automatically)
+export async function apiUpload(ep, formData) {
+  const token = getToken();
+  const res  = await fetch('/api' + ep, {
+    method:  'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body:    formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
