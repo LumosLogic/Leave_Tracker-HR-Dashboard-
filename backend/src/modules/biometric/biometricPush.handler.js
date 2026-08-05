@@ -26,15 +26,25 @@ module.exports = async function biometricPushHandler(req, res) {
   if (!sn) return;
   if (table && table !== 'ATTLOG') return;
 
-  const rawLines = extractAttlogLines(req.body, req.query);
+  // Prefer stream-captured raw body (set by /iclock/cdata middleware in server.js)
+  // over the body-parser result which may be {} due to content-type mismatch
+  const bodyForParsing = req._rawAttlog !== undefined ? req._rawAttlog : req.body;
+
+  // Diagnostic: log exact content-type + body so we can see what device sends
+  const ctHeader = req.headers['content-type'] || 'none';
+  const bodySnippet = typeof bodyForParsing === 'string'
+    ? bodyForParsing.slice(0, 300).replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
+    : JSON.stringify(bodyForParsing);
+  console.log(`[biometric] ATTLOG push SN=${sn} CT="${ctHeader}" body="${bodySnippet}"`);
+
+  const rawLines = extractAttlogLines(bodyForParsing, req.query);
 
   const msg = `[biometric] SN=${sn} received ${rawLines.length} ATTLOG lines`;
   console.log(msg);
   biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
 
   if (!rawLines.length) {
-    const debugBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    const debugMsg = `[biometric] REJECTED/EMPTY PAYLOAD SN=${sn}: ${debugBody}`;
+    const debugMsg = `[biometric] REJECTED/EMPTY PAYLOAD SN=${sn}: "${bodySnippet}"`;
     console.log(debugMsg);
     biometricEmitter.emit('log', { sn, message: debugMsg, timestamp: new Date().toISOString() });
     return;
@@ -90,9 +100,12 @@ function extractAttlogLines(body, query = {}) {
     }
   }
 
-  // Raw string body (express.text captured it — most reliable path)
+  // Raw string body — try as-is first, then URL-decoded (some firmware sends %09 for tabs)
   if (typeof body === 'string') {
     parseLine(body);
+    if (!lines.length && body.includes('%09')) {
+      try { parseLine(decodeURIComponent(body.replace(/\+/g, ' '))); } catch (_) {}
+    }
     return lines;
   }
 

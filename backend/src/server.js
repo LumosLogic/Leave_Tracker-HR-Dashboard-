@@ -79,9 +79,20 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Core middleware ───────────────────────────────────────────────────────────
-// ZKTeco ADMS body parser MUST come before express.urlencoded — devices send
-// tab-separated ATTLOG lines which urlencoded parses as {} (empty), consuming
-// the stream before our express.text middleware can read it.
+// Capture raw ATTLOG body at stream level BEFORE any body parser touches it.
+// ZKTeco firmware sends mixed content (URL-encoded params + raw tab-separated
+// ATTLOG lines) that confuses express.text/express.urlencoded Content-Type
+// detection, causing req.body = {}. This raw capture bypasses that entirely.
+app.use('/iclock/cdata', (req, res, next) => {
+  if (req.method !== 'POST') return next();
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    req._rawAttlog = Buffer.concat(chunks).toString('utf-8');
+    next();
+  });
+  req.on('error', next);
+});
 app.use('/iclock/', express.text({ type: '*/*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
