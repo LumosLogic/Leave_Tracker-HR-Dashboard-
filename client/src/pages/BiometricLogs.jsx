@@ -62,7 +62,6 @@ export default function BiometricLogs() {
   const [dateTo,     setDateTo]     = useState(getToday());
   const [device,     setDevice]     = useState(initDevice);
   const [pin,        setPin]        = useState('');
-  const [processed,  setProcessed]  = useState('');
   const [page,       setPage]       = useState(1);
 
   const params = {
@@ -72,7 +71,6 @@ export default function BiometricLogs() {
     ...(dateTo    ? { date_to: dateTo }            : {}),
     ...(device    ? { device_serial: device }      : {}),
     ...(pin       ? { employee_pin: pin }          : {}),
-    ...(processed !== '' ? { processed }           : {}),
   };
 
   const { data: _res, isLoading } = useQuery({
@@ -92,10 +90,10 @@ export default function BiometricLogs() {
   const devices     = Array.isArray(_devices) ? _devices : [];
 
   function resetFilters() {
-    setDateFrom(getToday()); setDateTo(getToday()); setDevice(initDevice); setPin(''); setProcessed(''); setPage(1);
+    setDateFrom(getToday()); setDateTo(getToday()); setDevice(initDevice); setPin(''); setPage(1);
   }
 
-  const hasFilter = dateFrom || dateTo || (device && device !== initDevice) || pin || processed !== '';
+  const hasFilter = dateFrom || dateTo || (device && device !== initDevice) || pin;
 
   return (
     <div className="space-y-6">
@@ -152,15 +150,6 @@ export default function BiometricLogs() {
             <input type="text" className="form-control font-mono text-xs py-1.5 w-24"
               placeholder="e.g. 1001" value={pin} onChange={e => { setPin(e.target.value); setPage(1); }} />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">Processed</label>
-            <select className="form-control text-xs py-1.5"
-              value={processed} onChange={e => { setProcessed(e.target.value); setPage(1); }}>
-              <option value="">All</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
           {hasFilter && (
             <div className="flex items-end">
               <button onClick={resetFilters}
@@ -194,7 +183,6 @@ export default function BiometricLogs() {
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Employee Name</th>
                     {/* Device hidden from UI, Verify Type removed */}
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Punch Type</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Processed</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f0f3ff]">
@@ -217,9 +205,6 @@ export default function BiometricLogs() {
                       {/* Device hidden from UI via exclusion of td */}
                       <td className="px-5 py-3">
                         <PunchTypeBadge type={log.punch_type ?? log.punch_state} />
-                      </td>
-                      <td className="px-5 py-3">
-                        <ProcessedBadge processed={log.processed || log.is_processed} />
                       </td>
                     </tr>
                   ))}

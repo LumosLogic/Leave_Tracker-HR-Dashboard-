@@ -40,7 +40,6 @@ const NAV_SECTIONS = [
     { to: '/root/biometric/devices', label: 'Devices',    Icon: Fingerprint, featureKey: 'biometric' },
     { to: '/root/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
     { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
-    { to: '/root/biometric/live-logs', label: 'Live Logs', Icon: Terminal,    featureKey: 'biometric' },
   ]},
   { id: 'tour-nav-finance', title: 'Finance', items: [
     { to: '/root/payroll',  label: 'Payroll',  Icon: DollarSign },
