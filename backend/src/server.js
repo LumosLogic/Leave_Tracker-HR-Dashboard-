@@ -38,6 +38,7 @@ const regularizationRouter = require('./modules/regularization/regularization.ro
 const notificationsRouter  = require('./modules/notifications/notifications.routes');
 const reportsRouter        = require('./modules/reports/reports.routes');
 const documentsRouter      = require('./modules/documents/documents.routes');
+const docRequirementsRouter = require('./modules/documents/doc_requirements.routes');
 const payrollRouter        = require('./modules/payroll/payroll.routes');
 const assetsRouter         = require('./modules/assets/assets.routes');
 const expensesRouter       = require('./modules/expenses/expenses.routes');
@@ -178,6 +179,7 @@ app.use('/api/regularization', regularizationRouter);
 app.use('/api/notifications',  notificationsRouter);
 app.use('/api/reports',        reportsRouter);
 app.use('/api/documents',      documentsRouter);
+app.use('/api/doc-requirements', docRequirementsRouter);
 app.use('/api/payroll',        payrollRouter);
 app.use('/api/assets',         assetsRouter);
 app.use('/api/expenses',       expensesRouter);
