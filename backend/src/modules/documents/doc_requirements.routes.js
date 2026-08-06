@@ -63,7 +63,7 @@ router.get('/', auth, async (req, res) => {
     // Employee: attach their own submission
     const { data: mySubs } = await supabase
       .from('employee_doc_submissions')
-      .select('*')
+      .select('*, reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
       .eq('user_id', req.user.id)
       .eq('organization_id', oId)
       .in('requirement_id', reqIds);
@@ -81,7 +81,7 @@ router.get('/my-activity', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { data, error } = await supabase
       .from('doc_submission_activity')
-      .select('*, requirement:requirement_id(name)')
+      .select('*, requirement:document_requirements!doc_submission_activity_requirement_id_fkey(name)')
       .eq('user_id', req.user.id)
       .eq('organization_id', oId)
       .order('created_at', { ascending: false })
@@ -99,11 +99,7 @@ router.get('/verification-queue', auth, async (req, res) => {
 
     const { data, error } = await supabase
       .from('employee_doc_submissions')
-      .select(`
-        *,
-        employee:user_id(id, name, email, avatar_color, department, designation),
-        requirement:requirement_id(id, name, description, category)
-      `)
+      .select('*, employee:users(id, name, email, avatar_color, department, designation), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category)')
       .eq('organization_id', oId)
       .in('status', ['under_review', 're_upload_requested'])
       .order('uploaded_at', { ascending: false });
@@ -163,7 +159,7 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
 
     const { data: sub } = await supabase
       .from('employee_doc_submissions')
-      .select('*, requirement:requirement_id(name)')
+      .select('*, requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(name)')
       .eq('id', req.params.id)
       .eq('organization_id', oId)
       .single();

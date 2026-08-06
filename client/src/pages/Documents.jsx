@@ -1230,9 +1230,11 @@ function EmployeeDocumentsDashboard() {
   const approvedReq    = requiredReqs.filter(r => r._submission?.status === 'approved').length;
   const progressPct    = totalRequired > 0 ? Math.round((approvedReq / totalRequired) * 100) : 0;
 
-  // Action required: not uploaded + rejected + re-upload requested
+  // Action required: required docs not yet uploaded + any doc rejected/re-upload requested
   const actionRequired = requirements.filter(r =>
-    !r._submission || r._submission.status === 'rejected' || r._submission.status === 're_upload_requested'
+    (r.is_required && !r._submission) ||
+    r._submission?.status === 'rejected' ||
+    r._submission?.status === 're_upload_requested'
   );
 
   // Uploaded documents (all submissions)
@@ -1397,7 +1399,7 @@ function EmployeeDocumentsDashboard() {
                       <td className="px-4 py-3.5">
                         {sub.status ? <StatusBadge status={sub.status} /> : <span className="text-[#9ca3af]">—</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-[#777587]">—</td>
+                      <td className="px-4 py-3.5 text-[#777587]">{sub.reviewer?.name || '—'}</td>
                       <td className="px-4 py-3.5">
                         <button onClick={() => setPreview({ file_url: sub.file_url, file_type: sub.file_type, name: req.name, file_size: sub.file_size })}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] border border-[#3525cd]/30 hover:bg-[#f0f3ff] transition-colors">
