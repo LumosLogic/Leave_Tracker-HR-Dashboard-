@@ -870,7 +870,7 @@ function ReviewModal({ submission, onClose, onReviewed }) {
             <Avatar name={emp?.name} color={emp?.avatar_color} size={40} />
             <div>
               <p className="font-bold text-[#151c27] text-sm">{emp?.name}</p>
-              <p className="text-xs text-[#777587]">{emp?.designation || emp?.department || emp?.email}</p>
+              <p className="text-xs text-[#777587]">{emp?.position || emp?.department || emp?.email}</p>
             </div>
             <div className="ml-auto text-right">
               <p className="text-xs text-[#777587]">Uploaded</p>
@@ -1060,7 +1060,7 @@ function VerificationQueueTab() {
                         <Avatar name={sub.employee?.name} color={sub.employee?.avatar_color} size={32} />
                         <div>
                           <p className="font-bold text-[#151c27]">{sub.employee?.name}</p>
-                          <p className="text-[0.65rem] text-[#9ca3af]">{sub.employee?.department || sub.employee?.designation || '—'}</p>
+                          <p className="text-[0.65rem] text-[#9ca3af]">{sub.employee?.department || sub.employee?.position || '—'}</p>
                         </div>
                       </div>
                     </td>

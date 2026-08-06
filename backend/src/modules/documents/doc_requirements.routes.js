@@ -100,7 +100,7 @@ router.get('/verification-queue', auth, async (req, res) => {
 
     let query = supabase
       .from('employee_doc_submissions')
-      .select('*, employee:users(id, name, email, avatar_color, department, designation), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category), reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
+      .select('*, employee:users(id, name, email, avatar_color, department, position), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category), reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
       .eq('organization_id', oId)
       .order('uploaded_at', { ascending: false });
 
