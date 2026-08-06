@@ -91,19 +91,24 @@ router.get('/my-activity', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/doc-requirements/verification-queue — HR pending submissions
+// GET /api/doc-requirements/verification-queue — HR all submissions (filterable by status)
 router.get('/verification-queue', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const oId = req.user.organization_id;
+    const { status } = req.query; // optional filter: under_review | approved | rejected | re_upload_requested
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('employee_doc_submissions')
-      .select('*, employee:users(id, name, email, avatar_color, department, designation), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category)')
+      .select('*, employee:users(id, name, email, avatar_color, department, designation), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category), reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
       .eq('organization_id', oId)
-      .in('status', ['under_review', 're_upload_requested'])
       .order('uploaded_at', { ascending: false });
 
+    if (status && ['under_review', 'approved', 'rejected', 're_upload_requested'].includes(status)) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }

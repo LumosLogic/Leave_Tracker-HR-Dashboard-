@@ -829,6 +829,8 @@ function ReviewModal({ submission, onClose, onReviewed }) {
   const [saving, setSaving]   = useState(false);
   const [preview, setPreview] = useState(false);
 
+  const isReviewable = submission.status === 'under_review' || submission.status === 're_upload_requested';
+
   async function handleReview() {
     if (!action) { toast('Select an action', 'error'); return; }
     if ((action === 'rejected' || action === 're_upload_requested') && !reason.trim()) {
@@ -855,9 +857,10 @@ function ReviewModal({ submission, onClose, onReviewed }) {
         <div className="flex items-center gap-3 px-5 py-4 border-b border-[#f0f3ff] flex-shrink-0">
           <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] flex items-center justify-center"><FileCheck size={16} className="text-[#3525cd]" /></div>
           <div className="flex-1">
-            <p className="font-black text-[#151c27] text-sm">Review Document</p>
+            <p className="font-black text-[#151c27] text-sm">{isReviewable ? 'Review Document' : 'View Submission'}</p>
             <p className="text-xs text-[#777587]">{req?.name}</p>
           </div>
+          <StatusBadge status={submission.status} />
           <button onClick={onClose} className="p-2 rounded-lg text-[#777587] hover:bg-[#f0f3ff] transition-colors"><X size={18} /></button>
         </div>
 
@@ -896,36 +899,67 @@ function ReviewModal({ submission, onClose, onReviewed }) {
             )}
           </div>
 
-          {/* Review actions */}
-          <div>
-            <label className="form-label mb-2">Review Decision <span className="text-rose-500">*</span></label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { v: 'approved',           label: 'Approve',         cls: 'border-emerald-200 text-emerald-700', active: 'bg-emerald-500 text-white border-emerald-500' },
-                { v: 'rejected',           label: 'Reject',          cls: 'border-rose-200 text-rose-700',       active: 'bg-rose-500 text-white border-rose-500' },
-                { v: 're_upload_requested', label: 'Request Re-upload', cls: 'border-amber-200 text-amber-700',  active: 'bg-amber-500 text-white border-amber-500' },
-              ].map(opt => (
-                <button key={opt.v} onClick={() => setAction(opt.v)}
-                  className={`p-3 rounded-xl border text-xs font-bold transition-all ${action === opt.v ? opt.active : `bg-white ${opt.cls} hover:bg-gray-50`}`}>
-                  {opt.label}
-                </button>
-              ))}
+          {/* Already reviewed — show review details */}
+          {!isReviewable && submission.reviewer?.name && (
+            <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
+              <p className="text-xs font-black text-[#151c27] mb-2">Review Details</p>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-xs text-[#777587]">Reviewed by:</p>
+                <p className="text-xs font-semibold text-[#151c27]">{submission.reviewer.name}</p>
+              </div>
+              {submission.reviewed_at && (
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs text-[#777587]">Reviewed on:</p>
+                  <p className="text-xs font-semibold text-[#151c27]">{fmtDate(submission.reviewed_at?.slice(0, 10))}</p>
+                </div>
+              )}
+              {submission.rejection_reason && (
+                <div className="mt-2 p-3 rounded-lg bg-rose-50 border border-rose-200">
+                  <p className="text-xs font-bold text-rose-700 mb-1">Reason given to employee:</p>
+                  <p className="text-xs text-rose-600">{submission.rejection_reason}</p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          {(action === 'rejected' || action === 're_upload_requested') && (
-            <div>
-              <label className="form-label">Reason <span className="text-rose-500">*</span></label>
-              <textarea className="form-control" rows={3} placeholder="Explain why this document is rejected or needs re-upload…" value={reason} onChange={e => setReason(e.target.value)} />
-            </div>
+          {/* Review actions — only shown for reviewable submissions */}
+          {isReviewable && (
+            <>
+              <div>
+                <label className="form-label mb-2">Review Decision <span className="text-rose-500">*</span></label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { v: 'approved',            label: 'Approve',           cls: 'border-emerald-200 text-emerald-700', active: 'bg-emerald-500 text-white border-emerald-500' },
+                    { v: 'rejected',            label: 'Reject',            cls: 'border-rose-200 text-rose-700',       active: 'bg-rose-500 text-white border-rose-500' },
+                    { v: 're_upload_requested', label: 'Request Re-upload', cls: 'border-amber-200 text-amber-700',    active: 'bg-amber-500 text-white border-amber-500' },
+                  ].map(opt => (
+                    <button key={opt.v} onClick={() => setAction(opt.v)}
+                      className={`p-3 rounded-xl border text-xs font-bold transition-all ${action === opt.v ? opt.active : `bg-white ${opt.cls} hover:bg-gray-50`}`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(action === 'rejected' || action === 're_upload_requested') && (
+                <div>
+                  <label className="form-label">Reason <span className="text-rose-500">*</span></label>
+                  <textarea className="form-control" rows={3} placeholder="Explain why this document is rejected or needs re-upload…" value={reason} onChange={e => setReason(e.target.value)} />
+                </div>
+              )}
+            </>
           )}
         </div>
 
         <div className="px-5 py-4 border-t border-[#f0f3ff] flex gap-3 flex-shrink-0">
-          <button className="btn btn-outline flex-1" onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn btn-primary flex-1" onClick={handleReview} disabled={saving || !action}>
-            {saving ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Submit Review'}
+          <button className="btn btn-outline flex-1" onClick={onClose} disabled={saving}>
+            {isReviewable ? 'Cancel' : 'Close'}
           </button>
+          {isReviewable && (
+            <button className="btn btn-primary flex-1" onClick={handleReview} disabled={saving || !action}>
+              {saving ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Submit Review'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -936,44 +970,90 @@ function ReviewModal({ submission, onClose, onReviewed }) {
 
 // ── Admin: Verification Queue Tab ────────────────────────────────────────────
 function VerificationQueueTab() {
-  const [reviewSub, setReviewSub] = useState(null);
+  const [reviewSub,    setReviewSub]    = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search,       setSearch]       = useState('');
 
-  const { data: queue = [], isLoading } = useQuery({
+  const { data: allSubs = [], isLoading } = useQuery({
     queryKey: ['verification-queue'],
     queryFn:  () => apiGet('/doc-requirements/verification-queue'),
   });
 
+  const STATUS_TABS = [
+    { key: 'all',                 label: 'All',             count: allSubs.length },
+    { key: 'under_review',        label: 'Pending Review',  count: allSubs.filter(s => s.status === 'under_review').length },
+    { key: 're_upload_requested', label: 'Re-upload Requested', count: allSubs.filter(s => s.status === 're_upload_requested').length },
+    { key: 'approved',            label: 'Approved',        count: allSubs.filter(s => s.status === 'approved').length },
+    { key: 'rejected',            label: 'Rejected',        count: allSubs.filter(s => s.status === 'rejected').length },
+  ];
+
+  const filtered = useMemo(() => {
+    let list = statusFilter === 'all' ? allSubs : allSubs.filter(s => s.status === statusFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(s =>
+        s.employee?.name?.toLowerCase().includes(q) ||
+        s.requirement?.name?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [allSubs, statusFilter, search]);
+
+  const canReview = (sub) => sub.status === 'under_review' || sub.status === 're_upload_requested';
+
   return (
     <div>
-      <div className="mb-5">
-        <p className="text-sm font-black text-[#151c27]">Verification Queue</p>
-        <p className="text-xs text-[#777587]">Review employee document submissions.</p>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <p className="text-sm font-black text-[#151c27]">Verification Queue</p>
+          <p className="text-xs text-[#777587]">View and review all employee document submissions.</p>
+        </div>
+        <div className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+          <input className="form-control pl-8 text-xs w-56" placeholder="Search employee or document…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+      </div>
+
+      {/* Status filter tabs */}
+      <div className="flex items-center gap-1 mb-4 border-b border-[#c7c4d8]">
+        {STATUS_TABS.map(tab => (
+          <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold border-b-2 transition-all -mb-px whitespace-nowrap ${statusFilter === tab.key ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
+            {tab.label}
+            <span className={`px-1.5 py-0.5 rounded-full text-[0.6rem] font-black ${statusFilter === tab.key ? 'bg-[#3525cd] text-white' : 'bg-[#f0f3ff] text-[#464555]'}`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
-        <div className="loading"><div className="spinner" /> Loading queue…</div>
-      ) : queue.length === 0 ? (
+        <div className="loading"><div className="spinner" /> Loading submissions…</div>
+      ) : filtered.length === 0 ? (
         <div className="empty-state">
           <ShieldCheck size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
-          <p>All clear — no pending reviews</p>
-          <p className="text-sm text-[#9ca3af] mt-1">New submissions will appear here for review.</p>
+          <p>{statusFilter === 'all' ? 'No submissions yet' : `No ${STATUS_TABS.find(t => t.key === statusFilter)?.label.toLowerCase()} submissions`}</p>
+          <p className="text-sm text-[#9ca3af] mt-1">Employee document uploads will appear here.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#c7c4d8] overflow-hidden">
           <div className="px-5 py-3.5 border-b border-[#f0f3ff]">
-            <p className="text-sm font-black text-[#151c27]">Pending Review ({queue.length})</p>
+            <p className="text-sm font-black text-[#151c27]">
+              {STATUS_TABS.find(t => t.key === statusFilter)?.label} ({filtered.length})
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
                 <tr>
-                  {['EMPLOYEE', 'DOCUMENT', 'UPLOADED ON', 'STATUS', 'ACTIONS'].map(h => (
-                    <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide">{h}</th>
+                  {['EMPLOYEE', 'DOCUMENT', 'UPLOADED ON', 'STATUS', 'REVIEWED BY', 'ACTIONS'].map(h => (
+                    <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f0f3ff]">
-                {queue.map(sub => (
+                {filtered.map(sub => (
                   <tr key={sub.id} className="hover:bg-[#fafaff] transition-colors">
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
@@ -986,13 +1066,24 @@ function VerificationQueueTab() {
                     </td>
                     <td className="px-4 py-3.5">
                       <p className="font-bold text-[#151c27]">{sub.requirement?.name}</p>
-                      <p className="text-[0.65rem] text-[#9ca3af]">{sub.requirement?.description || '—'}</p>
+                      {sub.rejection_reason && (
+                        <p className="text-[0.65rem] text-rose-500 mt-0.5 max-w-[180px] truncate">Reason: {sub.rejection_reason}</p>
+                      )}
                     </td>
-                    <td className="px-4 py-3.5 text-[#777587]">{fmtDateTime(sub.uploaded_at)}</td>
+                    <td className="px-4 py-3.5 text-[#777587] whitespace-nowrap">{fmtDateTime(sub.uploaded_at)}</td>
                     <td className="px-4 py-3.5"><StatusBadge status={sub.status} /></td>
+                    <td className="px-4 py-3.5 text-[#777587]">
+                      {sub.reviewer?.name
+                        ? <div>
+                            <p className="font-semibold text-[#151c27]">{sub.reviewer.name}</p>
+                            {sub.reviewed_at && <p className="text-[0.6rem] text-[#9ca3af]">{fmtDate(sub.reviewed_at?.slice(0, 10))}</p>}
+                          </div>
+                        : <span>—</span>}
+                    </td>
                     <td className="px-4 py-3.5">
-                      <button onClick={() => setReviewSub(sub)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-[#3525cd] hover:bg-[#2a1fb0] transition-colors">
-                        <Eye size={12} /> Review
+                      <button onClick={() => setReviewSub(sub)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${canReview(sub) ? 'text-white bg-[#3525cd] hover:bg-[#2a1fb0]' : 'text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe]'}`}>
+                        <Eye size={12} /> {canReview(sub) ? 'Review' : 'View'}
                       </button>
                     </td>
                   </tr>
