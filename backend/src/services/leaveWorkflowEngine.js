@@ -2,6 +2,8 @@
  * leaveWorkflowEngine.js
  *
  * Dynamic multi-level leave approval workflow engine.
+ * Uses pool.query (raw SQL) throughout — the pg-adapter's nested select
+ * syntax does NOT support parent-child table joins.
  *
  * Supported approver types:
  *   reporting_manager  — resolved from users.reporting_to
@@ -9,15 +11,11 @@
  *   hr_admin           — any user with role 'admin' or 'root_admin'
  *   root_admin         — any user with role 'root_admin'
  *   specific_user      — fixed user_id stored in level.role_reference
- *
- * Backward compatibility:
- *   Old leaves (workflow_id = NULL) continue to use the legacy pending_dept /
- *   pending_root flow unchanged. This engine is only invoked for NEW leaves.
  */
 
-const { supabase, pool } = require('../config/db');
+const { pool } = require('../config/db');
 
-// ── Default workflow inserted for every new organization ──────────────────────
+// ── Default workflow created for every new organisation ───────────────────────
 const DEFAULT_WORKFLOW_LEVELS = [
   { level_number: 1, role_type: 'reporting_manager', level_label: 'Reporting Manager', is_required: false },
   { level_number: 2, role_type: 'hr_admin',          level_label: 'HR Admin',          is_required: true  },
@@ -25,89 +23,95 @@ const DEFAULT_WORKFLOW_LEVELS = [
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getOrgWorkflow
-// Returns the active workflow with sorted levels.
+// Returns active workflow with sorted levels.
 // If none exists, auto-creates the default 2-level workflow.
 // ─────────────────────────────────────────────────────────────────────────────
 async function getOrgWorkflow(oId) {
-  const { data } = await supabase
-    .from('leave_workflows')
-    .select(`
-      id, workflow_name, organization_id,
-      leave_workflow_levels(id, level_number, role_type, role_reference, level_label, is_required)
-    `)
-    .eq('organization_id', oId)
-    .eq('active', true)
-    .maybeSingle();
+  // 1. Find active workflow for org
+  const wfRes = await pool.query(
+    `SELECT id, workflow_name, organization_id
+     FROM leave_workflows
+     WHERE organization_id = $1 AND active = TRUE
+     LIMIT 1`,
+    [oId]
+  );
 
-  if (data) {
-    return {
-      id:            data.id,
-      workflow_name: data.workflow_name,
-      organization_id: data.organization_id,
-      levels: (data.leave_workflow_levels || []).sort((a, b) => a.level_number - b.level_number),
-    };
+  let workflow = wfRes.rows[0] || null;
+
+  if (!workflow) {
+    // Auto-create default workflow
+    const ins = await pool.query(
+      `INSERT INTO leave_workflows (organization_id, workflow_name, active)
+       VALUES ($1, $2, TRUE)
+       RETURNING id, workflow_name, organization_id`,
+      [oId, 'Default Approval Workflow']
+    );
+    workflow = ins.rows[0];
+
+    // Insert default levels
+    for (const l of DEFAULT_WORKFLOW_LEVELS) {
+      await pool.query(
+        `INSERT INTO leave_workflow_levels
+           (workflow_id, level_number, role_type, level_label, is_required)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [workflow.id, l.level_number, l.role_type, l.level_label, l.is_required]
+      );
+    }
   }
 
-  // ── Auto-create default workflow ──────────────────────────────────────────
-  const { data: wf, error: wfErr } = await supabase
-    .from('leave_workflows')
-    .insert({ organization_id: oId, workflow_name: 'Default Approval Workflow', active: true })
-    .select()
-    .single();
-  if (wfErr) throw new Error('Failed to create default workflow: ' + wfErr.message);
-
-  const { data: levels, error: lvlErr } = await supabase
-    .from('leave_workflow_levels')
-    .insert(DEFAULT_WORKFLOW_LEVELS.map(l => ({ ...l, workflow_id: wf.id })))
-    .select();
-  if (lvlErr) throw new Error('Failed to create default workflow levels: ' + lvlErr.message);
+  // 2. Fetch levels for this workflow
+  const lvlRes = await pool.query(
+    `SELECT id, level_number, role_type, role_reference, level_label, is_required
+     FROM leave_workflow_levels
+     WHERE workflow_id = $1
+     ORDER BY level_number ASC`,
+    [workflow.id]
+  );
 
   return {
-    id:            wf.id,
-    workflow_name: wf.workflow_name,
+    id:             workflow.id,
+    workflow_name:  workflow.workflow_name,
     organization_id: oId,
-    levels: (levels || []).sort((a, b) => a.level_number - b.level_number),
+    levels: lvlRes.rows,
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolveApprover
-// Given a workflow level and the employee submitting, returns the specific
-// user_id who should approve (or null for role-based approvers).
+// Returns { userId: number|null, label: string }
+// userId = null means "any user with the required role" (hr_admin, root_admin)
 // ─────────────────────────────────────────────────────────────────────────────
 async function resolveApprover(level, employeeId, oId) {
   const label = level.level_label || level.role_type.replace(/_/g, ' ');
 
   switch (level.role_type) {
     case 'reporting_manager': {
-      const { data: emp } = await supabase.from('users')
-        .select('reporting_to')
-        .eq('id', employeeId)
-        .eq('organization_id', oId)
-        .maybeSingle();
-      const uid = emp?.reporting_to;
+      const r = await pool.query(
+        `SELECT reporting_to FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+        [employeeId, oId]
+      );
+      const uid = r.rows[0]?.reporting_to;
       if (!uid || uid === employeeId) return { userId: null, label };
       return { userId: uid, label };
     }
 
     case 'department_head': {
-      const { data: emp } = await supabase.from('users')
-        .select('department_id')
-        .eq('id', employeeId)
-        .eq('organization_id', oId)
-        .maybeSingle();
-      if (!emp?.department_id) return { userId: null, label };
-      const { data: dept } = await supabase.from('departments')
-        .select('head_user_id')
-        .eq('id', emp.department_id)
-        .eq('organization_id', oId)
-        .maybeSingle();
-      const uid = dept?.head_user_id;
+      const empR = await pool.query(
+        `SELECT department_id FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+        [employeeId, oId]
+      );
+      const deptId = empR.rows[0]?.department_id;
+      if (!deptId) return { userId: null, label };
+      const deptR = await pool.query(
+        `SELECT head_user_id FROM departments WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+        [deptId, oId]
+      );
+      const uid = deptR.rows[0]?.head_user_id;
       if (!uid || uid === employeeId) return { userId: null, label };
       return { userId: uid, label };
     }
 
-    // Role-based: any user with that role can approve; no specific user stored
+    // Role-based: any user with that role can approve — no specific userId stored
     case 'hr_admin':
     case 'root_admin':
       return { userId: null, label };
@@ -123,8 +127,7 @@ async function resolveApprover(level, employeeId, oId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// canUserApproveLevel
-// Pure function — given a level config and user info, returns true/false.
+// canUserApproveLevel — pure function, no DB calls
 // ─────────────────────────────────────────────────────────────────────────────
 function canUserApproveLevel(level, userId, userRole, currentApproverId) {
   switch (level.role_type) {
@@ -160,16 +163,14 @@ async function checkCanApprove(leave, userId, userRole) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // initWorkflow
-// Called when an employee submits a leave.
-// Walks levels in order, finds the first that has a resolvable approver
-// (or is required), and returns the initial state to store on the leave.
+// Called when employee submits a leave.
+// Returns { status, workflow_id, current_level, current_approver_id }
 // ─────────────────────────────────────────────────────────────────────────────
 async function initWorkflow(employeeId, oId) {
   const workflow = await getOrgWorkflow(oId);
   const levels = workflow.levels;
 
   if (!levels.length) {
-    // No levels configured → immediate approval (admin bypass)
     return { status: 'pending_approval', workflow_id: workflow.id, current_level: null, current_approver_id: null };
   }
 
@@ -188,22 +189,21 @@ async function initWorkflow(employeeId, oId) {
     };
   }
 
-  // All levels were skippable — use first required level or first level
+  // All levels were skippable — use first required or first level
   const fallback = levels.find(l => l.is_required) || levels[0];
-  const { userId: fbUid } = await resolveApprover(fallback, employeeId, oId);
+  const { userId } = await resolveApprover(fallback, employeeId, oId);
   return {
     status:              'pending_approval',
     workflow_id:         workflow.id,
     current_level:       fallback.level_number,
-    current_approver_id: fbUid,
+    current_approver_id: userId,
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // findNextLevel
-// Returns { level, approverId } for the next approver, or null (final approved).
-// Skips optional levels with no resolvable approver.
-// Does NOT perform any DB writes.
+// Returns { level, approverId } for the next approver after `afterLevelNum`,
+// skipping optional levels with no approver. Returns null if no more levels.
 // ─────────────────────────────────────────────────────────────────────────────
 async function findNextLevel(workflow, afterLevelNum, employeeId, oId) {
   const remaining = workflow.levels
@@ -214,10 +214,7 @@ async function findNextLevel(workflow, afterLevelNum, employeeId, oId) {
     const { userId } = await resolveApprover(level, employeeId, oId);
     const isResolvable = userId !== null || ['hr_admin', 'root_admin'].includes(level.role_type);
 
-    if (!isResolvable && !level.is_required) {
-      // Caller (route) should log the skip
-      continue;
-    }
+    if (!isResolvable && !level.is_required) continue; // skip optional with no approver
 
     return { level, approverId: userId };
   }
@@ -227,17 +224,15 @@ async function findNextLevel(workflow, afterLevelNum, employeeId, oId) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getMyPendingLeaves
-// Returns leaves that are currently pending THIS user's action.
-// Used by /my-approvals endpoint.
+// Returns leaves pending THIS user's action in the new workflow.
 // ─────────────────────────────────────────────────────────────────────────────
 async function getMyPendingLeaves(userId, userRole, oId) {
-  // We need to join leaves → workflow_levels to check role_type
   const { rows } = await pool.query(
     `SELECT
        l.*,
        u.name, u.email, u.department, u.avatar_color, u.position,
-       wl.role_type      AS current_level_role_type,
-       wl.level_label    AS current_level_label
+       wl.role_type   AS current_level_role_type,
+       wl.level_label AS current_level_label
      FROM leaves l
      JOIN users u ON u.id = l.user_id
      LEFT JOIN leave_workflow_levels wl
@@ -247,14 +242,11 @@ async function getMyPendingLeaves(userId, userRole, oId) {
        AND l.workflow_id IS NOT NULL
        AND l.deleted_at IS NULL
        AND (
-         -- Specific approver (reporting_manager / department_head / specific_user)
          (wl.role_type IN ('reporting_manager','department_head','specific_user')
           AND l.current_approver_id = $2)
          OR
-         -- HR Admin: any admin or root_admin can action
          (wl.role_type = 'hr_admin' AND $3 = ANY(ARRAY['admin','root_admin']))
          OR
-         -- Root Admin: only root_admin
          (wl.role_type = 'root_admin' AND $3 = 'root_admin')
        )
      ORDER BY l.created_at ASC`,
@@ -266,49 +258,39 @@ async function getMyPendingLeaves(userId, userRole, oId) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // updateWorkflow
-// Replace all levels for an org's active workflow.
-// levels = [{ level_number, role_type, role_reference?, level_label?, is_required? }]
+// Replace all levels for the org's active workflow.
 // ─────────────────────────────────────────────────────────────────────────────
 async function updateWorkflow(oId, workflowName, newLevels) {
-  let workflow = await getOrgWorkflow(oId);
+  const workflow = await getOrgWorkflow(oId);
 
   // Update name + timestamp
-  const { error: wfErr } = await supabase
-    .from('leave_workflows')
-    .update({ workflow_name: workflowName || workflow.workflow_name, updated_at: new Date().toISOString() })
-    .eq('id', workflow.id);
-  if (wfErr) throw new Error('Failed to update workflow: ' + wfErr.message);
+  await pool.query(
+    `UPDATE leave_workflows SET workflow_name = $1, updated_at = NOW() WHERE id = $2`,
+    [workflowName || workflow.workflow_name, workflow.id]
+  );
 
   // Delete existing levels
-  const { error: delErr } = await supabase
-    .from('leave_workflow_levels')
-    .delete()
-    .eq('workflow_id', workflow.id);
-  if (delErr) throw new Error('Failed to delete old levels: ' + delErr.message);
-
-  if (!newLevels.length) {
-    return { ...workflow, workflow_name: workflowName || workflow.workflow_name, levels: [] };
-  }
+  await pool.query(`DELETE FROM leave_workflow_levels WHERE workflow_id = $1`, [workflow.id]);
 
   // Insert new levels
-  const { data: inserted, error: insErr } = await supabase
-    .from('leave_workflow_levels')
-    .insert(newLevels.map((l, i) => ({
-      workflow_id:    workflow.id,
-      level_number:   l.level_number ?? (i + 1),
-      role_type:      l.role_type,
-      role_reference: l.role_reference || null,
-      level_label:    l.level_label    || null,
-      is_required:    l.is_required    !== false,
-    })))
-    .select();
-  if (insErr) throw new Error('Failed to insert new levels: ' + insErr.message);
+  for (const l of newLevels) {
+    await pool.query(
+      `INSERT INTO leave_workflow_levels
+         (workflow_id, level_number, role_type, role_reference, level_label, is_required)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        workflow.id,
+        l.level_number,
+        l.role_type,
+        l.role_reference || null,
+        l.level_label    || null,
+        l.is_required    !== false,
+      ]
+    );
+  }
 
-  return {
-    ...workflow,
-    workflow_name: workflowName || workflow.workflow_name,
-    levels: (inserted || []).sort((a, b) => a.level_number - b.level_number),
-  };
+  // Return updated workflow
+  return getOrgWorkflow(oId);
 }
 
 module.exports = {
