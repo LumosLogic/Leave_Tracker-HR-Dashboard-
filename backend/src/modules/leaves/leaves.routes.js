@@ -84,7 +84,13 @@ router.get('/workflow-config', auth, async (req, res) => {
   try {
     const workflow = await engine.getOrgWorkflow(orgId(req));
     res.json(workflow);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    // Migration not yet applied — return empty workflow so frontend doesn't crash
+    if (err.message && (err.message.includes('does not exist') || err.message.includes('relation'))) {
+      return res.json({ id: null, workflow_name: 'Default Approval Workflow', levels: [], _migration_pending: true });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── ROUTE: PUT /workflow-config ──────────────────────────────────────────────
@@ -116,7 +122,13 @@ router.get('/my-approvals', auth, async (req, res) => {
   try {
     const leaves = await engine.getMyPendingLeaves(req.user.id, req.user.role, orgId(req));
     res.json(leaves);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    // Migration not yet applied — return empty list gracefully
+    if (err.message && (err.message.includes('does not exist') || err.message.includes('relation'))) {
+      return res.json([]);
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── ROUTE: GET /date-check ───────────────────────────────────────────────────
