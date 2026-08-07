@@ -120,7 +120,7 @@ export default function Leaves() {
     return src;
   })();
 
-  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root'];
+  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root', 'pending_approval'];
   const pendingCount    = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
   const wfhPendingCount = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
 
@@ -335,12 +335,14 @@ function TabBtn({ active, onClick, children }) {
 
 // ── Leave Card ────────────────────────────────────────────────────────────────
 const STATUS_CARD = {
-  pending:      { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
-  pending_dept: { border: 'border-l-4 border-l-blue-400',    bg: 'bg-blue-50/30' },
-  pending_root: { border: 'border-l-4 border-l-violet-400',  bg: 'bg-violet-50/30' },
-  approved:     { border: 'border-l-4 border-l-emerald-400', bg: '' },
-  rejected:     { border: 'border-l-4 border-l-rose-400',    bg: '' },
-  cancelled:    { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
+  pending:          { border: 'border-l-4 border-l-amber-400',   bg: 'bg-amber-50/40' },
+  pending_dept:     { border: 'border-l-4 border-l-blue-400',    bg: 'bg-blue-50/30' },
+  pending_root:     { border: 'border-l-4 border-l-violet-400',  bg: 'bg-violet-50/30' },
+  pending_approval: { border: 'border-l-4 border-l-blue-500',    bg: 'bg-blue-50/30' },
+  approved:         { border: 'border-l-4 border-l-emerald-400', bg: '' },
+  rejected:         { border: 'border-l-4 border-l-rose-400',    bg: '' },
+  cancelled:        { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
+  withdrawn:        { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
 };
 
 function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
@@ -383,13 +385,20 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
               <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
             </>
           )}
-          {/* New-flow: waiting for dept head — show info, no action for admins */}
+          {/* New workflow: pending_approval — admin can approve/reject at current level */}
+          {isAdmin && l.status === 'pending_approval' && (
+            <>
+              <button className="btn btn-success btn-sm text-xs" onClick={() => onApprove(l.id)}><CheckCircle size={12} /> Approve</button>
+              <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
+            </>
+          )}
+          {/* Legacy-flow: waiting for dept head — show info, no action for admins */}
           {isAdmin && l.status === 'pending_dept' && (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
               Awaiting Dept Head Forwarding
             </span>
           )}
-          {/* New-flow: Root Admin final decision */}
+          {/* Legacy-flow: Root Admin final decision */}
           {isAdmin && l.status === 'pending_root' && isRootAdmin && (
             <>
               <button className="btn btn-success btn-sm text-xs" onClick={() => onApprove(l.id)}><CheckCircle size={12} /> Approve</button>
@@ -406,7 +415,7 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
               <RotateCcw size={12} /> Revert Leave
             </button>
           )}
-          {l.status === 'pending' && l.user_id === user?.id && (
+          {['pending', 'pending_approval'].includes(l.status) && l.user_id === user?.id && (
             <button className="btn btn-outline btn-sm text-xs" onClick={() => onCancel(l.id)}><X size={12} /> Cancel</button>
           )}
         </div>
@@ -721,7 +730,7 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
       empLeaves = empLeaves.filter(l => l.start_date <= e && l.end_date >= s);
     }
     const approved = empLeaves.filter(l => l.status === 'approved' && l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
-    const pending  = empLeaves.filter(l => l.status === 'pending'  && l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
+    const pending  = empLeaves.filter(l => ['pending','pending_approval'].includes(l.status) && l.leave_time !== 'wfh' && l.leave_type !== 'wfh');
     const wfhRecs  = empLeaves.filter(l => l.status === 'approved' && (l.leave_time === 'wfh' || l.leave_type === 'wfh'));
     const byType = {};
     activePolicies.forEach(p => {

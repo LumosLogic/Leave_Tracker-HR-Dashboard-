@@ -2,12 +2,14 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 const STATUS_CLASS = {
-  pending:      'badge-pending',
-  pending_dept: 'badge-pending',
-  pending_root: 'badge-pending',
-  approved:     'badge-approved',
-  rejected:     'badge-rejected',
-  cancelled:    'badge-cancelled',
+  pending:          'badge-pending',
+  pending_dept:     'badge-pending',
+  pending_root:     'badge-pending',
+  pending_approval: 'badge-pending',
+  approved:         'badge-approved',
+  rejected:         'badge-rejected',
+  cancelled:        'badge-cancelled',
+  withdrawn:        'badge-cancelled',
   present:      'badge-present',
   absent:       'badge-absent',
   on_leave:     'badge-on_leave',
@@ -18,12 +20,14 @@ const STATUS_CLASS = {
 };
 
 const STATUS_LABEL = {
-  pending:      'Pending',
-  pending_dept: 'Dept Review',
-  pending_root: 'Root Review',
-  approved:     'Approved',
-  rejected:     'Rejected',
-  cancelled:    'Cancelled',
+  pending:          'Pending',
+  pending_dept:     'Dept Review',
+  pending_root:     'Root Review',
+  pending_approval: 'Pending Approval',
+  approved:         'Approved',
+  rejected:         'Rejected',
+  cancelled:        'Cancelled',
+  withdrawn:        'Withdrawn',
   present:      'Present',
   absent:       'Absent',
   on_leave:     'On Leave',
