@@ -47,24 +47,24 @@ ALTER TABLE leave_approval_log
   ADD COLUMN IF NOT EXISTS level INTEGER;
 
 -- ── 5. Update status constraint to allow new status values ────────────────────
--- pending_approval = new workflow-based pending (replaces pending_dept/pending_root)
--- withdrawn        = employee cancelled before any approval
+-- Drop ALL existing status check constraints on the leaves table, then recreate.
+-- Known names: chk_leaves_status, leaves_status_check — handle both.
 DO $$
 DECLARE
   cname TEXT;
 BEGIN
-  SELECT constraint_name INTO cname
-  FROM information_schema.table_constraints
-  WHERE table_name       = 'leaves'
-    AND constraint_type  = 'CHECK'
-    AND constraint_name  ILIKE '%status%'
-  LIMIT 1;
+  FOR cname IN
+    SELECT constraint_name
+    FROM information_schema.table_constraints
+    WHERE table_name    = 'leaves'
+      AND constraint_type = 'CHECK'
+      AND (constraint_name ILIKE '%status%' OR constraint_name ILIKE '%chk_leaves%')
+  LOOP
+    EXECUTE format('ALTER TABLE leaves DROP CONSTRAINT IF EXISTS %I', cname);
+    RAISE NOTICE 'Dropped constraint: %', cname;
+  END LOOP;
 
-  IF cname IS NOT NULL THEN
-    EXECUTE format('ALTER TABLE leaves DROP CONSTRAINT %I', cname);
-  END IF;
-
-  ALTER TABLE leaves ADD CONSTRAINT leaves_status_check CHECK (
+  ALTER TABLE leaves ADD CONSTRAINT chk_leaves_status CHECK (
     status IN (
       'pending',            -- legacy (old leaves without workflow)
       'pending_dept',       -- legacy dept-head stage
@@ -76,8 +76,9 @@ BEGIN
       'withdrawn'           -- NEW: employee withdrew before approval
     )
   );
+  RAISE NOTICE 'Created new chk_leaves_status constraint with pending_approval + withdrawn';
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'Status constraint update skipped (will handle manually): %', SQLERRM;
+  RAISE NOTICE 'Status constraint update issue: %', SQLERRM;
 END;
 $$;
 

@@ -58,7 +58,8 @@ async function findDeptHead(userId, oId) {
 }
 
 function logApprovalAction({ leaveId, oId, actorId, actorName, action, fromStatus, toStatus, notes, level }) {
-  return supabase.from('leave_approval_log').insert({
+  // 'level' column only exists after the workflow migration — omit it safely when null
+  const row = {
     leave_id:    leaveId,
     org_id:      oId,
     actor_id:    actorId,
@@ -67,8 +68,9 @@ function logApprovalAction({ leaveId, oId, actorId, actorName, action, fromStatu
     from_status: fromStatus || null,
     to_status:   toStatus   || null,
     notes:       notes      || null,
-    level:       level      || null,
-  }).then(() => {});
+  };
+  if (level != null) row.level = level;
+  return supabase.from('leave_approval_log').insert(row).then(() => {});
 }
 
 function notify(userId, title, message, oId) {
@@ -411,11 +413,14 @@ router.get('/team-dashboard', auth, async (req, res) => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending_dept').in('user_id', memberIds).eq('organization_id', oId);
 
-      const newPending = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
-      const deptNewCount = newPending.filter(l =>
-        ['reporting_manager','department_head'].includes(l.current_level_role_type) &&
-        memberIds.includes(l.user_id)
-      ).length;
+      let deptNewCount = 0;
+      try {
+        const newPending = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
+        deptNewCount = newPending.filter(l =>
+          ['reporting_manager','department_head'].includes(l.current_level_role_type) &&
+          memberIds.includes(l.user_id)
+        ).length;
+      } catch (_) { /* workflow tables not yet migrated — skip */ }
 
       pendingCount = (oldCount || 0) + deptNewCount;
     }
@@ -506,10 +511,13 @@ router.get('/pending-department', auth, async (req, res) => {
     }
 
     // New workflow: leaves assigned to this user at dept-level roles
-    const newLeaves = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
-    const newDeptLeaves = newLeaves
-      .filter(l => ['reporting_manager','department_head'].includes(l.current_level_role_type))
-      .map(l => ({ ...l, _flow: 'new' }));
+    let newDeptLeaves = [];
+    try {
+      const newLeaves = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
+      newDeptLeaves = newLeaves
+        .filter(l => ['reporting_manager','department_head'].includes(l.current_level_role_type))
+        .map(l => ({ ...l, _flow: 'new' }));
+    } catch (_) { /* workflow tables not yet migrated — skip */ }
 
     res.json([...legacyLeaves, ...newDeptLeaves]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -532,10 +540,13 @@ router.get('/pending-root', auth, hasPermission('leaves', 'approve'), async (req
     const legacyLeaves = (legacy || []).map(l => ({ ...l, ...l.users, users: undefined, _flow: 'legacy' }));
 
     // New workflow: leaves at admin/root level
-    const newLeaves = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
-    const newAdminLeaves = newLeaves
-      .filter(l => ['hr_admin','root_admin'].includes(l.current_level_role_type))
-      .map(l => ({ ...l, _flow: 'new' }));
+    let newAdminLeaves = [];
+    try {
+      const newLeaves = await engine.getMyPendingLeaves(req.user.id, req.user.role, oId);
+      newAdminLeaves = newLeaves
+        .filter(l => ['hr_admin','root_admin'].includes(l.current_level_role_type))
+        .map(l => ({ ...l, _flow: 'new' }));
+    } catch (_) { /* workflow tables not yet migrated — skip */ }
 
     res.json([...legacyLeaves, ...newAdminLeaves]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -641,21 +652,36 @@ router.post('/', auth, async (req, res) => {
       return res.json(flatOne(data));
     }
 
-    // ── Employee self-submit: use workflow engine ──────────────────────────────
-    const wfInit = await engine.initWorkflow(targetUserId, orgId(req));
+    // ── Employee self-submit: use workflow engine (fallback to legacy if not migrated) ──
+    let wfInit;
+    try {
+      wfInit = await engine.initWorkflow(targetUserId, orgId(req));
+    } catch (_) {
+      // Workflow tables not yet migrated — use legacy 2-step flow
+      const deptHeadId = await findDeptHead(targetUserId, orgId(req));
+      wfInit = {
+        status:              deptHeadId ? 'pending_dept' : 'pending',
+        workflow_id:         null,
+        current_level:       null,
+        current_approver_id: deptHeadId || null,
+      };
+    }
 
     const insertPayload = {
-      user_id:             targetUserId,
+      user_id:         targetUserId,
       start_date, end_date,
-      leave_type:          leave_type || 'casual',
-      reason:              reason || '',
-      leave_time:          leave_time || 'full',
-      half_type:           leave_time === 'half' ? (half_type || 'first_half') : null,
-      organization_id:     orgId(req),
-      status:              wfInit.status,
-      workflow_id:         wfInit.workflow_id,
-      current_level:       wfInit.current_level,
-      current_approver_id: wfInit.current_approver_id,
+      leave_type:      leave_type || 'casual',
+      reason:          reason || '',
+      leave_time:      leave_time || 'full',
+      half_type:       leave_time === 'half' ? (half_type || 'first_half') : null,
+      organization_id: orgId(req),
+      status:          wfInit.status,
+      // Only set workflow columns when migration has run (workflow_id present)
+      ...(wfInit.workflow_id != null && {
+        workflow_id:         wfInit.workflow_id,
+        current_level:       wfInit.current_level,
+        current_approver_id: wfInit.current_approver_id,
+      }),
     };
 
     const { data, error } = await supabase.from('leaves')
@@ -677,7 +703,7 @@ router.post('/', auth, async (req, res) => {
 
     // Notify the first approver
     if (wfInit.current_approver_id) {
-      // Specific user approver
+      // Specific user approver (reporting manager / dept head / specific user)
       const { data: approverUser } = await supabase.from('users')
         .select('name, email').eq('id', wfInit.current_approver_id).maybeSingle();
 
@@ -694,8 +720,9 @@ router.post('/', auth, async (req, res) => {
           html: leaveDeptApprovalHtml({ name: empName, email: empEmail, department: emp.department }, data, approverUser.name),
         });
       }
-    } else if (wfInit.current_level !== null) {
-      // Role-based approver (hr_admin / root_admin) — notify all admins
+    } else {
+      // Role-based approver (hr_admin / root_admin) OR legacy flow with no dept head
+      // → notify all org recipients
       const recipients = await getRecipients(orgId(req));
       if (recipients.length > 0) {
         sendMail({
