@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays, Bell, BellOff, Wrench } from 'lucide-react';
+import { Clock, Zap, Info, Palette, User, Timer, Check, RefreshCw, Mail, Plus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase, CalendarDays, Bell, BellOff, Wrench, Settings2, ChevronRight } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -460,6 +461,53 @@ function RootAdminsCard() {
   );
 }
 
+// ── Workflow Settings Link Card ───────────────────────────────────────────────
+function WorkflowSettingsCard() {
+  const navigate  = useNavigate();
+  const { pathname } = useLocation();
+  const { data: workflow } = useQuery({
+    queryKey: ['leave-workflow-config-summary'],
+    queryFn:  () => apiGet('/leaves/workflow-config'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const targetPath = pathname.startsWith('/root') ? '/root/leave-workflow' : '/leave-workflow';
+  const levelCount = workflow?.levels?.length || 0;
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Settings2 size={18} className="text-[#3525cd]" />
+        <span className="font-bold text-[#151c27]">Leave Approval Workflow</span>
+      </div>
+      <p className="text-sm text-[#777587] mb-4">
+        Configure the multi-level approval chain for leave requests. Currently{' '}
+        <strong className="text-[#151c27]">{levelCount} approval level{levelCount !== 1 ? 's' : ''}</strong> configured.
+      </p>
+      {workflow?.levels?.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[#3525cd]/10 text-[#3525cd] border border-[#3525cd]/20">Employee</span>
+          {workflow.levels.map((l, i) => (
+            <React.Fragment key={i}>
+              <ChevronRight size={12} className="text-[#c7c4d8]" />
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                {l.level_label || l.role_type.replace(/_/g, ' ')}
+              </span>
+            </React.Fragment>
+          ))}
+          <ChevronRight size={12} className="text-[#c7c4d8]" />
+          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">✓ Approved</span>
+        </div>
+      )}
+      <button
+        onClick={() => navigate(targetPath)}
+        className="flex items-center gap-2 px-4 py-2 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] transition-colors"
+      >
+        <Settings2 size={14} /> Configure Workflow
+      </button>
+    </div>
+  );
+}
+
 // ── Settings Page ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user, isAdmin, isRootAdmin } = useAuth();
@@ -487,6 +535,7 @@ export default function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <WorkScheduleCard schedule={schedule} isAdmin={isAdmin} onSaved={refetch} />
         <PushNotificationsCard userId={user?.id} />
+        {isAdmin && <WorkflowSettingsCard />}
         <StatusLegendCard />
         <MyProfileCard user={user} />
         {isAdmin && <AttendanceCleanupCard />}

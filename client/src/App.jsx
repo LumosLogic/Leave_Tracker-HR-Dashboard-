@@ -62,6 +62,7 @@ import BiometricSettings     from '@/pages/BiometricSettings';
 import PendingApprovals      from '@/pages/PendingApprovals';
 import RoleManagement        from '@/pages/RoleManagement';
 import PermissionMatrix      from '@/pages/PermissionMatrix';
+import LeaveWorkflowSettings from '@/pages/LeaveWorkflowSettings';
 
 // ── Employee portal pages ──
 import EmployeeHome            from '@/pages/EmployeeHome';
@@ -215,6 +216,7 @@ function AppRoutes() {
         <Route path="/departments"      element={<Departments />} />
         <Route path="/holidays"         element={<HolidaysPage />} />
         <Route path="/leave-policies"   element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
+        <Route path="/leave-workflow"   element={<LeaveWorkflowSettings />} />
         <Route path="/regularization"   element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/reports"          element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/documents"        element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
@@ -256,6 +258,7 @@ function AppRoutes() {
         <Route path="/root/departments"     element={<Departments />} />
         <Route path="/root/holidays"        element={<HolidaysPage />} />
         <Route path="/root/leave-policies"  element={<FeatureRoute featureKey="leave_policies"><LeavePolicies /></FeatureRoute>} />
+        <Route path="/root/leave-workflow"  element={<LeaveWorkflowSettings />} />
         <Route path="/root/regularization"  element={<FeatureRoute featureKey="regularization"><Regularization /></FeatureRoute>} />
         <Route path="/root/reports"         element={<FeatureRoute featureKey="reports"><Reports /></FeatureRoute>} />
         <Route path="/root/documents"       element={<FeatureRoute featureKey="documents"><Documents /></FeatureRoute>} />
