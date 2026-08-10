@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Upload, FolderOpen, Trash2, Download, AlertCircle, FileText,
   Image, Archive, X, ExternalLink, Eye, Users, Info, CheckCircle2,
@@ -99,6 +99,150 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── Searchable Employee Picker ────────────────────────────────────────────────
+function SearchableEmployeePicker({ employees = [], value, onChange, placeholder = '— Search employee —' }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef();
+
+  const selected = employees.find(e => String(e.id) === String(value));
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return employees;
+    const q = search.toLowerCase();
+    return employees.filter(e =>
+      e.name?.toLowerCase().includes(q) ||
+      e.email?.toLowerCase().includes(q)
+    );
+  }, [employees, search]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        className="form-control text-xs cursor-pointer flex items-center justify-between min-h-[38px]"
+        onClick={() => setOpen(o => !o)}
+      >
+        {selected ? (
+          <div className="flex items-center gap-2">
+            <Avatar name={selected.name} color={selected.avatar_color} size={18} />
+            <span className="text-[#151c27] font-semibold">{selected.name}</span>
+          </div>
+        ) : (
+          <span className="text-[#9ca3af]">{placeholder}</span>
+        )}
+        <ChevronDown size={12} className="text-[#9ca3af] flex-shrink-0 ml-2" />
+      </div>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#c7c4d8] rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-[#f0f3ff]">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+              <input
+                type="text"
+                className="w-full pl-7 pr-3 py-1.5 text-xs border border-[#e7eefe] rounded-lg focus:outline-none focus:border-[#3525cd]"
+                placeholder="Search by name or email…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-center text-[#9ca3af]">No employees found</div>
+            ) : filtered.map(e => (
+              <div
+                key={e.id}
+                className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${String(e.id) === String(value) ? 'bg-[#f0f3ff]' : 'hover:bg-[#fafaff]'}`}
+                onClick={() => { onChange(String(e.id)); setOpen(false); setSearch(''); }}
+              >
+                <Avatar name={e.name} color={e.avatar_color} size={22} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-[#151c27] truncate">{e.name}</p>
+                  {e.email && <p className="text-[0.6rem] text-[#9ca3af] truncate">{e.email}</p>}
+                </div>
+                {String(e.id) === String(value) && <CheckCircle2 size={12} className="text-[#3525cd] flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+          {value && (
+            <div className="border-t border-[#f0f3ff] p-2">
+              <button
+                className="w-full text-xs text-rose-500 hover:text-rose-700 py-1 transition-colors"
+                onClick={() => { onChange(''); setOpen(false); setSearch(''); }}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Delete With Reason Modal (Root Admin only) ────────────────────────────────
+function DeleteWithReasonModal({ open, docName, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+
+  useEffect(() => { if (!open) setReason(''); }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-sm p-6">
+        <button onClick={onCancel} className="absolute top-4 right-4 text-[#777587] hover:text-[#151c27] p-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+          <X size={18} />
+        </button>
+
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-rose-100 text-rose-600">
+          <Trash2 size={22} />
+        </div>
+
+        <h3 className="text-base font-black text-[#151c27] text-center mb-1">Delete Document</h3>
+        <p className="text-xs text-[#777587] text-center mb-4">
+          Permanently delete <strong>"{docName}"</strong>?<br />This action cannot be undone.
+        </p>
+
+        <div className="mb-4">
+          <label className="form-label">Reason for Deletion <span className="text-rose-500">*</span></label>
+          <textarea
+            className="form-control"
+            rows={3}
+            placeholder="Enter reason for deleting this document…"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+          />
+          {!reason.trim() && <p className="text-[0.65rem] text-rose-500 mt-1">Reason is required before deleting.</p>}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 btn btn-outline">Cancel</button>
+          <button
+            onClick={() => { if (reason.trim()) onConfirm(reason.trim()); }}
+            disabled={!reason.trim()}
+            className="flex-1 btn btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Preview Modal ────────────────────────────────────────────────────────────
 function PreviewModal({ doc, onClose }) {
   if (!doc) return null;
@@ -136,16 +280,19 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
   const { user }    = useAuth();
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
+  const [previewFile, setPreviewFile] = useState(null);
   const [form, setForm] = useState(INIT_FORM);
   const [shareSearch, setShareSearch] = useState('');
   const fileRef = useRef();
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const today = new Date().toISOString().split('T')[0];
+
   const adminVisOpts = [
-    { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: 'Visible to every employee' },
-    { value: 'self',       Icon: User,   label: 'Particular Employee', desc: 'Only the selected employee' },
-    { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: 'Select specific employees' },
-    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: 'Not visible to employees' },
+    { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: '🌍 Everyone in the organization can access this document' },
+    { value: 'self',       Icon: User,   label: 'Particular Employee', desc: '👤 Visible only to the selected employee' },
+    { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: '👥 Visible only to the selected group of employees' },
+    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: '🔒 Accessible only by HR/Admin users for internal use' },
   ];
 
   const sharingPool = allEmployees.filter(e => String(e.id) !== form.targetUserId);
@@ -162,6 +309,7 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
     if (!form.category) { toast('Select a category', 'error'); return; }
     if (form.visibility === 'self' && !form.targetUserId) { toast('Select the target employee', 'error'); return; }
     if (form.visibility === 'specific' && form.shareWith.length === 0) { toast('Select at least one employee', 'error'); return; }
+    if (form.expiry_date && form.expiry_date < today) { toast('Expiry date cannot be in the past', 'error'); return; }
     setUploading(true);
     try {
       const token = localStorage.getItem('lt_token');
@@ -175,7 +323,7 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
       if (form.visibility === 'specific' && form.shareWith.length > 0)
         fd.append('shared_with', JSON.stringify(form.shareWith));
       const res = await fetch('/api/documents/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Unexpected server error. Please try again.' }));
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       toast('Document uploaded!', 'success');
       onUploaded();
@@ -205,6 +353,16 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
               <p className="font-bold text-[#151c27] text-sm truncate">{pendingFile.name}</p>
               <p className="text-xs text-[#777587]">{fmtBytes(pendingFile.size)}</p>
             </div>
+            {canPreview(pendingFile.type) && (
+              <button
+                type="button"
+                onClick={() => setPreviewFile({ file_url: URL.createObjectURL(pendingFile), file_type: pendingFile.type, name: pendingFile.name, file_size: pendingFile.size })}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors"
+                title="Preview selected file"
+              >
+                <Eye size={12} /> Preview
+              </button>
+            )}
             <button className="p-1.5 rounded-lg text-[#777587] hover:text-rose-500 hover:bg-rose-50 transition-colors" onClick={() => setPendingFile(null)}><X size={16} /></button>
           </div>
 
@@ -215,7 +373,8 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
             </div>
             <div>
               <label className="form-label">Expiry Date <span className="font-normal text-[#777587]">(optional)</span></label>
-              <input type="date" className="form-control" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} />
+              <input type="date" className="form-control" value={form.expiry_date} min={today} onChange={e => set('expiry_date', e.target.value)} />
+              {form.expiry_date && form.expiry_date < today && <p className="text-[0.65rem] text-rose-500 mt-1">Expiry date cannot be in the past.</p>}
             </div>
           </div>
 
@@ -245,10 +404,12 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
                   </label>
                   {opt.value === 'self' && form.visibility === 'self' && (
                     <div className="ml-10 mt-2">
-                      <select className="form-control text-xs" value={form.targetUserId} onChange={e => set('targetUserId', e.target.value)}>
-                        <option value="">— Select employee —</option>
-                        {allEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                      </select>
+                      <SearchableEmployeePicker
+                        employees={allEmployees}
+                        value={form.targetUserId}
+                        onChange={id => set('targetUserId', id)}
+                        placeholder="— Search and select employee —"
+                      />
                     </div>
                   )}
                   {opt.value === 'specific' && form.visibility === 'specific' && (
@@ -279,13 +440,19 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
           </div>
         </>
       )}
+      {previewFile && (
+        <PreviewModal doc={previewFile} onClose={() => {
+          URL.revokeObjectURL(previewFile.file_url);
+          setPreviewFile(null);
+        }} />
+      )}
     </div>
   );
 }
 
 // ── Admin: Shared Documents Tab ───────────────────────────────────────────────
 function SharedDocumentsTab({ onUploadClick }) {
-  const { user } = useAuth();
+  const { user, isRootAdmin } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -316,7 +483,7 @@ function SharedDocumentsTab({ onUploadClick }) {
   });
 
   const delMut = useMutation({
-    mutationFn: id => apiDelete(`/documents/${id}`),
+    mutationFn: ({ id, reason }) => apiDelete(`/documents/${id}`, { reason }),
     onSuccess:  () => { toast('Document deleted.', 'success'); qc.invalidateQueries({ queryKey: ['documents'] }); setConfirmDel(null); },
     onError:    e  => toast(e.message, 'error'),
   });
@@ -358,6 +525,12 @@ function SharedDocumentsTab({ onUploadClick }) {
       return count > 0 ? `${count} Employee${count !== 1 ? 's' : ''}` : 'None';
     }
     return '—';
+  }
+
+  function getUploadedBy(doc) {
+    if (doc.uploader?.name) return doc.uploader;
+    if (doc.owner?.name && doc.uploaded_by === doc.user_id) return doc.owner;
+    return null;
   }
 
   return (
@@ -447,14 +620,12 @@ function SharedDocumentsTab({ onUploadClick }) {
                       </td>
                       <td className="px-4 py-3.5 text-[#464555] font-medium">{getSharedWith(doc)}</td>
                       <td className="px-4 py-3.5">
-                        {doc.owner?.name && (
+                        {(() => { const uploader = getUploadedBy(doc); return uploader ? (
                           <div className="flex items-center gap-2">
-                            <Avatar name={doc.owner.name} color={doc.owner.avatar_color} size={24} />
-                            <div>
-                              <p className="font-semibold text-[#151c27] truncate max-w-[100px]">{doc.owner.name}</p>
-                            </div>
+                            <Avatar name={uploader.name} color={uploader.avatar_color} size={24} />
+                            <p className="font-semibold text-[#151c27] truncate max-w-[100px]">{uploader.name}</p>
                           </div>
-                        )}
+                        ) : <span className="text-[#9ca3af]">—</span>; })()}
                       </td>
                       <td className="px-4 py-3.5 text-[#777587] whitespace-nowrap">{fmtDateTime(doc.created_at)}</td>
                       <td className="px-4 py-3.5">
@@ -474,7 +645,9 @@ function SharedDocumentsTab({ onUploadClick }) {
                             <a href={doc.file_url} target="_blank" rel="noopener noreferrer" title="Open" className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><ExternalLink size={13} /></a>
                           )}
                           <button title="Edit" onClick={() => setEditDoc(doc)} className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><Edit2 size={13} /></button>
-                          <button title="Delete" onClick={() => setConfirmDel({ id: doc.id, name: doc.name })} className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"><Trash2 size={13} /></button>
+                          {isRootAdmin && (
+                            <button title="Delete (Root Admin only)" onClick={() => setConfirmDel({ id: doc.id, name: doc.name })} className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"><Trash2 size={13} /></button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -511,9 +684,12 @@ function SharedDocumentsTab({ onUploadClick }) {
         <EditDocModal doc={editDoc} isAdmin allEmployees={allEmployees} colleagues={colleagues}
           onClose={() => setEditDoc(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['documents'] }); setEditDoc(null); }} />
       )}
-      <ConfirmModal open={!!confirmDel} title="Delete Document"
-        message={<>Delete <strong>"{confirmDel?.name}"</strong>? This cannot be undone.</>}
-        confirmLabel="Delete" onConfirm={() => delMut.mutate(confirmDel.id)} onCancel={() => setConfirmDel(null)} />
+      <DeleteWithReasonModal
+        open={!!confirmDel}
+        docName={confirmDel?.name}
+        onConfirm={reason => delMut.mutate({ id: confirmDel.id, reason })}
+        onCancel={() => setConfirmDel(null)}
+      />
     </div>
   );
 }
@@ -1132,7 +1308,7 @@ function AdminDocumentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="btn btn-outline" onClick={() => { setShowUpload(v => !v); setShowCreateReq(false); }}>
+          <button className="btn btn-outline" onClick={() => { setActiveTab('shared'); setShowUpload(v => !v); setShowCreateReq(false); }}>
             <Upload size={14} /> Upload Shared Document
           </button>
           <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); setActiveTab('requirements'); }}>
@@ -1197,7 +1373,7 @@ function EmployeeUploadModal({ requirement, onClose, onUploaded }) {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Unexpected server error. Please try again.' }));
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       toast('Document uploaded successfully!', 'success');
       onUploaded();
@@ -1587,11 +1763,13 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
   const sharingPool = allEmployees.filter(e => String(e.id) !== form.targetUserId);
   const filteredPool = shareSearch ? sharingPool.filter(e => e.name?.toLowerCase().includes(shareSearch.toLowerCase())) : sharingPool;
 
+  const today = new Date().toISOString().split('T')[0];
+
   const editVisOpts = [
-    { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: 'Visible to every employee' },
-    { value: 'self',       Icon: User,   label: 'Particular Employee', desc: 'Only the selected employee' },
-    { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: 'Select specific employees' },
-    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: 'Not visible to employees' },
+    { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: '🌍 Everyone in the organization can access this document' },
+    { value: 'self',       Icon: User,   label: 'Particular Employee', desc: '👤 Visible only to the selected employee' },
+    { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: '👥 Visible only to the selected group of employees' },
+    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: '🔒 Accessible only by HR/Admin users for internal use' },
   ];
 
   async function handleSave() {
@@ -1599,6 +1777,7 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
     if (!form.category)    { toast('Select a document type', 'error'); return; }
     if (showVisibility && form.visibility === 'self' && !form.targetUserId) { toast('Select the target employee', 'error'); return; }
     if (showVisibility && form.visibility === 'specific' && form.shareWith.length === 0) { toast('Select at least one employee', 'error'); return; }
+    if (form.expiry_date && form.expiry_date < today) { toast('Expiry date cannot be in the past', 'error'); return; }
     setSaving(true);
     try {
       const token = localStorage.getItem('lt_token');
@@ -1613,7 +1792,7 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
       }
       if (newFile) fd.append('file', newFile);
       const res = await fetch(`/api/documents/${doc.id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` }, body: fd });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: 'Unexpected server error. Please try again.' }));
       if (!res.ok) throw new Error(data.error || 'Update failed');
       toast('Document updated!', 'success');
       onSaved();
@@ -1643,7 +1822,8 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
             </div>
             <div>
               <label className="form-label">Expiry Date <span className="font-normal text-[#777587]">(optional)</span></label>
-              <input type="date" className="form-control" value={form.expiry_date} onChange={e => setF('expiry_date', e.target.value)} />
+              <input type="date" className="form-control" value={form.expiry_date} min={today} onChange={e => setF('expiry_date', e.target.value)} />
+              {form.expiry_date && form.expiry_date < today && <p className="text-[0.65rem] text-rose-500 mt-1">Expiry date cannot be in the past.</p>}
             </div>
           </div>
 
@@ -1674,10 +1854,12 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
                     </label>
                     {opt.value === 'self' && form.visibility === 'self' && (
                       <div className="ml-10 mt-2">
-                        <select className="form-control text-xs" value={form.targetUserId} onChange={e => setF('targetUserId', e.target.value)}>
-                          <option value="">— Select employee —</option>
-                          {allEmployees.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
-                        </select>
+                        <SearchableEmployeePicker
+                          employees={allEmployees}
+                          value={form.targetUserId}
+                          onChange={id => setF('targetUserId', id)}
+                          placeholder="— Search and select employee —"
+                        />
                       </div>
                     )}
                     {opt.value === 'specific' && form.visibility === 'specific' && (

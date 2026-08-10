@@ -16,6 +16,28 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
+// Enrich documents with owner (user_id) and uploader (uploaded_by) user info.
+async function attachUserInfo(docs, oId) {
+  if (!docs || !docs.length) return docs;
+  const userIds = [...new Set([
+    ...docs.map(d => d.user_id),
+    ...docs.map(d => d.uploaded_by),
+  ].filter(Boolean))];
+  if (!userIds.length) return docs;
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, name, avatar_color')
+    .in('id', userIds)
+    .eq('organization_id', oId);
+  const userMap = {};
+  (users || []).forEach(u => { userMap[u.id] = u; });
+  return docs.map(d => ({
+    ...d,
+    owner:    userMap[d.user_id]    || null,
+    uploader: userMap[d.uploaded_by] || null,
+  }));
+}
+
 // Fetch shares for a list of document IDs and attach them as document_shares array.
 // Replaces the broken `document_shares(shared_with_user_id)` inline join — the
 // pg-adapter inferred the wrong FK column (document_share_id vs document_id).
@@ -66,7 +88,8 @@ router.get('/', auth, async (req, res) => {
       if (userId) query = query.eq('user_id', userId);
       const { data, error } = await query;
       if (error) throw error;
-      return res.json(await attachShares(data || [], oId));
+      const docs = await attachShares(data || [], oId);
+      return res.json(await attachUserInfo(docs, oId));
     }
 
     // Employee: own docs + visibility='all' + specifically shared docs
@@ -324,21 +347,47 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/documents/:id — employees can delete their own; admins can delete any
+// DELETE /api/documents/:id — only root_admin can delete shared docs (with mandatory reason)
 router.delete('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { data: doc } = await supabase.from('employee_documents')
       .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // HR Admin cannot delete — only Root Admin allowed
+    if (isAdmin(req.user.role) && req.user.role !== 'root_admin')
+      return res.status(403).json({ error: 'Only Root Admin can delete documents. HR Admin can view, download, approve, reject, or request re-upload.' });
+
+    // Non-admins can only delete their own (no UI, kept for API compatibility)
     if (!isAdmin(req.user.role) && doc.user_id !== req.user.id)
       return res.status(403).json({ error: 'Forbidden' });
+
+    const { reason } = req.body;
+    if (isAdmin(req.user.role) && !reason?.trim())
+      return res.status(400).json({ error: 'Deletion reason is required.' });
 
     const publicId = doc.file_url.split('/').slice(-2).join('/').replace(/\.[^.]+$/, '');
     try { await cloudinary.uploader.destroy(publicId); } catch { /* already gone */ }
 
     const { error } = await supabase.from('employee_documents').delete().eq('id', req.params.id);
     if (error) throw error;
+
+    // Audit log — notify all admins of deletion with reason
+    if (reason?.trim()) {
+      supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
+        .then(({ data: admins }) => {
+          if (!admins?.length) return;
+          return supabase.from('notifications').insert(admins.map(a => ({
+            user_id:         a.id,
+            title:           'Document Deleted',
+            message:         `Document "${doc.name}" was deleted by ${req.user.name}. Reason: ${reason.trim()}`,
+            type:            'document',
+            organization_id: oId,
+          })));
+        }).catch(() => {});
+    }
+
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
