@@ -277,6 +277,53 @@ router.post('/reprocess', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── POST /api/biometric/reprocess-all ───────────────────────────────────────
+// Reprocesses every mapped employee PIN for this org using the org's attendance
+// policy. Run once after enabling first_in_last_out to fix all historical data.
+// Also useful after a bulk raw-log reset (UPDATE biometric_raw_logs SET processed=false).
+router.post('/reprocess-all', auth, adminOnly, async (req, res) => {
+  const orgId = req.user.organization_id;
+
+  // Respond immediately — reprocessing can take a while
+  res.json({ ok: true, message: 'Reprocess started in background. Check server logs for progress.' });
+
+  setImmediate(async () => {
+    try {
+      const pinsRes = await pool.query(
+        `SELECT DISTINCT employee_pin FROM biometric_raw_logs
+         WHERE org_id = $1 AND processed = false
+         ORDER BY employee_pin`,
+        [orgId]
+      );
+
+      const pins = pinsRes.rows.map(r => r.employee_pin);
+      console.log(`[reprocess-all] org=${orgId} starting reprocess for ${pins.length} PINs`);
+
+      let totalProcessed = 0;
+      let noMapping      = 0;
+      let errors         = 0;
+
+      for (const pin of pins) {
+        try {
+          const r = await reprocessPin(orgId, pin);
+          if (r.noMapping) { noMapping++; continue; }
+          totalProcessed += r.processed;
+        } catch (err) {
+          errors++;
+          console.error(`[reprocess-all] PIN ${pin} error:`, err.message);
+        }
+      }
+
+      console.log(
+        `[reprocess-all] org=${orgId} done — ` +
+        `pins=${pins.length} processed=${totalProcessed} no_mapping=${noMapping} errors=${errors}`
+      );
+    } catch (err) {
+      console.error('[reprocess-all] Fatal error:', err.message);
+    }
+  });
+});
+
 // ─── POST /api/biometric/collector-push ──────────────────────────────────────
 // Authenticated bulk-import from the EasyWDMS collector agent running on the
 // client's Windows machine. Uses a static API key — no JWT (service account).
