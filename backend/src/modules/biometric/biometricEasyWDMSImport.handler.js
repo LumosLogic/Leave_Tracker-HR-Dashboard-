@@ -16,12 +16,9 @@ const PUNCH_STATE_MAP = {
 
 function normalizeDateStr(val) {
   if (!val) return null;
-  // xlsx may return a JS Date when cellDates: true
   if (val instanceof Date) return val.toISOString().slice(0, 10);
   const s = String(val).trim();
-  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD-MM-YYYY or DD/MM/YYYY
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return null;
@@ -35,7 +32,7 @@ function normalizeDateStr(val) {
 function parseEasyWDMSFile(buffer, originalname) {
   const ext = (originalname || '').split('.').pop().toLowerCase();
 
-  let rows; // array of arrays
+  let rows;
   if (ext === 'tsv' || ext === 'txt') {
     const str = buffer.toString('utf8');
     rows = str.split('\n').map(line =>
@@ -93,11 +90,10 @@ function parseEasyWDMSFile(buffer, originalname) {
     const punchDateStr = normalizeDateStr(dateVal);
     if (!punchDateStr) continue;
 
-    // Combine date + time; treat as server local time (consistent with live ZKTeco push)
     const punchTime = new Date(`${punchDateStr}T${punchTimeStr}`);
     if (isNaN(punchTime.getTime())) continue;
 
-    if (!serialNumber) continue; // serial number required for dedup via UNIQUE constraint
+    if (!serialNumber) continue;
 
     records.push({
       employeePin: String(employeePin),
@@ -115,7 +111,9 @@ function parseEasyWDMSFile(buffer, originalname) {
 /**
  * POST /api/biometric/import-easywdms
  * Accepts a multipart file upload, parses the EasyWDMS export,
- * inserts raw logs (bypassing go-live cutoff), and auto-reprocesses all affected PINs.
+ * validates device serials against registered devices (Issue 1 fix),
+ * inserts raw logs (bypassing go-live cutoff), and auto-reprocesses
+ * all affected PINs using the org's attendance policy.
  */
 async function importEasyWDMS(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -129,10 +127,43 @@ async function importEasyWDMS(req, res) {
     return res.status(422).json({ error: `File parse error: ${parseErr.message}` });
   }
   if (!records.length) {
-    return res.status(422).json({ error: 'No valid records found. Check that the file is a Transaction Report with "Employee ID", "Date", "Punch Time", "Punch State", and "Serial Number" columns.' });
+    return res.status(422).json({
+      error: 'No valid records found. Check that the file is a Transaction Report with ' +
+        '"Employee ID", "Date", "Punch Time", "Punch State", and "Serial Number" columns.',
+    });
   }
 
-  // 2. Create import batch record (status=processing while inserts run)
+  // 2. Device whitelist — reject records from serials not registered in biometric_devices.
+  //    Matches the behaviour of the live ADMS push and collector-push endpoints.
+  let validRecords = records;
+  const skippedDevices = {}; // serialNumber → count
+  try {
+    const devRes = await pool.query(
+      `SELECT serial_number FROM biometric_devices WHERE org_id = $1`,
+      [orgId]
+    );
+    const allowedSerials = new Set(devRes.rows.map(d => d.serial_number).filter(Boolean));
+
+    validRecords = records.filter(rec => {
+      if (allowedSerials.has(rec.deviceSerial)) return true;
+      skippedDevices[rec.deviceSerial] = (skippedDevices[rec.deviceSerial] || 0) + 1;
+      return false;
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Device lookup failed: ${err.message}` });
+  }
+
+  if (validRecords.length === 0) {
+    const skippedSummary = Object.entries(skippedDevices)
+      .map(([sn, n]) => `${sn} (${n} records)`)
+      .join(', ');
+    return res.status(422).json({
+      error: `No records from registered devices. Unregistered: ${skippedSummary}. ` +
+        `Register these device serial numbers first or export only from configured devices.`,
+    });
+  }
+
+  // 3. Create import batch record (status=processing while inserts run)
   let batchId;
   try {
     const batchRes = await pool.query(
@@ -140,19 +171,19 @@ async function importEasyWDMS(req, res) {
          (org_id, filename, total_rows, imported_by, status)
        VALUES ($1, $2, $3, $4, 'processing')
        RETURNING id`,
-      [orgId, req.file.originalname, records.length, req.user.id]
+      [orgId, req.file.originalname, validRecords.length, req.user.id]
     );
     batchId = batchRes.rows[0].id;
   } catch (err) {
     return res.status(500).json({ error: `Failed to create import batch: ${err.message}` });
   }
 
-  // 3. Insert raw logs — no go-live cutoff for historical imports
+  // 4. Insert raw logs — no go-live cutoff for historical imports
   let inserted = 0;
   let skipped  = 0;
   const errors = [];
 
-  for (const rec of records) {
+  for (const rec of validRecords) {
     try {
       const result = await pool.query(
         `INSERT INTO biometric_raw_logs
@@ -182,8 +213,8 @@ async function importEasyWDMS(req, res) {
     }
   }
 
-  // 4. Auto-reprocess all unique PINs that had new rows inserted
-  const uniquePins = [...new Set(records.map(r => r.employeePin))];
+  // 5. Auto-reprocess all unique PINs that had new rows — policy-aware via reprocessPin
+  const uniquePins = [...new Set(validRecords.map(r => r.employeePin))];
   let reprocessed = 0;
   for (const pin of uniquePins) {
     try {
@@ -194,7 +225,7 @@ async function importEasyWDMS(req, res) {
     }
   }
 
-  // 5. Finalise batch record
+  // 6. Finalise batch record
   await pool.query(
     `UPDATE biometric_import_batches
      SET inserted = $1, skipped = $2, error_count = $3, status = 'completed'
@@ -202,16 +233,31 @@ async function importEasyWDMS(req, res) {
     [inserted, skipped, errors.length, batchId]
   );
 
-  console.log(`[easywdms-import] batch=${batchId} total=${records.length} inserted=${inserted} skipped=${skipped} reprocessed=${reprocessed}`);
+  const skippedDeviceSummary = Object.entries(skippedDevices)
+    .map(([sn, n]) => `${sn}: ${n} records`)
+    .join(', ');
+
+  console.log(
+    `[easywdms-import] batch=${batchId} total=${records.length} ` +
+    `valid=${validRecords.length} inserted=${inserted} skipped=${skipped} ` +
+    `reprocessed=${reprocessed}` +
+    (skippedDeviceSummary ? ` skipped_devices=[${skippedDeviceSummary}]` : '')
+  );
 
   res.json({
     ok: true,
     batch_id: batchId,
     total: records.length,
+    valid: validRecords.length,
     inserted,
     skipped,
     reprocessed,
     errors,
+    ...(Object.keys(skippedDevices).length > 0 && {
+      skipped_devices: skippedDevices,
+      skipped_devices_warning:
+        `Records from unregistered devices were ignored: ${skippedDeviceSummary}`,
+    }),
   });
 }
 

@@ -202,7 +202,7 @@ export default function Reports() {
     queryFn: () => apiGet('/reports/headcount'),
   });
 
-  const { data: _attData = [], isLoading: attLoading } = useQuery({
+  const { data: _attResponse = {}, isLoading: attLoading } = useQuery({
     queryKey: ['report-attendance', viewMode, year, month],
     queryFn:  () => apiGet('/reports/attendance', queryParams),
   });
@@ -217,7 +217,12 @@ export default function Reports() {
     queryFn:  () => apiGet('/reports/employees'),
   });
 
-  const attRows = Array.isArray(_attData) ? _attData : [];
+  // Support both legacy array response and new { data, meta } shape
+  const attRows = Array.isArray(_attResponse)
+    ? _attResponse
+    : (_attResponse?.data || []);
+  const attMeta   = _attResponse?.meta || {};
+  const isFiloOrg = attMeta.attendance_policy === 'first_in_last_out';
   const leaveRows = Array.isArray(_lvData) ? _lvData : [];
   const empRows   = Array.isArray(_empData) ? _empData : [];
 
@@ -496,11 +501,13 @@ export default function Reports() {
                   <SortTh col="department" sort={sort} onSort={toggleSort}>Department</SortTh>
                   <SortTh col="date"       sort={sort} onSort={toggleSort}>Date</SortTh>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">Status</th>
-                  <SortTh col="check_in"   sort={sort} onSort={toggleSort}>Check In</SortTh>
-                  <SortTh col="check_out"  sort={sort} onSort={toggleSort}>Check Out</SortTh>
-                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">Break</th>
-                  <SortTh col="gross_hours" sort={sort} onSort={toggleSort}>Gross Hrs</SortTh>
-                  <SortTh col="work_hours" sort={sort} onSort={toggleSort}>Working Hrs</SortTh>
+                  <SortTh col="check_in"  sort={sort} onSort={toggleSort}>{isFiloOrg ? 'First In' : 'Check In'}</SortTh>
+                  <SortTh col="check_out" sort={sort} onSort={toggleSort}>{isFiloOrg ? 'Last Out' : 'Check Out'}</SortTh>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">
+                    {isFiloOrg ? 'Non-Working' : 'Break'}
+                  </th>
+                  <SortTh col="gross_hours" sort={sort} onSort={toggleSort}>{isFiloOrg ? 'Total Hrs' : 'Gross Hrs'}</SortTh>
+                  <SortTh col="work_hours"  sort={sort} onSort={toggleSort}>Working Hrs</SortTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f0f3ff]">
@@ -574,9 +581,15 @@ export default function Reports() {
                           </span>
                         ) : '—'}
                       </td>
-                      {/* Break */}
-                      <td className="px-4 py-3 text-xs text-amber-600 font-semibold">
-                        {fmtBreak(r.total_break_minutes) || '—'}
+                      {/* Break / Non-Working */}
+                      <td className="px-4 py-3 text-xs font-semibold">
+                        {isFiloOrg ? (
+                          r.non_working_minutes > 0
+                            ? <span className="text-slate-500">{fmtBreak(r.non_working_minutes)}</span>
+                            : <span className="text-slate-300">—</span>
+                        ) : (
+                          <span className="text-amber-600">{fmtBreak(r.total_break_minutes) || '—'}</span>
+                        )}
                       </td>
                       {/* Gross Hours */}
                       <td className="px-4 py-3 text-xs text-[#464555]">
@@ -600,16 +613,36 @@ export default function Reports() {
           </div>
           {/* Legend */}
           <div className="px-4 py-2.5 border-t border-[#f0f3ff] bg-[#fafaff] flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-1.5 text-[0.65rem] text-[#777587]">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              In Progress = checked in today, not yet checked out
-            </div>
-            <div className="flex items-center gap-1.5 text-[0.65rem] text-amber-600">
-              <span className="font-bold">Not checked out</span> = employee forgot to check out
-            </div>
-            <div className="text-[0.65rem] text-[#777587]">
-              Working Hrs = Gross − Break time
-            </div>
+            {!isFiloOrg && (
+              <>
+                <div className="flex items-center gap-1.5 text-[0.65rem] text-[#777587]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                  In Progress = checked in today, not yet checked out
+                </div>
+                <div className="flex items-center gap-1.5 text-[0.65rem] text-amber-600">
+                  <span className="font-bold">Not checked out</span> = employee forgot to check out
+                </div>
+                <div className="text-[0.65rem] text-[#777587]">
+                  Working Hrs = Total − Break time
+                </div>
+              </>
+            )}
+            {isFiloOrg && (
+              <>
+                <div className="text-[0.65rem] text-[#777587]">
+                  <span className="font-bold">First In</span> = first door punch of the day
+                </div>
+                <div className="text-[0.65rem] text-[#777587]">
+                  <span className="font-bold">Last Out</span> = last door punch of the day
+                </div>
+                <div className="text-[0.65rem] text-[#777587]">
+                  <span className="font-bold">Non-Working</span> = sum of out→in gaps (lunch, breaks, exits)
+                </div>
+                <div className="text-[0.65rem] text-[#777587]">
+                  Working Hrs = Total − Non-Working
+                </div>
+              </>
+            )}
           </div>
           {hasMore && (
             <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between">

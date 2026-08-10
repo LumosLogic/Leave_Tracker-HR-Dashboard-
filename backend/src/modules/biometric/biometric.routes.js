@@ -9,6 +9,7 @@ const { processAttlogLine } = require('./biometricPush.handler');
 const biometricEmitter = require('../../utils/biometricEmitter');
 const { reprocessPin } = require('./biometricReprocess.util');
 const { importEasyWDMS } = require('./biometricEasyWDMSImport.handler');
+const { getOrgPolicy }   = require('../../utils/orgPolicy');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -316,6 +317,9 @@ router.post('/collector-push', async (req, res) => {
       [deviceId]
     );
 
+    // Fetch org policy once — shared across all punches from this device
+    const policy = await getOrgPolicy(orgId);
+
     // ── Process each punch ────────────────────────────────────────────────────
     let imported = 0;
     let skipped  = 0;
@@ -330,9 +334,9 @@ router.post('/collector-push', async (req, res) => {
       if (isNaN(pt.getTime())) { skipped++; continue; }
 
       // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
-      if (pt < new Date('2026-08-01T00:00:00+05:30')) { 
-        skipped++; 
-        continue; 
+      if (pt < new Date('2026-08-01T00:00:00+05:30')) {
+        skipped++;
+        continue;
       }
 
       // Format as ATTLOG line (PIN\tTime\tType) — same format the device uses
@@ -341,7 +345,7 @@ router.post('/collector-push', async (req, res) => {
       const attlogLine   = `${String(employee_pin).trim()}\t${timeStr}\t${punchTypeInt}`;
 
       try {
-        await processAttlogLine(attlogLine, orgId, device_serial.trim());
+        await processAttlogLine(attlogLine, orgId, device_serial.trim(), policy);
         imported++;
       } catch (err) {
         skipped++;

@@ -15,6 +15,8 @@
 
 const { pool } = require('../../config/db-pg-adapter');
 const biometricEmitter = require('../../utils/biometricEmitter');
+const { getOrgPolicy }  = require('../../utils/orgPolicy');
+const { applyFILODay }  = require('./biometricReprocess.util');
 
 module.exports = async function biometricPushHandler(req, res) {
   // Always respond immediately — ZKTeco requires response within 2s
@@ -70,8 +72,11 @@ module.exports = async function biometricPushHandler(req, res) {
         [device.id]
       );
 
+      // 3. Fetch org policy once — shared across all lines from this push
+      const policy = await getOrgPolicy(orgId);
+
       for (const line of rawLines) {
-        await processAttlogLine(line, orgId, sn);
+        await processAttlogLine(line, orgId, sn, policy);
       }
     } catch (err) {
       console.error('[biometric] Push processing error:', err.message);
@@ -80,12 +85,6 @@ module.exports = async function biometricPushHandler(req, res) {
 };
 
 // ─── Parse ATTLOG lines ────────────────────────────────────────────────────────
-// ZKTeco sends attendance data as tab-separated lines.
-// Depending on firmware, body arrives as:
-//   - A raw string (express.text middleware, Content-Type: text/plain)
-//   - KEYS in URL-encoded body (when line has no '=' separator)
-//   - VALUES in URL-encoded body
-//   - Query string parameters
 function extractAttlogLines(body, query = {}) {
   const lines = [];
 
@@ -93,14 +92,12 @@ function extractAttlogLines(body, query = {}) {
     if (!text || typeof text !== 'string') return;
     for (const line of text.split('\n')) {
       const trimmed = line.trim();
-      // Valid ATTLOG line: starts with alphanumeric PIN, tab-separated
       if (trimmed && trimmed.includes('\t') && /^[a-zA-Z0-9_\-]+\t/.test(trimmed)) {
         lines.push(trimmed);
       }
     }
   }
 
-  // Raw string body — try as-is first, then URL-decoded (some firmware sends %09 for tabs)
   if (typeof body === 'string') {
     parseLine(body);
     if (!lines.length && body.includes('%09')) {
@@ -110,17 +107,14 @@ function extractAttlogLines(body, query = {}) {
   }
 
   if (body && typeof body === 'object') {
-    // Check keys (attendance lines with no '=' become keys with empty values)
     for (const key of Object.keys(body)) {
       if (/^[a-zA-Z0-9_\-]+\t/.test(key)) parseLine(key);
     }
-    // Check values (some firmware versions encode lines as values)
     for (const val of Object.values(body)) {
       parseLine(val);
     }
   }
 
-  // Check query string (some firmware sends lines via query params)
   for (const val of Object.values(query)) {
     parseLine(val);
   }
@@ -129,7 +123,7 @@ function extractAttlogLines(body, query = {}) {
 }
 
 // ─── Process a single ATTLOG line ─────────────────────────────────────────────
-async function processAttlogLine(line, orgId, deviceSerial) {
+async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard') {
   const parts = line.split('\t');
   if (parts.length < 3) return;
 
@@ -143,16 +137,15 @@ async function processAttlogLine(line, orgId, deviceSerial) {
     return;
   }
 
-  // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
-  if (punchTime < new Date('2026-08-01T00:00:00+05:30')) { 
-    return; 
+  // Hard cutoff: ignore punches before August 1st, 2026 (Go-Live Date)
+  if (punchTime < new Date('2026-08-01T00:00:00+05:30')) {
+    return;
   }
 
-  const punchDate    = punchTime.toISOString().slice(0, 10);          // YYYY-MM-DD
-  const punchTimeStr = punchTime.toTimeString().slice(0, 8);          // HH:MM:SS
+  const punchDate    = punchTime.toISOString().slice(0, 10); // YYYY-MM-DD
+  const punchTimeStr = punchTime.toTimeString().slice(0, 8); // HH:MM:SS
 
-  // 3. Upsert raw log (idempotent via ON CONFLICT DO NOTHING)
-  // device_serial is part of the UNIQUE(device_serial, punch_time, employee_pin) constraint
+  // Upsert raw log (idempotent via ON CONFLICT DO NOTHING)
   let rawLogId;
   try {
     const logRes = await pool.query(
@@ -163,29 +156,60 @@ async function processAttlogLine(line, orgId, deviceSerial) {
        RETURNING id`,
       [orgId, deviceSerial, pin, punchTime.toISOString(), punchType]
     );
-    if (!logRes.rows.length) {
-      // Row already existed — already processed
-      return;
-    }
+    if (!logRes.rows.length) return; // duplicate — already processed
     rawLogId = logRes.rows[0].id;
   } catch (err) {
     console.error('[biometric] Raw log upsert error:', err.message);
     return;
   }
 
-  // 4. Look up employee mapping
+  // ── FILO path ──────────────────────────────────────────────────────────────
+  if (policy === 'first_in_last_out') {
+    const mapRes = await pool.query(
+      `SELECT user_id FROM biometric_employee_map
+       WHERE org_id = $1 AND employee_pin = $2 LIMIT 1`,
+      [orgId, pin]
+    );
+    if (!mapRes.rows.length) return; // no mapping — leave unprocessed for later
+
+    const userId = mapRes.rows[0].user_id;
+
+    // Leave guard
+    const attRes = await pool.query(
+      `SELECT id, status FROM attendance WHERE user_id = $1 AND date = $2 LIMIT 1`,
+      [userId, punchDate]
+    );
+    const att = attRes.rows[0] || null;
+
+    if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
+      await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
+      return;
+    }
+
+    // Fetch ALL raw logs for this employee+date and recompute attendance
+    const allLogsRes = await pool.query(
+      `SELECT id, punch_time, punch_type FROM biometric_raw_logs
+       WHERE org_id = $1 AND employee_pin = $2
+         AND punch_time >= $3::date
+         AND punch_time <  $3::date + INTERVAL '1 day'
+       ORDER BY punch_time`,
+      [orgId, pin, punchDate]
+    );
+
+    await applyFILODay(userId, punchDate, orgId, allLogsRes.rows, att);
+    await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
+    return;
+  }
+
+  // ── Standard path (original logic — untouched) ────────────────────────────
   const mapRes = await pool.query(
     `SELECT user_id FROM biometric_employee_map
      WHERE org_id = $1 AND employee_pin = $2 LIMIT 1`,
     [orgId, pin]
   );
-  if (!mapRes.rows.length) {
-    // No mapping — leave the raw log unprocessed for later reprocessing
-    return;
-  }
+  if (!mapRes.rows.length) return;
   const userId = mapRes.rows[0].user_id;
 
-  // 5. Leave guard — skip if employee is on leave / half_day / wfh
   const attRes = await pool.query(
     `SELECT id, status, check_in, check_out, total_break_minutes FROM attendance
      WHERE user_id = $1 AND date = $2 LIMIT 1`,
@@ -194,12 +218,10 @@ async function processAttlogLine(line, orgId, deviceSerial) {
   const att = attRes.rows[0] || null;
 
   if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
-    // Mark raw log processed (we intentionally skipped it)
     await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
     return;
   }
 
-  // 6. Check-in (punch_type = 0)
   if (punchType === 0) {
     if (!att) {
       await pool.query(
@@ -209,16 +231,13 @@ async function processAttlogLine(line, orgId, deviceSerial) {
         [userId, punchDate, punchTimeStr, orgId]
       );
     }
-    // If att exists and check_in already set — ignore duplicate check-in
   }
 
-  // 7. Check-out (punch_type = 1)
   if (punchType === 1) {
     if (att && att.check_in) {
       const checkInMs  = new Date(`${punchDate}T${att.check_in}`).getTime();
       const checkOutMs = punchTime.getTime();
       const grossHours = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
-      // Subtract accumulated break minutes to get effective work hours
       const breakMins  = att.total_break_minutes || 0;
       const workHours  = parseFloat(Math.max(0, grossHours - breakMins / 60).toFixed(2));
       await pool.query(
@@ -227,10 +246,7 @@ async function processAttlogLine(line, orgId, deviceSerial) {
          WHERE id = $4`,
         [punchTimeStr, grossHours, workHours, att.id]
       );
-    }
-    // If no check_in exists — record the check_out for later reconciliation.
-    // Uses the correct 3-column unique constraint (user_id, date, organization_id).
-    else if (!att) {
+    } else if (!att) {
       await pool.query(
         `INSERT INTO attendance (user_id, date, check_out, status, source, organization_id)
          VALUES ($1, $2, $3, 'present', 'biometric', $4)
@@ -241,7 +257,6 @@ async function processAttlogLine(line, orgId, deviceSerial) {
     }
   }
 
-  // 8. Mark raw log processed
   await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
 }
 

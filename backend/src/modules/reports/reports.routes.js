@@ -1,8 +1,9 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { supabase, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
+const { getOrgPolicy } = require('../../utils/orgPolicy');
 
 function toCSV(rows, cols) {
   const header = cols.map(c => c.label).join(',');
@@ -26,7 +27,8 @@ function todayIST() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/
 // GET /api/reports/attendance?year=&month=&userId=&format=csv
 router.get('/attendance', auth, async (req, res) => {
   try {
-    const oId = req.user.organization_id;
+    const oId    = req.user.organization_id;
+    const policy = await getOrgPolicy(oId);
     const { year, month, userId, format } = req.query;
     let q = supabase.from('attendance')
       .select('*, users(name, department, position)')
@@ -95,26 +97,32 @@ router.get('/attendance', auth, async (req, res) => {
         estimated_hours,
         is_live,
         is_on_break:          !!(r.break_start && !r.break_end && !check_out),
+        // For first_in_last_out orgs, total_break_minutes holds non-working gaps.
+        // Expose it with a clear name so the frontend can label the column correctly.
+        non_working_minutes:  policy === 'first_in_last_out' ? total_break_minutes : null,
       };
     });
 
     if (format === 'csv') {
+      const isFilo = policy === 'first_in_last_out';
       const csv = toCSV(rows, [
         { key: 'name', label: 'Employee' },
         { key: 'department', label: 'Department' },
         { key: 'date', label: 'Date' },
         { key: 'status', label: 'Status' },
-        { key: 'check_in', label: 'Check In' },
-        { key: 'check_out', label: 'Check Out' },
-        { key: 'total_break_minutes', label: 'Break (min)' },
-        { key: 'gross_hours', label: 'Gross Hours' },
+        { key: 'check_in', label: 'First In' },
+        { key: 'check_out', label: 'Last Out' },
+        ...(isFilo
+          ? [{ key: 'non_working_minutes', label: 'Non-Working (min)' }]
+          : [{ key: 'total_break_minutes', label: 'Break (min)' }]),
+        { key: 'gross_hours', label: 'Total Hours' },
         { key: 'work_hours', label: 'Working Hours' },
       ]);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="attendance_report_${year||'all'}_${month||'all'}.csv"`);
       return res.send(csv);
     }
-    res.json(rows);
+    res.json({ data: rows, meta: { attendance_policy: policy } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
