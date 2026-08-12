@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays, Umbrella, TrendingUp, Cake, PartyPopper,
   Home, Users, ChevronLeft, ChevronRight,
@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { todayStr, fmtDate, fmtTime, fmtHours, countWorkingDaysInRange, toISODate } from '@/lib/utils';
+import { ApplyLeaveModal } from './Leaves';
 
 /* ─── constants ──────────────────────────────────────────────────────────── */
 
@@ -278,6 +279,8 @@ export default function EmployeeHome() {
   const { user } = useAuth();
   const navigate  = useNavigate();
   const toast     = useToast();
+  const qc        = useQueryClient();
+  const [applyLeaveOpen, setApplyLeaveOpen] = useState(false);
   const [holidayPage, setHolidayPage] = useState(0);
   const [attRecord, setAttRecord]     = useState(null);
   const [elapsed,   setElapsed]       = useState('');
@@ -523,7 +526,7 @@ export default function EmployeeHome() {
 
   /* ── quick action items ── */
   const quickActions = [
-    { icon: <Umbrella size={18} />,   label: 'Apply Leave',             to: '/portal/leaves?action=apply',         color: 'bg-[#f0f3ff] text-[#3525cd]' },
+    { icon: <Umbrella size={18} />,   label: 'Apply Leave',             onClick: () => setApplyLeaveOpen(true),    color: 'bg-[#f0f3ff] text-[#3525cd]' },
     { icon: <ClipboardList size={18}/>,label: 'Attendance Correction',   to: '/portal/regularization?action=apply', color: 'bg-amber-50 text-amber-600'   },
     { icon: <CreditCard size={18} />, label: 'Expense Claim',            to: '/portal/expenses?action=apply',       color: 'bg-emerald-50 text-emerald-600'},
     { icon: <Download size={18} />,   label: 'Download Payslip',         to: '/portal/payslips',                    color: 'bg-rose-50 text-rose-600'     },
@@ -630,10 +633,6 @@ export default function EmployeeHome() {
             )}
 
             {/* secondary buttons */}
-            <Link to="/portal/leaves"
-              className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
-              <Umbrella size={15} /> Apply Leave
-            </Link>
             <Link to="/portal/regularization"
               className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
               <ClipboardList size={15} /> Attendance Correction
@@ -823,7 +822,7 @@ export default function EmployeeHome() {
             )}
             <button onClick={() => navigate('/portal/leaves')}
               className="w-full mt-4 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl py-2.5 hover:bg-[#f0f3ff] transition-colors">
-              Apply Leave →
+              View All Leaves →
             </button>
           </div>
         </div>
@@ -1065,15 +1064,18 @@ export default function EmployeeHome() {
           </h2>
         </div>
         <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {quickActions.map(({ icon, label, to, color }) => (
-            <Link key={label} to={to}
-              className="flex flex-col items-center gap-2.5 p-4 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:shadow-sm transition-all group text-center">
-              <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                {icon}
-              </div>
-              <span className="text-[0.72rem] font-semibold text-[#464555] leading-tight">{label}</span>
-            </Link>
-          ))}
+          {quickActions.map(({ icon, label, to, onClick, color }) => {
+            const cls = "flex flex-col items-center gap-2.5 p-4 rounded-xl border border-[#f0f3ff] hover:border-[#c7c4d8] hover:shadow-sm transition-all group text-center w-full";
+            const inner = (
+              <>
+                <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center group-hover:scale-110 transition-transform`}>{icon}</div>
+                <span className="text-[0.72rem] font-semibold text-[#464555] leading-tight">{label}</span>
+              </>
+            );
+            return onClick
+              ? <button key={label} onClick={onClick} className={cls}>{inner}</button>
+              : <Link key={label} to={to} className={cls}>{inner}</Link>;
+          })}
         </div>
       </div>
 
@@ -1093,10 +1095,6 @@ export default function EmployeeHome() {
             <div className="w-12 h-12 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-2xl">🗓️</div>
             <p className="text-sm font-semibold text-[#464555]">No leave requests yet</p>
             <p className="text-xs text-[#9ca3af]">You haven't applied for any leave yet.</p>
-            <Link to="/portal/leaves"
-              className="mt-2 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl px-4 py-2 hover:bg-[#f0f3ff] transition-colors">
-              Apply Leave →
-            </Link>
           </div>
         ) : (
           <div>
@@ -1248,6 +1246,16 @@ export default function EmployeeHome() {
         </div>
       </div>
 
+      {applyLeaveOpen && (
+        <ApplyLeaveModal
+          isAdmin={false}
+          employees={[]}
+          allLeaves={[]}
+          policies={[]}
+          onClose={() => setApplyLeaveOpen(false)}
+          onSuccess={() => qc.invalidateQueries({ queryKey: ['my-leaves-recent'] })}
+        />
+      )}
     </div>
   );
 }

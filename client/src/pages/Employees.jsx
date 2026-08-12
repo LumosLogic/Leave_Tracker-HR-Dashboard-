@@ -1502,10 +1502,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   <label className="form-label">Status</label>
                   <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
                     <option value="active">Active</option>
-                    <option value="on_leave">On Leave</option>
                     <option value="probation">Probation</option>
-                    <option value="notice_period">Notice Period</option>
-                    <option value="notice">Notice</option>
                     <option value="inactive">Inactive</option>
                     <option value="resigned">Resigned</option>
                     <option value="terminated">Terminated</option>
@@ -1878,11 +1875,12 @@ export default function Employees() {
   // Modal / profile state
   const [profileEmp,     setProfileEmp]     = useState(null);
   const [cameFromUrl,    setCameFromUrl]    = useState(false);
-  const [addOpen,        setAddOpen]        = useState(false);
-  const [addDefaultRole, setAddDefaultRole] = useState('employee');
-  const [editEmp,        setEditEmp]        = useState(null);
-  const [editInitialTab, setEditInitialTab] = useState('personal');
-  const [confirmDel,     setConfirmDel]     = useState(null);
+  const [addOpen,          setAddOpen]          = useState(false);
+  const [addDefaultRole,   setAddDefaultRole]   = useState('employee');
+  const [editEmp,          setEditEmp]          = useState(null);
+  const [editInitialTab,   setEditInitialTab]   = useState('personal');
+  const [confirmDel,       setConfirmDel]       = useState(null);
+  const [profileDrawerEmp, setProfileDrawerEmp] = useState(null);
 
   function openProfile(emp) {
     navigate(`${employeesBase}/${emp.id}`);
@@ -2207,10 +2205,7 @@ export default function Employees() {
           className="form-control w-auto text-xs py-1.5">
           <option value="">All Statuses</option>
           <option value="active">Active</option>
-          <option value="on_leave">On Leave</option>
           <option value="probation">Probation</option>
-          <option value="notice_period">Notice Period</option>
-          <option value="notice">Notice</option>
           <option value="inactive">Inactive</option>
           <option value="resigned">Resigned</option>
           <option value="terminated">Terminated</option>
@@ -2454,7 +2449,7 @@ export default function Employees() {
                         {selected.has(emp.id) && <Check size={10} className="text-white" />}
                       </div>
                     </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => openProfile(emp)}>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => setProfileDrawerEmp(emp)}>
                       <div className="flex items-center gap-2.5">
                         <Avatar name={emp.name} color={emp.avatar_color} size={32} />
                         <div>
@@ -2480,7 +2475,7 @@ export default function Employees() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => openProfile(emp)}
+                        <button onClick={() => setProfileDrawerEmp(emp)}
                           className="p-1.5 rounded-lg text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="View Profile">
                           <User size={13} />
                         </button>
@@ -2559,6 +2554,141 @@ export default function Employees() {
         onConfirm={handleBulkDelete}
         onCancel={() => setBulkDelConf(false)}
       />
+
+      {/* ── Employee Profile Drawer (table view) ──────────────────────────── */}
+      {profileDrawerEmp && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setProfileDrawerEmp(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-sm bg-white shadow-2xl flex flex-col h-full overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+              <p className="text-sm font-black text-[#151c27]">Employee Profile</p>
+              <button onClick={() => setProfileDrawerEmp(null)}
+                className="p-1.5 rounded-lg text-[#777587] hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Avatar + Name block */}
+              <div className="px-5 py-6 flex flex-col items-center text-center gap-3 border-b border-[#f0f3ff] bg-[#fafaff]">
+                <Avatar name={profileDrawerEmp.name} color={profileDrawerEmp.avatar_color} size={72} />
+                <div>
+                  <p className="text-lg font-black text-[#151c27]">{profileDrawerEmp.name}</p>
+                  {profileDrawerEmp.position && (
+                    <p className="text-sm text-[#777587] mt-0.5">{profileDrawerEmp.position}</p>
+                  )}
+                  <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+                    <EmpStatusBadge status={profileDrawerEmp.employee_status} />
+                    {profileDrawerEmp.employment_type && (
+                      <span className="text-[0.65rem] font-bold px-2.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#e7eefe] capitalize">
+                        {profileDrawerEmp.employment_type.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Detail rows */}
+              <div className="px-5 py-4 space-y-4">
+                {profileDrawerEmp.departments?.length > 0 && (
+                  <div className="flex items-start gap-3">
+                    <Building2 size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Department</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {profileDrawerEmp.departments.map(d => (
+                          <span key={d.id} className="text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] px-2 py-0.5 rounded-md border border-[#e7eefe]">{d.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.email && (
+                  <div className="flex items-start gap-3">
+                    <Mail size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Work Email</p>
+                      <p className="text-xs text-[#151c27] mt-0.5 break-all">{profileDrawerEmp.email}</p>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.phone && (
+                  <div className="flex items-start gap-3">
+                    <Phone size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Phone</p>
+                      <p className="text-xs text-[#151c27] mt-0.5">{profileDrawerEmp.phone}</p>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.joining_date && (
+                  <div className="flex items-start gap-3">
+                    <CalendarDays size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Joined</p>
+                      <p className="text-xs text-[#151c27] mt-0.5">{fmtDate(profileDrawerEmp.joining_date)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.work_mode && (
+                  <div className="flex items-start gap-3">
+                    <Home size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Work Mode</p>
+                      <p className="text-xs text-[#151c27] mt-0.5 capitalize">{profileDrawerEmp.work_mode.replace(/_/g, ' ')}</p>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.gender && (
+                  <div className="flex items-start gap-3">
+                    <User size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Gender</p>
+                      <p className="text-xs text-[#151c27] mt-0.5 capitalize">{profileDrawerEmp.gender}</p>
+                    </div>
+                  </div>
+                )}
+
+                {profileDrawerEmp.grade && (
+                  <div className="flex items-start gap-3">
+                    <BarChart3 size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Grade</p>
+                      <p className="text-xs text-[#151c27] mt-0.5">{profileDrawerEmp.grade}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-5 py-4 border-t border-[#f0f3ff] bg-[#f9f9ff] flex flex-col gap-2.5">
+              <button
+                onClick={() => { setEditEmp(profileDrawerEmp); setEditInitialTab('personal'); setProfileDrawerEmp(null); }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#3525cd] text-white hover:bg-[#2a1eb0] transition-colors shadow-sm"
+              >
+                <Pencil size={14} /> Edit Employee
+              </button>
+              <button
+                onClick={() => { openProfile(profileDrawerEmp); setProfileDrawerEmp(null); }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff] transition-colors"
+              >
+                <Eye size={14} /> View Full Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

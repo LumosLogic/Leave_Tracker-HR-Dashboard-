@@ -124,9 +124,12 @@ export default function Leaves() {
   const pendingCount    = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && l.leave_time !== 'wfh' && l.leave_type !== 'wfh').length;
   const wfhPendingCount = allLeaves.filter(l => PENDING_STATUSES.includes(l.status) && (l.leave_time === 'wfh' || l.leave_type === 'wfh')).length;
 
-  // When navigated with ?status=pending, narrow the list to all unresolved leaves
-  const pendingOnly = statusParam === 'pending';
-  const displayList = pendingOnly ? activeList.filter(l => PENDING_STATUSES.includes(l.status)) : activeList;
+  // When navigated with a status param, filter accordingly
+  const pendingOnly    = statusParam === 'pending';
+  const approvedOnly   = statusParam === 'approved';
+  const displayList    = pendingOnly  ? activeList.filter(l => PENDING_STATUSES.includes(l.status))
+                       : approvedOnly ? activeList.filter(l => l.status === 'approved')
+                       : activeList;
 
   return (
     <div>
@@ -433,6 +436,132 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
   );
 }
 
+// ── Mini Calendar ─────────────────────────────────────────────────────────────
+const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function MiniCalendar({ value, onChange, holidays = [], minDate }) {
+  const today = todayStr();
+
+  // Derive initial month from value or today
+  const [viewYear, setViewYear] = useState(() => {
+    const ref = value || today;
+    return parseInt(ref.slice(0, 4));
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const ref = value || today;
+    return parseInt(ref.slice(5, 7));
+  });
+
+  // Build a Set of holiday date strings for O(1) lookup
+  const holidayMap = React.useMemo(() => {
+    const m = {};
+    holidays.forEach(h => { m[h.date] = h.name; });
+    return m;
+  }, [holidays]);
+
+  function prevMonth() {
+    if (viewMonth === 1) { setViewYear(y => y - 1); setViewMonth(12); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 12) { setViewYear(y => y + 1); setViewMonth(1); }
+    else setViewMonth(m => m + 1);
+  }
+
+  // Build calendar grid: array of date strings (YYYY-MM-DD) or null for padding
+  const cells = React.useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth - 1, 1);
+    // getDay(): 0=Sun,1=Mon,...,6=Sat. We want Mon=0 offset.
+    const startOffset = (firstDay.getDay() + 6) % 7; // Mon-based offset
+    const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
+    const result = [];
+    for (let i = 0; i < startOffset; i++) result.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const mm = String(viewMonth).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      result.push(`${viewYear}-${mm}-${dd}`);
+    }
+    // Pad to full weeks
+    while (result.length % 7 !== 0) result.push(null);
+    return result;
+  }, [viewYear, viewMonth]);
+
+  const monthLabel = new Date(viewYear, viewMonth - 1, 1)
+    .toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="border border-[#c7c4d8] rounded-xl bg-white overflow-hidden" style={{ minWidth: 248 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 bg-[#f0f3ff] border-b border-[#c7c4d8]">
+        <button type="button" onClick={prevMonth}
+          className="p-1 rounded hover:bg-[#e0e4ff] text-[#3525cd] font-black text-sm leading-none">&#8249;</button>
+        <span className="text-xs font-black text-[#151c27]">{monthLabel}</span>
+        <button type="button" onClick={nextMonth}
+          className="p-1 rounded hover:bg-[#e0e4ff] text-[#3525cd] font-black text-sm leading-none">&#8250;</button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 border-b border-[#f0f3ff]">
+        {DAYS_OF_WEEK.map(d => (
+          <div key={d} className="text-center py-1.5 text-[0.6rem] font-black text-[#777587] uppercase tracking-wide">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Date grid */}
+      <div className="grid grid-cols-7">
+        {cells.map((dateStr, idx) => {
+          if (!dateStr) {
+            return <div key={`pad-${idx}`} className="p-1.5" />;
+          }
+          const dow = new Date(dateStr + 'T12:00:00').getDay(); // 0=Sun,6=Sat
+          const isWeekend = dow === 0 || dow === 6;
+          const isHoliday = !!holidayMap[dateStr];
+          const holidayName = holidayMap[dateStr] || '';
+          const isSelected = value === dateStr;
+          const isToday = dateStr === today;
+          const isDisabled = minDate && dateStr < minDate;
+
+          let cellBg = '';
+          let textColor = 'text-[#151c27]';
+          if (isSelected) {
+            cellBg = 'bg-[#3525cd]';
+            textColor = 'text-white';
+          } else if (isHoliday) {
+            cellBg = 'bg-orange-50';
+          } else if (isWeekend) {
+            cellBg = 'bg-slate-50';
+          }
+
+          if (isDisabled) textColor = 'text-[#c7c4d8]';
+
+          return (
+            <div
+              key={dateStr}
+              title={isHoliday ? holidayName : undefined}
+              onClick={() => { if (!isDisabled) onChange(dateStr); }}
+              className={`relative flex flex-col items-center justify-center p-1 cursor-pointer transition-all duration-100
+                ${cellBg} ${textColor}
+                ${isDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-[#e8ecff] hover:text-[#3525cd]'}
+                ${isSelected ? 'hover:bg-[#2415aa] hover:text-white rounded-lg' : 'rounded-lg'}
+              `}
+              style={{ minHeight: 34 }}
+            >
+              <span className={`text-[0.7rem] font-semibold leading-tight ${isToday && !isSelected ? 'underline decoration-[#3525cd] decoration-2 underline-offset-2' : ''}`}>
+                {parseInt(dateStr.slice(8), 10)}
+              </span>
+              {isHoliday && !isSelected && (
+                <span className="block w-1 h-1 rounded-full bg-orange-400 mt-0.5" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Apply Leave Modal ─────────────────────────────────────────────────────────
 function SegBtn({ value, current, onChange, children }) {
   const active = value === current;
@@ -446,7 +575,7 @@ function SegBtn({ value, current, onChange, children }) {
   );
 }
 
-function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onSuccess }) {
+export function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onSuccess }) {
   const toast = useToast();
   const blank = () => ({
     emp: '', request_type: 'leave',
@@ -456,6 +585,23 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
     reason: '',
   });
   const [forms, setForms] = useState([blank()]);
+
+  // Fetch holidays for current year and next year
+  const currentYear = new Date().getFullYear();
+  const { data: holidaysThisYear = [] } = useQuery({
+    queryKey: ['holidays', currentYear],
+    queryFn: () => apiGet(`/holidays?year=${currentYear}`),
+    staleTime: 1000 * 60 * 60, // 1 hour
+  });
+  const { data: holidaysNextYear = [] } = useQuery({
+    queryKey: ['holidays', currentYear + 1],
+    queryFn: () => apiGet(`/holidays?year=${currentYear + 1}`),
+    staleTime: 1000 * 60 * 60,
+  });
+  const holidays = React.useMemo(() => [...holidaysThisYear, ...holidaysNextYear], [holidaysThisYear, holidaysNextYear]);
+
+  // Build holiday set for range calculations
+  const holidayDateSet = React.useMemo(() => new Set(holidays.map(h => h.date)), [holidays]);
 
   function update(i, k, v) { setForms(fs => fs.map((f, idx) => idx === i ? { ...f, [k]: v } : f)); }
   function add()    { setForms(fs => [...fs, blank()]); }
@@ -588,9 +734,72 @@ function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClose, onS
                         </div>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div><label className="form-label">Start Date</label><input type="date" className="form-control" value={f.start} onChange={e => update(i, 'start', e.target.value)} /></div>
-                      <div><label className="form-label">End Date</label><input type="date" className="form-control" value={f.end} min={f.start} onChange={e => update(i, 'end', e.target.value)} /></div>
+                    <div className="mb-3">
+                      <label className="form-label">Select Dates</label>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                          <p className="text-[0.65rem] font-bold text-[#777587] uppercase tracking-wider mb-1.5">Start Date</p>
+                          <MiniCalendar
+                            value={f.start}
+                            onChange={v => update(i, 'start', v)}
+                            holidays={holidays}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[0.65rem] font-bold text-[#777587] uppercase tracking-wider mb-1.5">End Date</p>
+                          <MiniCalendar
+                            value={f.end}
+                            onChange={v => update(i, 'end', v)}
+                            holidays={holidays}
+                            minDate={f.start || undefined}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Range summary */}
+                      {f.start && f.end && (() => {
+                        const startD = new Date(f.start + 'T12:00:00');
+                        const endD   = new Date(f.end   + 'T12:00:00');
+                        if (startD > endD) return (
+                          <p className="mt-2 text-xs text-rose-600 font-semibold">End date must be after start date.</p>
+                        );
+                        // Calendar days
+                        const calDays = Math.round((endD - startD) / 86400000) + 1;
+                        // Holidays in range
+                        const holidaysInRange = holidays.filter(h => h.date >= f.start && h.date <= f.end);
+                        // Actual leave days: working days (Mon-Fri) excluding holidays
+                        let actualDays = 0;
+                        for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+                          const dow = d.getDay();
+                          const ds  = d.toISOString().slice(0, 10);
+                          if (dow !== 0 && dow !== 6 && !holidayDateSet.has(ds)) actualDays++;
+                        }
+                        return (
+                          <div className="mt-2 p-3 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] space-y-1 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#777587]">Selected Range:</span>
+                              <span className="font-semibold text-[#151c27]">{f.start} – {f.end}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#777587]">Total calendar days:</span>
+                              <span className="font-semibold text-[#151c27]">{calDays}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[#777587]">Holidays in range:</span>
+                              {holidaysInRange.length === 0
+                                ? <span className="font-semibold text-[#151c27]">0</span>
+                                : <span className="font-semibold text-orange-600">
+                                    {holidaysInRange.length} ({holidaysInRange.map(h => h.name).join(', ')})
+                                  </span>
+                              }
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#777587]">Actual leave days:</span>
+                              <span className="font-black text-[#3525cd] bg-white px-2 py-0.5 rounded-full border border-[#c7c4d8]">{actualDays}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </>
                 )}

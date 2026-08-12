@@ -198,7 +198,10 @@ export default function Regularization() {
   const [applyOpen,   setApplyOpen]   = useState(false);
   const [reviewReq,   setReviewReq]   = useState(null);
   const [confirmDel,  setConfirmDel]  = useState(null);
-  const [filter,      setFilter]      = useState('all');
+  const [filter,      setFilter]      = useState(() => {
+    const s = searchParams.get('status');
+    return s && ['pending', 'approved', 'rejected'].includes(s) ? s : 'all';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom,    setDateFrom]    = useState('');
   const [dateTo,      setDateTo]      = useState('');
@@ -207,11 +210,9 @@ export default function Regularization() {
   const toast = useToast();
   const qc    = useQueryClient();
 
-  // Auto-open apply modal if coming from quick actions; auto-apply status filter from dashboard
+  // Auto-open apply modal if coming from quick actions
   useEffect(() => {
     if (!isAdmin && searchParams.get('action') === 'apply') setApplyOpen(true);
-    const s = searchParams.get('status');
-    if (s && ['pending', 'approved', 'rejected'].includes(s)) setFilter(s);
   }, []);
 
   const { data: _regData, isLoading } = useQuery({ queryKey: ['regularization'], queryFn: () => apiGet('/regularization') });

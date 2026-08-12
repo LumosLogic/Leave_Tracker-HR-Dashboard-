@@ -54,10 +54,11 @@ const VIS_CFG = {
 };
 
 const STATUS_CFG = {
-  under_review:      { label: 'Under Review',       cls: 'bg-amber-50 text-amber-700 border-amber-200',   dot: 'bg-amber-500' },
-  approved:          { label: 'Approved',            cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
-  rejected:          { label: 'Rejected',            cls: 'bg-rose-50 text-rose-700 border-rose-200',     dot: 'bg-rose-500' },
-  re_upload_requested: { label: 'Re-upload Requested', cls: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
+  under_review:        { label: 'Under Review',        cls: 'bg-amber-50 text-amber-700 border-amber-200',     dot: 'bg-amber-500' },
+  hr_approved:         { label: 'HR Approved',          cls: 'bg-yellow-50 text-yellow-700 border-yellow-300',  dot: 'bg-yellow-500' },
+  approved:            { label: 'Approved',             cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  rejected:            { label: 'Rejected',             cls: 'bg-rose-50 text-rose-700 border-rose-200',       dot: 'bg-rose-500' },
+  re_upload_requested: { label: 'Re-upload Requested',  cls: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
 };
 
 const INIT_FORM = { name: '', category: '', expiry_date: '', visibility: 'admin_only', targetUserId: '', shareWith: [] };
@@ -243,6 +244,58 @@ function DeleteWithReasonModal({ open, docName, onConfirm, onCancel }) {
   );
 }
 
+// ── Request Delete Modal (HR Admin only) ─────────────────────────────────────
+function RequestDeleteModal({ open, docName, onConfirm, onCancel, requesting }) {
+  const [reason, setReason] = useState('');
+
+  useEffect(() => { if (!open) setReason(''); }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-sm p-6">
+        <button onClick={onCancel} className="absolute top-4 right-4 text-[#777587] hover:text-[#151c27] p-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+          <X size={18} />
+        </button>
+
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-amber-100 text-amber-600">
+          <Trash2 size={22} />
+        </div>
+
+        <h3 className="text-base font-black text-[#151c27] text-center mb-1">Request Deletion</h3>
+        <p className="text-xs text-[#777587] text-center mb-4">
+          Request Root Admin to delete <strong>"{docName}"</strong>.<br />A notification will be sent for approval.
+        </p>
+
+        <div className="mb-4">
+          <label className="form-label">Reason for Deletion Request <span className="text-rose-500">*</span></label>
+          <textarea
+            className="form-control"
+            rows={3}
+            placeholder="Enter reason for requesting deletion of this document…"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+          />
+          {!reason.trim() && <p className="text-[0.65rem] text-rose-500 mt-1">Reason is required before requesting deletion.</p>}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 btn btn-outline">Cancel</button>
+          <button
+            onClick={() => { if (reason.trim()) onConfirm(reason.trim()); }}
+            disabled={!reason.trim() || requesting}
+            className="flex-1 btn btn-warning disabled:opacity-50 disabled:cursor-not-allowed bg-amber-500 text-white hover:bg-amber-600 border-amber-500 rounded-xl px-4 py-2 text-xs font-bold transition-colors"
+          >
+            {requesting ? <><span className="spinner w-4 h-4" /> Sending…</> : 'Request Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Preview Modal ────────────────────────────────────────────────────────────
 function PreviewModal({ doc, onClose }) {
   if (!doc) return null;
@@ -336,13 +389,26 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
       <input type="file" ref={fileRef} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
         onChange={e => {
           const f = e.target.files?.[0];
-          if (f) { setPendingFile(f); set('name', f.name.replace(/\.[^.]+$/, '')); }
+          if (f) {
+            if (f.size > 10 * 1024 * 1024) { toast('File size must not exceed 10 MB.', 'error'); e.target.value = ''; return; }
+            setPendingFile(f); set('name', f.name.replace(/\.[^.]+$/, ''));
+          }
           e.target.value = '';
         }} />
       {!pendingFile ? (
-        <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-[#3525cd]/30 rounded-xl cursor-pointer hover:bg-[#f0f3ff] transition-colors" onClick={() => fileRef.current?.click()}>
+        <div
+          className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-[#3525cd]/30 rounded-xl cursor-pointer hover:bg-[#f0f3ff] transition-colors"
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={e => {
+            e.preventDefault(); e.stopPropagation();
+            const f = e.dataTransfer.files?.[0];
+            if (!f) return;
+            if (f.size > 10 * 1024 * 1024) { toast('File size must not exceed 10 MB.', 'error'); return; }
+            setPendingFile(f); set('name', f.name.replace(/\.[^.]+$/, ''));
+          }}>
           <UploadCloud size={32} className="text-[#3525cd] mb-2" />
-          <p className="text-sm font-bold text-[#151c27]">Click to select a file</p>
+          <p className="text-sm font-bold text-[#151c27]">Click or drag a file here</p>
           <p className="text-xs text-[#777587] mt-1">PDF, JPG, PNG, WEBP, DOC, DOCX · Max 10 MB</p>
         </div>
       ) : (
@@ -452,20 +518,22 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
 
 // ── Admin: Shared Documents Tab ───────────────────────────────────────────────
 function SharedDocumentsTab({ onUploadClick }) {
-  const { user, isRootAdmin } = useAuth();
+  const { user, isRootAdmin, isAdmin } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
 
-  const [search, setSearch]         = useState('');
-  const [catFilter, setCatFilter]   = useState('');
-  const [visFilter, setVisFilter]   = useState('');
-  const [empFilter, setEmpFilter]   = useState('');
+  const [search, setSearch]             = useState('');
+  const [catFilter, setCatFilter]       = useState('');
+  const [visFilter, setVisFilter]       = useState('');
+  const [empFilter, setEmpFilter]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [page, setPage]             = useState(1);
-  const [pageSize, setPageSize]     = useState(10);
-  const [preview, setPreview]       = useState(null);
-  const [editDoc, setEditDoc]       = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
+  const [page, setPage]                 = useState(1);
+  const [pageSize, setPageSize]         = useState(10);
+  const [preview, setPreview]           = useState(null);
+  const [editDoc, setEditDoc]           = useState(null);
+  const [confirmDel, setConfirmDel]     = useState(null);
+  const [requestDelDoc, setRequestDelDoc] = useState(null); // { id, name }
+  const [accessDrawerDoc, setAccessDrawerDoc] = useState(null);
 
   const { data: _docs = [], isLoading } = useQuery({
     queryKey: ['documents', 'admin-all'],
@@ -485,6 +553,12 @@ function SharedDocumentsTab({ onUploadClick }) {
   const delMut = useMutation({
     mutationFn: ({ id, reason }) => apiDelete(`/documents/${id}`, { reason }),
     onSuccess:  () => { toast('Document deleted.', 'success'); qc.invalidateQueries({ queryKey: ['documents'] }); setConfirmDel(null); },
+    onError:    e  => toast(e.message, 'error'),
+  });
+
+  const requestDelMut = useMutation({
+    mutationFn: ({ id, reason }) => apiPost(`/documents/${id}/request-delete`, { reason }),
+    onSuccess:  () => { toast('Deletion request sent to Root Admin.', 'success'); setRequestDelDoc(null); },
     onError:    e  => toast(e.message, 'error'),
   });
 
@@ -517,14 +591,21 @@ function SharedDocumentsTab({ onUploadClick }) {
 
   function resetFilters() { setSearch(''); setCatFilter(''); setVisFilter(''); setEmpFilter(''); setStatusFilter(''); setPage(1); }
   function getSharedWith(doc) {
-    if (doc.visibility === 'all') return 'Everyone';
-    if (doc.visibility === 'admin_only') return 'HR & Admins';
-    if (doc.visibility === 'self') return doc.owner?.name || '—';
+    if (doc.visibility === 'all') return <span className="text-[#464555]">Everyone</span>;
+    if (doc.visibility === 'admin_only') return <span className="text-[#464555]">HR &amp; Admins</span>;
+    if (doc.visibility === 'self') return <span className="text-[#464555]">{doc.owner?.name || '—'}</span>;
     if (doc.visibility === 'specific') {
       const count = (doc.document_shares || []).length;
-      return count > 0 ? `${count} Employee${count !== 1 ? 's' : ''}` : 'None';
+      if (count === 0) return <span className="text-[#464555]">None</span>;
+      return (
+        <button
+          onClick={e => { e.stopPropagation(); setAccessDrawerDoc(doc); }}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#f0f3ff] text-[#3525cd] border border-[#e7eefe] hover:bg-[#e7eefe] transition-colors">
+          <Users size={11} /> {count} Employee{count !== 1 ? 's' : ''}
+        </button>
+      );
     }
-    return '—';
+    return <span className="text-[#464555]">—</span>;
   }
 
   function getUploadedBy(doc) {
@@ -648,6 +729,9 @@ function SharedDocumentsTab({ onUploadClick }) {
                           {isRootAdmin && (
                             <button title="Delete (Root Admin only)" onClick={() => setConfirmDel({ id: doc.id, name: doc.name })} className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"><Trash2 size={13} /></button>
                           )}
+                          {isAdmin && !isRootAdmin && (
+                            <button title="Request deletion (sends to Root Admin)" onClick={() => setRequestDelDoc({ id: doc.id, name: doc.name })} className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-amber-500 hover:bg-amber-50 transition-colors"><Trash2 size={13} /></button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -690,6 +774,76 @@ function SharedDocumentsTab({ onUploadClick }) {
         onConfirm={reason => delMut.mutate({ id: confirmDel.id, reason })}
         onCancel={() => setConfirmDel(null)}
       />
+      <RequestDeleteModal
+        open={!!requestDelDoc}
+        docName={requestDelDoc?.name}
+        requesting={requestDelMut.isPending}
+        onConfirm={reason => requestDelMut.mutate({ id: requestDelDoc.id, reason })}
+        onCancel={() => setRequestDelDoc(null)}
+      />
+
+      {/* ── Employees with Access Drawer ──────────────────────────────── */}
+      {accessDrawerDoc && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-black/40" onClick={() => setAccessDrawerDoc(null)} />
+          <div className="w-full max-w-sm bg-white shadow-2xl flex flex-col overflow-hidden">
+            {/* Drawer header */}
+            <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
+              <div>
+                <p className="text-sm font-black text-[#151c27]">Employees with Access</p>
+                <p className="text-xs text-[#777587] mt-0.5 truncate max-w-[200px]">{accessDrawerDoc.name}</p>
+              </div>
+              <button onClick={() => setAccessDrawerDoc(null)} className="p-1.5 rounded-lg text-[#777587] hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            {/* Doc info strip */}
+            <div className="px-5 py-3 bg-[#f9f9ff] border-b border-[#f0f3ff] flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">{fileIcon(accessDrawerDoc.file_type, 14)}</div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[#151c27] truncate">{accessDrawerDoc.name}</p>
+                <p className="text-[0.65rem] text-[#9ca3af]">{fmtBytes(accessDrawerDoc.file_size)} · {accessDrawerDoc.category} · Visibility: Specific Employees</p>
+              </div>
+            </div>
+            {/* Employee list */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-5 py-3 border-b border-[#f0f3ff]">
+                <p className="text-xs font-bold text-[#777587]">{(accessDrawerDoc.document_shares || []).length} Employee{(accessDrawerDoc.document_shares || []).length !== 1 ? 's' : ''} have access</p>
+              </div>
+              {(accessDrawerDoc.document_shares || []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-5">
+                  <Users size={32} className="text-[#c7c4d8] mb-2" />
+                  <p className="text-sm text-[#777587]">No employees have been given access.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#f0f3ff]">
+                  {(accessDrawerDoc.document_shares || []).map((share, i) => (
+                    <div key={share.id || i} className="flex items-center gap-3 px-5 py-3.5">
+                      <Avatar name={share.employee?.name || share.shared_with_user_id} color={share.employee?.avatar_color} size={36} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-[#151c27] truncate">{share.employee?.name || `Employee #${share.shared_with_user_id}`}</p>
+                        <p className="text-xs text-[#777587] truncate">{share.employee?.department || '—'}</p>
+                        {share.created_at && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Shared {fmtDate(share.created_at?.slice(0, 10))}</p>}
+                      </div>
+                      {accessDrawerDoc.file_url && (
+                        <button onClick={() => setPreview(accessDrawerDoc)} title="View document" className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors">
+                          <Eye size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-[#f0f3ff] bg-[#f9f9ff]">
+              <p className="text-[0.65rem] text-[#9ca3af] flex items-center gap-1.5">
+                <Lock size={10} /> These employees can view and download this document based on the assigned permissions.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1000,12 +1154,38 @@ function EmployeeRequirementsTab() {
 function ReviewModal({ submission, onClose, onReviewed }) {
   const toast = useToast();
   const qc = useQueryClient();
+  const { isRootAdmin } = useAuth();
   const [action, setAction]   = useState('');
   const [reason, setReason]   = useState('');
   const [saving, setSaving]   = useState(false);
   const [preview, setPreview] = useState(false);
 
-  const isReviewable = submission.status === 'under_review' || submission.status === 're_upload_requested';
+  // HR can act on under_review or re_upload_requested
+  // Root Admin can additionally act on hr_approved (to give final approval)
+  const isHrReviewable   = submission.status === 'under_review' || submission.status === 're_upload_requested';
+  const isRootReviewable = isRootAdmin && (isHrReviewable || submission.status === 'hr_approved');
+  const isReviewable     = isRootAdmin ? isRootReviewable : isHrReviewable;
+
+  // Build action options based on role
+  const actionOptions = isRootAdmin
+    ? [
+        { v: 'approved',            label: 'Final Approve',    cls: 'border-emerald-200 text-emerald-700', active: 'bg-emerald-500 text-white border-emerald-500' },
+        { v: 'rejected',            label: 'Reject',           cls: 'border-rose-200 text-rose-700',       active: 'bg-rose-500 text-white border-rose-500' },
+        { v: 're_upload_requested', label: 'Request Re-upload',cls: 'border-amber-200 text-amber-700',     active: 'bg-amber-500 text-white border-amber-500' },
+      ]
+    : [
+        { v: 'hr_approved',         label: 'Approve for Review', cls: 'border-yellow-300 text-yellow-700', active: 'bg-yellow-500 text-white border-yellow-500' },
+        { v: 'rejected',            label: 'Reject',             cls: 'border-rose-200 text-rose-700',     active: 'bg-rose-500 text-white border-rose-500' },
+        { v: 're_upload_requested', label: 'Request Re-upload',  cls: 'border-amber-200 text-amber-700',   active: 'bg-amber-500 text-white border-amber-500' },
+      ];
+
+  function getToastMsg(act) {
+    if (act === 'approved')            return 'Document approved!';
+    if (act === 'hr_approved')         return 'Document marked as HR Approved — awaiting Root Admin final approval.';
+    if (act === 'rejected')            return 'Document rejected.';
+    if (act === 're_upload_requested') return 'Re-upload requested.';
+    return 'Review submitted.';
+  }
 
   async function handleReview() {
     if (!action) { toast('Select an action', 'error'); return; }
@@ -1015,7 +1195,7 @@ function ReviewModal({ submission, onClose, onReviewed }) {
     setSaving(true);
     try {
       await apiPatch(`/doc-requirements/submissions/${submission.id}/review`, { action, reason: reason.trim() });
-      toast(action === 'approved' ? 'Document approved!' : action === 'rejected' ? 'Document rejected.' : 'Re-upload requested.', 'success');
+      toast(getToastMsg(action), 'success');
       qc.invalidateQueries({ queryKey: ['verification-queue'] });
       onReviewed();
     } catch (err) { toast(err.message, 'error'); }
@@ -1075,6 +1255,14 @@ function ReviewModal({ submission, onClose, onReviewed }) {
             )}
           </div>
 
+          {/* HR-approved banner — shown to Root Admin so they know HR already vetted this */}
+          {submission.status === 'hr_approved' && isRootAdmin && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-yellow-50 border border-yellow-200">
+              <ShieldCheck size={14} className="text-yellow-600 flex-shrink-0" />
+              <p className="text-xs text-yellow-700 font-semibold">HR has pre-approved this document. Final approval is required from Root Admin.</p>
+            </div>
+          )}
+
           {/* Already reviewed — show review details */}
           {!isReviewable && submission.reviewer?.name && (
             <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
@@ -1102,13 +1290,11 @@ function ReviewModal({ submission, onClose, onReviewed }) {
           {isReviewable && (
             <>
               <div>
-                <label className="form-label mb-2">Review Decision <span className="text-rose-500">*</span></label>
+                <label className="form-label mb-2">
+                  {isRootAdmin ? 'Final Decision' : 'Review Decision'} <span className="text-rose-500">*</span>
+                </label>
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { v: 'approved',            label: 'Approve',           cls: 'border-emerald-200 text-emerald-700', active: 'bg-emerald-500 text-white border-emerald-500' },
-                    { v: 'rejected',            label: 'Reject',            cls: 'border-rose-200 text-rose-700',       active: 'bg-rose-500 text-white border-rose-500' },
-                    { v: 're_upload_requested', label: 'Request Re-upload', cls: 'border-amber-200 text-amber-700',    active: 'bg-amber-500 text-white border-amber-500' },
-                  ].map(opt => (
+                  {actionOptions.map(opt => (
                     <button key={opt.v} onClick={() => setAction(opt.v)}
                       className={`p-3 rounded-xl border text-xs font-bold transition-all ${action === opt.v ? opt.active : `bg-white ${opt.cls} hover:bg-gray-50`}`}>
                       {opt.label}
@@ -1146,6 +1332,7 @@ function ReviewModal({ submission, onClose, onReviewed }) {
 
 // ── Admin: Verification Queue Tab ────────────────────────────────────────────
 function VerificationQueueTab() {
+  const { isRootAdmin } = useAuth();
   const [reviewSub,    setReviewSub]    = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search,       setSearch]       = useState('');
@@ -1156,11 +1343,12 @@ function VerificationQueueTab() {
   });
 
   const STATUS_TABS = [
-    { key: 'all',                 label: 'All',             count: allSubs.length },
-    { key: 'under_review',        label: 'Pending Review',  count: allSubs.filter(s => s.status === 'under_review').length },
+    { key: 'all',                 label: 'All',               count: allSubs.length },
+    { key: 'under_review',        label: 'Pending Review',    count: allSubs.filter(s => s.status === 'under_review').length },
+    { key: 'hr_approved',         label: 'HR Approved',       count: allSubs.filter(s => s.status === 'hr_approved').length },
     { key: 're_upload_requested', label: 'Re-upload Requested', count: allSubs.filter(s => s.status === 're_upload_requested').length },
-    { key: 'approved',            label: 'Approved',        count: allSubs.filter(s => s.status === 'approved').length },
-    { key: 'rejected',            label: 'Rejected',        count: allSubs.filter(s => s.status === 'rejected').length },
+    { key: 'approved',            label: 'Approved',          count: allSubs.filter(s => s.status === 'approved').length },
+    { key: 'rejected',            label: 'Rejected',          count: allSubs.filter(s => s.status === 'rejected').length },
   ];
 
   const filtered = useMemo(() => {
@@ -1175,7 +1363,13 @@ function VerificationQueueTab() {
     return list;
   }, [allSubs, statusFilter, search]);
 
-  const canReview = (sub) => sub.status === 'under_review' || sub.status === 're_upload_requested';
+  // HR can review under_review and re_upload_requested
+  // Root Admin can also review hr_approved submissions (for final approval)
+  const canReview = (sub) => {
+    const baseReviewable = sub.status === 'under_review' || sub.status === 're_upload_requested';
+    if (isRootAdmin) return baseReviewable || sub.status === 'hr_approved';
+    return baseReviewable;
+  };
 
   return (
     <div>
@@ -1308,9 +1502,6 @@ function AdminDocumentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="btn btn-outline" onClick={() => { setActiveTab('shared'); setShowUpload(v => !v); setShowCreateReq(false); }}>
-            <Upload size={14} /> Upload Shared Document
-          </button>
           <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); setActiveTab('requirements'); }}>
             <Plus size={14} /> Create Requirement
           </button>
@@ -1487,6 +1678,12 @@ function EmployeeDocumentsDashboard() {
     queryFn:  () => apiGet('/doc-requirements/my-activity'),
   });
 
+  // Shared documents from HR/Root Admin (visibility='all', 'self', or 'specific' with me included)
+  const { data: sharedDocs = [] } = useQuery({
+    queryKey: ['my-shared-docs'],
+    queryFn:  () => apiGet('/documents'),
+  });
+
   // Compute stats
   const requiredReqs   = requirements.filter(r => r.is_required);
   const totalRequired  = requiredReqs.length;
@@ -1503,6 +1700,9 @@ function EmployeeDocumentsDashboard() {
     r._submission?.status === 'rejected' ||
     r._submission?.status === 're_upload_requested'
   );
+
+  // Optional requirements that haven't been uploaded yet (Bug #10)
+  const optionalPending = requirements.filter(r => !r.is_required && !r._submission);
 
   // Uploaded documents (all submissions)
   const uploadedDocs = requirements.filter(r => r._submission);
@@ -1725,6 +1925,77 @@ function EmployeeDocumentsDashboard() {
               </a>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Optional Documents (Bug #10 — not required, not yet uploaded) */}
+      {optionalPending.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-[#f0f3ff]">
+            <Info size={16} className="text-[#3525cd]" />
+            <p className="text-sm font-black text-[#151c27]">Optional Documents ({optionalPending.length})</p>
+            <span className="text-xs text-[#777587] ml-1">— Upload if available</span>
+          </div>
+          <div className="divide-y divide-[#f0f3ff]">
+            {optionalPending.map(req => (
+              <div key={req.id} className="flex items-center gap-4 px-5 py-4">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                  {fileIcon('', 18)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-[#151c27] text-sm">{req.name}</p>
+                    <span className="px-2 py-0.5 rounded-full text-[0.65rem] font-bold border bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]">Optional</span>
+                  </div>
+                  {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
+                  <p className="text-xs text-[#9ca3af] mt-0.5">Not uploaded yet</p>
+                </div>
+                <button onClick={() => setUploadFor(req)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border bg-white text-[#3525cd] border-[#3525cd]/40 hover:bg-[#f0f3ff] transition-all flex-shrink-0">
+                  <Upload size={12} /> Upload
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Shared Documents from HR/Admin (Bug #3) */}
+      {sharedDocs.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-[#f0f3ff]">
+            <Share2 size={16} className="text-[#3525cd]" />
+            <p className="text-sm font-black text-[#151c27]">Documents Shared with Me ({sharedDocs.length})</p>
+          </div>
+          <div className="divide-y divide-[#f0f3ff]">
+            {sharedDocs.map(doc => (
+              <div key={doc.id} className="flex items-center gap-4 px-5 py-4">
+                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                  {fileIcon(doc.file_type, 18)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-[#151c27] text-sm">{doc.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">{doc.category}</span>
+                    {doc.expiry_date && <span className="text-[0.65rem] text-[#9ca3af]">Expires {fmtDate(doc.expiry_date)}</span>}
+                  </div>
+                  {doc.uploader?.name && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Shared by {doc.uploader.name} · {fmtDate(doc.created_at?.slice(0, 10))}</p>}
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {canPreview(doc.file_type) ? (
+                    <button onClick={() => setPreview(doc)} title="View" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] border border-[#3525cd]/30 hover:bg-[#f0f3ff] transition-colors">
+                      <Eye size={12} /> View
+                    </button>
+                  ) : (
+                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] border border-[#3525cd]/30 hover:bg-[#f0f3ff] transition-colors">
+                      <Download size={12} /> Download
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -52,7 +52,7 @@ router.get('/', auth, async (req, res) => {
 
       const statsMap = {};
       (subs || []).forEach(s => {
-        if (!statsMap[s.requirement_id]) statsMap[s.requirement_id] = { total: 0, approved: 0, under_review: 0, rejected: 0, re_upload_requested: 0 };
+        if (!statsMap[s.requirement_id]) statsMap[s.requirement_id] = { total: 0, approved: 0, hr_approved: 0, under_review: 0, rejected: 0, re_upload_requested: 0 };
         statsMap[s.requirement_id].total++;
         statsMap[s.requirement_id][s.status] = (statsMap[s.requirement_id][s.status] || 0) + 1;
       });
@@ -104,7 +104,7 @@ router.get('/verification-queue', auth, async (req, res) => {
       .eq('organization_id', oId)
       .order('uploaded_at', { ascending: false });
 
-    if (status && ['under_review', 'approved', 'rejected', 're_upload_requested'].includes(status)) {
+    if (status && ['under_review', 'hr_approved', 'approved', 'rejected', 're_upload_requested'].includes(status)) {
       query = query.eq('status', status);
     }
 
@@ -157,10 +157,13 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { action, reason } = req.body;
 
-    if (!['approved', 'rejected', 're_upload_requested'].includes(action))
+    if (!['approved', 'hr_approved', 'rejected', 're_upload_requested'].includes(action))
       return res.status(400).json({ error: 'Invalid action' });
     if ((action === 'rejected' || action === 're_upload_requested') && !reason?.trim())
       return res.status(400).json({ error: 'Reason is required for rejection or re-upload request' });
+    // Only root_admin can set final 'approved'; HR admin can set 'hr_approved'
+    if (action === 'approved' && req.user.role !== 'root_admin')
+      return res.status(403).json({ error: 'Only Root Admin can give final document approval. Use "HR Approve" to forward for Root Admin review.' });
 
     const { data: sub } = await supabase
       .from('employee_doc_submissions')
@@ -176,7 +179,7 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
       reviewed_at: new Date().toISOString(),
       updated_at:  new Date().toISOString(),
     };
-    updates.rejection_reason = (action !== 'approved') ? (reason?.trim() || null) : null;
+    updates.rejection_reason = (action === 'approved' || action === 'hr_approved') ? null : (reason?.trim() || null);
 
     const { data, error } = await supabase.from('employee_doc_submissions')
       .update(updates)
@@ -186,22 +189,33 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
     if (error) throw error;
 
     // Log activity
+    const activityDetails = {
+      approved:            `"${sub.requirement?.name}" approved`,
+      hr_approved:         `"${sub.requirement?.name}" HR-approved, pending Root Admin final approval`,
+      rejected:            `"${sub.requirement?.name}" rejected: ${reason || ''}`,
+      re_upload_requested: `"${sub.requirement?.name}" re-upload requested: ${reason || ''}`,
+    }[action] || `"${sub.requirement?.name}" ${action}`;
+
     await supabase.from('doc_submission_activity').insert({
-      requirement_id: sub.requirement_id,
-      user_id:        sub.user_id,
+      requirement_id:  sub.requirement_id,
+      user_id:         sub.user_id,
       organization_id: oId,
       action,
-      details: action === 'approved'
-        ? `"${sub.requirement?.name}" approved`
-        : `"${sub.requirement?.name}" ${action === 'rejected' ? 'rejected' : 're-upload requested'}: ${reason || ''}`,
-      actor_id: req.user.id,
+      details:         activityDetails,
+      actor_id:        req.user.id,
     });
 
-    // Notify employee
-    const notifTitle = { approved: 'Document Approved', rejected: 'Document Rejected', re_upload_requested: 'Re-upload Requested' }[action];
+    // Notify employee (hr_approved notifies employee that it is under further review)
+    const notifTitle = {
+      approved:            'Document Approved',
+      hr_approved:         'Document Under Final Review',
+      rejected:            'Document Rejected',
+      re_upload_requested: 'Re-upload Requested',
+    }[action];
     const notifMsg = {
-      approved:           `Your "${sub.requirement?.name}" has been approved.`,
-      rejected:           `Your "${sub.requirement?.name}" was rejected. Reason: ${reason}`,
+      approved:            `Your "${sub.requirement?.name}" has been approved.`,
+      hr_approved:         `Your "${sub.requirement?.name}" has been reviewed by HR and is pending final approval by Root Admin.`,
+      rejected:            `Your "${sub.requirement?.name}" was rejected. Reason: ${reason}`,
       re_upload_requested: `Please re-upload "${sub.requirement?.name}". Reason: ${reason}`,
     }[action];
 
@@ -209,6 +223,25 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
       user_id: sub.user_id, title: notifTitle, message: notifMsg,
       type: 'document', organization_id: oId,
     });
+
+    // If HR approved, also notify root_admins to give final approval
+    if (action === 'hr_approved') {
+      const { data: rootAdmins } = await supabase.from('users')
+        .select('id')
+        .eq('organization_id', oId)
+        .eq('role', 'root_admin');
+      if (rootAdmins?.length) {
+        await supabase.from('notifications').insert(
+          rootAdmins.map(a => ({
+            user_id:         a.id,
+            title:           'Document Awaiting Final Approval',
+            message:         `${req.user.name} (HR) has reviewed and pre-approved "${sub.requirement?.name}". Please give final approval in the Verification Queue.`,
+            type:            'document',
+            organization_id: oId,
+          }))
+        );
+      }
+    }
 
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

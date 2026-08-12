@@ -347,6 +347,50 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/documents/:id/request-delete — HR admin requests Root Admin to delete a document
+router.post('/:id/request-delete', auth, async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+
+    // Only HR admin (admin role, NOT root_admin) can use this endpoint
+    if (!isAdmin(req.user.role))
+      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user.role === 'root_admin')
+      return res.status(400).json({ error: 'Root Admin can delete directly. Use the delete action instead.' });
+
+    const { data: doc } = await supabase.from('employee_documents')
+      .select('id, name, category')
+      .eq('id', req.params.id)
+      .eq('organization_id', oId)
+      .single();
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const { reason } = req.body;
+    if (!reason?.trim())
+      return res.status(400).json({ error: 'Reason is required for a deletion request.' });
+
+    // Notify all root_admins in the org
+    const { data: rootAdmins } = await supabase.from('users')
+      .select('id')
+      .eq('organization_id', oId)
+      .eq('role', 'root_admin');
+
+    if (rootAdmins?.length) {
+      await supabase.from('notifications').insert(
+        rootAdmins.map(a => ({
+          user_id:         a.id,
+          title:           'Document Deletion Request',
+          message:         `HR ${req.user.name} requested deletion of document "${doc.name}". Reason: ${reason.trim()}`,
+          type:            'document',
+          organization_id: oId,
+        }))
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/documents/:id — only root_admin can delete shared docs (with mandatory reason)
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -369,6 +413,9 @@ router.delete('/:id', auth, async (req, res) => {
 
     const publicId = doc.file_url.split('/').slice(-2).join('/').replace(/\.[^.]+$/, '');
     try { await cloudinary.uploader.destroy(publicId); } catch { /* already gone */ }
+
+    // Delete dependent rows first to avoid FK constraint violations
+    await supabase.from('document_shares').delete().eq('document_id', req.params.id);
 
     const { error } = await supabase.from('employee_documents').delete().eq('id', req.params.id);
     if (error) throw error;
