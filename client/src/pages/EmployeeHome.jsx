@@ -633,6 +633,10 @@ export default function EmployeeHome() {
             )}
 
             {/* secondary buttons */}
+            <button onClick={() => setApplyLeaveOpen(true)}
+              className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
+              <Umbrella size={15} /> Apply Leave
+            </button>
             <Link to="/portal/regularization"
               className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-xl border border-white/40 text-white hover:bg-white/10 transition-all">
               <ClipboardList size={15} /> Attendance Correction
@@ -820,10 +824,6 @@ export default function EmployeeHome() {
                 })}
               </div>
             )}
-            <button onClick={() => navigate('/portal/leaves')}
-              className="w-full mt-4 text-xs font-bold text-[#3525cd] border border-[#c7c4d8] rounded-xl py-2.5 hover:bg-[#f0f3ff] transition-colors">
-              View All Leaves →
-            </button>
           </div>
         </div>
       </div>

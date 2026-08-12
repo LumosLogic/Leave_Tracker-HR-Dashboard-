@@ -1881,6 +1881,7 @@ export default function Employees() {
   const [editInitialTab,   setEditInitialTab]   = useState('personal');
   const [confirmDel,       setConfirmDel]       = useState(null);
   const [profileDrawerEmp, setProfileDrawerEmp] = useState(null);
+  const [drawerTab,        setDrawerTab]        = useState('overview');
 
   function openProfile(emp) {
     navigate(`${employeesBase}/${emp.id}`);
@@ -1975,6 +1976,26 @@ export default function Employees() {
     queryFn:  () => apiGet('/branches'),
   });
   const branchList = Array.isArray(_brData) ? _brData : [];
+
+  // Drawer — attendance + leave data for the selected employee
+  const _drawerNow = new Date();
+  const _drawerYear  = _drawerNow.getFullYear();
+  const _drawerMonth = _drawerNow.getMonth() + 1;
+  const { data: drawerAtt = [] } = useQuery({
+    queryKey: ['drawer-att', profileDrawerEmp?.id, _drawerYear, _drawerMonth],
+    queryFn:  () => apiGet('/attendance', { year: _drawerYear, month: _drawerMonth, userId: profileDrawerEmp.id }),
+    enabled:  !!profileDrawerEmp,
+  });
+  const { data: drawerLeaves = [] } = useQuery({
+    queryKey: ['drawer-leaves', profileDrawerEmp?.id],
+    queryFn:  () => apiGet('/leaves', { userId: profileDrawerEmp.id }),
+    enabled:  !!profileDrawerEmp,
+  });
+  const { data: drawerPolicies = [] } = useQuery({
+    queryKey: ['leave-policies'],
+    queryFn:  () => apiGet('/leave-policies'),
+    enabled:  !!profileDrawerEmp,
+  });
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/employees/${id}`),
@@ -2420,21 +2441,22 @@ export default function Employees() {
                       Employee <ArrowUpDown size={11} className={sortBy === 'name' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Employee ID</th>
                   <th className="px-4 py-3 text-left">
                     <button onClick={() => toggleSortBy('department')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors">
                       Department <ArrowUpDown size={11} className={sortBy === 'department' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <button onClick={() => toggleSortBy('position')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors">
-                      Position <ArrowUpDown size={11} className={sortBy === 'position' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                    <button onClick={() => toggleSortBy('position')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors whitespace-nowrap">
+                      Role / Designation <ArrowUpDown size={11} className={sortBy === 'position' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Branch</th>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-left">
                     <button onClick={() => toggleSortBy('joining_date')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors whitespace-nowrap">
-                      Joined <ArrowUpDown size={11} className={sortBy === 'joining_date' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
+                      Joining Date <ArrowUpDown size={11} className={sortBy === 'joining_date' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Actions</th>
@@ -2449,14 +2471,17 @@ export default function Employees() {
                         {selected.has(emp.id) && <Check size={10} className="text-white" />}
                       </div>
                     </td>
-                    <td className="px-4 py-3 cursor-pointer" onClick={() => setProfileDrawerEmp(emp)}>
+                    <td className="px-4 py-3 cursor-pointer" onClick={() => { setProfileDrawerEmp(emp); setDrawerTab('overview'); }}>
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                        <Avatar name={emp.name} color={emp.avatar_color} size={34} />
                         <div>
                           <p className="font-bold text-[#151c27] text-sm leading-tight group-hover:text-[#3525cd] transition-colors">{emp.name}</p>
                           <p className="text-xs text-[#9ca3af] truncate max-w-[160px]">{emp.email}</p>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-[#777587] whitespace-nowrap">
+                      EMP{String(emp.id).padStart(3, '0')}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#464555]">
                       {emp.departments?.length > 0
@@ -2464,31 +2489,34 @@ export default function Employees() {
                         : emp.department || '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#464555]">{emp.position || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] capitalize">
-                        {emp.employment_type?.replace('_', ' ') || 'Full Time'}
-                      </span>
+                    <td className="px-4 py-3 text-xs text-[#464555]">
+                      {emp.branch_id ? (branchList.find(b => b.id === emp.branch_id)?.name || '—') : '—'}
                     </td>
                     <td className="px-4 py-3"><EmpStatusBadge status={emp.employee_status} /></td>
                     <td className="px-4 py-3 text-xs text-[#464555] whitespace-nowrap">
                       {emp.joining_date ? fmtDate(emp.joining_date) : '—'}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setProfileDrawerEmp(emp)}
-                          className="p-1.5 rounded-lg text-[#3525cd] hover:bg-[#f0f3ff] transition-colors" title="View Profile">
-                          <User size={13} />
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <div className="relative group/menu flex justify-center">
+                        <button className="p-1.5 rounded-lg text-[#777587] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
+                          <MoreHorizontal size={15} />
                         </button>
-                        <button onClick={() => setEditEmp(emp)}
-                          className="p-1.5 rounded-lg text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors" title="Edit">
-                          <Pencil size={13} />
-                        </button>
-                        {emp.id !== user?.id && (
-                          <button onClick={() => handleDelete(emp)} disabled={deleteMut.isPending}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors disabled:opacity-40" title="Delete">
-                            <Trash2 size={13} />
+                        <div className="absolute right-0 top-8 w-40 bg-white rounded-xl border border-[#c7c4d8] shadow-lg z-10 hidden group-hover/menu:block py-1">
+                          <button onClick={() => { setProfileDrawerEmp(emp); setDrawerTab('overview'); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
+                            <User size={12} /> View Profile
                           </button>
-                        )}
+                          <button onClick={() => setEditEmp(emp)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
+                            <Pencil size={12} /> Edit Employee
+                          </button>
+                          {emp.id !== user?.id && (
+                            <button onClick={() => handleDelete(emp)} disabled={deleteMut.isPending}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40">
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -2564,7 +2592,8 @@ export default function Employees() {
             onClick={e => e.stopPropagation()}
           >
             {/* Drawer header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+            {/* ── Drawer header ── */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#f0f3ff]">
               <p className="text-sm font-black text-[#151c27]">Employee Profile</p>
               <button onClick={() => setProfileDrawerEmp(null)}
                 className="p-1.5 rounded-lg text-[#777587] hover:text-rose-500 hover:bg-rose-50 transition-colors">
@@ -2572,15 +2601,15 @@ export default function Employees() {
               </button>
             </div>
 
-            {/* Scrollable body */}
+            {/* ── Scrollable body ── */}
             <div className="flex-1 overflow-y-auto">
               {/* Avatar + Name block */}
-              <div className="px-5 py-6 flex flex-col items-center text-center gap-3 border-b border-[#f0f3ff] bg-[#fafaff]">
-                <Avatar name={profileDrawerEmp.name} color={profileDrawerEmp.avatar_color} size={72} />
+              <div className="px-5 py-5 flex flex-col items-center text-center gap-3 border-b border-[#f0f3ff]">
+                <Avatar name={profileDrawerEmp.name} color={profileDrawerEmp.avatar_color} size={64} />
                 <div>
-                  <p className="text-lg font-black text-[#151c27]">{profileDrawerEmp.name}</p>
+                  <p className="text-base font-black text-[#151c27]">{profileDrawerEmp.name}</p>
                   {profileDrawerEmp.position && (
-                    <p className="text-sm text-[#777587] mt-0.5">{profileDrawerEmp.position}</p>
+                    <p className="text-xs text-[#777587] mt-0.5">{profileDrawerEmp.position}</p>
                   )}
                   <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
                     <EmpStatusBadge status={profileDrawerEmp.employee_status} />
@@ -2590,100 +2619,190 @@ export default function Employees() {
                       </span>
                     )}
                   </div>
+                  {/* Department badges */}
+                  {profileDrawerEmp.departments?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 justify-center mt-1.5">
+                      {profileDrawerEmp.departments.map(d => (
+                        <span key={d.id} className="text-[0.65rem] font-bold px-2 py-0.5 rounded-md bg-[#f0f3ff] text-[#3525cd] border border-[#e7eefe]">{d.name}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Detail rows */}
-              <div className="px-5 py-4 space-y-4">
-                {profileDrawerEmp.departments?.length > 0 && (
-                  <div className="flex items-start gap-3">
-                    <Building2 size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Department</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {profileDrawerEmp.departments.map(d => (
-                          <span key={d.id} className="text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] px-2 py-0.5 rounded-md border border-[#e7eefe]">{d.name}</span>
+              {/* ── Tabs ── */}
+              <div className="flex border-b border-[#f0f3ff] px-4">
+                {[
+                  { key: 'overview',   label: 'Overview'   },
+                  { key: 'attendance', label: 'Attendance'  },
+                  { key: 'documents',  label: 'Documents'   },
+                ].map(t => (
+                  <button key={t.key} onClick={() => setDrawerTab(t.key)}
+                    className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${drawerTab === t.key ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Overview tab ── */}
+              {drawerTab === 'overview' && (() => {
+                const branchName = profileDrawerEmp.branch_id
+                  ? (branchList.find(b => b.id === profileDrawerEmp.branch_id)?.name || '—')
+                  : '—';
+                const empIdFormatted = `EMP${String(profileDrawerEmp.id).padStart(3, '0')}`;
+                const deptName = profileDrawerEmp.departments?.map(d => d.name).join(', ') || profileDrawerEmp.department || '—';
+
+                // Leave balance calculation
+                const approvedLeaves = drawerLeaves.filter(l => l.status === 'approved' && l.leave_type !== 'wfh' && l.leave_time !== 'wfh');
+                const activePolicies = drawerPolicies.filter(p => p.active && p.annual_quota > 0 && ['casual','sick','annual','emergency'].includes(p.leave_type));
+                const leaveBalance = activePolicies.map(p => {
+                  const used = approvedLeaves.filter(l => l.leave_type === p.leave_type)
+                    .reduce((s, l) => s + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
+                  return { type: p.leave_type, quota: p.annual_quota, used, remaining: Math.max(0, p.annual_quota - used) };
+                });
+
+                return (
+                  <div>
+                    {/* Contact Information */}
+                    <div className="px-5 py-4 border-b border-[#f0f3ff]">
+                      <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-3">Contact Information</p>
+                      <div className="space-y-2.5">
+                        {profileDrawerEmp.email && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                              <Mail size={13} className="text-[#3525cd]" />
+                            </div>
+                            <p className="text-xs text-[#151c27] break-all">{profileDrawerEmp.email}</p>
+                          </div>
+                        )}
+                        {profileDrawerEmp.phone && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                              <Phone size={13} className="text-[#3525cd]" />
+                            </div>
+                            <p className="text-xs text-[#151c27]">{profileDrawerEmp.phone}</p>
+                          </div>
+                        )}
+                        {profileDrawerEmp.joining_date && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                              <CalendarDays size={13} className="text-[#3525cd]" />
+                            </div>
+                            <p className="text-xs text-[#151c27]">Joined on {fmtDate(profileDrawerEmp.joining_date)}</p>
+                          </div>
+                        )}
+                        {branchName !== '—' && (
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                              <MapPin size={13} className="text-[#3525cd]" />
+                            </div>
+                            <p className="text-xs text-[#151c27]">{branchName}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Work Information */}
+                    <div className="px-5 py-4 border-b border-[#f0f3ff]">
+                      <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-3">Work Information</p>
+                      <div className="space-y-2">
+                        {[
+                          { label: 'Employee ID',       value: empIdFormatted },
+                          { label: 'Department',        value: deptName },
+                          { label: 'Role / Designation', value: profileDrawerEmp.position || '—' },
+                          { label: 'Employee Type',     value: profileDrawerEmp.employment_type?.replace(/_/g, ' ') || '—' },
+                          { label: 'Work Mode',         value: profileDrawerEmp.work_mode?.replace(/_/g, ' ') || '—' },
+                          { label: 'Grade',             value: profileDrawerEmp.grade || '—' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="flex items-start justify-between gap-2">
+                            <span className="text-xs text-[#9ca3af] flex-shrink-0">{label}</span>
+                            <span className="text-xs font-semibold text-[#151c27] text-right capitalize">{value}</span>
+                          </div>
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {profileDrawerEmp.email && (
-                  <div className="flex items-start gap-3">
-                    <Mail size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Work Email</p>
-                      <p className="text-xs text-[#151c27] mt-0.5 break-all">{profileDrawerEmp.email}</p>
-                    </div>
+                    {/* Leave Balance */}
+                    {leaveBalance.length > 0 && (
+                      <div className="px-5 py-4 border-b border-[#f0f3ff]">
+                        <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-3">Leave Balance</p>
+                        <div className="space-y-3">
+                          {leaveBalance.map(b => (
+                            <div key={b.type}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-semibold text-[#464555] capitalize">{b.type} Leave</span>
+                                <span className="text-xs text-[#777587]">{b.remaining} / {b.quota}</span>
+                              </div>
+                              <div className="w-full bg-[#f0f3ff] rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${b.remaining === 0 ? 'bg-rose-400' : b.remaining <= b.quota * 0.25 ? 'bg-amber-400' : 'bg-[#3525cd]'}`}
+                                  style={{ width: `${Math.min(100, (b.remaining / b.quota) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })()}
 
-                {profileDrawerEmp.phone && (
-                  <div className="flex items-start gap-3">
-                    <Phone size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Phone</p>
-                      <p className="text-xs text-[#151c27] mt-0.5">{profileDrawerEmp.phone}</p>
+              {/* ── Attendance tab ── */}
+              {drawerTab === 'attendance' && (() => {
+                const present  = drawerAtt.filter(a => a.status === 'present' || a.status === 'wfh').length;
+                const onLeave  = drawerAtt.filter(a => a.status === 'on_leave').length;
+                const absent   = drawerAtt.filter(a => a.status === 'absent').length;
+                const halfDay  = drawerAtt.filter(a => a.status === 'half_day').length;
+                const totalDays = drawerAtt.length;
+                return (
+                  <div className="px-5 py-4">
+                    <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-4">
+                      Attendance Summary (This Month)
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Present',   value: present,  color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                        { label: 'Leaves',    value: onLeave,  color: 'text-amber-600',   bg: 'bg-amber-50',   border: 'border-amber-100'   },
+                        { label: 'Absent',    value: absent,   color: 'text-rose-600',    bg: 'bg-rose-50',    border: 'border-rose-100'    },
+                        { label: 'Half Days', value: halfDay,  color: 'text-blue-600',    bg: 'bg-blue-50',    border: 'border-blue-100'    },
+                      ].map(({ label, value, color, bg, border }) => (
+                        <div key={label} className={`${bg} border ${border} rounded-xl p-3 text-center`}>
+                          <p className={`text-xl font-black ${color}`}>{value}</p>
+                          <p className="text-[0.65rem] font-bold text-[#777587] mt-0.5">{label}</p>
+                        </div>
+                      ))}
                     </div>
+                    {totalDays === 0 && (
+                      <p className="text-xs text-[#9ca3af] text-center mt-4">No attendance data for this month.</p>
+                    )}
                   </div>
-                )}
+                );
+              })()}
 
-                {profileDrawerEmp.joining_date && (
-                  <div className="flex items-start gap-3">
-                    <CalendarDays size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Joined</p>
-                      <p className="text-xs text-[#151c27] mt-0.5">{fmtDate(profileDrawerEmp.joining_date)}</p>
-                    </div>
-                  </div>
-                )}
-
-                {profileDrawerEmp.work_mode && (
-                  <div className="flex items-start gap-3">
-                    <Home size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Work Mode</p>
-                      <p className="text-xs text-[#151c27] mt-0.5 capitalize">{profileDrawerEmp.work_mode.replace(/_/g, ' ')}</p>
-                    </div>
-                  </div>
-                )}
-
-                {profileDrawerEmp.gender && (
-                  <div className="flex items-start gap-3">
-                    <User size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Gender</p>
-                      <p className="text-xs text-[#151c27] mt-0.5 capitalize">{profileDrawerEmp.gender}</p>
-                    </div>
-                  </div>
-                )}
-
-                {profileDrawerEmp.grade && (
-                  <div className="flex items-start gap-3">
-                    <BarChart3 size={15} className="text-[#777587] mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[0.62rem] font-black text-[#9ca3af] uppercase tracking-wider">Grade</p>
-                      <p className="text-xs text-[#151c27] mt-0.5">{profileDrawerEmp.grade}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* ── Documents tab ── */}
+              {drawerTab === 'documents' && (
+                <div className="px-5 py-8 flex flex-col items-center justify-center text-center gap-2">
+                  <FileText size={32} className="text-[#c7c4d8]" />
+                  <p className="text-sm font-semibold text-[#464555]">View full profile for documents</p>
+                  <p className="text-xs text-[#9ca3af]">Click "View Full Profile" below to see all uploaded documents.</p>
+                </div>
+              )}
             </div>
 
-            {/* Footer actions */}
-            <div className="px-5 py-4 border-t border-[#f0f3ff] bg-[#f9f9ff] flex flex-col gap-2.5">
-              <button
-                onClick={() => { setEditEmp(profileDrawerEmp); setEditInitialTab('personal'); setProfileDrawerEmp(null); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#3525cd] text-white hover:bg-[#2a1eb0] transition-colors shadow-sm"
-              >
-                <Pencil size={14} /> Edit Employee
-              </button>
+            {/* ── Footer actions ── */}
+            <div className="px-5 py-4 border-t border-[#f0f3ff] bg-[#f9f9ff] flex gap-2.5">
               <button
                 onClick={() => { openProfile(profileDrawerEmp); setProfileDrawerEmp(null); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff] transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff] transition-colors"
               >
-                <Eye size={14} /> View Full Profile
+                <Eye size={13} /> View Full Profile
+              </button>
+              <button
+                onClick={() => { setEditEmp(profileDrawerEmp); setEditInitialTab('personal'); setProfileDrawerEmp(null); }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#3525cd] text-white hover:bg-[#2a1eb0] transition-colors shadow-sm"
+              >
+                <Pencil size={13} /> Edit Employee
               </button>
             </div>
           </div>
