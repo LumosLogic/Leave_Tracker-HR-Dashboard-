@@ -1503,6 +1503,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
                     <option value="active">Active</option>
                     <option value="on_leave">On Leave</option>
+                    <option value="probation">Probation</option>
+                    <option value="notice_period">Notice Period</option>
+                    <option value="notice">Notice</option>
                     <option value="inactive">Inactive</option>
                     <option value="resigned">Resigned</option>
                     <option value="terminated">Terminated</option>
@@ -2015,15 +2018,7 @@ export default function Employees() {
     if (deptFilter)   rows = rows.filter(e =>
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
     if (branchFilter) rows = rows.filter(e => String(e.branch_id) === String(branchFilter));
-    // Status workflow: Active/On Leave → main list; Inactive/Resigned/Terminated → inactive view
-    const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
-    if (statusFilter === '__inactive__') {
-      rows = rows.filter(e => INACTIVE_STATUSES.includes(e.employee_status || 'active'));
-    } else if (statusFilter) {
-      rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
-    } else {
-      rows = rows.filter(e => !INACTIVE_STATUSES.includes(e.employee_status || 'active'));
-    }
+    if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
     if (joinedYmParam) {
       const [yr, mo] = joinedYmParam.split('-').map(Number);
@@ -2207,16 +2202,18 @@ export default function Employees() {
           </select>
         )}
 
-        {/* Status */}
+        {/* Employee Status */}
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="form-control w-auto text-xs py-1.5">
-          <option value="">Active Employees</option>
-          <option value="__inactive__">Inactive / Resigned / Terminated</option>
-          <option disabled>──────────────</option>
+          <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="on_leave">On Leave</option>
           <option value="probation">Probation</option>
           <option value="notice_period">Notice Period</option>
+          <option value="notice">Notice</option>
+          <option value="inactive">Inactive</option>
+          <option value="resigned">Resigned</option>
+          <option value="terminated">Terminated</option>
         </select>
 
         {/* Employment type */}
