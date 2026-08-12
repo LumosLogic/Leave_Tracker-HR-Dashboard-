@@ -2213,7 +2213,10 @@ export default function Employees() {
           <option value="">Active Employees</option>
           <option value="__inactive__">Inactive / Resigned / Terminated</option>
           <option disabled>──────────────</option>
-          {Object.entries(EMP_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <option value="active">Active</option>
+          <option value="on_leave">On Leave</option>
+          <option value="probation">Probation</option>
+          <option value="notice_period">Notice Period</option>
         </select>
 
         {/* Employment type */}

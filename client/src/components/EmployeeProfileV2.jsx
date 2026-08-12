@@ -1409,8 +1409,7 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const statusKey = emp.employee_status || 'active';
   const statusCfg = PROFILE_STATUS_CFG[statusKey] || PROFILE_STATUS_CFG.active;
 
-  const TABS         = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
-  const activeTab    = TABS.find(t => t.id === currentTab) || TABS[0];
+  const TABS          = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
   const attendancePct = curAttendance.length > 0
     ? Math.round((presentCount / curAttendance.length) * 100)
     : 0;
@@ -1541,82 +1540,68 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
         ))}
       </div>
 
-      {/* ── Vertical Nav + Content ── */}
-      <div className="flex gap-4 items-start">
-
-        {/* Left: vertical navigation */}
-        <div className="w-48 flex-shrink-0 sticky top-4 self-start">
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-1.5">
-            {TABS.map(tab => {
-              const Icon    = tab.icon;
-              const isActive = currentTab === tab.id;
-              return (
-                <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[0.82rem] font-semibold transition-all text-left mb-0.5 last:mb-0 ${
-                    isActive
-                      ? 'bg-[#3525cd] text-white shadow-sm'
-                      : 'text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd]'
-                  }`}>
-                  <Icon size={14} className={isActive ? 'opacity-90' : 'text-[#3525cd]'} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+      {/* ── Horizontal Tab Navigation + Content ── */}
+      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm">
+        {/* Tab bar */}
+        <div className="flex overflow-x-auto border-b border-[#f0f3ff]">
+          {TABS.map(tab => {
+            const Icon     = tab.icon;
+            const isActive = currentTab === tab.id;
+            return (
+              <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
+                className={`flex items-center gap-1.5 px-5 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                  isActive
+                    ? 'border-[#3525cd] text-[#3525cd]'
+                    : 'border-transparent text-[#777587] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                }`}>
+                <Icon size={14} className={isActive ? 'text-[#3525cd]' : ''} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Right: content area */}
-        <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm min-h-[400px]">
-            {/* Content header */}
-            <div className="px-5 py-3.5 border-b border-[#f0f3ff] flex items-center gap-2">
-              {(() => { const Icon = activeTab?.icon; return Icon ? <Icon size={14} className="text-[#3525cd]" /> : null; })()}
-              <span className="text-sm font-black text-[#151c27]">{activeTab?.label}</span>
-            </div>
-
-            {/* Content */}
-            <div className="p-5">
-              {currentTab === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[
-                    ['Department',   deptLabel,              Building2],
-                    ['Position',     emp.position,           Briefcase],
-                    ['Employment',   emp.employment_type,    Users],
-                    ['Work Mode',    emp.work_mode,          Home],
-                    ['Grade',        emp.grade,              Award],
-                    ['Branch',       overview.branch?.name,  MapPin],
-                    ['Manager',      overview.manager?.name, User],
-                    ['Joining Date', emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
-                    ['Status',       statusCfg.label,        CheckCircle2],
-                  ].map(([l, v, Icon]) => (
-                    <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                      <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
-                        <Icon size={14} className="text-[#3525cd]" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
-                        <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {overview.sectionCounts && Object.entries(overview.sectionCounts).map(([k, v]) => (
-                    <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                      <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
-                      <span className="text-sm font-black text-[#3525cd]">{v} records</span>
-                    </div>
-                  ))}
+        {/* Tab content */}
+        <div className="p-5">
+          {currentTab === 'overview' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                ['Department',   deptLabel,              Building2],
+                ['Position',     emp.position,           Briefcase],
+                ['Employment',   emp.employment_type,    Users],
+                ['Work Mode',    emp.work_mode,          Home],
+                ['Grade',        emp.grade,              Award],
+                ['Branch',       overview.branch?.name,  MapPin],
+                ['Manager',      overview.manager?.name, User],
+                ['Joining Date', emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
+                ['Status',       statusCfg.label,        CheckCircle2],
+              ].map(([l, v, Icon]) => (
+                <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                  <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
+                    <Icon size={14} className="text-[#3525cd]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
+                    <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
+                  </div>
                 </div>
-              )}
-              {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
-              {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-              {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
-              {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-              {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
-              {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
-              {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
-              {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
+              ))}
+              {overview.sectionCounts && Object.entries(overview.sectionCounts).map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                  <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
+                  <span className="text-sm font-black text-[#3525cd]">{v} records</span>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
+          {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
+          {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+          {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
+          {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+          {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
+          {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
+          {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
+          {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
         </div>
       </div>
     </div>
