@@ -1341,6 +1341,25 @@ function SystemTab({ emp, onEdit }) {
   );
 }
 
+// ─── Circular progress for profile completion ────────────────────────────────
+function CircularProgress({ value = 0 }) {
+  const r    = 38;
+  const circ = 2 * Math.PI * r;
+  const off  = circ - (Math.min(100, Math.max(0, value)) / 100) * circ;
+  return (
+    <div className="relative w-24 h-24">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="#e7eefe" strokeWidth="9" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke="#3525cd" strokeWidth="9"
+          strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-lg font-black text-[#3525cd]">{value}%</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Status config for profile page ─────────────────────────────────────────
 const PROFILE_STATUS_CFG = {
   active:     { label: 'Active',     cls: 'bg-emerald-100 text-emerald-700' },
@@ -1390,154 +1409,172 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const statusKey = emp.employee_status || 'active';
   const statusCfg = PROFILE_STATUS_CFG[statusKey] || PROFILE_STATUS_CFG.active;
 
-  const TABS      = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
-  const activeTab = TABS.find(t => t.id === currentTab) || TABS[0];
+  const TABS         = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
+  const activeTab    = TABS.find(t => t.id === currentTab) || TABS[0];
+  const attendancePct = curAttendance.length > 0
+    ? Math.round((presentCount / curAttendance.length) * 100)
+    : 0;
+
+  const STAT_CARDS = [
+    { label: 'Present Days', value: presentCount,        sub: 'This Month', icon: UserCheck,    iconBg: 'bg-emerald-50', iconClr: 'text-emerald-600', border: 'border-emerald-100' },
+    { label: 'Leaves',       value: leaveCount,          sub: 'This Month', icon: Umbrella,     iconBg: 'bg-amber-50',   iconClr: 'text-amber-600',   border: 'border-amber-100' },
+    { label: 'Late Marks',   value: lateCount,           sub: 'This Month', icon: AlarmClock,   iconBg: 'bg-rose-50',    iconClr: 'text-rose-500',    border: 'border-rose-100' },
+    { label: 'Attendance',   value: `${attendancePct}%`, sub: 'This Month', icon: CheckCircle2, iconBg: 'bg-blue-50',    iconClr: 'text-blue-600',    border: 'border-blue-100' },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* ── Back ── */}
-      <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors">
-        <ArrowLeft size={16} /> Back to Employees
-      </button>
 
-      {/* ── Two-column layout ── */}
-      <div className="flex gap-5 items-start">
+      {/* ── Action Bar ── */}
+      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm px-4 py-3 flex items-center gap-2 flex-wrap">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors">
+          <ArrowLeft size={16} /> Back to Employees
+        </button>
+        <div className="flex-1" />
+        {isAdmin && (
+          <>
+            <button onClick={() => onEdit(emp)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] transition-colors">
+              <Pencil size={12} /> Edit Profile
+            </button>
+            <button onClick={() => onEdit(emp, 'account')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+              <Key size={12} /> Reset Password
+            </button>
+          </>
+        )}
+        <button onClick={() => setCurrentTab('work')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 transition-all">
+          <UserCheck size={12} /> Attendance
+        </button>
+        <button onClick={() => setCurrentTab('performance')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+          <BarChart3 size={12} /> Performance
+        </button>
+      </div>
 
-        {/* ──────────── LEFT SIDEBAR ──────────── */}
-        <div className="w-72 flex-shrink-0 space-y-3 sticky top-4 self-start">
+      {/* ── Full-Width Hero Section ── */}
+      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-6">
+        <div className="flex gap-6 items-start">
 
-          {/* Profile card */}
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            {/* Banner */}
-            <div className="h-20 bg-gradient-to-br from-[#3525cd] via-[#5540e0] to-[#712ae2]" />
+          {/* Avatar */}
+          <div className="relative flex-shrink-0">
+            {emp.profile_photo_url
+              ? <img src={emp.profile_photo_url} alt={empName} className="w-24 h-24 rounded-full object-cover ring-4 ring-[#e7eefe] shadow" />
+              : <Avatar name={emp.name} color={emp.avatar_color} size={96} className="ring-4 ring-[#e7eefe]" />
+            }
+            <div className={`absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm ${todayRecord ? 'bg-emerald-400' : 'bg-slate-300'}`} />
+          </div>
 
-            <div className="px-5 pb-5">
-              {/* Avatar */}
-              <div className="-mt-10 mb-3 relative inline-block">
-                {emp.profile_photo_url
-                  ? <img src={emp.profile_photo_url} alt={empName} className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-md" />
-                  : <Avatar name={emp.name} color={emp.avatar_color} size={80} className="rounded-2xl border-4 border-white shadow-md" />
-                }
-                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white shadow-sm ${todayRecord ? 'bg-emerald-400' : 'bg-slate-300'}`} />
+          {/* Core info */}
+          <div className="flex-1 min-w-0">
+            {/* Name + badges */}
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h2 className="text-2xl font-black text-[#151c27]">{empName}</h2>
+              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full capitalize ${statusCfg.cls}`}>{statusCfg.label}</span>
+              {todayRecord && <StatusBadge status={todayRecord.status} />}
+            </div>
+
+            {/* Designation */}
+            <p className="text-sm font-semibold text-[#464555] mb-3">{emp.position || '—'}</p>
+
+            {/* Info row */}
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-[#777587]">
+              <span className="flex items-center gap-1.5"><Building2 size={13} className="text-[#3525cd]" />{deptLabel}</span>
+              {overview.branch?.name && <span className="flex items-center gap-1.5"><MapPin size={13} className="text-[#3525cd]" />{overview.branch.name}</span>}
+              {emp.email && <span className="flex items-center gap-1.5"><Mail size={13} className="text-[#3525cd]" />{emp.email}</span>}
+              {emp.phone && <span className="flex items-center gap-1.5"><Phone size={13} className="text-[#3525cd]" />{emp.phone}</span>}
+            </div>
+            {emp.joining_date && (
+              <div className="flex items-center gap-1.5 text-xs text-[#777587] mt-1.5">
+                <Calendar size={13} className="text-[#3525cd]" />
+                Joined {fmtDate(emp.joining_date)}
               </div>
+            )}
 
-              {/* Name + Position */}
-              <h2 className="text-base font-black text-[#151c27] leading-tight">{empName}</h2>
-              <p className="text-xs text-[#464555] font-semibold mt-0.5">{emp.position || '—'}</p>
-
-              {/* Status badges */}
-              <div className="flex flex-wrap gap-1.5 mt-2.5">
-                <span className={`text-[0.7rem] font-bold px-2.5 py-0.5 rounded-full capitalize ${statusCfg.cls}`}>
-                  {statusCfg.label}
+            {/* Tag pills */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {emp.employee_id && (
+                <span className="text-[0.7rem] font-bold px-2.5 py-1 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#e7eefe]">
+                  ID: {emp.employee_id}
                 </span>
-                {todayRecord && <StatusBadge status={todayRecord.status} />}
-              </div>
-
-              {/* Contact info */}
-              <div className="mt-4 space-y-2.5 border-t border-[#f0f3ff] pt-4">
-                {[
-                  [Building2,   deptLabel],
-                  [MapPin,      overview.branch?.name],
-                  [Mail,        emp.email],
-                  [Phone,       emp.phone],
-                  [Calendar,    emp.joining_date ? `Joined ${fmtDate(emp.joining_date)}` : null],
-                  [Fingerprint, emp.employee_id  ? `ID: ${emp.employee_id}` : null],
-                ].filter(([, v]) => v).map(([Icon, val], i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-xs text-[#464555]">
-                    <Icon size={13} className="text-[#3525cd] flex-shrink-0" />
-                    <span className="truncate">{val}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Profile completion */}
-              {overview.profileCompletion !== undefined && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[0.7rem] font-bold text-[#777587]">Profile Completion</span>
-                    <span className="text-[0.7rem] font-black text-[#3525cd]">{overview.profileCompletion}%</span>
-                  </div>
-                  <div className="h-1.5 bg-[#e7eefe] rounded-full overflow-hidden">
-                    <div className="h-1.5 rounded-full bg-gradient-to-r from-[#3525cd] to-[#712ae2] transition-all"
-                      style={{ width: `${overview.profileCompletion}%` }} />
-                  </div>
-                </div>
               )}
-
-              {/* Monthly stats */}
-              <div className="mt-4 grid grid-cols-3 gap-1.5">
-                {[
-                  ['Present', presentCount, 'bg-emerald-50 text-emerald-700 border border-emerald-200'],
-                  ['Leaves',  leaveCount,  'bg-amber-50  text-amber-700  border border-amber-200'],
-                  ['Late',    lateCount,   'bg-rose-50   text-rose-600   border border-rose-200'],
-                ].map(([l, v, cls]) => (
-                  <div key={l} className={`text-center p-2 rounded-xl ${cls}`}>
-                    <p className="text-sm font-black">{v}</p>
-                    <p className="text-[0.58rem] font-bold uppercase tracking-wider opacity-80">{l}</p>
-                    <p className="text-[0.55rem] opacity-60">This month</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Action buttons */}
-              <div className="mt-4 space-y-2 border-t border-[#f0f3ff] pt-4">
-                {isAdmin && (
-                  <>
-                    <button onClick={() => onEdit(emp)}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] transition-colors">
-                      <Pencil size={12} /> Edit Profile
-                    </button>
-                    <button onClick={() => onEdit(emp, 'account')}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
-                      <Key size={12} /> Reset Password
-                    </button>
-                  </>
-                )}
-                <button onClick={() => setCurrentTab('work')}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">
-                  <UserCheck size={12} /> Attendance
-                </button>
-                <button onClick={() => setCurrentTab('performance')}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
-                  <BarChart3 size={12} /> Performance
-                </button>
-              </div>
+              {emp.employment_type && (
+                <span className="text-[0.7rem] font-bold px-2.5 py-1 rounded-full bg-[#f9f9ff] text-[#464555] border border-[#c7c4d8] capitalize">
+                  {emp.employment_type.replace('_', ' ')}
+                </span>
+              )}
+              {emp.work_mode && (
+                <span className="text-[0.7rem] font-bold px-2.5 py-1 rounded-full bg-[#f9f9ff] text-[#464555] border border-[#c7c4d8] capitalize">
+                  {emp.work_mode}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Vertical navigation */}
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-2">
-            <p className="text-[0.6rem] font-black text-[#777587] uppercase tracking-widest px-3 pt-1 pb-2">
-              Profile Sections
-            </p>
+          {/* Profile completion ring */}
+          {overview.profileCompletion !== undefined && (
+            <div className="flex-shrink-0 text-center">
+              <p className="text-xs font-bold text-[#464555] mb-2">Profile Completion</p>
+              <CircularProgress value={overview.profileCompletion} />
+              <p className="text-[0.65rem] text-[#777587] mt-1.5">
+                {Math.round(overview.profileCompletion / 20)} of 5 sections done
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Stats Row ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {STAT_CARDS.map(({ label, value, sub, icon: Icon, iconBg, iconClr, border }) => (
+          <div key={label} className={`bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3 ${border}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+              <Icon size={18} className={iconClr} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-black text-[#151c27]">{value}</p>
+              <p className="text-xs font-semibold text-[#464555] truncate">{label}</p>
+              <p className="text-[0.65rem] text-[#777587]">{sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Vertical Nav + Content ── */}
+      <div className="flex gap-4 items-start">
+
+        {/* Left: vertical navigation */}
+        <div className="w-48 flex-shrink-0 sticky top-4 self-start">
+          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-1.5">
             {TABS.map(tab => {
-              const Icon = tab.icon;
+              const Icon    = tab.icon;
               const isActive = currentTab === tab.id;
               return (
                 <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left mb-0.5 last:mb-0 ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[0.82rem] font-semibold transition-all text-left mb-0.5 last:mb-0 ${
                     isActive
                       ? 'bg-[#3525cd] text-white shadow-sm'
                       : 'text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd]'
                   }`}>
-                  <Icon size={14} className={isActive ? 'text-white/90' : 'text-[#3525cd]'} />
-                  <span>{tab.label}</span>
+                  <Icon size={14} className={isActive ? 'opacity-90' : 'text-[#3525cd]'} />
+                  {tab.label}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* ──────────── RIGHT CONTENT ──────────── */}
+        {/* Right: content area */}
         <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm min-h-[600px]">
-            {/* Section header */}
-            <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
-              {(() => { const Icon = activeTab?.icon; return Icon ? <Icon size={15} className="text-[#3525cd]" /> : null; })()}
-              <h3 className="text-sm font-black text-[#151c27]">{activeTab?.label}</h3>
+          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm min-h-[400px]">
+            {/* Content header */}
+            <div className="px-5 py-3.5 border-b border-[#f0f3ff] flex items-center gap-2">
+              {(() => { const Icon = activeTab?.icon; return Icon ? <Icon size={14} className="text-[#3525cd]" /> : null; })()}
+              <span className="text-sm font-black text-[#151c27]">{activeTab?.label}</span>
             </div>
 
-            {/* Tab content */}
+            {/* Content */}
             <div className="p-5">
               {currentTab === 'overview' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
