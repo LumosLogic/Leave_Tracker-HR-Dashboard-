@@ -772,123 +772,75 @@ export default function EmployeeHome() {
           </div>
         </div>
 
-        {/* ── Col 3: Leave Balance ── */}
+        {/* ── Col 3: My Team ── */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
-            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <BookOpen size={13} className="text-[#3525cd]" /> Leave Balance
-            </h2>
-            <Link to="/portal/leaves" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline">
-              View All
-            </Link>
-          </div>
-          <div className="p-5">
-            {activePolicies.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
-                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center text-xl">📋</div>
-                <p className="text-xs text-[#9ca3af]">No leave policies found.</p>
+          {isDeptHead && teamDashboard?.is_dept_head ? (
+            <>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+                <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+                  <Users size={13} className="text-[#3525cd]" />
+                  My Team — {teamDashboard.department?.name}
+                </h2>
+                <Link to="/portal/dept-approvals" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline flex items-center gap-1">
+                  {teamDashboard.pending_approvals > 0 && (
+                    <span className="bg-amber-500 text-white text-[0.58rem] font-black px-1.5 py-0.5 rounded-full">
+                      {teamDashboard.pending_approvals}
+                    </span>
+                  )}
+                  Team Approvals →
+                </Link>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {(leaveBalance?.balances || activePolicies.map(p => {
-                  const used = myLeaves
-                    .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
-                    .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-                  return { leave_type: p.leave_type, label: p.label, allocated: p.annual_quota, used, pending: 0, remaining: Math.max(0, p.annual_quota - used) };
-                })).slice(0, 5).map(b => {
-                  const pct      = b.allocated > 0 ? Math.min(100, Math.round((b.used / b.allocated) * 100)) : 0;
-                  const icon     = LEAVE_ICONS[b.leave_type] || LEAVE_ICONS.other;
-                  const barColor = pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : icon.bar || '#10b981';
-                  return (
-                    <div key={b.leave_type}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-[#151c27]">
-                          {icon.emoji} {b.label}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {b.pending > 0 && (
-                            <span className="text-[0.58rem] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                              {b.pending}d pending
-                            </span>
-                          )}
-                          <span className="text-[0.65rem] font-bold text-[#3525cd]">
-                            {b.remaining}<span className="font-normal text-[#9ca3af]">/{b.allocated}</span>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 bg-[#f0f3ff] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          MY TEAM — visible only to Department Heads
-      ═══════════════════════════════════════════════════════════════════ */}
-      {isDeptHead && teamDashboard?.is_dept_head && (
-        <div className="bg-white rounded-xl border border-[#3525cd]/20 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
-            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <Users size={13} className="text-[#3525cd]" />
-              My Team — {teamDashboard.department?.name}
-            </h2>
-            <Link to="/portal/dept-approvals" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline flex items-center gap-1">
-              {teamDashboard.pending_approvals > 0 && (
-                <span className="bg-amber-500 text-white text-[0.58rem] font-black px-1.5 py-0.5 rounded-full">
-                  {teamDashboard.pending_approvals}
-                </span>
-              )}
-              Team Approvals →
-            </Link>
-          </div>
-          <div className="p-5">
-            {/* KPI row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              {[
-                { label: 'Team Size',        value: teamDashboard.team_count,        icon: '👥', color: 'text-[#3525cd] bg-[#f0f3ff]' },
-                { label: 'Present Today',    value: teamDashboard.present_today,     icon: '✅', color: 'text-emerald-700 bg-emerald-50' },
-                { label: 'On Leave',         value: teamDashboard.on_leave_today,    icon: '🏖️', color: 'text-amber-700 bg-amber-50' },
-                { label: 'Not Checked In',   value: teamDashboard.not_checked_in,    icon: '⏰', color: 'text-slate-500 bg-slate-50' },
-              ].map(({ label, value, icon, color }) => (
-                <div key={label} className="rounded-xl border border-[#e7eefe] p-3 text-center">
-                  <p className="text-base mb-0.5">{icon}</p>
-                  <p className={`text-xl font-black leading-none ${color.split(' ')[0]}`}>{value}</p>
-                  <p className="text-[0.6rem] text-[#777587] font-semibold mt-1 uppercase tracking-wide">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Upcoming team leaves */}
-            {teamDashboard.upcoming_leaves?.length > 0 && (
-              <div>
-                <p className="text-[0.6rem] font-black uppercase tracking-wider text-[#777587] mb-2">Upcoming Leaves (Next 7 Days)</p>
-                <div className="space-y-1.5">
-                  {teamDashboard.upcoming_leaves.map((l, i) => (
-                    <div key={i} className="flex items-center gap-2.5 text-xs px-2 py-1.5 rounded-lg bg-[#f9f9ff]">
-                      <span className="font-bold text-[#151c27] flex-1 truncate">{l.name}</span>
-                      <span className="text-[#777587]">
-                        {l.start_date}{l.end_date !== l.start_date ? ` → ${l.end_date}` : ''}
-                      </span>
-                      <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full capitalize">
-                        {l.leave_time === 'wfh' ? 'WFH' : l.leave_type}
-                      </span>
+              <div className="p-5">
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {[
+                    { label: 'Team Size',      value: teamDashboard.team_count,     icon: '👥', color: 'text-[#3525cd]' },
+                    { label: 'Present Today',  value: teamDashboard.present_today,  icon: '✅', color: 'text-emerald-700' },
+                    { label: 'On Leave',       value: teamDashboard.on_leave_today, icon: '🏖️', color: 'text-amber-700' },
+                    { label: 'Not Checked In', value: teamDashboard.not_checked_in, icon: '⏰', color: 'text-slate-500' },
+                  ].map(({ label, value, icon, color }) => (
+                    <div key={label} className="rounded-xl border border-[#e7eefe] p-3 text-center">
+                      <p className="text-base mb-0.5">{icon}</p>
+                      <p className={`text-xl font-black leading-none ${color}`}>{value ?? 0}</p>
+                      <p className="text-[0.58rem] text-[#777587] font-semibold mt-1 uppercase tracking-wide">{label}</p>
                     </div>
                   ))}
                 </div>
+                {teamDashboard.upcoming_leaves?.length > 0 ? (
+                  <div>
+                    <p className="text-[0.6rem] font-black uppercase tracking-wider text-[#777587] mb-2">Upcoming Leaves (Next 7 Days)</p>
+                    <div className="space-y-1.5">
+                      {teamDashboard.upcoming_leaves.slice(0, 3).map((l, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg bg-[#f9f9ff]">
+                          <span className="font-bold text-[#151c27] flex-1 truncate">{l.name}</span>
+                          <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full capitalize">
+                            {l.leave_time === 'wfh' ? 'WFH' : l.leave_type}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#9ca3af] text-center py-2">No upcoming leaves in the next 7 days.</p>
+                )}
               </div>
-            )}
-            {teamDashboard.upcoming_leaves?.length === 0 && (
-              <p className="text-xs text-[#9ca3af] text-center py-2">No upcoming leaves in the next 7 days.</p>
-            )}
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="px-5 py-4 border-b border-[#f0f3ff]">
+                <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+                  <Users size={13} className="text-[#3525cd]" /> My Team
+                </h2>
+              </div>
+              <div className="flex flex-col items-center justify-center py-10 px-5 text-center gap-2">
+                <div className="w-12 h-12 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-2xl">👥</div>
+                <p className="text-sm font-semibold text-[#464555]">No team assigned</p>
+                <p className="text-xs text-[#9ca3af]">You are not assigned as a department head.</p>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
+
 
       {/* ═══════════════════════════════════════════════════════════════════
           3. ATTENDANCE CHART + UPCOMING SCHEDULE
