@@ -277,7 +277,28 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
     try {
       await client.query('BEGIN');
 
-      // Close the current active version (set effective_to = effective_from - 1 day)
+      // Pre-validate: check existing active record before attempting to close it
+      const existingRes = await client.query(
+        `SELECT id, effective_from FROM employee_salary_structures
+          WHERE organization_id = $1 AND user_id = $2 AND effective_to IS NULL`,
+        [oId, user_id]
+      );
+      const existingActive = existingRes.rows[0] || null;
+      if (existingActive) {
+        const existingDate = new Date(existingActive.effective_from);
+        const newDate      = new Date(effective_from);
+        if (newDate <= existingDate) {
+          await client.query('ROLLBACK');
+          const existingStr = existingActive.effective_from instanceof Date
+            ? existingActive.effective_from.toISOString().split('T')[0]
+            : String(existingActive.effective_from).split('T')[0];
+          return res.status(400).json({
+            error: `New effective date (${effective_from}) must be after the current active structure's effective date (${existingStr}). Please choose a later date.`,
+          });
+        }
+      }
+
+      // Close the current active version (effective_to = new_from - 1 day)
       const closeRes = await client.query(
         `UPDATE employee_salary_structures
             SET effective_to = ($1::date - INTERVAL '1 day')::date
@@ -368,28 +389,49 @@ router.get('/structure', auth, async (req, res) => {
 });
 
 // POST /api/payroll/structure
+// NOTE: Inserts into the legacy payroll_structures table. Column names differ from
+// the newer employee_salary_structures table — mapped explicitly below.
 router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), async (req, res) => {
   try {
-    const oId = orgId(req);
-    const {
-      user_id, effective_from, basic = 0, hra = 0, da = 0,
-      transport_allowance = 0, medical_allowance = 0, special_allowance = 0, other_allowance = 0,
-      employee_pf = 0, employee_esi = 0, professional_tax = 0, tds = 0, other_deductions = 0,
-      employer_pf = 0, employer_esi = 0, ctc, notes,
-    } = req.body;
+    const oId  = orgId(req);
+    const body = req.body;
 
-    // Validate the target employee belongs to this org before writing
+    const user_id        = body.user_id;
+    const effective_from = body.effective_from;
+
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+
     if (user_id) {
       const { data: emp } = await supabase.from('users')
         .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
       if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
     }
 
+    // Map to the actual payroll_structures column names
+    const basic               = Number(body.basic               || 0);
+    const hra                 = Number(body.hra                 || 0);
+    const da                  = Number(body.da                  || 0);
+    const transport_allowance = Number(body.transport_allowance || 0);
+    const medical_allowance   = Number(body.medical_allowance   || 0);
+    // Merge special_allowance + other_allowance into other_allowances (the legacy column)
+    const other_allowances    = Number(body.other_allowances    || 0)
+                              + Number(body.other_allowance     || 0)
+                              + Number(body.special_allowance   || 0);
+    // Support both naming conventions (Payroll.jsx sends pf_employee; SalaryStructure sends employee_pf)
+    const pf_employee    = Number(body.pf_employee    || body.employee_pf    || 0);
+    const pf_employer    = Number(body.pf_employer    || body.employer_pf    || 0);
+    const esi_employee   = Number(body.esi_employee   || body.employee_esi   || 0);
+    const esi_employer   = Number(body.esi_employer   || body.employer_esi   || 0);
+    const professional_tax = Number(body.professional_tax || 0);
+    const tds              = Number(body.tds              || 0);
+
     const { data, error } = await supabase.from('payroll_structures').insert({
-      user_id, effective_from, basic, hra, da,
-      transport_allowance, medical_allowance, special_allowance, other_allowance,
-      employee_pf, employee_esi, professional_tax, tds, other_deductions,
-      employer_pf, employer_esi, ctc, notes,
+      user_id, effective_from,
+      basic, hra, da,
+      transport_allowance, medical_allowance, other_allowances,
+      pf_employee, pf_employer,
+      esi_employee, esi_employer,
+      professional_tax, tds,
       organization_id: oId,
     }).select().single();
     if (error) throw error;
@@ -398,34 +440,44 @@ router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), a
 });
 
 // PUT /api/payroll/structure/:id
+// NOTE: Updates the legacy payroll_structures table — column names mapped explicitly.
 router.put('/structure/:id', auth, hasPermission('payroll', 'manage_structures'), async (req, res) => {
   try {
-    const oId = orgId(req);
-    const {
-      user_id, effective_from, basic, hra, da,
-      transport_allowance, medical_allowance, special_allowance, other_allowance,
-      employee_pf, employee_esi, professional_tax, tds, other_deductions,
-      employer_pf, employer_esi, ctc, notes,
-    } = req.body;
+    const oId  = orgId(req);
+    const b    = req.body;
 
-    // If user_id is being reassigned, confirm the target employee belongs to this org
-    if (user_id !== undefined) {
+    if (b.user_id !== undefined) {
       const { data: emp } = await supabase.from('users')
-        .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
+        .select('id').eq('id', parseInt(b.user_id)).eq('organization_id', oId).maybeSingle();
       if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
     }
 
-    // Build the update with only the explicitly whitelisted fields
-    const body = {};
-    const ALLOWED = { user_id, effective_from, basic, hra, da, transport_allowance, medical_allowance,
-      special_allowance, other_allowance, employee_pf, employee_esi, professional_tax, tds,
-      other_deductions, employer_pf, employer_esi, ctc, notes };
-    for (const [k, v] of Object.entries(ALLOWED)) {
-      if (v !== undefined) body[k] = v;
+    // Build update payload using only columns that exist in payroll_structures
+    const patch = {};
+    if (b.user_id        !== undefined) patch.user_id          = b.user_id;
+    if (b.effective_from !== undefined) patch.effective_from   = b.effective_from;
+    if (b.basic          !== undefined) patch.basic            = Number(b.basic);
+    if (b.hra            !== undefined) patch.hra              = Number(b.hra);
+    if (b.da             !== undefined) patch.da               = Number(b.da);
+    if (b.transport_allowance !== undefined) patch.transport_allowance = Number(b.transport_allowance);
+    if (b.medical_allowance   !== undefined) patch.medical_allowance   = Number(b.medical_allowance);
+    if (b.professional_tax    !== undefined) patch.professional_tax    = Number(b.professional_tax);
+    if (b.tds                 !== undefined) patch.tds                 = Number(b.tds);
+    // Merge special_allowance + other_allowance into the legacy other_allowances column
+    const hasOther = b.other_allowances !== undefined || b.other_allowance !== undefined || b.special_allowance !== undefined;
+    if (hasOther) {
+      patch.other_allowances = Number(b.other_allowances || 0)
+                             + Number(b.other_allowance  || 0)
+                             + Number(b.special_allowance || 0);
     }
+    // Support both naming conventions
+    if (b.pf_employee  !== undefined || b.employee_pf  !== undefined) patch.pf_employee  = Number(b.pf_employee  ?? b.employee_pf  ?? 0);
+    if (b.pf_employer  !== undefined || b.employer_pf  !== undefined) patch.pf_employer  = Number(b.pf_employer  ?? b.employer_pf  ?? 0);
+    if (b.esi_employee !== undefined || b.employee_esi !== undefined) patch.esi_employee = Number(b.esi_employee ?? b.employee_esi ?? 0);
+    if (b.esi_employer !== undefined || b.employer_esi !== undefined) patch.esi_employer = Number(b.esi_employer ?? b.employer_esi ?? 0);
 
     const { data, error } = await supabase.from('payroll_structures')
-      .update(body).eq('id', req.params.id).eq('organization_id', oId).select().single();
+      .update(patch).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
