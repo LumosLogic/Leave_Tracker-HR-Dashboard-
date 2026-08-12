@@ -357,12 +357,9 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
 
   // Helpers
   const empId     = `EMP-${String(emp.id).padStart(4, '0')}`;
-  const statusColor = emp.employee_status === 'inactive' ? 'bg-rose-100 text-rose-700 border-rose-200'
-                    : emp.employee_status === 'on_leave'  ? 'bg-amber-100 text-amber-700 border-amber-200'
-                    : 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  const statusLabel = emp.employee_status === 'inactive' ? 'Inactive'
-                    : emp.employee_status === 'on_leave'  ? 'On Leave'
-                    : 'Active';
+  const _empStatusCfg = EMP_STATUS_CFG[emp.employee_status] || EMP_STATUS_CFG.active;
+  const statusColor   = _empStatusCfg.cls;
+  const statusLabel   = _empStatusCfg.label;
   const fmtEmploymentType = (t) => ({ full_time: 'Full Time', part_time: 'Part Time', contract: 'Contract', intern: 'Intern' }[t] || t || '—');
   const fmtWorkMode       = (m) => ({ office: 'Office', remote: 'Remote', hybrid: 'Hybrid' }[m] || m || '—');
   const deptLabel = emp.departments?.length > 0
@@ -1505,8 +1502,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   <label className="form-label">Status</label>
                   <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
                     <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
                     <option value="on_leave">On Leave</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="resigned">Resigned</option>
+                    <option value="terminated">Terminated</option>
                   </select>
                 </div>
               </div>
@@ -1757,11 +1756,13 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
 // ── Employee status config ────────────────────────────────────────────────────
 const EMP_STATUS_CFG = {
   active:        { label: 'Active',        cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  probation:     { label: 'Probation',     cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  on_leave:      { label: 'On Leave',      cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  probation:     { label: 'Probation',     cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   notice_period: { label: 'Notice Period', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
   notice:        { label: 'Notice',        cls: 'bg-orange-50 text-orange-700 border-orange-200' },
   inactive:      { label: 'Inactive',      cls: 'bg-slate-50 text-slate-500 border-slate-200' },
   resigned:      { label: 'Resigned',      cls: 'bg-rose-50 text-rose-600 border-rose-200' },
+  terminated:    { label: 'Terminated',    cls: 'bg-red-100 text-red-700 border-red-200' },
 };
 
 function AdminPhotoUpload({ employeeId, currentUrl, name, color, email, onUploaded }) {
@@ -2014,7 +2015,15 @@ export default function Employees() {
     if (deptFilter)   rows = rows.filter(e =>
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
     if (branchFilter) rows = rows.filter(e => String(e.branch_id) === String(branchFilter));
-    if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
+    // Status workflow: Active/On Leave → main list; Inactive/Resigned/Terminated → inactive view
+    const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
+    if (statusFilter === '__inactive__') {
+      rows = rows.filter(e => INACTIVE_STATUSES.includes(e.employee_status || 'active'));
+    } else if (statusFilter) {
+      rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
+    } else {
+      rows = rows.filter(e => !INACTIVE_STATUSES.includes(e.employee_status || 'active'));
+    }
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
     if (joinedYmParam) {
       const [yr, mo] = joinedYmParam.split('-').map(Number);
@@ -2201,7 +2210,9 @@ export default function Employees() {
         {/* Status */}
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="form-control w-auto text-xs py-1.5">
-          <option value="">All Statuses</option>
+          <option value="">Active Employees</option>
+          <option value="__inactive__">Inactive / Resigned / Terminated</option>
+          <option disabled>──────────────</option>
           {Object.entries(EMP_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 

@@ -1341,17 +1341,25 @@ function SystemTab({ emp, onEdit }) {
   );
 }
 
+// ─── Status config for profile page ─────────────────────────────────────────
+const PROFILE_STATUS_CFG = {
+  active:     { label: 'Active',     cls: 'bg-emerald-100 text-emerald-700' },
+  on_leave:   { label: 'On Leave',   cls: 'bg-amber-100 text-amber-700' },
+  inactive:   { label: 'Inactive',   cls: 'bg-slate-100 text-slate-600' },
+  resigned:   { label: 'Resigned',   cls: 'bg-rose-100 text-rose-700' },
+  terminated: { label: 'Terminated', cls: 'bg-red-200 text-red-800' },
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin' || user.role === 'root_admin';
+  const isRoot  = user.role === 'root_admin';
 
   const now = new Date();
   const [currentTab, setCurrentTab] = useState('overview');
 
-  // Header: always loaded — reuse the queries already in place from Employees.jsx context
-  // These share the same queryKey so if the parent already loaded them, no extra fetch occurs
   const curMonth = now.getMonth() + 1;
   const curYear  = now.getFullYear();
   const today    = now.toISOString().split('T')[0];
@@ -1377,152 +1385,201 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const leaveCount   = curLeaves.filter(l => l.status === 'approved').length;
   const lateCount    = curAttendance.filter(r => r.is_late).length;
 
-  const empName = [emp.salutation, emp.name, emp.middle_name, emp.surname].filter(Boolean).join(' ');
+  const empName   = [emp.salutation, emp.name, emp.middle_name, emp.surname].filter(Boolean).join(' ');
   const deptLabel = emp.departments?.length > 0 ? emp.departments.map(d => d.name).join(', ') : emp.department || '—';
-  const statusCls = emp.employee_status === 'inactive' ? 'bg-rose-100 text-rose-700' : emp.employee_status === 'on_leave' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+  const statusKey = emp.employee_status || 'active';
+  const statusCfg = PROFILE_STATUS_CFG[statusKey] || PROFILE_STATUS_CFG.active;
 
-  const isRoot = user.role === 'root_admin';
-  const TABS   = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
+  const TABS      = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
+  const activeTab = TABS.find(t => t.id === currentTab) || TABS[0];
 
   return (
     <div className="space-y-4">
-      {/* ── Action bar ── */}
-      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm px-4 py-3 flex items-center gap-2 flex-wrap">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors mr-2">
-          <ArrowLeft size={16} /> Back
-        </button>
-        <div className="w-px h-6 bg-[#e7eefe] mx-1 flex-shrink-0" />
-        {isAdmin && (
-          <>
-            <button onClick={() => onEdit(emp)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
-              <Pencil size={13}/> Edit Profile
-            </button>
-            <button onClick={() => onEdit(emp, 'account')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
-              <Key size={13}/> Reset Password
-            </button>
-          </>
-        )}
-        <button onClick={() => setCurrentTab('work')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 transition-all">
-          <UserCheck size={13}/> Attendance
-        </button>
-        <button onClick={() => setCurrentTab('performance')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
-          <BarChart3 size={13}/> Performance
-        </button>
-      </div>
+      {/* ── Back ── */}
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-[#464555] hover:text-[#3525cd] transition-colors">
+        <ArrowLeft size={16} /> Back to Employees
+      </button>
 
-      {/* ── Sticky Header ── */}
-      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-5">
-        <div className="flex flex-col md:flex-row gap-5 items-start">
-          {/* Avatar + photo */}
-          <div className="relative flex-shrink-0">
-            {emp.profile_photo_url
-              ? <img src={emp.profile_photo_url} alt={empName} className="w-20 h-20 rounded-2xl object-cover border-2 border-[#e7eefe] shadow-sm" />
-              : <Avatar name={emp.name} color={emp.avatar_color} size={80} className="rounded-2xl" />
-            }
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white bg-emerald-400 shadow-sm" />
-          </div>
+      {/* ── Two-column layout ── */}
+      <div className="flex gap-5 items-start">
 
-          {/* Core info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <h2 className="text-xl font-black text-[#151c27] truncate">{empName}</h2>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${statusCls}`}>{emp.employee_status || 'Active'}</span>
-              {todayRecord && <StatusBadge status={todayRecord.status} />}
-            </div>
-            <p className="text-sm text-[#464555] font-semibold">{emp.position || '—'}</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-[#777587]">
-              <span className="flex items-center gap-1"><Building2 size={11}/>{deptLabel}</span>
-              {emp.email && <span className="flex items-center gap-1"><Mail size={11}/>{emp.email}</span>}
-              {emp.phone && <span className="flex items-center gap-1"><Phone size={11}/>{emp.phone}</span>}
-              {emp.joining_date && <span className="flex items-center gap-1"><Calendar size={11}/>Joined {fmtDate(emp.joining_date)}</span>}
-              {emp.employee_id && <span className="flex items-center gap-1"><Fingerprint size={11}/>ID: {emp.employee_id}</span>}
-            </div>
-          </div>
+        {/* ──────────── LEFT SIDEBAR ──────────── */}
+        <div className="w-72 flex-shrink-0 space-y-3 sticky top-4 self-start">
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-3 gap-2 flex-shrink-0">
-            {[['Present', presentCount, 'text-emerald-600 bg-emerald-50'],['Leaves', leaveCount, 'text-amber-600 bg-amber-50'],['Late', lateCount, 'text-rose-500 bg-rose-50']].map(([l,v,cls])=>(
-              <div key={l} className={`text-center px-3 py-2 rounded-xl ${cls}`}>
-                <p className="text-lg font-black">{v}</p>
-                <p className="text-[0.65rem] font-bold uppercase tracking-wider">{l}</p>
-                <p className="text-[0.6rem] opacity-70">This month</p>
+          {/* Profile card */}
+          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            {/* Banner */}
+            <div className="h-20 bg-gradient-to-br from-[#3525cd] via-[#5540e0] to-[#712ae2]" />
+
+            <div className="px-5 pb-5">
+              {/* Avatar */}
+              <div className="-mt-10 mb-3 relative inline-block">
+                {emp.profile_photo_url
+                  ? <img src={emp.profile_photo_url} alt={empName} className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-md" />
+                  : <Avatar name={emp.name} color={emp.avatar_color} size={80} className="rounded-2xl border-4 border-white shadow-md" />
+                }
+                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white shadow-sm ${todayRecord ? 'bg-emerald-400' : 'bg-slate-300'}`} />
               </div>
-            ))}
+
+              {/* Name + Position */}
+              <h2 className="text-base font-black text-[#151c27] leading-tight">{empName}</h2>
+              <p className="text-xs text-[#464555] font-semibold mt-0.5">{emp.position || '—'}</p>
+
+              {/* Status badges */}
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                <span className={`text-[0.7rem] font-bold px-2.5 py-0.5 rounded-full capitalize ${statusCfg.cls}`}>
+                  {statusCfg.label}
+                </span>
+                {todayRecord && <StatusBadge status={todayRecord.status} />}
+              </div>
+
+              {/* Contact info */}
+              <div className="mt-4 space-y-2.5 border-t border-[#f0f3ff] pt-4">
+                {[
+                  [Building2,   deptLabel],
+                  [MapPin,      overview.branch?.name],
+                  [Mail,        emp.email],
+                  [Phone,       emp.phone],
+                  [Calendar,    emp.joining_date ? `Joined ${fmtDate(emp.joining_date)}` : null],
+                  [Fingerprint, emp.employee_id  ? `ID: ${emp.employee_id}` : null],
+                ].filter(([, v]) => v).map(([Icon, val], i) => (
+                  <div key={i} className="flex items-center gap-2.5 text-xs text-[#464555]">
+                    <Icon size={13} className="text-[#3525cd] flex-shrink-0" />
+                    <span className="truncate">{val}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Profile completion */}
+              {overview.profileCompletion !== undefined && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[0.7rem] font-bold text-[#777587]">Profile Completion</span>
+                    <span className="text-[0.7rem] font-black text-[#3525cd]">{overview.profileCompletion}%</span>
+                  </div>
+                  <div className="h-1.5 bg-[#e7eefe] rounded-full overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-[#3525cd] to-[#712ae2] transition-all"
+                      style={{ width: `${overview.profileCompletion}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly stats */}
+              <div className="mt-4 grid grid-cols-3 gap-1.5">
+                {[
+                  ['Present', presentCount, 'bg-emerald-50 text-emerald-700 border border-emerald-200'],
+                  ['Leaves',  leaveCount,  'bg-amber-50  text-amber-700  border border-amber-200'],
+                  ['Late',    lateCount,   'bg-rose-50   text-rose-600   border border-rose-200'],
+                ].map(([l, v, cls]) => (
+                  <div key={l} className={`text-center p-2 rounded-xl ${cls}`}>
+                    <p className="text-sm font-black">{v}</p>
+                    <p className="text-[0.58rem] font-bold uppercase tracking-wider opacity-80">{l}</p>
+                    <p className="text-[0.55rem] opacity-60">This month</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action buttons */}
+              <div className="mt-4 space-y-2 border-t border-[#f0f3ff] pt-4">
+                {isAdmin && (
+                  <>
+                    <button onClick={() => onEdit(emp)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] transition-colors">
+                      <Pencil size={12} /> Edit Profile
+                    </button>
+                    <button onClick={() => onEdit(emp, 'account')}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+                      <Key size={12} /> Reset Password
+                    </button>
+                  </>
+                )}
+                <button onClick={() => setCurrentTab('work')}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">
+                  <UserCheck size={12} /> Attendance
+                </button>
+                <button onClick={() => setCurrentTab('performance')}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+                  <BarChart3 size={12} /> Performance
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Vertical navigation */}
+          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-2">
+            <p className="text-[0.6rem] font-black text-[#777587] uppercase tracking-widest px-3 pt-1 pb-2">
+              Profile Sections
+            </p>
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = currentTab === tab.id;
+              return (
+                <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left mb-0.5 last:mb-0 ${
+                    isActive
+                      ? 'bg-[#3525cd] text-white shadow-sm'
+                      : 'text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd]'
+                  }`}>
+                  <Icon size={14} className={isActive ? 'text-white/90' : 'text-[#3525cd]'} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Profile completion bar */}
-        {overview.profileCompletion !== undefined && (
-          <div className="mt-4 pt-4 border-t border-[#f0f3ff]">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-bold text-[#464555]">Profile Completion</span>
-              <span className="text-xs font-black text-[#3525cd]">{overview.profileCompletion}%</span>
+        {/* ──────────── RIGHT CONTENT ──────────── */}
+        <div className="flex-1 min-w-0">
+          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm min-h-[600px]">
+            {/* Section header */}
+            <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center gap-2">
+              {(() => { const Icon = activeTab?.icon; return Icon ? <Icon size={15} className="text-[#3525cd]" /> : null; })()}
+              <h3 className="text-sm font-black text-[#151c27]">{activeTab?.label}</h3>
             </div>
-            <div className="h-1.5 bg-[#e7eefe] rounded-full">
-              <div className="h-1.5 rounded-full bg-gradient-to-r from-[#3525cd] to-[#712ae2] transition-all" style={{ width: `${overview.profileCompletion}%` }}/>
+
+            {/* Tab content */}
+            <div className="p-5">
+              {currentTab === 'overview' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    ['Department',   deptLabel,              Building2],
+                    ['Position',     emp.position,           Briefcase],
+                    ['Employment',   emp.employment_type,    Users],
+                    ['Work Mode',    emp.work_mode,          Home],
+                    ['Grade',        emp.grade,              Award],
+                    ['Branch',       overview.branch?.name,  MapPin],
+                    ['Manager',      overview.manager?.name, User],
+                    ['Joining Date', emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
+                    ['Status',       statusCfg.label,        CheckCircle2],
+                  ].map(([l, v, Icon]) => (
+                    <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                      <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
+                        <Icon size={14} className="text-[#3525cd]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
+                        <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {overview.sectionCounts && Object.entries(overview.sectionCounts).map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                      <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
+                      <span className="text-sm font-black text-[#3525cd]">{v} records</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
+              {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+              {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
+              {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+              {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
+              {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
+              {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
+              {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
             </div>
           </div>
-        )}
-      </div>
-
-      {/* ── Tab bar ── */}
-      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm">
-        <div className="flex overflow-x-auto scrollbar-hide border-b border-[#f0f3ff]">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            return (
-              <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-3.5 text-xs font-bold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${currentTab === tab.id ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#151c27]'}`}>
-                <Icon size={13}/>{tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Tab content ── */}
-        <div className="p-5">
-          {currentTab === 'overview' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Quick info cards */}
-              {[
-                ['Department',    deptLabel,              Building2],
-                ['Position',      emp.position,           Briefcase],
-                ['Employment',    emp.employment_type,    Users],
-                ['Work Mode',     emp.work_mode,          Home],
-                ['Grade',         emp.grade,              Award],
-                ['Branch',        overview.branch?.name,  MapPin],
-                ['Manager',       overview.manager?.name, User],
-                ['Joining Date',  emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
-                ['Status',        emp.employee_status,    CheckCircle2],
-              ].map(([l,v,Icon])=>(
-                <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                  <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
-                    <Icon size={14} className="text-[#3525cd]"/>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
-                    <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
-                  </div>
-                </div>
-              ))}
-              {/* Section counts */}
-              {overview.sectionCounts && Object.entries(overview.sectionCounts).map(([k,v])=>(
-                <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                  <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
-                  <span className="text-sm font-black text-[#3525cd]">{v} records</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {currentTab === 'personal'     && <PersonalTab    empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'education'    && <EducationTab   empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
-          {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
         </div>
       </div>
     </div>
