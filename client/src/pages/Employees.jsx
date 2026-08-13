@@ -1901,7 +1901,7 @@ export default function Employees() {
   const [typeFilter,    setTypeFilter]   = useState('');
   const [sortBy,        setSortBy]       = useState('name');
   const [sortDir,      setSortDir]      = useState('asc');
-  const [viewMode,     setViewMode]     = useState('table');
+  const [viewMode,     setViewMode]     = useState('card');
   const [selected,     setSelected]     = useState(new Set());
   const [page,         setPage]         = useState(1);
   const [pageSize,     setPageSize]     = useState(24);
