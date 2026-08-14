@@ -5,7 +5,8 @@ const { supabase, pool } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId, getOrgContext } = require('../../utils/helpers');
-const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml } = require('../../services/emailService');
+const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml, credentialsEmailHtml } = require('../../services/emailService');
+const crypto = require('crypto');
 const { initOnboarding } = require('../onboarding/onboardingService');
 const upload     = require('../../middleware/upload');
 const cloudinary = require('../../config/cloudinary');
@@ -25,7 +26,7 @@ const EMPLOYEE_PUBLIC_COLS = [
 ].join(', ');
 
 // Sensitive statutory fields — admin only
-const EMPLOYEE_ADMIN_COLS = EMPLOYEE_PUBLIC_COLS + ', aadhar_no, pan_number, uan_no, pf_applicable, pf_no, esi_applicable, esi_no, ot_applicable, ot_rate';
+const EMPLOYEE_ADMIN_COLS = EMPLOYEE_PUBLIC_COLS + ', aadhar_no, pan_number, uan_no, pf_applicable, pf_no, esi_applicable, esi_no, ot_applicable, ot_rate, force_password_change, last_credentials_sent_at';
 
 // ─── Employees: List ──────────────────────────────────────────────────────────
 router.get('/', auth, async (req, res) => {
@@ -397,6 +398,70 @@ router.post('/me/avatar', auth, upload.single('file'), async (req, res) => {
       .eq('id', req.user.id);
     if (error) throw new Error(error.message);
     res.json({ avatar_url: result.secure_url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Send Login Credentials ───────────────────────────────────────────────────
+// Generates a secure temp password, stores it hashed, forces password change,
+// emails the employee, and logs the action. Safe to call multiple times.
+router.post('/:id/send-credentials', auth, async (req, res) => {
+  try {
+    if (!isAdminRole(req.user.role)) return res.status(403).json({ error: 'Admin access required' });
+    const oId   = orgId(req);
+    const empId = parseInt(req.params.id, 10);
+
+    // Ensure last_credentials_sent_at column exists (idempotent)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_credentials_sent_at TIMESTAMPTZ`).catch(() => {});
+
+    // Fetch employee — must belong to this org
+    const { data: emp } = await supabase.from('users')
+      .select('id, name, email, department, position, role, status')
+      .eq('id', empId)
+      .eq('organization_id', oId)
+      .maybeSingle();
+
+    if (!emp)        return res.status(404).json({ error: 'Employee not found in your organization' });
+    if (!emp.email)  return res.status(400).json({ error: 'Employee has no email address on record' });
+    if (emp.status === 'inactive') return res.status(400).json({ error: 'Cannot send credentials to a deactivated account' });
+
+    // Generate a secure 12-char temp password (letters + digits + symbols, avoidng ambiguous chars)
+    const CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&';
+    const tempPassword = Array.from(crypto.randomBytes(12))
+      .map(b => CHARSET[b % CHARSET.length]).join('');
+
+    const hashed    = bcrypt.hashSync(tempPassword, 10);
+    const sentAt    = new Date().toISOString();
+
+    // Update password + force change flag + timestamp (atomic)
+    await supabase.from('users').update({
+      password:                 hashed,
+      force_password_change:    true,
+      last_credentials_sent_at: sentAt,
+    }).eq('id', empId).eq('organization_id', oId);
+
+    // Audit log (fire-and-forget)
+    supabase.from('platform_activity').insert({
+      event_type:      'credentials_sent',
+      organization_id: oId,
+      description:     `Login credentials sent to ${emp.name} (${emp.email}) by ${req.user.name}`,
+      metadata:        { employee_id: empId, sent_by: req.user.id, sent_by_name: req.user.name, sent_at: sentAt },
+    }).then(() => {}).catch(() => {});
+
+    // Fetch org context for email
+    const { orgName, orgEmail } = await getOrgContext(oId);
+    const portalUrl = process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com';
+
+    sendMail({
+      to:      emp.email,
+      subject: `Your ${orgName || 'HRMS'} Login Credentials`,
+      html:    credentialsEmailHtml({ employee: emp, tempPassword, orgName, orgEmail, portalUrl }),
+    }).catch(() => {});
+
+    res.json({
+      success:                  true,
+      message:                  `Login credentials sent to ${emp.email}`,
+      last_credentials_sent_at: sentAt,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

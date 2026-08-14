@@ -469,10 +469,46 @@ function announcementHtml(ann, orgName = '', orgEmail = '') {
   );
 }
 
+// ── Send Login Credentials — admin-initiated temp password ────────────────────
+function credentialsEmailHtml({ employee, tempPassword, orgName = '', orgEmail = '', portalUrl = 'https://hrms.lumoslogic.com' }) {
+  return WRAP(
+    HEADER(orgName, 'Your Login Credentials', 'Welcome — Your account is ready to access', '🔑') +
+    BODY(`
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        Your HR admin has set up access to the <strong>${orgName || 'HR'} portal</strong>. Use the credentials below to log in for the first time.
+      </p>
+      <div style="background:#f0f3ff;border:1px solid #c7c4d8;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
+        <p style="margin:0 0 12px;font-size:11px;font-weight:800;color:#3525cd;text-transform:uppercase;letter-spacing:2px;">Your Login Details</p>
+        ${TABLE(
+          ROW('🌐', 'Portal URL',  `<a href="${portalUrl}" style="color:#3525cd;font-weight:600;">${portalUrl}</a>`) +
+          ROW('📧', 'Login Email', `<strong>${employee.email}</strong>`) +
+          ROW('🔑', 'Temp Password', `<code style="background:#fff;border:1px solid #c7c4d8;padding:4px 12px;border-radius:6px;font-family:monospace;font-size:14px;letter-spacing:1px;">${tempPassword}</code>`) +
+          (employee.department ? ROW('🏢', 'Department', employee.department) : '') +
+          (employee.position   ? ROW('💼', 'Position',   employee.position)   : '')
+        )}
+      </div>
+      <div style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;padding:14px 18px;margin-bottom:20px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400e;">First Login Instructions</p>
+        <ol style="margin:0;padding-left:18px;font-size:13px;color:#78350f;line-height:2;">
+          <li>Click the Portal URL above or visit <a href="${portalUrl}" style="color:#3525cd;">${portalUrl}</a></li>
+          <li>Enter your login email and the temporary password above</li>
+          <li>You will be asked to <strong>set a new password</strong> immediately</li>
+          <li>After changing your password, you'll be redirected to your dashboard</li>
+        </ol>
+      </div>
+      <div style="background:#fff1f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 16px;">
+        <p style="margin:0;font-size:12px;color:#7f1d1d;">🔒 <strong>Security:</strong> This temporary password expires once you set a new one. Do not share it with anyone.</p>
+      </div>
+    `) +
+    FOOTER(orgEmail, orgName)
+  );
+}
+
 module.exports = {
   sendMail, getTransporter, resetTransporter,
   leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml,
   welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml,
   orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml,
-  preOnboardingRequestHtml, announcementHtml,
+  preOnboardingRequestHtml, announcementHtml, credentialsEmailHtml,
 };

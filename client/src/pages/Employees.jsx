@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint, Camera } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Building2, Mail, UserCheck, Umbrella, XCircle, Clock, Home, AlarmClock, CheckCircle2, Users, Eye, EyeOff, Timer, Play, Square, ChevronDown, ChevronUp, Coffee, CalendarDays, Loader2, Phone, FileText, Download, MoreHorizontal, MapPin, Briefcase, Calendar, User, Shield, Key, Upload, BarChart3, ArrowLeft, Search, LayoutGrid, LayoutList, Check, ArrowUpDown, X, Filter, Fingerprint, Camera, Send, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useFeature } from '@/context/FeatureFlagContext';
@@ -1111,8 +1111,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
   const navigate        = useNavigate();
   const location        = useLocation();
   const employeesBase   = location.pathname.startsWith('/root/') ? '/root/employees' : '/employees';
-  const [showPw, setShowPw] = useState(false);
-  const [tab,    setTab]    = useState(isEdit ? (initialTab || 'personal') : 'personal');
+  const [showPw,          setShowPw]          = useState(false);
+  const [tab,             setTab]             = useState(isEdit ? (initialTab || 'personal') : 'personal');
+  const [credCooldown,    setCredCooldown]    = useState(false);
+  const [lastCredSentAt,  setLastCredSentAt]  = useState(employee?.last_credentials_sent_at || null);
 
   const initDeptIds = isEdit && employee.departments?.length
     ? employee.departments.map(d => d.id)
@@ -1217,6 +1219,18 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       }
     },
     onError: err => toast(err.message, 'error'),
+  });
+
+  const sendCredsMut = useMutation({
+    mutationFn: () => apiPost(`/employees/${employee.id}/send-credentials`, {}),
+    onSuccess: (res) => {
+      toast(`Login credentials sent to ${employee.email}`, 'success');
+      setLastCredSentAt(res.last_credentials_sent_at || new Date().toISOString());
+      setCredCooldown(true);
+      setTimeout(() => setCredCooldown(false), 60000); // 60s cooldown
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+    onError: (e) => toast(e.message, 'error'),
   });
 
   // Fetch branches for extended profile
@@ -1671,6 +1685,39 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
+                </div>
+              </div>
+              {/* ── Send Login Credentials ── */}
+              <div className="border border-[#e7eefe] rounded-xl overflow-hidden">
+                <div className="px-4 py-3 bg-[#f0f3ff] border-b border-[#e7eefe] flex items-center gap-2">
+                  <ShieldCheck size={14} className="text-[#3525cd]" />
+                  <span className="text-xs font-black text-[#3525cd] uppercase tracking-widest">Login Credentials</span>
+                </div>
+                <div className="px-4 py-4 space-y-3">
+                  <p className="text-xs text-[#464555] leading-relaxed">
+                    Generate a secure temporary password and email login details directly to the employee.
+                    They will be required to set a new password on first login.
+                  </p>
+                  {lastCredSentAt && (
+                    <p className="text-[0.68rem] text-[#777587]">
+                      Last sent: <strong className="text-[#464555]">
+                        {new Date(lastCredSentAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </strong>
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => sendCredsMut.mutate()}
+                    disabled={sendCredsMut.isPending || credCooldown || !employee?.email}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg,#3525cd,#712ae2)', color: '#fff' }}
+                  >
+                    <Send size={14} />
+                    {sendCredsMut.isPending ? 'Sending…' : credCooldown ? 'Sent — wait 60s' : 'Send Login Credentials'}
+                  </button>
+                  {!employee?.email && (
+                    <p className="text-[0.68rem] text-rose-500">Employee must have an email address to send credentials.</p>
+                  )}
                 </div>
               </div>
               {/* Clockify User ID field removed — Clockify integration was removed 2026-07-22 */}
