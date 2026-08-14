@@ -57,14 +57,14 @@ const WRAP = (inner) => `<!DOCTYPE html>
 
 // icon: emoji string shown in the circle below the org name
 const HEADER = (orgName, title, subtitle, icon = '📋') => `
-<div style="background:#1e1456;padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
-  <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
+<div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 50%,#712ae2 100%);padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
+  <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
   <h1 style="margin:0 0 4px;font-size:32px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;letter-spacing:-0.5px;">${orgName || 'HR System'}</h1>
-  <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.35);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
-  <div style="border-top:1px solid rgba(255,255,255,0.15);margin:24px auto;max-width:360px;"></div>
-  <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.12);font-size:28px;margin-bottom:16px;">${icon}</div>
+  <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
+  <div style="border-top:1px solid rgba(255,255,255,0.2);margin:24px auto;max-width:360px;"></div>
+  <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.15);font-size:28px;margin-bottom:16px;">${icon}</div>
   <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${title}</h2>
-  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);font-family:Arial,sans-serif;">${subtitle}</p>
+  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">${subtitle}</p>
 </div>`;
 
 const BODY = (content) => `

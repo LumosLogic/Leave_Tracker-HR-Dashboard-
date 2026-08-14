@@ -34,14 +34,14 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
 <html><body style="margin:0;padding:24px 16px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:600px;margin:0 auto;">
   <!-- HEADER -->
-  <div style="background:#1e1456;padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
-    <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
+  <div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 50%,#712ae2 100%);padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
+    <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
     <h1 style="margin:0 0 4px;font-size:32px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;letter-spacing:-0.5px;">${safeOrg}</h1>
-    <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.35);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
-    <div style="border-top:1px solid rgba(255,255,255,0.15);margin:24px auto;max-width:360px;"></div>
-    <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.12);font-size:28px;margin-bottom:16px;">📣</div>
+    <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
+    <div style="border-top:1px solid rgba(255,255,255,0.2);margin:24px auto;max-width:360px;"></div>
+    <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.15);font-size:28px;margin-bottom:16px;">📣</div>
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${safeSubj}</h2>
-    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);font-family:Arial,sans-serif;">Broadcast Message</p>
+    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">Broadcast Message</p>
   </div>
   <!-- BODY -->
   <div style="background:#ffffff;padding:32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">

@@ -94,15 +94,23 @@ async function generateUniqueSlug(companyName) {
   return `${base}-${Date.now()}`;
 }
 
-// Returns { orgName, orgEmail } for use in email templates
+// Returns { orgName, orgEmail } for use in email templates.
+// orgEmail is the first active HR admin (role='admin') email — not root_admin.
 async function getOrgContext(oId) {
-  const [{ data: org }, hrEmails] = await Promise.all([
+  const [{ data: org }, { data: hrAdmins }] = await Promise.all([
     supabase.from('organizations').select('name').eq('id', oId).maybeSingle().catch(() => ({ data: null })),
-    getRecipients(oId).catch(() => []),
+    supabase.from('users')
+      .select('email')
+      .eq('organization_id', oId)
+      .eq('role', 'admin')
+      .neq('status', 'inactive')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .catch(() => ({ data: null })),
   ]);
   return {
-    orgName:  org?.name  || '',
-    orgEmail: hrEmails[0] || process.env.SMTP_USER || '',
+    orgName:  org?.name || '',
+    orgEmail: hrAdmins?.[0]?.email || process.env.SMTP_USER || '',
   };
 }
 
