@@ -3,7 +3,7 @@ const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const { supabase } = require('../../config/db');
 const { auth, adminOnly, rootAdminOnly } = require('../../middleware/auth');
-const { flat, orgId } = require('../../utils/helpers');
+const { flat, orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml } = require('../../services/emailService');
 const { sendPushToUsers } = require('../../services/pushService');
 
@@ -13,6 +13,8 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
     const { subject, message, target_user_id } = req.body;
     if (!subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Subject and message required' });
     const oId = orgId(req);
+    const { orgName, orgEmail } = await getOrgContext(oId);
+
     let recipients;
     if (target_user_id) {
       const { data: u } = await supabase.from('users').select('email').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
@@ -22,16 +24,34 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
       const { data: users } = await supabase.from('users').select('email').eq('organization_id', oId).neq('role', 'root_admin');
       recipients = (users || []).map(u => u.email).filter(Boolean);
     }
-    const html = `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
-      <div style="background:linear-gradient(135deg,#3525cd,#4f46e5);border-radius:12px;padding:24px;margin-bottom:20px;">
-        <h2 style="color:white;margin:0;font-size:20px;">📢 ${subject.trim()}</h2>
-        <p style="color:rgba(255,255,255,.8);margin:8px 0 0;font-size:13px;">From Lumos Logic HR System</p>
-      </div>
-      <div style="background:#f8fafc;border-radius:12px;padding:20px;border:1px solid #e2e8f0;">
-        <p style="color:#334155;line-height:1.7;margin:0;">${message.trim().replace(/\n/g, '<br/>')}</p>
-      </div>
-      <p style="color:#94a3b8;font-size:12px;margin-top:20px;text-align:center;">— Lumos Logic HR Management System</p>
-    </div>`;
+
+    const year = new Date().getFullYear();
+    const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:20px;background:#f0f3ff;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(53,37,205,0.10);">
+  <div style="background:linear-gradient(135deg,#3525cd,#712ae2);padding:32px;border-radius:12px 12px 0 0;text-align:center;">
+    <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS by LumosLogic</p>
+    <h1 style="margin:0 0 2px;font-size:26px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;">${orgName || 'HR System'}</h1>
+    <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.5);font-family:Arial,sans-serif;">Human Resource Management System</p>
+    <div style="border-top:1px solid rgba(255,255,255,0.2);margin:20px 0;"></div>
+    <h2 style="margin:0 0 6px;font-size:19px;font-weight:bold;color:#ffffff;font-family:Arial,sans-serif;">📢 ${subject.trim()}</h2>
+    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">Broadcast Message</p>
+  </div>
+  <div style="background:#ffffff;padding:28px 32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:14px;color:#334155;line-height:1.8;white-space:pre-wrap;">${message.trim()}</p>
+  </div>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;padding:20px 32px 24px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;text-align:center;">
+    <p style="margin:0 0 4px;font-size:12px;font-weight:bold;color:#475569;">Need Help?</p>
+    <p style="margin:0 0 2px;font-size:12px;color:#64748b;">Email: <a href="mailto:${orgEmail}" style="color:#3525cd;text-decoration:none;">${orgEmail}</a></p>
+    <p style="margin:0 0 14px;font-size:12px;color:#64748b;">Website: <a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;">https://hrms.lumoslogic.com/</a></p>
+    <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
+      <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">This is an automated email from HRMS by LumosLogic.<br/>Please do not reply to this email.</p>
+      <p style="margin:6px 0 0;font-size:11px;color:#cbd5e1;">© ${year} HRMS By Lumos Logic</p>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
     for (const email of recipients) {
       sendMail({ to: email, subject: subject.trim(), html });
     }
