@@ -1502,6 +1502,9 @@ function AdminDocumentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button className="btn btn-outline" onClick={() => { setShowUpload(true); setShowCreateReq(false); setActiveTab('shared'); }}>
+            <Upload size={14} /> Upload Document
+          </button>
           <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); setActiveTab('requirements'); }}>
             <Plus size={14} /> Create Requirement
           </button>
@@ -1517,7 +1520,7 @@ function AdminDocumentsPage() {
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 border-b border-[#c7c4d8]">
         {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+          <button key={tab.id} onClick={() => { setActiveTab(tab.id); if (tab.id !== 'shared') setShowUpload(false); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all -mb-px ${activeTab === tab.id ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
             <tab.Icon size={14} /> {tab.label}
           </button>
