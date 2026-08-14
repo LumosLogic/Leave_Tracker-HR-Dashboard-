@@ -1678,8 +1678,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
               <div>
                 <label className="form-label">Reset Password <span className="font-normal text-[#777587] normal-case text-xs">(leave blank to keep current)</span></label>
                 <div className="relative">
+                  {/* autoComplete="new-password" prevents browser autofill from targeting the search bar as the "username" field */}
                   <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
                     placeholder="New password…"
+                    autoComplete="new-password"
                     value={form.password} onChange={e => set('password', e.target.value)} />
                   <button type="button" onClick={() => setShowPw(s => !s)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
@@ -1738,14 +1740,15 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
             </div>
             <div>
               <label className="form-label">Company Email <span className="text-rose-500">*</span></label>
-              <input className="form-control" type="email" placeholder="john@company.com" value={form.email} onChange={e => set('email', e.target.value)} required />
+              <input className="form-control" type="email" placeholder="john@company.com" autoComplete="off" value={form.email} onChange={e => set('email', e.target.value)} required />
             </div>
           </div>
           <div>
             <label className="form-label">Temporary Password <span className="text-rose-500">*</span></label>
             <div className="relative">
               <input className="form-control pr-10" type={showPw ? 'text' : 'password'}
-                placeholder="Min 6 characters" value={form.password} onChange={e => set('password', e.target.value)} required />
+                placeholder="Min 6 characters" autoComplete="new-password"
+                value={form.password} onChange={e => set('password', e.target.value)} required />
               <button type="button" onClick={() => setShowPw(s => !s)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27] p-1">
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -2242,6 +2245,7 @@ export default function Employees() {
           <input
             type="text"
             placeholder="Search by name, email, dept…"
+            autoComplete="off"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="form-control pl-8 py-1.5 text-xs w-full" />
