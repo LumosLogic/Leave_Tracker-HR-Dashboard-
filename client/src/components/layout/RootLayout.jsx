@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, ShieldCheck,
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
-  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound, Terminal
+  Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound, Terminal,
+  PieChart, Play, FileBarChart, IndianRupee, ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -42,7 +43,15 @@ const NAV_SECTIONS = [
     { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
   ]},
   { id: 'tour-nav-finance', title: 'Finance', items: [
-    { to: '/root/payroll',  label: 'Payroll',  Icon: DollarSign },
+    { to: '/root/payroll',                  label: 'Payroll',              Icon: DollarSign,   featureKey: 'payroll' },
+    { to: '/root/payroll/dashboard',        label: 'Payroll Dashboard',    Icon: PieChart,     featureKey: 'payroll' },
+    { to: '/root/payroll/generate',         label: 'Payroll Generation',   Icon: Play,         featureKey: 'payroll' },
+    { to: '/root/payroll/reports',          label: 'Payroll Reports',      Icon: FileBarChart, featureKey: 'payroll' },
+    { to: '/root/payroll/salary',           label: 'Salary Structures',    Icon: IndianRupee,  featureKey: 'payroll' },
+    { to: '/root/payroll/settings',         label: 'Payroll Settings',     Icon: Settings,     featureKey: 'payroll' },
+    { to: '/root/statutory/compliance',     label: 'Compliance Dashboard', Icon: ShieldCheck,  featureKey: 'payroll' },
+    { to: '/root/statutory/config',         label: 'Statutory Config',     Icon: ShieldAlert,  featureKey: 'payroll' },
+    { to: '/root/statutory/declarations',   label: 'Tax Declarations',     Icon: FileText,     featureKey: 'payroll' },
     { to: '/root/expenses', label: 'Expenses', Icon: Receipt },
     { to: '/root/assets',   label: 'Assets',   Icon: Monitor },
   ]},

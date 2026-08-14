@@ -97,21 +97,25 @@ async function generateUniqueSlug(companyName) {
 // Returns { orgName, orgEmail } for use in email templates.
 // orgEmail is the first active HR admin (role='admin') email — not root_admin.
 async function getOrgContext(oId) {
-  const [{ data: org }, { data: hrAdmins }] = await Promise.all([
-    supabase.from('organizations').select('name').eq('id', oId).maybeSingle().catch(() => ({ data: null })),
-    supabase.from('users')
-      .select('email')
-      .eq('organization_id', oId)
-      .eq('role', 'admin')
-      .neq('status', 'inactive')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .catch(() => ({ data: null })),
-  ]);
-  return {
-    orgName:  org?.name || '',
-    orgEmail: hrAdmins?.[0]?.email || process.env.SMTP_USER || '',
-  };
+  try {
+    const [orgRes, hrRes] = await Promise.all([
+      supabase.from('organizations').select('name').eq('id', oId).maybeSingle(),
+      supabase.from('users')
+        .select('email')
+        .eq('organization_id', oId)
+        .eq('role', 'admin')
+        .neq('status', 'inactive')
+        .order('created_at', { ascending: true })
+        .limit(1),
+    ]);
+    const hrEmails = Array.isArray(hrRes.data) ? hrRes.data : (hrRes.data ? [hrRes.data] : []);
+    return {
+      orgName:  orgRes.data?.name || '',
+      orgEmail: hrEmails[0]?.email || process.env.SMTP_USER || '',
+    };
+  } catch {
+    return { orgName: '', orgEmail: process.env.SMTP_USER || '' };
+  }
 }
 
 module.exports = { localDateStr, localTimeStr, flat, flatOne, getSettings, orgId, toMinutes, isWorkingDay, getRecipients, generateUniqueSlug, getOrgContext };

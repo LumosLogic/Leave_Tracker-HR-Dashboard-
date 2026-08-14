@@ -253,6 +253,7 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
       special_allowance = 0, other_allowance = 0,
       employee_pf = 0, employee_esi = 0,
       professional_tax = 0, tds = 0, other_deductions = 0,
+      retention = 0,
       employer_pf = 0, employer_esi = 0,
       notes,
     } = req.body;
@@ -274,6 +275,7 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
 
     const client = await pool.connect();
     let newRecord;
+    let oldRecord;
     try {
       await client.query('BEGIN');
 
@@ -308,17 +310,20 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
           RETURNING *`,
         [effective_from, oId, user_id]
       );
-      const oldRecord = closeRes.rows[0] || null;
+      oldRecord = closeRes.rows[0] || null;
+
+      // Add retention column if it doesn't exist yet (safe for older DBs)
+      await client.query(`ALTER TABLE employee_salary_structures ADD COLUMN IF NOT EXISTS retention NUMERIC DEFAULT 0`).catch(() => {});
 
       const insertRes = await client.query(
         `INSERT INTO employee_salary_structures
            (organization_id, user_id, effective_from,
             basic, hra, da, transport_allowance, medical_allowance,
             special_allowance, other_allowance, gross_salary,
-            employee_pf, employee_esi, professional_tax, tds, other_deductions,
+            employee_pf, employee_esi, professional_tax, tds, other_deductions, retention,
             employer_pf, employer_esi, ctc, notes, created_by)
          VALUES
-           ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+           ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
          RETURNING *`,
         [oId, user_id, effective_from,
          Number(basic), Number(hra), Number(da),
@@ -326,7 +331,7 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
          Number(special_allowance), Number(other_allowance),
          parseFloat(gross_salary.toFixed(2)),
          Number(employee_pf), Number(employee_esi),
-         Number(professional_tax), Number(tds), Number(other_deductions),
+         Number(professional_tax), Number(tds), Number(other_deductions), Number(retention),
          Number(employer_pf), Number(employer_esi),
          parseFloat(ctc.toFixed(2)),
          notes || null, req.user.id]

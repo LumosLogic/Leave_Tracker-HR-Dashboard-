@@ -379,15 +379,30 @@ async function fetchAllData(oId, uId, month, year) {
       [oId, uId, end, start]
     ),
 
-    // Attendance records
-    pool.query(
-      `SELECT date::text, status, check_in, check_out, work_hours
-         FROM attendance
-        WHERE user_id = $1
-          AND organization_id = $2
-          AND date >= $3 AND date <= $4`,
-      [uId, oId, start, end]
-    ),
+    // Attendance records — resilient: falls back if check_in/check_out columns absent in older DBs
+    (async () => {
+      try {
+        return await pool.query(
+          `SELECT date::text, status, check_in, check_out, COALESCE(work_hours, 0) as work_hours
+             FROM attendance
+            WHERE user_id = $1
+              AND organization_id = $2
+              AND date >= $3 AND date <= $4`,
+          [uId, oId, start, end]
+        );
+      } catch {
+        return await pool.query(
+          `SELECT date::text, status,
+                  NULL as check_in, NULL as check_out,
+                  COALESCE(work_hours, 0) as work_hours
+             FROM attendance
+            WHERE user_id = $1
+              AND organization_id = $2
+              AND date >= $3 AND date <= $4`,
+          [uId, oId, start, end]
+        );
+      }
+    })(),
 
     // Approved leaves overlapping this period, with paid flag from leave_policies
     pool.query(
@@ -415,14 +430,26 @@ async function fetchAllData(oId, uId, month, year) {
       [oId, start, end]
     ),
 
-    // Work schedule (for schedule check-in time used in late detection)
-    pool.query(
-      `SELECT check_in, check_out, work_days
-         FROM work_schedule
-        WHERE organization_id = $1
-        LIMIT 1`,
-      [oId]
-    ),
+    // Work schedule — resilient fallback if columns differ across DB versions
+    (async () => {
+      try {
+        return await pool.query(
+          `SELECT check_in, check_out, work_days
+             FROM work_schedule
+            WHERE organization_id = $1
+            LIMIT 1`,
+          [oId]
+        );
+      } catch {
+        return await pool.query(
+          `SELECT NULL as check_in, NULL as check_out, work_days
+             FROM work_schedule
+            WHERE organization_id = $1
+            LIMIT 1`,
+          [oId]
+        );
+      }
+    })(),
 
     // Approved regularizations (graceful fallback if schema differs)
     pool.query(

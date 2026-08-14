@@ -17,7 +17,7 @@ const EMPTY_FORM = {
   effective_from: new Date().toISOString().split('T')[0],
   basic: '', hra: '', da: '', transport_allowance: '',
   medical_allowance: '', special_allowance: '', other_allowance: '',
-  employee_pf: '', employee_esi: '', professional_tax: '', tds: '', other_deductions: '',
+  employee_pf: '', employee_esi: '', professional_tax: '', tds: '', other_deductions: '', retention: '',
   employer_pf: '', employer_esi: '',
   notes: '',
 };
@@ -35,7 +35,7 @@ function SalaryModal({ employee, onClose }) {
     num('transport_allowance') + num('medical_allowance') +
     num('special_allowance') + num('other_allowance');
   const empDed = num('employee_pf') + num('employee_esi') +
-    num('professional_tax') + num('tds') + num('other_deductions');
+    num('professional_tax') + num('tds') + num('other_deductions') + num('retention');
   const empContrib = num('employer_pf') + num('employer_esi');
   const netEstimate = Math.max(0, gross - empDed);
   const ctc = gross + empContrib;
@@ -51,7 +51,7 @@ function SalaryModal({ employee, onClose }) {
       other_allowance: num('other_allowance'),
       employee_pf: num('employee_pf'), employee_esi: num('employee_esi'),
       professional_tax: num('professional_tax'), tds: num('tds'),
-      other_deductions: num('other_deductions'),
+      other_deductions: num('other_deductions'), retention: num('retention'),
       employer_pf: num('employer_pf'), employer_esi: num('employer_esi'),
     }),
     onSuccess: () => {
@@ -140,6 +140,7 @@ function SalaryModal({ employee, onClose }) {
               {field('ESI (Employee)', 'employee_esi')}
               {field('Professional Tax', 'professional_tax')}
               {field('TDS', 'tds')}
+              {field('Retention', 'retention')}
               {field('Other Deductions', 'other_deductions')}
             </div>
             <div className="mt-3 flex items-center justify-between bg-rose-50 rounded-lg px-3 py-2">
