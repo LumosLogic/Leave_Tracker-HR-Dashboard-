@@ -3,6 +3,7 @@ const router     = express.Router();
 const { supabase } = require('../../config/db');
 const { auth }   = require('../../middleware/auth');
 const { sendMail, announcementHtml } = require('../../services/emailService');
+const { getOrgContext } = require('../../utils/helpers');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
 
@@ -127,15 +128,14 @@ router.post('/', auth, async (req, res) => {
         return true; // 'all'
       });
 
-      const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', oId).maybeSingle();
-      const orgName = orgRow?.name || 'Your Organization';
+      const { orgName, orgEmail } = await getOrgContext(oId);
       const annWithCreator = { ...data, creator_name: req.user.name || 'HR' };
 
       emailRecipients.forEach(u => {
         sendMail({
           to:      u.email,
           subject: `📢 ${title} — ${orgName}`,
-          html:    announcementHtml(annWithCreator, orgName),
+          html:    announcementHtml(annWithCreator, orgName, orgEmail),
         }).catch(() => {});
       });
     }

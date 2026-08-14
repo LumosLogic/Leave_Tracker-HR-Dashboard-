@@ -4,7 +4,7 @@ const bcrypt   = require('bcryptjs');
 const { supabase, pool } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
-const { orgId } = require('../../utils/helpers');
+const { orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml } = require('../../services/emailService');
 const { initOnboarding } = require('../onboarding/onboardingService');
 const upload     = require('../../middleware/upload');
@@ -122,9 +122,8 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     }
 
     // Fire-and-forget side effects after COMMIT
-    supabase.from('organizations').select('name').eq('id', orgId(req)).maybeSingle().then(({ data: orgRow }) => {
-      const oName = orgRow?.name || '';
-      sendMail({ to: email, subject: `Welcome to ${oName || 'Lumens HR'} — Your Account Details`, html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password, oName) });
+    getOrgContext(orgId(req)).then(({ orgName, orgEmail }) => {
+      sendMail({ to: email, subject: `Welcome to ${orgName || 'the Team'} — Your Account Details`, html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password, orgName, orgEmail) });
     });
     supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
 

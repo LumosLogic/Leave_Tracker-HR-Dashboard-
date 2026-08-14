@@ -94,4 +94,16 @@ async function generateUniqueSlug(companyName) {
   return `${base}-${Date.now()}`;
 }
 
-module.exports = { localDateStr, localTimeStr, flat, flatOne, getSettings, orgId, toMinutes, isWorkingDay, getRecipients, generateUniqueSlug };
+// Returns { orgName, orgEmail } for use in email templates
+async function getOrgContext(oId) {
+  const [{ data: org }, hrEmails] = await Promise.all([
+    supabase.from('organizations').select('name').eq('id', oId).maybeSingle().catch(() => ({ data: null })),
+    getRecipients(oId).catch(() => []),
+  ]);
+  return {
+    orgName:  org?.name  || '',
+    orgEmail: hrEmails[0] || process.env.SMTP_USER || '',
+  };
+}
+
+module.exports = { localDateStr, localTimeStr, flat, flatOne, getSettings, orgId, toMinutes, isWorkingDay, getRecipients, generateUniqueSlug, getOrgContext };

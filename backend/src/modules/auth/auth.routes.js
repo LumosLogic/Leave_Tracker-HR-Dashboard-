@@ -196,12 +196,15 @@ router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req,
 
     const baseUrl   = process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com';
     const resetLink = `${baseUrl}/reset-password?token=${token}`;
-    const orgName   = user.organizations?.name || '';
+    const orgName  = user.organizations?.name || '';
+    const orgEmail = user.email; // reset email context; HR contact fetched async below
+    // Fetch HR email for footer (fire-and-forget style — use orgEmail as fallback)
+    const { orgEmail: hrEmail } = await require('../../utils/helpers').getOrgContext(user.organization_id || 1).catch(() => ({ orgEmail: '' }));
 
     sendMail({
       to:      user.email,
       subject: `${orgName || 'HR'} — Reset Your Password`,
-      html:    passwordResetHtml(user, resetLink, orgName),
+      html:    passwordResetHtml(user, resetLink, orgName, hrEmail),
     });
 
     res.json({ success: true });
