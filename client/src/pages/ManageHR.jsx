@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, ShieldCheck, Mail, Building2, Check, Inbox, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, ShieldCheck, Mail, Building2, Check, Inbox, Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
@@ -116,6 +116,15 @@ export default function ManageHR() {
     onError: (e) => toast(e.message, 'error'),
   });
 
+  const reactivate = useMutation({
+    mutationFn: (id) => apiPut(`/root/hr/${id}/reactivate`, {}),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['root-hr'] });
+      toast('Account reactivated successfully.', 'success');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
   function openAdd()    { setEditing(null); setModalOpen(true); }
   function openEdit(hr) { setEditing(hr);   setModalOpen(true); }
 
@@ -157,41 +166,74 @@ export default function ManageHR() {
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {hrList.map(hr => (
-            <div key={hr.id}
-              className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5 hover:border-[#3525cd]/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-              <div className="h-[3px] -mx-5 -mt-5 mb-4 rounded-t-xl"
-                style={{ background: 'linear-gradient(90deg, #3525cd, #4f46e5, #712ae2)' }} />
-              <div className="flex items-start gap-3 mb-4">
-                <Avatar name={hr.name} color={hr.avatar_color} size={48} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-[#151c27] text-[0.95rem] truncate">{hr.name}</p>
-                  <p className="text-xs text-[#777587] truncate">{hr.position}</p>
-                  <span className="inline-block mt-1.5 text-[0.65rem] bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                    HR Admin
-                  </span>
+          {hrList.map(hr => {
+            const isInactive = hr.status === 'inactive';
+            return (
+              <div key={hr.id}
+                className={`bg-white rounded-xl border shadow-sm p-5 transition-all duration-200 ${isInactive ? 'border-amber-300 opacity-80' : 'border-[#c7c4d8] hover:border-[#3525cd]/40 hover:shadow-md hover:-translate-y-0.5'}`}>
+                <div className="h-[3px] -mx-5 -mt-5 mb-4 rounded-t-xl"
+                  style={{ background: isInactive ? 'linear-gradient(90deg,#f59e0b,#fbbf24)' : 'linear-gradient(90deg,#3525cd,#4f46e5,#712ae2)' }} />
+
+                {isInactive && (
+                  <div className="flex items-center gap-1.5 mb-3 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertCircle size={13} className="text-amber-600 flex-shrink-0" />
+                    <span className="text-[0.7rem] font-bold text-amber-700 uppercase tracking-wide">Account Deactivated</span>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-3 mb-4">
+                  <div className={isInactive ? 'opacity-50 grayscale' : ''}>
+                    <Avatar name={hr.name} color={hr.avatar_color} size={48} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-[#151c27] text-[0.95rem] truncate">{hr.name}</p>
+                    <p className="text-xs text-[#777587] truncate">{hr.position}</p>
+                    <span className={`inline-block mt-1.5 text-[0.65rem] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide border ${isInactive ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]'}`}>
+                      {isInactive ? 'Deactivated' : 'HR Admin'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 mb-4 bg-[#f9f9ff] rounded-lg p-3 border border-[#f0f3ff]">
+                  <div className="flex items-center gap-2 text-xs text-[#464555]">
+                    <Mail size={12} className="text-[#777587] flex-shrink-0" />
+                    <span className="truncate">{hr.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-[#464555]">
+                    <Building2 size={12} className="text-[#777587] flex-shrink-0" />
+                    <span className="truncate">{hr.department}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  {isInactive ? (
+                    <>
+                      <button
+                        onClick={() => reactivate.mutate(hr.id)}
+                        disabled={reactivate.isPending}
+                        className="btn btn-sm flex-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 transition-colors"
+                      >
+                        <RefreshCw size={13} />
+                        {reactivate.isPending ? 'Reactivating…' : 'Reactivate Account'}
+                      </button>
+                      <button onClick={() => setDeleteTarget(hr)} className="btn btn-danger btn-sm px-3">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => openEdit(hr)} className="btn btn-outline btn-sm flex-1 text-xs">
+                        <Pencil size={13} /> Edit
+                      </button>
+                      <button onClick={() => setDeleteTarget(hr)} className="btn btn-danger btn-sm px-3">
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-              <div className="space-y-1.5 mb-4 bg-[#f9f9ff] rounded-lg p-3 border border-[#f0f3ff]">
-                <div className="flex items-center gap-2 text-xs text-[#464555]">
-                  <Mail size={12} className="text-[#777587] flex-shrink-0" />
-                  <span className="truncate">{hr.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-[#464555]">
-                  <Building2 size={12} className="text-[#777587] flex-shrink-0" />
-                  <span className="truncate">{hr.department}</span>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => openEdit(hr)} className="btn btn-outline btn-sm flex-1 text-xs">
-                  <Pencil size={13} /> Edit
-                </button>
-                <button onClick={() => setDeleteTarget(hr)} className="btn btn-danger btn-sm px-3">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

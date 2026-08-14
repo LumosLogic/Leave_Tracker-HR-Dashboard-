@@ -447,7 +447,7 @@ router.get('/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
 router.get('/hr', auth, rootAdminOnly, async (req, res) => {
   try {
     const { data } = await supabase.from('users')
-      .select('id, name, email, department, position, avatar_color, created_at')
+      .select('id, name, email, department, position, avatar_color, status, created_at')
       .eq('role', 'admin').eq('organization_id', orgId(req)).order('name');
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -488,6 +488,22 @@ router.put('/hr/:id', auth, rootAdminOnly, async (req, res) => {
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error) throw new Error(error.message);
     res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Root Admin: Reactivate Deactivated HR Admin ──────────────────────────────
+router.put('/hr/:id/reactivate', auth, rootAdminOnly, async (req, res) => {
+  try {
+    const { data: user } = await supabase.from('users')
+      .select('id, name, status')
+      .eq('id', parseInt(req.params.id))
+      .eq('role', 'admin')
+      .eq('organization_id', orgId(req))
+      .maybeSingle();
+    if (!user) return res.status(404).json({ error: 'HR admin not found' });
+    if (user.status !== 'inactive') return res.status(400).json({ error: 'Account is already active' });
+    await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
+    res.json({ success: true, message: `${user.name}'s account has been reactivated` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

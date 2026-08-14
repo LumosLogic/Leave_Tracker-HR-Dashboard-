@@ -282,6 +282,27 @@ router.post('/verify-email', auth, async (req, res) => {
 // ─── Auth: Deactivate Account ─────────────────────────────────────────────────
 router.post('/deactivate', auth, async (req, res) => {
   try {
+    // root_admin cannot self-deactivate
+    if (req.user.role === 'root_admin') {
+      return res.status(400).json({ error: 'Root admins cannot self-deactivate. Contact the platform administrator.' });
+    }
+
+    // HR admin: block if they are the only active admin in the org
+    if (req.user.role === 'admin') {
+      const { data: otherAdmins } = await supabase.from('users')
+        .select('id')
+        .eq('organization_id', req.user.organization_id)
+        .in('role', ['admin', 'root_admin'])
+        .neq('id', req.user.id);
+
+      const activeOthers = (otherAdmins || []).filter(u => u.status !== 'inactive');
+      if (activeOthers.length === 0) {
+        return res.status(400).json({
+          error: 'Cannot deactivate: you are the only active HR admin in your organization. Add another HR admin first, then deactivate your account.',
+        });
+      }
+    }
+
     await supabase.from('users').update({ status: 'inactive' }).eq('id', req.user.id);
     res.json({ success: true, message: 'Account deactivated successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
