@@ -26,28 +26,46 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
     }
 
     const year = new Date().getFullYear();
+    const safeEmail  = (orgEmail  || '').replace(/</g, '&lt;');
+    const safeOrg    = (orgName   || 'HR System').replace(/</g, '&lt;');
+    const safeSubj   = subject.trim().replace(/</g, '&lt;');
+    const safeMsg    = message.trim().replace(/</g, '&lt;').replace(/\n/g, '<br/>');
     const html = `<!DOCTYPE html>
-<html><body style="margin:0;padding:20px;background:#f0f3ff;font-family:Arial,sans-serif;">
-<div style="max-width:580px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(53,37,205,0.10);">
-  <div style="background:linear-gradient(135deg,#3525cd,#712ae2);padding:32px;border-radius:12px 12px 0 0;text-align:center;">
-    <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS by LumosLogic</p>
-    <h1 style="margin:0 0 2px;font-size:26px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;">${orgName || 'HR System'}</h1>
-    <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.5);font-family:Arial,sans-serif;">Human Resource Management System</p>
-    <div style="border-top:1px solid rgba(255,255,255,0.2);margin:20px 0;"></div>
-    <h2 style="margin:0 0 6px;font-size:19px;font-weight:bold;color:#ffffff;font-family:Arial,sans-serif;">📢 ${subject.trim()}</h2>
-    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">Broadcast Message</p>
+<html><body style="margin:0;padding:24px 16px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;">
+  <!-- HEADER -->
+  <div style="background:#1e1456;padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
+    <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
+    <h1 style="margin:0 0 4px;font-size:32px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;letter-spacing:-0.5px;">${safeOrg}</h1>
+    <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.35);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
+    <div style="border-top:1px solid rgba(255,255,255,0.15);margin:24px auto;max-width:360px;"></div>
+    <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.12);font-size:28px;margin-bottom:16px;">📣</div>
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${safeSubj}</h2>
+    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);font-family:Arial,sans-serif;">Broadcast Message</p>
   </div>
-  <div style="background:#ffffff;padding:28px 32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-    <p style="margin:0;font-size:14px;color:#334155;line-height:1.8;white-space:pre-wrap;">${message.trim()}</p>
+  <!-- BODY -->
+  <div style="background:#ffffff;padding:32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">
+    <p style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Hello,</p>
+    <p style="margin:0;font-size:14px;color:#334155;line-height:1.8;">${safeMsg}</p>
   </div>
-  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;padding:20px 32px 24px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;text-align:center;">
-    <p style="margin:0 0 4px;font-size:12px;font-weight:bold;color:#475569;">Need Help?</p>
-    <p style="margin:0 0 2px;font-size:12px;color:#64748b;">Email: <a href="mailto:${orgEmail}" style="color:#3525cd;text-decoration:none;">${orgEmail}</a></p>
-    <p style="margin:0 0 14px;font-size:12px;color:#64748b;">Website: <a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;">https://hrms.lumoslogic.com/</a></p>
-    <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-      <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">This is an automated email from HRMS by LumosLogic.<br/>Please do not reply to this email.</p>
-      <p style="margin:6px 0 0;font-size:11px;color:#cbd5e1;">© ${year} HRMS By Lumos Logic</p>
-    </div>
+  <!-- FOOTER -->
+  <div style="background:#f0f3ff;border:1px solid #dde1f0;border-top:none;padding:24px 32px 28px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;">
+    <table style="width:100%;border-collapse:collapse;">
+      <tr>
+        <td style="width:64px;vertical-align:top;padding-right:16px;">
+          <div style="width:52px;height:52px;line-height:52px;border-radius:50%;background:#ede9fe;text-align:center;font-size:22px;">🎧</div>
+        </td>
+        <td style="vertical-align:top;">
+          <p style="margin:0 0 8px;font-size:15px;font-weight:800;color:#1e1456;font-family:Arial,sans-serif;">Need Help?</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#475569;">✉&nbsp;&nbsp;Email:&nbsp;&nbsp;<a href="mailto:${safeEmail}" style="color:#3525cd;text-decoration:none;font-weight:600;">${safeEmail}</a></p>
+          <p style="margin:0;font-size:13px;color:#475569;">🌐&nbsp;&nbsp;Website:&nbsp;&nbsp;<a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;font-weight:600;">https://hrms.lumoslogic.com/</a></p>
+        </td>
+      </tr>
+    </table>
+    <div style="border-top:1px solid #c7c4d8;margin:20px 0 16px;"></div>
+    <p style="margin:0 0 4px;font-size:12px;color:#64748b;text-align:center;">This is an automated email from <strong>HRMS by LumosLogic</strong>.</p>
+    <p style="margin:0 0 12px;font-size:12px;color:#64748b;text-align:center;">Please do not reply to this email.</p>
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">© ${year} HRMS By Lumos Logic</p>
   </div>
 </div>
 </body></html>`;

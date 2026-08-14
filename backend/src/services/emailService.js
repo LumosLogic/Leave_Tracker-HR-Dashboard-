@@ -48,251 +48,300 @@ async function sendMail({ to, subject, html, attachments, replyTo } = {}) {
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────────
+// Theme: deep purple header (#1e1456), accent #3525cd, light purple highlights
 
 const WRAP = (inner) => `<!DOCTYPE html>
-<html><body style="margin:0;padding:20px;background:#f0f3ff;font-family:Arial,sans-serif;">
-<div style="max-width:580px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(53,37,205,0.10);">${inner}</div>
+<html><body style="margin:0;padding:24px 16px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;">${inner}</div>
 </body></html>`;
 
-// orgName is shown large at top; title is the email subject line
-const HEADER = (orgName, title, subtitle) => `
-<div style="background:linear-gradient(135deg,#3525cd,#712ae2);padding:32px;border-radius:12px 12px 0 0;text-align:center;">
-  <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS by LumosLogic</p>
-  <h1 style="margin:0 0 2px;font-size:26px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;">${orgName || 'HR System'}</h1>
-  <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,0.5);font-family:Arial,sans-serif;">Human Resource Management System</p>
-  <div style="border-top:1px solid rgba(255,255,255,0.2);margin:20px 0;"></div>
-  <h2 style="margin:0 0 6px;font-size:19px;font-weight:bold;color:#ffffff;font-family:Arial,sans-serif;">${title}</h2>
-  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">${subtitle}</p>
+// icon: emoji string shown in the circle below the org name
+const HEADER = (orgName, title, subtitle, icon = '📋') => `
+<div style="background:#1e1456;padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
+  <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
+  <h1 style="margin:0 0 4px;font-size:32px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;letter-spacing:-0.5px;">${orgName || 'HR System'}</h1>
+  <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.35);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
+  <div style="border-top:1px solid rgba(255,255,255,0.15);margin:24px auto;max-width:360px;"></div>
+  <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.12);font-size:28px;margin-bottom:16px;">${icon}</div>
+  <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${title}</h2>
+  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);font-family:Arial,sans-serif;">${subtitle}</p>
 </div>`;
 
 const BODY = (content) => `
-<div style="background:#ffffff;padding:28px 32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
+<div style="background:#ffffff;padding:32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">
   ${content}
 </div>`;
 
-// orgEmail = org's HR admin email; fixed website + copyright
-const FOOTER = (orgEmail = '', orgName = '') => `
-<div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;padding:20px 32px 24px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;text-align:center;">
-  <p style="margin:0 0 4px;font-size:12px;font-weight:bold;color:#475569;">Need Help?</p>
-  <p style="margin:0 0 2px;font-size:12px;color:#64748b;">Email: <a href="mailto:${orgEmail || process.env.SMTP_USER || ''}" style="color:#3525cd;text-decoration:none;">${orgEmail || process.env.SMTP_USER || 'hr@company.com'}</a></p>
-  <p style="margin:0 0 14px;font-size:12px;color:#64748b;">Website: <a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;">https://hrms.lumoslogic.com/</a></p>
-  <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-    <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">This is an automated email from HRMS by LumosLogic.<br/>Please do not reply to this email.</p>
-    <p style="margin:6px 0 0;font-size:11px;color:#cbd5e1;">© ${new Date().getFullYear()} HRMS By Lumos Logic</p>
-  </div>
+// Table row with icon — icon is an emoji, label is bold left col, value is right col
+const ROW = (icon, label, value) => `
+<tr>
+  <td style="width:42%;padding:13px 16px;border-bottom:1px solid #e8eaf6;border-right:1px solid #e8eaf6;background:#f7f8ff;vertical-align:middle;">
+    <div style="display:inline-block;width:26px;height:26px;line-height:26px;background:#ede9fe;border-radius:6px;font-size:13px;text-align:center;vertical-align:middle;margin-right:8px;">${icon}</div><span style="font-size:13px;font-weight:700;color:#1e1456;vertical-align:middle;font-family:Arial,sans-serif;">${label}</span>
+  </td>
+  <td style="padding:13px 16px;border-bottom:1px solid #e8eaf6;font-size:13px;color:#334155;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
+</tr>`;
+
+const TABLE = (rows) => `
+<div style="border:1px solid #e8eaf6;border-radius:8px;overflow:hidden;margin:20px 0;">
+  <table style="width:100%;border-collapse:collapse;">${rows}</table>
 </div>`;
 
 const BTN = (href, label) => `
-<div style="text-align:center;margin:24px 0 8px;">
-  <a href="${href}" style="display:inline-block;background:linear-gradient(135deg,#3525cd,#712ae2);color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:13px 30px;border-radius:8px;box-shadow:0 4px 12px rgba(53,37,205,0.25);font-family:Arial,sans-serif;">${label}</a>
+<div style="text-align:center;margin:28px 0 4px;">
+  <a href="${href}" style="display:inline-block;background:#3525cd;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:14px 36px;border-radius:8px;font-family:Arial,sans-serif;letter-spacing:0.3px;">${label} &rarr;</a>
 </div>`;
 
-const ROW = (label, value) => `
-<tr>
-  <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:13px;width:38%;vertical-align:top;">${label}</td>
-  <td style="padding:10px 0;border-bottom:1px solid #e2e8f0;font-size:14px;color:#1e293b;">${value}</td>
-</tr>`;
+const GREETING = (name) => name
+  ? `<p style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Hello ${name},</p>`
+  : `<p style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Hello,</p>`;
+
+const FOOTER = (orgEmail = '', orgName = '') => `
+<div style="background:#f0f3ff;border:1px solid #dde1f0;border-top:none;padding:24px 32px 28px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="width:64px;vertical-align:top;padding-right:16px;">
+        <div style="width:52px;height:52px;line-height:52px;border-radius:50%;background:#ede9fe;text-align:center;font-size:22px;">🎧</div>
+      </td>
+      <td style="vertical-align:top;">
+        <p style="margin:0 0 8px;font-size:15px;font-weight:800;color:#1e1456;font-family:Arial,sans-serif;">Need Help?</p>
+        <p style="margin:0 0 4px;font-size:13px;color:#475569;font-family:Arial,sans-serif;">✉&nbsp;&nbsp;Email:&nbsp;&nbsp;<a href="mailto:${orgEmail || process.env.SMTP_USER || ''}" style="color:#3525cd;text-decoration:none;font-weight:600;">${orgEmail || process.env.SMTP_USER || 'hr@company.com'}</a></p>
+        <p style="margin:0;font-size:13px;color:#475569;font-family:Arial,sans-serif;">🌐&nbsp;&nbsp;Website:&nbsp;&nbsp;<a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;font-weight:600;">https://hrms.lumoslogic.com/</a></p>
+      </td>
+    </tr>
+  </table>
+  <div style="border-top:1px solid #c7c4d8;margin:20px 0 16px;"></div>
+  <p style="margin:0 0 4px;font-size:12px;color:#64748b;text-align:center;font-family:Arial,sans-serif;">This is an automated email from <strong>HRMS by LumosLogic</strong>.</p>
+  <p style="margin:0 0 12px;font-size:12px;color:#64748b;text-align:center;font-family:Arial,sans-serif;">Please do not reply to this email.</p>
+  <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;font-family:Arial,sans-serif;">© ${new Date().getFullYear()} HRMS By Lumos Logic</p>
+</div>`;
 
 const LEAVE_TYPE_LABEL = {
   annual:'Annual Leave', sick:'Sick Leave', casual:'Casual Leave',
   emergency:'Emergency Leave', other:'Other Leave',
 };
 
-// Email to HR when employee applies for leave
+// ── Leave Applied — sent to HR / approver ─────────────────────────────────────
 function leaveAppliedHtml(employee, leave, orgName = '', orgEmail = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   const duration = leave.leave_time === 'half'
-    ? `Half Day — ${leave.half_type === 'first_half' ? 'First Half' : 'Second Half'}`
+    ? `Half Day (${leave.half_type === 'first_half' ? 'First Half' : 'Second Half'})`
     : leave.leave_time === 'wfh' ? 'Work from Home'
-    : `${leave.start_date} to ${leave.end_date}`;
+    : `${leave.start_date} → ${leave.end_date}`;
   return WRAP(
-    HEADER(orgName, 'New Leave Request', 'Action Required — Review & Approve') +
+    HEADER(orgName, 'New Leave Request', 'Action Required — Please Review', '📋') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">A new leave request requires your review and approval.</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Employee',   `<strong>${employee.name}</strong>`)}
-        ${ROW('Email',      employee.email || '-')}
-        ${ROW('Department', employee.department || '-')}
-        ${ROW('Leave Type', type)}
-        ${ROW('Duration',   duration)}
-        ${ROW('From Date',  leave.start_date)}
-        ${ROW('To Date',    leave.end_date)}
-        ${ROW('Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
-      </table>
-      ${BTN('https://hrms.lumoslogic.com/leaves', 'Review Leave Request →')}
+      ${GREETING('HR Team')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">A new leave request has been submitted and requires your review and approval.</p>
+      ${TABLE(
+        ROW('👤', 'Employee',   `<strong>${employee.name}</strong>`) +
+        ROW('📧', 'Email',      employee.email || '—') +
+        ROW('🏢', 'Department', employee.department || '—') +
+        ROW('📅', 'Leave Type', type) +
+        ROW('⏱️', 'Duration',   duration) +
+        ROW('🗓️', 'From Date',  leave.start_date) +
+        ROW('🗓️', 'To Date',    leave.end_date) +
+        ROW('📝', 'Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)
+      )}
+      ${BTN('https://hrms.lumoslogic.com/leaves', 'Review Leave Request')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Email to employee when leave is approved or rejected
+// ── Leave Status — approved or rejected, sent to employee ─────────────────────
 function leaveStatusHtml(employee, leave, status, approverName, orgName = '', orgEmail = '') {
-  const approved = status === 'approved';
-  const color    = approved ? '#10b981' : '#ef4444';
-  const badge    = approved ? '#dcfce7' : '#fee2e2';
-  const type     = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
-  const msg      = approved ? 'Your leave request has been approved.' : 'Your leave request has been rejected.';
+  const approved  = status === 'approved';
+  const statusClr = approved ? '#10b981' : '#ef4444';
+  const statusBg  = approved ? '#ecfdf5' : '#fff1f2';
+  const type      = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER(orgName, `Leave Request ${approved ? 'Approved ✓' : 'Rejected ✗'}`, 'Leave Status Update') +
+    HEADER(orgName,
+      approved ? 'Leave Request Approved' : 'Leave Request Rejected',
+      approved ? 'Your leave has been approved ✓' : 'Your leave has been rejected ✗',
+      approved ? '✅' : '❌'
+    ) +
     BODY(`
-      <p style="margin:0 0 12px;font-size:14px;">Hello <strong>${employee.name}</strong>,</p>
-      <div style="display:inline-block;background:${badge};color:${color};padding:5px 16px;border-radius:20px;font-weight:bold;font-size:13px;margin-bottom:16px;">${approved ? '✓ Approved' : '✗ Rejected'}</div>
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">${msg}</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Leave Type',  type)}
-        ${ROW('From Date',   leave.start_date)}
-        ${ROW('To Date',     leave.end_date)}
-        ${ROW('Decision by', approverName || 'HR')}
-      </table>
-      <div style="margin-top:16px;padding:12px 16px;background:${approved ? '#f0fdf4' : '#fff1f2'};border-left:4px solid ${color};border-radius:4px;font-size:13px;color:${approved ? '#14532d' : '#7f1d1d'};">
-        ${approved ? 'Your attendance records have been updated accordingly.' : 'If you have questions, please contact your HR manager.'}
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        ${approved
+          ? `Great news! Your <strong>${type}</strong> request has been <strong style="color:#10b981;">approved</strong> by ${approverName || 'HR'}.`
+          : `Your <strong>${type}</strong> request has been <strong style="color:#ef4444;">rejected</strong> by ${approverName || 'HR'}.`
+        }
+      </p>
+      ${TABLE(
+        ROW('📅', 'Leave Type',  type) +
+        ROW('🗓️', 'From Date',   leave.start_date) +
+        ROW('🗓️', 'To Date',     leave.end_date) +
+        ROW('👤', 'Decision by', approverName || 'HR')
+      )}
+      <div style="margin-top:20px;padding:14px 18px;background:${statusBg};border-left:4px solid ${statusClr};border-radius:6px;font-size:13px;color:${approved ? '#14532d' : '#7f1d1d'};">
+        ${approved
+          ? '✓ Your attendance records have been updated. Enjoy your time off!'
+          : 'If you have any questions, please reach out to your HR manager directly.'}
       </div>
+      ${BTN('https://hrms.lumoslogic.com/portal/leaves', 'View My Leaves')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Welcome email to new employees
+// ── Welcome Email — new employee ──────────────────────────────────────────────
 function welcomeEmployeeHtml(employee, plainPassword, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, 'Welcome to the Team! 🎉', 'Your HR account has been created') +
+    HEADER(orgName, 'Welcome to the Team!', `We're glad to have you with us`, '🎉') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">Hello <strong>${employee.name}</strong>, welcome to ${orgName || 'the team'}! Your HR account is ready to use.</p>
-      <div style="background:#f0f3ff;border:1px solid #c7c4d8;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
-        <p style="margin:0 0 10px;font-size:12px;font-weight:bold;color:#3525cd;text-transform:uppercase;letter-spacing:1px;">Your Login Credentials</p>
-        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span>&nbsp;&nbsp;<strong>${employee.email}</strong></p>
-        <p style="margin:0;font-size:14px;"><span style="color:#64748b;">Password:</span>&nbsp;&nbsp;<code style="background:#ffffff;border:1px solid #c7c4d8;padding:3px 10px;border-radius:4px;font-family:monospace;">${plainPassword}</code></p>
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">Welcome to <strong>${orgName || 'the team'}</strong>! Your HR account is ready. Use the credentials below to log in for the first time.</p>
+      <div style="background:#f0f3ff;border:1px solid #c7c4d8;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
+        <p style="margin:0 0 12px;font-size:11px;font-weight:800;color:#3525cd;text-transform:uppercase;letter-spacing:2px;">Your Login Credentials</p>
+        ${TABLE(
+          ROW('📧', 'Email',    `<strong>${employee.email}</strong>`) +
+          ROW('🔑', 'Password', `<code style="background:#fff;border:1px solid #c7c4d8;padding:3px 10px;border-radius:4px;font-family:monospace;font-size:13px;">${plainPassword}</code>`) +
+          ROW('🏢', 'Department', employee.department || '—') +
+          ROW('💼', 'Position',   employee.position   || '—')
+        )}
       </div>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Department', employee.department || '-')}
-        ${ROW('Position',   employee.position   || '-')}
-      </table>
-      <div style="margin-top:16px;padding:12px 16px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px;color:#78350f;">
-        You will be prompted to change your password on first login.
+      <div style="padding:13px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;font-size:13px;color:#78350f;">
+        🔒 You will be required to change your password on first login for security.
       </div>
-      ${BTN('https://hrms.lumoslogic.com/login', 'Log In to Your Account →')}
+      ${BTN('https://hrms.lumoslogic.com/login', 'Log In to Your Account')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Birthday wish email to employee
+// ── Birthday Wish — sent to the employee ─────────────────────────────────────
 function birthdayWishHtml(employee, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, '🎂 Happy Birthday!', `Wishing you a wonderful day`) +
+    HEADER(orgName, `Happy Birthday, ${employee.name}!`, `Wishing you a wonderful day 🎂`, '🎂') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:15px;text-align:center;">🎉 <strong>Happy Birthday, ${employee.name}!</strong> 🎉</p>
-      <p style="margin:0 0 16px;font-size:14px;color:#475569;text-align:center;line-height:1.7;">
-        Wishing you a wonderful birthday filled with joy and happiness.<br/>
-        The whole ${orgName || 'team'} is glad to have you with us!
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.8;text-align:center;">
+        🎉 &nbsp;On behalf of everyone at <strong>${orgName || 'the team'}</strong>, we wish you a very <strong>Happy Birthday!</strong> &nbsp;🎉
       </p>
-      <div style="padding:16px;background:#f0f3ff;border-radius:10px;text-align:center;border:1px solid #c7c4d8;">
-        <p style="margin:0;font-size:14px;color:#3525cd;font-weight:bold;">Have a fantastic day! 🌟</p>
+      <p style="margin:0 0 24px;font-size:14px;color:#64748b;text-align:center;line-height:1.7;">
+        Wishing you a day filled with joy, laughter, and wonderful moments.<br/>
+        Your dedication and hard work make our team truly special.
+      </p>
+      <div style="padding:20px;background:linear-gradient(135deg,#f0f3ff,#ede9fe);border-radius:10px;text-align:center;border:1px solid #c7c4d8;">
+        <p style="margin:0;font-size:16px;color:#3525cd;font-weight:800;">🌟 Have a fantastic birthday! 🌟</p>
       </div>
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Birthday reminder to HR (day before)
+// ── Birthday Reminder — sent to HR the day before ────────────────────────────
 function birthdayReminderHtml(employees, orgName = '', orgEmail = '') {
-  const names = employees.map(e => `<strong>${e.name}</strong>`).join(', ');
+  const names = employees.map(e => `<strong>${e.name}</strong>`).join(' &amp; ');
   return WRAP(
-    HEADER(orgName, '🎂 Birthday Reminder', 'Upcoming birthday tomorrow') +
+    HEADER(orgName, 'Birthday Reminder', `Tomorrow${employees.length > 1 ? "'s birthdays" : "'s birthday"}`, '🎂') +
     BODY(`
-      <p style="margin:0 0 12px;font-size:14px;">Reminder: Tomorrow is the birthday of ${names}.</p>
-      <p style="margin:0 0 16px;font-size:13px;color:#475569;">Consider sending a birthday wish or organizing a small celebration!</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${employees.map(e => ROW(e.name, `<span style="color:#3525cd;">${e.department || 'N/A'}</span>`)).join('')}
-      </table>
+      ${GREETING('HR Team')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        This is a friendly reminder that tomorrow is the birthday of ${names}. Consider sending a wish or organizing a small celebration!
+      </p>
+      ${TABLE(employees.map(e =>
+        ROW('🎂', e.name, `<span style="color:#3525cd;font-weight:600;">${e.department || 'N/A'}</span>`)
+      ).join(''))}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Holiday reminder to employees (day before)
+// ── Holiday Reminder — sent to employees the day before ──────────────────────
 function holidayReminderHtml(holiday, orgName = '', orgEmail = '') {
+  const dateObj  = holiday.date ? new Date(holiday.date + 'T12:00:00') : null;
+  const dateStr  = dateObj ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' }) : holiday.date;
   return WRAP(
-    HEADER(orgName, `Tomorrow is a Holiday — ${holiday.name}`, 'Holiday Reminder') +
+    HEADER(orgName, `Tomorrow is a Holiday`, `${holiday.name} — Holiday Reminder`, '🏖️') +
     BODY(`
-      <p style="margin:0 0 8px;font-size:14px;">Hello Team,</p>
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">This is a reminder that <strong>tomorrow is a holiday</strong>. We hope you enjoy the day!</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Holiday', `<strong>${holiday.name}</strong>`)}
-        ${ROW('Date',    holiday.date)}
-        ${ROW('Type',    holiday.type || 'Public Holiday')}
-        ${holiday.description ? ROW('Note', `<em>${holiday.description}</em>`) : ''}
-      </table>
-      ${BTN('https://hrms.lumoslogic.com/portal/team-calendar', 'View Holiday Calendar →')}
+      ${GREETING('Team')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        This is to inform you that tomorrow, <strong>${dateStr}</strong>, will be observed as a holiday on account of <strong>${holiday.name}</strong>. Please plan your work and leaves accordingly.
+      </p>
+      ${TABLE(
+        ROW('🗓️', 'Date',          dateStr) +
+        ROW('🎯', 'Occasion',      `<strong>${holiday.name}</strong>`) +
+        ROW('🏢', 'Applicable To', 'All Employees') +
+        (holiday.description ? ROW('📝', 'Note', holiday.description) : '')
+      )}
+      ${BTN('https://hrms.lumoslogic.com/portal/team-calendar', 'View Holiday Calendar')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Email to dept head when leave needs their review
+// ── Dept Head Approval — leave forwarded to dept head ────────────────────────
 function leaveDeptApprovalHtml(employee, leave, deptHeadName, orgName = '', orgEmail = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER(orgName, 'Leave Request — Your Approval Needed', 'Department Head Action Required') +
+    HEADER(orgName, 'Leave Request — Your Approval Needed', 'Department Head Action Required', '👥') +
     BODY(`
-      <p style="margin:0 0 8px;font-size:14px;">Hello <strong>${deptHeadName || 'Department Head'}</strong>,</p>
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">A leave request from your department requires your review.</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Employee',   `<strong>${employee.name}</strong>`)}
-        ${ROW('Department', employee.department || '-')}
-        ${ROW('Leave Type', type)}
-        ${ROW('From Date',  leave.start_date)}
-        ${ROW('To Date',    leave.end_date)}
-        ${ROW('Duration',   leave.leave_time === 'half' ? 'Half Day' : `${leave.start_date} to ${leave.end_date}`)}
-        ${ROW('Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
-      </table>
-      <div style="margin-top:16px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
-        You can forward this request to the Root Admin for final approval.
+      ${GREETING(deptHeadName || 'Department Head')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        A leave request from your department requires your review before it proceeds to final approval.
+      </p>
+      ${TABLE(
+        ROW('👤', 'Employee',   `<strong>${employee.name}</strong>`) +
+        ROW('🏢', 'Department', employee.department || '—') +
+        ROW('📅', 'Leave Type', type) +
+        ROW('🗓️', 'From Date',  leave.start_date) +
+        ROW('🗓️', 'To Date',    leave.end_date) +
+        ROW('⏱️', 'Duration',   leave.leave_time === 'half' ? 'Half Day' : `${leave.start_date} → ${leave.end_date}`) +
+        ROW('📝', 'Reason',     `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)
+      )}
+      <div style="margin-top:16px;padding:13px 18px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:6px;font-size:13px;color:#1e1b4b;">
+        💡 You can forward this request for final approval. Only the admin can reject.
       </div>
-      ${BTN('https://hrms.lumoslogic.com/portal/dept-approvals', 'Review Leave Request →')}
+      ${BTN('https://hrms.lumoslogic.com/portal/dept-approvals', 'Review Leave Request')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Email to root admin when dept head forwards leave
+// ── Forwarded to Root Admin ───────────────────────────────────────────────────
 function leaveForwardedToRootHtml(employee, leave, deptHeadName, orgName = '', orgEmail = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER(orgName, 'Leave Request — Final Approval Needed', 'Forwarded by Department Head') +
+    HEADER(orgName, 'Leave Request — Final Approval Needed', 'Forwarded by Department Head', '🔄') +
     BODY(`
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">A leave request has been reviewed by the Department Head and requires your final decision.</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Employee',     `<strong>${employee.name}</strong>`)}
-        ${ROW('Department',   employee.department || '-')}
-        ${ROW('Leave Type',   type)}
-        ${ROW('From Date',    leave.start_date)}
-        ${ROW('To Date',      leave.end_date)}
-        ${ROW('Reason',       `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`)}
-        ${ROW('Forwarded By', `<strong>${deptHeadName}</strong> (Department Head)`)}
-      </table>
-      ${BTN('https://hrms.lumoslogic.com/root/pending-approvals', 'Give Final Decision →')}
+      ${GREETING('Admin')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        A leave request has been reviewed and forwarded by the Department Head and now requires <strong>your final decision</strong>.
+      </p>
+      ${TABLE(
+        ROW('👤', 'Employee',     `<strong>${employee.name}</strong>`) +
+        ROW('🏢', 'Department',   employee.department || '—') +
+        ROW('📅', 'Leave Type',   type) +
+        ROW('🗓️', 'From Date',    leave.start_date) +
+        ROW('🗓️', 'To Date',      leave.end_date) +
+        ROW('📝', 'Reason',       `<em style="color:#475569;">${leave.reason || 'No reason provided'}</em>`) +
+        ROW('🔄', 'Forwarded By', `<strong>${deptHeadName}</strong> (Dept. Head)`)
+      )}
+      ${BTN('https://hrms.lumoslogic.com/root/pending-approvals', 'Give Final Decision')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Org registration request — platform admin notification
+// ── New Org Registration — sent to platform admin ─────────────────────────────
 function orgRequestReceivedHtml(req) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'New Organization Request', 'A company has requested to join') +
+    HEADER('HRMS by LumosLogic', 'New Organization Request', 'Awaiting your review', '🏢') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">A new organization registration request has been submitted and is awaiting your review.</p>
-      <table style="width:100%;border-collapse:collapse;">
-        ${ROW('Company Name',   `<strong>${req.company_name}</strong>`)}
-        ${ROW('Contact Person', req.contact_name)}
-        ${ROW('Email',          req.email)}
-        ${req.phone   ? ROW('Phone',   req.phone)   : ''}
-        ${req.website ? ROW('Website', req.website) : ''}
-        ${req.message ? ROW('Message', `<em>${req.message}</em>`) : ''}
-        ${ROW('Submitted',      new Date(req.created_at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }))}
-      </table>
-      <div style="margin-top:16px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
+      ${GREETING('Platform Admin')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">A new organization registration has been submitted and is awaiting your approval.</p>
+      ${TABLE(
+        ROW('🏢', 'Company Name',   `<strong>${req.company_name}</strong>`) +
+        ROW('👤', 'Contact Person', req.contact_name) +
+        ROW('📧', 'Email',          req.email) +
+        (req.phone   ? ROW('📞', 'Phone',   req.phone)   : '') +
+        (req.website ? ROW('🌐', 'Website', req.website) : '') +
+        (req.message ? ROW('📝', 'Message', `<em>${req.message}</em>`) : '') +
+        ROW('🕐', 'Submitted', new Date(req.created_at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }))
+      )}
+      <div style="margin-top:16px;padding:13px 18px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:6px;font-size:13px;color:#1e1b4b;">
         Log in to the Platform Admin Dashboard to approve or reject this request.
       </div>
     `) +
@@ -300,61 +349,66 @@ function orgRequestReceivedHtml(req) {
   );
 }
 
-// Org approved — sent to registrant
+// ── Org Approved — sent to registrant ────────────────────────────────────────
 function orgApprovedHtml(req, orgSlug, tempPassword) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'Organization Approved! 🎉', `${req.company_name} is now active`) +
+    HEADER('HRMS by LumosLogic', 'Organization Approved!', `${req.company_name} is now live on HRMS`, '🎉') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">Dear <strong>${req.contact_name}</strong>,</p>
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">Your organization <strong>${req.company_name}</strong> has been approved and is now active.</p>
-      <div style="background:#f0f3ff;border:1px solid #c7c4d8;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
-        <p style="margin:0 0 10px;font-size:12px;font-weight:bold;color:#3525cd;text-transform:uppercase;letter-spacing:1px;">Your Login Credentials</p>
-        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Login URL:</span>&nbsp;&nbsp;<a href="https://hrms.lumoslogic.com/login" style="color:#3525cd;">https://hrms.lumoslogic.com/login</a></p>
-        <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span>&nbsp;&nbsp;<strong>${req.email}</strong></p>
-        <p style="margin:0;font-size:14px;"><span style="color:#64748b;">Temp Password:</span>&nbsp;&nbsp;<code style="background:#ffffff;border:1px solid #c7c4d8;padding:3px 10px;border-radius:4px;font-family:monospace;">${tempPassword}</code></p>
+      ${GREETING(req.contact_name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        Congratulations! Your organization <strong>${req.company_name}</strong> has been approved and is now active. Use the credentials below to get started.
+      </p>
+      ${TABLE(
+        ROW('🌐', 'Login URL',  `<a href="https://hrms.lumoslogic.com/login" style="color:#3525cd;font-weight:600;">https://hrms.lumoslogic.com/login</a>`) +
+        ROW('📧', 'Email',      `<strong>${req.email}</strong>`) +
+        ROW('🔑', 'Temp Password', `<code style="background:#f0f3ff;border:1px solid #c7c4d8;padding:3px 10px;border-radius:4px;font-family:monospace;">${tempPassword}</code>`)
+      )}
+      <div style="padding:13px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;font-size:13px;color:#78350f;margin-top:4px;">
+        🔒 You will be asked to change your password on first login.
       </div>
-      <div style="padding:12px 16px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px;color:#78350f;">
-        You will be asked to change your password on first login.
-      </div>
-      ${BTN('https://hrms.lumoslogic.com/login', 'Log In Now →')}
+      ${BTN('https://hrms.lumoslogic.com/login', 'Log In Now')}
     `) +
     FOOTER(process.env.SMTP_USER || '', 'HRMS by LumosLogic')
   );
 }
 
-// Org rejected — sent to registrant
+// ── Org Rejected — sent to registrant ────────────────────────────────────────
 function orgRejectedHtml(req, notes) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'Organization Request Update', 'Registration Status') +
+    HEADER('HRMS by LumosLogic', 'Registration Update', 'Organization Request Status', '📋') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">Dear <strong>${req.contact_name}</strong>,</p>
-      <p style="margin:0 0 16px;font-size:14px;color:#475569;">Thank you for your interest. Unfortunately, we were unable to approve the registration for <strong>${req.company_name}</strong> at this time.</p>
-      ${notes ? `<div style="margin-bottom:16px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;"><strong>Reason:</strong> ${notes}</div>` : ''}
-      <p style="font-size:13px;color:#64748b;">To re-apply or for any questions, contact us at <a href="mailto:platform@lumoslogic.com" style="color:#3525cd;">platform@lumoslogic.com</a>.</p>
+      ${GREETING(req.contact_name)}
+      <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.7;">
+        Thank you for your interest in HRMS by LumosLogic. Unfortunately, we were unable to approve the registration for <strong>${req.company_name}</strong> at this time.
+      </p>
+      ${notes ? `<div style="margin-bottom:16px;padding:13px 18px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:6px;font-size:13px;color:#7f1d1d;"><strong>Reason:</strong>&nbsp;${notes}</div>` : ''}
+      <p style="font-size:13px;color:#64748b;line-height:1.7;">For questions or to re-apply, please contact us at <a href="mailto:platform@lumoslogic.com" style="color:#3525cd;font-weight:600;">platform@lumoslogic.com</a>.</p>
     `) +
     FOOTER(process.env.SMTP_USER || '', 'HRMS by LumosLogic')
   );
 }
 
-// Password reset email
+// ── Password Reset ────────────────────────────────────────────────────────────
 function passwordResetHtml(user, resetLink, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, 'Reset Your Password', 'Password reset request') +
+    HEADER(orgName, 'Reset Your Password', 'We received a password reset request', '🔐') +
     BODY(`
-      <p style="margin:0 0 12px;font-size:14px;">Hello <strong>${user.name || 'User'}</strong>,</p>
-      <p style="margin:0 0 20px;font-size:14px;color:#475569;">We received a request to reset your HR account password. Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+      ${GREETING(user.name || 'User')}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        We received a request to reset your <strong>${orgName || 'HR'}</strong> account password. Click the button below to set a new password. This link will expire in <strong>1 hour</strong>.
+      </p>
       ${BTN(resetLink, 'Reset My Password')}
-      <p style="margin:16px 0 4px;font-size:12px;color:#64748b;">If the button doesn't work, copy this link into your browser:</p>
-      <p style="margin:0 0 16px;font-size:11px;word-break:break-all;"><a href="${resetLink}" style="color:#3525cd;">${resetLink}</a></p>
-      <div style="padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;">
-        <strong>Security notice:</strong> If you did not request this, ignore this email. Your password will not change.
+      <p style="margin:20px 0 6px;font-size:12px;color:#64748b;">If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="margin:0 0 20px;font-size:11px;word-break:break-all;background:#f7f8ff;padding:10px 14px;border-radius:6px;border:1px solid #e0e0f0;"><a href="${resetLink}" style="color:#3525cd;">${resetLink}</a></p>
+      <div style="padding:13px 18px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:6px;font-size:13px;color:#7f1d1d;">
+        🔒 <strong>Security Notice:</strong> If you did not request this, please ignore this email. Your password will not be changed.
       </div>
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// Pre-onboarding document request
+// ── Pre-Onboarding Document Request ──────────────────────────────────────────
 function preOnboardingRequestHtml({ name, orgName, portalUrl, orgEmail = '' }) {
   const docs = [
     'Government-issued Photo ID (Aadhaar / Passport)',
@@ -366,39 +420,49 @@ function preOnboardingRequestHtml({ name, orgName, portalUrl, orgEmail = '' }) {
     'Previous Employment Documents (offer letter, relieving letter, if applicable)',
   ];
   return WRAP(
-    HEADER(orgName, `Welcome, ${name}! 👋`, 'Action Required Before Day 1') +
+    HEADER(orgName, `Welcome, ${name}!`, 'Action Required Before Your First Day', '📄') +
     BODY(`
-      <p style="margin:0 0 16px;font-size:14px;">We're excited to have you join <strong>${orgName}</strong>! Please upload the following documents so HR can verify them before onboarding begins.</p>
-      <p style="font-weight:bold;margin:0 0 8px;font-size:14px;">Required Documents:</p>
-      <ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:#475569;line-height:2;">
+      ${GREETING(name)}
+      <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.7;">
+        We're excited to have you join <strong>${orgName}</strong>! Before onboarding begins, please upload the following documents so HR can verify them.
+      </p>
+      <p style="font-size:13px;font-weight:700;color:#1e1456;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.5px;">Required Documents:</p>
+      <ul style="margin:0 0 24px;padding-left:22px;font-size:13px;color:#334155;line-height:2.2;">
         ${docs.map(d => `<li>${d}</li>`).join('')}
       </ul>
-      ${BTN(portalUrl, 'Upload Documents →')}
+      ${BTN(portalUrl, 'Upload Documents Now')}
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-const TYPE_COLORS = {
-  general:     { bg: '#f0f3ff', border: '#3525cd', text: '#3525cd', label: 'General' },
-  urgent:      { bg: '#fff1f2', border: '#ef4444', text: '#b91c1c', label: 'Urgent' },
-  policy:      { bg: '#fffbeb', border: '#f59e0b', text: '#92400e', label: 'Policy Update' },
-  celebration: { bg: '#ecfdf5', border: '#10b981', text: '#065f46', label: 'Celebration' },
+// ── Announcement ──────────────────────────────────────────────────────────────
+const ANNTYPE = {
+  general:     { icon: '📢', label: 'General',      bg: '#f0f3ff', border: '#3525cd', color: '#3525cd' },
+  urgent:      { icon: '🚨', label: 'Urgent',        bg: '#fff1f2', border: '#ef4444', color: '#b91c1c' },
+  policy:      { icon: '📋', label: 'Policy Update', bg: '#fffbeb', border: '#f59e0b', color: '#92400e' },
+  celebration: { icon: '🎉', label: 'Celebration',   bg: '#ecfdf5', border: '#10b981', color: '#065f46' },
 };
 
-// Announcement email to org members
 function announcementHtml(ann, orgName = '', orgEmail = '') {
-  const cfg    = TYPE_COLORS[ann.type] || TYPE_COLORS.general;
+  const cfg    = ANNTYPE[ann.type] || ANNTYPE.general;
   const expiry = ann.expires_at
-    ? `<p style="margin:12px 0 0;font-size:12px;color:#94a3b8;">Expires on ${ann.expires_at}.</p>`
+    ? `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">⏳ This announcement expires on <strong>${ann.expires_at}</strong>.</p>`
     : '';
   return WRAP(
-    HEADER(orgName, `📢 ${ann.title}`, 'New Announcement') +
+    HEADER(orgName, ann.title, 'New Announcement', cfg.icon) +
     BODY(`
-      <div style="display:inline-block;background:${cfg.bg};border:1px solid ${cfg.border};color:${cfg.text};font-size:11px;font-weight:bold;padding:3px 12px;border-radius:20px;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;">${cfg.label}</div>
-      <p style="margin:0 0 16px;font-size:14px;white-space:pre-wrap;line-height:1.7;color:#1e293b;">${ann.content}</p>
-      ${ann.file_url ? `<p style="margin:0 0 16px;font-size:13px;"><a href="${ann.file_url}" style="color:#3525cd;font-weight:bold;">View Attachment →</a></p>` : ''}
-      <p style="margin:0;font-size:12px;color:#64748b;">Posted by <strong>${ann.creator_name || 'HR'}</strong></p>
+      <div style="display:inline-block;background:${cfg.bg};border:1px solid ${cfg.border};color:${cfg.color};font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-transform:uppercase;letter-spacing:1px;">${cfg.icon}&nbsp;&nbsp;${cfg.label}</div>
+      <p style="margin:0 0 20px;font-size:14px;white-space:pre-wrap;line-height:1.8;color:#1e293b;">${ann.content}</p>
+      ${ann.file_url
+        ? `<div style="margin-bottom:16px;">
+             <a href="${ann.file_url}" style="display:inline-flex;align-items:center;gap:8px;background:#f0f3ff;border:1px solid #c7c4d8;color:#3525cd;text-decoration:none;font-weight:700;font-size:13px;padding:10px 18px;border-radius:8px;">📎&nbsp;&nbsp;View Attachment</a>
+           </div>`
+        : ''
+      }
+      <div style="padding:12px 16px;background:#f7f8ff;border-radius:8px;border:1px solid #e0e0f0;">
+        <p style="margin:0;font-size:12px;color:#64748b;">Posted by&nbsp;&nbsp;<strong style="color:#1e1456;">${ann.creator_name || 'HR'}</strong></p>
+      </div>
       ${expiry}
     `) +
     FOOTER(orgEmail, orgName)
