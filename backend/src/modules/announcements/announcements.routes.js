@@ -2,6 +2,7 @@ const express    = require('express');
 const router     = express.Router();
 const { supabase } = require('../../config/db');
 const { auth }   = require('../../middleware/auth');
+const { sendMail, announcementHtml } = require('../../services/emailService');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
 
@@ -16,10 +17,19 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
+// For root_admin, allow overriding the org via ?org_id= (GET) or body.org_id (POST)
+function resolveOrgId(req, { fromQuery = false } = {}) {
+  if (req.user.role === 'root_admin') {
+    const override = fromQuery ? req.query.org_id : req.body?.org_id;
+    if (override) return parseInt(override, 10);
+  }
+  return req.user.organization_id;
+}
+
 // GET /api/announcements
 router.get('/', auth, async (req, res) => {
   try {
-    const oId = req.user.organization_id;
+    const oId = resolveOrgId(req, { fromQuery: true });
     const today = new Date().toISOString().split('T')[0];
     let q = supabase.from('announcements').select('*').eq('organization_id', oId)
       .order('pinned', { ascending: false }).order('created_at', { ascending: false });
@@ -72,7 +82,7 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
-    const oId = req.user.organization_id;
+    const oId = resolveOrgId(req);
     const { title, content, type, priority, target_audience, pinned, expires_at, file_url, file_name, file_type } = req.body;
     if (!title || !content) return res.status(400).json({ error: 'title and content required' });
 
@@ -95,17 +105,39 @@ router.post('/', auth, async (req, res) => {
       .select().single();
     if (error) throw error;
 
-    const { data: users } = await supabase.from('users').select('id').eq('organization_id', oId);
+    const { data: users } = await supabase.from('users').select('id, email, name, role').eq('organization_id', oId);
     if (users?.length) {
+      // In-app notifications — all org users regardless of target_audience
       await supabase.from('notifications').insert(users.map(u => ({
-        user_id:        u.id,
-        title:          `📢 ${title}`,
-        message:        content.length > 100 ? content.substring(0, 100) + '…' : content,
-        type:           'announcement',
-        reference_id:   data.id,       // links notification to this specific announcement
-        reference_type: 'announcement',
+        user_id:         u.id,
+        title:           `📢 ${title}`,
+        message:         content.length > 100 ? content.substring(0, 100) + '…' : content,
+        type:            'announcement',
+        reference_id:    data.id,
+        reference_type:  'announcement',
         organization_id: oId,
       })));
+
+      // Email — respect target_audience; fire-and-forget (don't block response)
+      const audience = target_audience || 'all';
+      const emailRecipients = users.filter(u => {
+        if (!u.email) return false;
+        if (audience === 'employees') return u.role === 'employee';
+        if (audience === 'admins')    return u.role === 'admin' || u.role === 'root_admin';
+        return true; // 'all'
+      });
+
+      const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', oId).maybeSingle();
+      const orgName = orgRow?.name || 'Your Organization';
+      const annWithCreator = { ...data, creator_name: req.user.name || 'HR' };
+
+      emailRecipients.forEach(u => {
+        sendMail({
+          to:      u.email,
+          subject: `📢 ${title} — ${orgName}`,
+          html:    announcementHtml(annWithCreator, orgName),
+        }).catch(() => {});
+      });
     }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -115,7 +147,6 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
-    const oId = req.user.organization_id;
     const { title, content, type, priority, target_audience, pinned, expires_at, file_url, file_name, file_type } = req.body;
 
     const payload = { title, content, type, priority, target_audience, pinned: !!pinned, expires_at: expires_at || null };
@@ -123,9 +154,10 @@ router.put('/:id', auth, async (req, res) => {
     if (file_name !== undefined) payload.file_name = file_name;
     if (file_type !== undefined) payload.file_type = file_type;
 
-    const { data, error } = await supabase.from('announcements')
-      .update(payload)
-      .eq('id', req.params.id).eq('organization_id', oId).select().single();
+    let q = supabase.from('announcements').update(payload).eq('id', req.params.id);
+    // Regular admins are restricted to their own org; root_admin can edit any org's announcement
+    if (req.user.role !== 'root_admin') q = q.eq('organization_id', req.user.organization_id);
+    const { data, error } = await q.select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -135,12 +167,14 @@ router.put('/:id', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
-    const oId = req.user.organization_id;
 
-    // Fetch the announcement first to get title and file info
-    const { data: ann } = await supabase.from('announcements')
-      .select('id, title, file_url').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    // Fetch the announcement first to get title, org, and file info
+    let fetchQ = supabase.from('announcements').select('id, title, file_url, organization_id').eq('id', req.params.id);
+    if (req.user.role !== 'root_admin') fetchQ = fetchQ.eq('organization_id', req.user.organization_id);
+    const { data: ann } = await fetchQ.maybeSingle();
     if (!ann) return res.status(404).json({ error: 'Announcement not found' });
+
+    const oId = ann.organization_id;
 
     // Delete related notifications using reference_id (accurate) with title fallback
     // for legacy notifications created before reference_id was added.

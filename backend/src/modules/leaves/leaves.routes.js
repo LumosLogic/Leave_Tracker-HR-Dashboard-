@@ -9,6 +9,11 @@ const engine = require('../../services/leaveWorkflowEngine');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+async function getOrgName(oId) {
+  const { data } = await supabase.from('organizations').select('name').eq('id', oId).maybeSingle().catch(() => ({ data: null }));
+  return data?.name || '';
+}
+
 async function fetchHolidaySet(oId, startDate, endDate) {
   try {
     const { data } = await supabase
@@ -647,7 +652,8 @@ router.post('/', auth, async (req, res) => {
         .eq('id', leaveId).single();
 
       if (data.users?.email) {
-        sendMail({ to: data.users.email, subject: `Leave Added — ${req.user.name || 'HR'}`, html: leaveStatusHtml(data.users, data, 'approved', req.user.name) });
+        const _on = await getOrgName(orgId(req));
+        sendMail({ to: data.users.email, subject: `Leave Added — ${req.user.name || 'HR'}`, html: leaveStatusHtml(data.users, data, 'approved', req.user.name, _on) });
       }
       return res.json(flatOne(data));
     }
@@ -714,10 +720,11 @@ router.post('/', auth, async (req, res) => {
       );
 
       if (approverUser?.email && typeof leaveDeptApprovalHtml === 'function') {
+        const _on = await getOrgName(orgId(req));
         sendMail({
           to: approverUser.email,
           subject: `Leave Request Pending Your Approval — ${empName}`,
-          html: leaveDeptApprovalHtml({ name: empName, email: empEmail, department: emp.department }, data, approverUser.name),
+          html: leaveDeptApprovalHtml({ name: empName, email: empEmail, department: emp.department }, data, approverUser.name, _on),
         });
       }
     } else {
@@ -725,10 +732,11 @@ router.post('/', auth, async (req, res) => {
       // → notify all org recipients
       const recipients = await getRecipients(orgId(req));
       if (recipients.length > 0) {
+        const _on = await getOrgName(orgId(req));
         sendMail({
           to: recipients,
           subject: `${leave_type === 'wfh' ? 'WFH Request' : 'Leave Request'} — ${empName}`,
-          html: leaveAppliedHtml({ name: empName, email: empEmail, department: emp.department }, data),
+          html: leaveAppliedHtml({ name: empName, email: empEmail, department: emp.department }, data, _on),
         });
       }
     }
@@ -769,7 +777,8 @@ router.put('/:id', auth, async (req, res) => {
 // For new workflow: advances to next level OR final-approves.
 router.put('/:id/approve', auth, async (req, res) => {
   try {
-    const oId = orgId(req);
+    const oId     = orgId(req);
+    const orgName = await getOrgName(oId);
     const { data: leave } = await supabase.from('leaves')
       .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
     if (!leave) return res.status(404).json({ error: 'Leave not found' });
@@ -860,7 +869,7 @@ router.put('/:id/approve', auth, async (req, res) => {
         const { data: updated } = await supabase.from('leaves')
           .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leave.id).single();
         if (updated.users?.email) {
-          sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(updated.users, leave, 'approved', req.user.name) });
+          sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(updated.users, leave, 'approved', req.user.name, orgName) });
         }
         return res.json(flatOne(updated));
 
@@ -892,7 +901,7 @@ router.put('/:id/approve', auth, async (req, res) => {
             sendMail({
               to: nextApprover.email,
               subject: `Leave Request Forwarded for Your Approval`,
-              html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name),
+              html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name, orgName),
             });
           }
         } else {
@@ -904,7 +913,7 @@ router.put('/:id/approve', auth, async (req, res) => {
             sendMail({
               to: recipients,
               subject: `Leave Forwarded for ${nextLabel} Approval`,
-              html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name),
+              html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name, orgName),
             });
           }
         }
@@ -972,7 +981,7 @@ router.put('/:id/approve', auth, async (req, res) => {
       .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
     notify(leave.user_id, 'Leave Approved', `Your leave from ${leave.start_date} to ${leave.end_date} has been approved.`, oId);
     if (updated.users?.email) {
-      sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(updated.users, leave, 'approved', req.user.name) });
+      sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(updated.users, leave, 'approved', req.user.name, orgName) });
     }
     res.json(flatOne(updated));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -981,7 +990,8 @@ router.put('/:id/approve', auth, async (req, res) => {
 // ─── ROUTE: PUT /:id/reject — workflow-aware unified reject ───────────────────
 router.put('/:id/reject', auth, async (req, res) => {
   try {
-    const oId = orgId(req);
+    const oId     = orgId(req);
+    const orgName = await getOrgName(oId);
     const { data: leave } = await supabase.from('leaves')
       .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
     if (!leave) return res.status(404).json({ error: 'Leave not found' });
@@ -1020,7 +1030,7 @@ router.put('/:id/reject', auth, async (req, res) => {
       const { data: updated } = await supabase.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leave.id).single();
       if (updated.users?.email) {
-        sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(updated.users, leave, 'rejected', req.user.name) });
+        sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(updated.users, leave, 'rejected', req.user.name, orgName) });
       }
       return res.json(flatOne(updated));
     }
@@ -1077,7 +1087,7 @@ router.put('/:id/reject', auth, async (req, res) => {
     const { data: updated } = await supabase.from('leaves')
       .select('*, users!leaves_user_id_fkey(name, email)').eq('id', req.params.id).single();
     if (updated.users?.email) {
-      sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(updated.users, leave, 'rejected', req.user.name) });
+      sendMail({ to: updated.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(updated.users, leave, 'rejected', req.user.name, orgName) });
     }
     res.json(flatOne(updated));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1189,6 +1199,7 @@ router.delete('/:id', auth, async (req, res) => {
 router.post('/:id/department-approve', auth, async (req, res) => {
   try {
     const oId     = orgId(req);
+    const orgName = await getOrgName(oId);
     const leaveId = parseInt(req.params.id, 10);
 
     const { data: leave } = await supabase.from('leaves')
@@ -1246,7 +1257,7 @@ router.post('/:id/department-approve', auth, async (req, res) => {
       sendMail({
         to: recipients,
         subject: `Leave Forwarded for Final Approval — ${empName}`,
-        html: leaveForwardedToRootHtml({ name: empName, email: leave.users?.email, department: leave.users?.department }, leave, req.user.name),
+        html: leaveForwardedToRootHtml({ name: empName, email: leave.users?.email, department: leave.users?.department }, leave, req.user.name, orgName),
       });
     }
 
@@ -1259,6 +1270,7 @@ router.post('/:id/department-approve', auth, async (req, res) => {
 router.post('/:id/final-approve', auth, hasPermission('leaves', 'approve'), async (req, res) => {
   try {
     const oId     = orgId(req);
+    const orgName = await getOrgName(oId);
     const leaveId = parseInt(req.params.id, 10);
 
     const { data: leave } = await supabase.from('leaves').select('*').eq('id', leaveId).eq('organization_id', oId).maybeSingle();
@@ -1306,7 +1318,7 @@ router.post('/:id/final-approve', auth, hasPermission('leaves', 'approve'), asyn
       .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).single();
     notify(leave.user_id, 'Leave Approved', `Your leave from ${leave.start_date} to ${leave.end_date} has been approved by ${req.user.name}.`, oId);
     if (data.users?.email) {
-      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name) });
+      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Approved', html: leaveStatusHtml(data.users, leave, 'approved', req.user.name, orgName) });
     }
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1316,6 +1328,7 @@ router.post('/:id/final-approve', auth, hasPermission('leaves', 'approve'), asyn
 router.post('/:id/final-reject', auth, hasPermission('leaves', 'reject'), async (req, res) => {
   try {
     const oId     = orgId(req);
+    const orgName = await getOrgName(oId);
     const leaveId = parseInt(req.params.id, 10);
 
     const { data: leave } = await supabase.from('leaves').select('*').eq('id', leaveId).eq('organization_id', oId).maybeSingle();
@@ -1351,7 +1364,7 @@ router.post('/:id/final-reject', auth, hasPermission('leaves', 'reject'), async 
     const { data } = await supabase.from('leaves')
       .select('*, users!leaves_user_id_fkey(name, email)').eq('id', leaveId).single();
     if (data.users?.email) {
-      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name) });
+      sendMail({ to: data.users.email, subject: 'Your Leave Request has been Rejected', html: leaveStatusHtml(data.users, leave, 'rejected', req.user.name, orgName) });
     }
     res.json(flatOne(data));
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink, Building2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -14,7 +14,7 @@ const TYPE_CFG = {
   celebration: { icon: <PartyPopper size={15} />,   bg: 'bg-emerald-50', text: 'text-emerald-700',border: 'border-emerald-200',strip: '#10B981', label: 'Celebration' },
 };
 
-function AnnouncementModal({ open, onClose, ann }) {
+function AnnouncementModal({ open, onClose, ann, orgId }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const fileRef = useRef(null);
@@ -25,8 +25,10 @@ function AnnouncementModal({ open, onClose, ann }) {
     : { title: '', content: '', type: 'general', priority: 'normal', target_audience: 'all', pinned: false, expires_at: '', file_url: null, file_name: null, file_type: null });
 
   const mut = useMutation({
-    mutationFn: () => isEdit ? apiPut(`/announcements/${ann.id}`, form) : apiPost('/announcements', form),
-    onSuccess: () => { toast(isEdit ? 'Updated!' : 'Announcement posted!', 'success'); qc.invalidateQueries({ queryKey: ['announcements'] }); onClose(); },
+    mutationFn: () => isEdit
+      ? apiPut(`/announcements/${ann.id}`, form)
+      : apiPost('/announcements', { ...form, ...(orgId ? { org_id: orgId } : {}) }),
+    onSuccess: () => { toast(isEdit ? 'Updated!' : 'Announcement posted!', 'success'); qc.invalidateQueries({ queryKey: ['announcements'] }); qc.invalidateQueries({ queryKey: ['announcements', orgId ?? null] }); onClose(); },
     onError: e => toast(e.message, 'error'),
   });
 
@@ -153,22 +155,36 @@ function timeAgo(dateStr) {
 }
 
 export default function AnnouncementsPage() {
-  const { isAdmin, isEmployee } = useAuth();
+  const { isAdmin, isEmployee, isRootAdmin, organization } = useAuth();
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
-  const [addOpen,    setAddOpen]    = useState(false);
-  const [editAnn,    setEditAnn]    = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
-  const [filter,     setFilter]     = useState('all');
+  const [addOpen,      setAddOpen]      = useState(false);
+  const [editAnn,      setEditAnn]      = useState(null);
+  const [confirmDel,   setConfirmDel]   = useState(null);
+  const [filter,       setFilter]       = useState('all');
   const [previewMedia, setPreviewMedia] = useState(null);
+  const [selectedOrg,  setSelectedOrg]  = useState(null); // null = own org (default)
 
-  const { data: _annData, isLoading } = useQuery({ queryKey: ['announcements'], queryFn: () => apiGet('/announcements') });
+  // Root admin: fetch org list to allow switching context
+  const { data: orgs = [] } = useQuery({
+    queryKey: ['root-orgs-for-announcements'],
+    queryFn:  () => apiGet('/root/organizations'),
+    enabled:  isRootAdmin,
+    staleTime: 300000,
+  });
+
+  const activeOrgId = isRootAdmin && selectedOrg ? selectedOrg : null;
+
+  const { data: _annData, isLoading } = useQuery({
+    queryKey: ['announcements', activeOrgId],
+    queryFn:  () => apiGet('/announcements', activeOrgId ? { org_id: activeOrgId } : {}),
+  });
   const announcements = Array.isArray(_annData) ? _annData : [];
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/announcements/${id}`),
-    onSuccess: () => { toast('Announcement deleted', 'warning'); qc.invalidateQueries({ queryKey: ['announcements'] }); },
+    onSuccess: () => { toast('Announcement deleted', 'warning'); qc.invalidateQueries({ queryKey: ['announcements'] }); qc.invalidateQueries({ queryKey: ['announcements', activeOrgId] }); },
     onError: e => toast(e.message, 'error'),
   });
 
@@ -186,6 +202,29 @@ export default function AnnouncementsPage() {
         </div>
         {isAdmin && <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Plus size={16} />New Announcement</button>}
       </div>
+
+      {/* Root admin: organization selector */}
+      {isRootAdmin && orgs.length > 0 && (
+        <div className="flex items-center gap-3 mb-5 p-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl">
+          <Building2 size={16} className="text-[#3525cd] flex-shrink-0" />
+          <span className="text-xs font-bold text-[#464555]">Organization:</span>
+          <select
+            className="form-control py-1 text-sm flex-1 max-w-xs"
+            value={selectedOrg || ''}
+            onChange={e => { setSelectedOrg(e.target.value ? parseInt(e.target.value) : null); setFilter('all'); }}
+          >
+            <option value="">My Organization ({organization?.name || 'Default'})</option>
+            {orgs.map(o => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+          {selectedOrg && (
+            <button className="text-xs text-[#777587] hover:text-[#3525cd] font-semibold" onClick={() => setSelectedOrg(null)}>
+              Reset
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Type filter tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
@@ -232,8 +271,8 @@ export default function AnnouncementsPage() {
         </div>
       )}
 
-      {addOpen  && <AnnouncementModal open onClose={() => setAddOpen(false)} />}
-      {editAnn  && <AnnouncementModal open onClose={() => setEditAnn(null)} ann={editAnn} />}
+      {addOpen  && <AnnouncementModal open onClose={() => setAddOpen(false)} orgId={activeOrgId} />}
+      {editAnn  && <AnnouncementModal open onClose={() => setEditAnn(null)} ann={editAnn} orgId={activeOrgId} />}
       <ConfirmModal open={!!confirmDel} title="Delete Announcement" message={`Delete "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
 

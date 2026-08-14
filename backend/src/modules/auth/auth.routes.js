@@ -179,7 +179,7 @@ router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req,
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     const { data: user } = await supabase.from('users')
-      .select('id, name, email')
+      .select('id, name, email, organization_id, organizations(name)')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
 
@@ -196,11 +196,12 @@ router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req,
 
     const baseUrl   = process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com';
     const resetLink = `${baseUrl}/reset-password?token=${token}`;
+    const orgName   = user.organizations?.name || '';
 
     sendMail({
       to:      user.email,
-      subject: 'HR Tracker — Reset Your Password',
-      html:    passwordResetHtml(user, resetLink),
+      subject: `${orgName || 'HR'} — Reset Your Password`,
+      html:    passwordResetHtml(user, resetLink, orgName),
     });
 
     res.json({ success: true });

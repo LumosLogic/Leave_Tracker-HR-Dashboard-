@@ -31,7 +31,16 @@ router.post('/send', auth, adminOnly, async (req, res) => {
   try {
     const { title, body, url, target_user_id } = req.body;
     if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Title and body required' });
-    const userIds = target_user_id ? [parseInt(target_user_id)] : null;
+    const oId = orgId(req);
+    let userIds;
+    if (target_user_id) {
+      const { data: u } = await supabase.from('users').select('id').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
+      if (!u) return res.status(404).json({ error: 'User not found' });
+      userIds = [u.id];
+    } else {
+      const { data: users } = await supabase.from('users').select('id').eq('organization_id', oId);
+      userIds = (users || []).map(u => u.id);
+    }
     const sent = await sendPushToUsers(userIds, { title: title.trim(), body: body.trim(), url: url || '/' });
     try {
       await supabase.from('notifications_log').insert({

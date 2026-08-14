@@ -122,7 +122,10 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     }
 
     // Fire-and-forget side effects after COMMIT
-    sendMail({ to: email, subject: 'Welcome to Lumens HR — Your Account Details', html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password) });
+    supabase.from('organizations').select('name').eq('id', orgId(req)).maybeSingle().then(({ data: orgRow }) => {
+      const oName = orgRow?.name || '';
+      sendMail({ to: email, subject: `Welcome to ${oName || 'Lumens HR'} — Your Account Details`, html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password, oName) });
+    });
     supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
 
     // Auto-initialize onboarding checklist (fire-and-forget)

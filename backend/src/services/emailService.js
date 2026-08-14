@@ -55,8 +55,8 @@ const HEADER = (title, sub) => `
   <p  style="color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;font-family:Arial,sans-serif;">${sub}</p>
 </div>`;
 
-const FOOTER = `<p style="margin:20px 0 0;font-size:11px;color:#94a3b8;font-family:Arial,sans-serif;">
-  This is an automated message from HR Tracker. Please do not reply to this email.
+const FOOTER = (orgName = '') => `<p style="margin:20px 0 0;font-size:11px;color:#94a3b8;font-family:Arial,sans-serif;">
+  This is an automated message from ${orgName || 'the HR System'}. Please do not reply to this email.
 </p>`;
 
 const WRAP = (inner) => `<!DOCTYPE html><html><body style="margin:0;padding:20px;background:#f0f3ff;">
@@ -79,7 +79,7 @@ const LEAVE_TYPE_LABEL = {
 };
 
 // Email to HR + company heads when an employee applies for leave
-function leaveAppliedHtml(employee, leave) {
+function leaveAppliedHtml(employee, leave, orgName = '') {
   const type     = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   const duration = leave.leave_time === 'half'
     ? `Half Day — ${leave.half_type === 'first_half' ? 'First Half' : 'Second Half'}`
@@ -88,7 +88,7 @@ function leaveAppliedHtml(employee, leave) {
       : `${leave.start_date} to ${leave.end_date}`;
 
   return WRAP(
-    HEADER('New Leave Request', 'HR Tracker — Action Required') +
+    HEADER('New Leave Request', `${orgName || 'HR'} — Action Required`) +
     BODY(`
       <p style="margin:0 0 16px;">A new leave request requires your review and approval.</p>
       <table style="width:100%;border-collapse:collapse;">
@@ -107,14 +107,13 @@ function leaveAppliedHtml(employee, leave) {
           Review Leave Request →
         </a>
       </div>
-
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Email to employee when leave is approved or rejected
-function leaveStatusHtml(employee, leave, status, approverName) {
+function leaveStatusHtml(employee, leave, status, approverName, orgName = '') {
   const approved = status === 'approved';
   const color    = approved ? '#10b981' : '#ef4444';
   const badge    = approved ? '#dcfce7' : '#fee2e2';
@@ -124,7 +123,7 @@ function leaveStatusHtml(employee, leave, status, approverName) {
     : 'Unfortunately, your leave request has been rejected.';
 
   return WRAP(
-    HEADER(`Leave Request ${approved ? 'Approved' : 'Rejected'}`, 'HR Tracker — Leave Status Update') +
+    HEADER(`Leave Request ${approved ? 'Approved' : 'Rejected'}`, `${orgName || 'HR'} — Leave Status Update`) +
     BODY(`
       <div style="display:inline-block;background:${badge};color:${color};padding:5px 14px;border-radius:20px;font-weight:bold;font-size:13px;margin-bottom:16px;">${approved ? 'Approved' : 'Rejected'}</div>
       <p style="margin:0 0 16px;">Dear <strong>${employee.name}</strong>, ${msg}</p>
@@ -138,17 +137,17 @@ function leaveStatusHtml(employee, leave, status, approverName) {
         ? `<div style="margin-top:20px;padding:12px 16px;background:#f0fdf4;border-left:4px solid #10b981;border-radius:4px;font-size:13px;color:#14532d;">Your attendance records have been updated accordingly.</div>`
         : `<div style="margin-top:20px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;">If you have any questions, please contact your HR manager.</div>`
       }
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Welcome email to new employees with credentials
-function welcomeEmployeeHtml(employee, plainPassword) {
+function welcomeEmployeeHtml(employee, plainPassword, orgName = '') {
   return WRAP(
-    HEADER('Welcome to HR Tracker!', 'Your employee account has been created') +
+    HEADER(`Welcome to ${orgName || 'HR Tracker'}!`, `${orgName ? `${orgName} — ` : ''}Your employee account has been created`) +
     BODY(`
-      <p style="margin:0 0 16px;">Hello <strong>${employee.name}</strong>, your HR Tracker account is ready to use.</p>
+      <p style="margin:0 0 16px;">Hello <strong>${employee.name}</strong>, your${orgName ? ` ${orgName}` : ''} HR account is ready to use.</p>
       <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin-bottom:16px;">
         <p style="margin:0 0 10px;font-size:13px;color:#1e40af;font-weight:bold;">Your Login Credentials</p>
         <p style="margin:0 0 6px;font-size:14px;"><span style="color:#64748b;">Email:</span> &nbsp;<strong>${employee.email}</strong></p>
@@ -161,18 +160,18 @@ function welcomeEmployeeHtml(employee, plainPassword) {
       <div style="margin-top:20px;padding:12px 16px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:4px;font-size:13px;color:#78350f;">
         For security, you will be prompted to change your password on first login.
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Birthday wish email to the employee
-function birthdayWishHtml(employee) {
+function birthdayWishHtml(employee, orgName = '') {
   return WRAP(
     `<div style="background:linear-gradient(135deg,#3525cd,#712ae2);padding:24px 32px;border-radius:12px 12px 0 0;text-align:center;">
       <div style="font-size:48px;margin-bottom:8px;">🎂</div>
       <h1 style="color:#fff;margin:0;font-size:22px;font-family:Arial,sans-serif;">Happy Birthday!</h1>
-      <p style="color:rgba(255,255,255,.75);margin:6px 0 0;font-size:13px;font-family:Arial,sans-serif;">From everyone at the team</p>
+      <p style="color:rgba(255,255,255,.75);margin:6px 0 0;font-size:13px;font-family:Arial,sans-serif;">From everyone at ${orgName || 'the team'}</p>
     </div>` +
     BODY(`
       <p style="margin:0 0 16px;font-size:15px;text-align:center;">
@@ -185,16 +184,16 @@ function birthdayWishHtml(employee) {
       <div style="margin:24px 0;padding:16px;background:#f0f3ff;border-radius:10px;text-align:center;border:1px solid #c7c4d8;">
         <p style="margin:0;font-size:13px;color:#3525cd;font-weight:bold;">Have a fantastic day! 🌟</p>
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Birthday reminder email to HR (day before)
-function birthdayReminderHtml(employees) {
+function birthdayReminderHtml(employees, orgName = '') {
   const names = employees.map(e => `<strong>${e.name}</strong>`).join(', ');
   return WRAP(
-    HEADER('Birthday Reminder', 'Lumens HR — Upcoming Birthday Alert') +
+    HEADER('Birthday Reminder', `${orgName || 'HR'} — Upcoming Birthday Alert`) +
     BODY(`
       <p style="margin:0 0 16px;">🎂 Reminder: Tomorrow is the birthday of ${names}.</p>
       <p style="margin:0 0 16px;font-size:13px;color:#475569;">
@@ -203,15 +202,15 @@ function birthdayReminderHtml(employees) {
       <table style="width:100%;border-collapse:collapse;">
         ${employees.map(e => ROW(e.name, `<span style="color:#3525cd;">${e.department || 'N/A'}</span>`)).join('')}
       </table>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Holiday reminder email to all employees (day before)
-function holidayReminderHtml(holiday) {
+function holidayReminderHtml(holiday, orgName = '') {
   return WRAP(
-    HEADER(`Tomorrow is a Holiday — ${holiday.name}`, 'Lumens HR — Holiday Reminder') +
+    HEADER(`Tomorrow is a Holiday — ${holiday.name}`, `${orgName || 'HR'} — Holiday Reminder`) +
     BODY(`
       <p style="margin:0 0 16px;">Hello Team,</p>
       <p style="margin:0 0 16px;">This is a friendly reminder that <strong>tomorrow is a holiday</strong>.</p>
@@ -224,16 +223,16 @@ function holidayReminderHtml(holiday) {
       <div style="margin-top:20px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
         Enjoy your holiday! 🎉
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Email to department head when a new leave request needs their review
-function leaveDeptApprovalHtml(employee, leave, deptHeadName) {
+function leaveDeptApprovalHtml(employee, leave, deptHeadName, orgName = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER('Leave Request Needs Your Approval', 'HR Tracker — Department Head Action Required') +
+    HEADER('Leave Request Needs Your Approval', `${orgName || 'HR'} — Department Head Action Required`) +
     BODY(`
       <p style="margin:0 0 16px;">Hello <strong>${deptHeadName || 'Department Head'}</strong>,</p>
       <p style="margin:0 0 16px;">A leave request from your department requires your review before it proceeds to the Root Admin.</p>
@@ -256,16 +255,16 @@ function leaveDeptApprovalHtml(employee, leave, deptHeadName) {
           Review Leave Request →
         </a>
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
 
 // Email to root admin when dept head forwards a leave for final decision
-function leaveForwardedToRootHtml(employee, leave, deptHeadName) {
+function leaveForwardedToRootHtml(employee, leave, deptHeadName, orgName = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER('Leave Request Awaiting Final Approval', 'HR Tracker — Root Admin Action Required') +
+    HEADER('Leave Request Awaiting Final Approval', `${orgName || 'HR'} — Root Admin Action Required`) +
     BODY(`
       <p style="margin:0 0 16px;">A leave request has been reviewed and forwarded by the Department Head and now requires your final decision.</p>
       <table style="width:100%;border-collapse:collapse;">
@@ -284,7 +283,7 @@ function leaveForwardedToRootHtml(employee, leave, deptHeadName) {
           Give Final Decision →
         </a>
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
@@ -307,7 +306,7 @@ function orgRequestReceivedHtml(req) {
       <div style="margin-top:20px;padding:12px 16px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:4px;font-size:13px;color:#1e1b4b;">
         Please log in to the Platform Admin Dashboard to approve or reject this request.
       </div>
-      ${FOOTER}
+      ${FOOTER()}
     `)
   );
 }
@@ -331,7 +330,7 @@ function orgApprovedHtml(req, orgSlug, tempPassword) {
       <p style="margin-top:16px;font-size:13px;color:#64748b;">
         Your employees can log in using only their <strong>email address and password</strong> — no organization code is required.
       </p>
-      ${FOOTER}
+      ${FOOTER()}
     `)
   );
 }
@@ -345,18 +344,18 @@ function orgRejectedHtml(req, notes) {
       <p style="margin:0 0 16px;">Thank you for your interest in LeaveTracker. Unfortunately, we were unable to approve your organization registration for <strong>${req.company_name}</strong> at this time.</p>
       ${notes ? `<div style="margin-bottom:16px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;"><strong>Reason:</strong> ${notes}</div>` : ''}
       <p style="font-size:13px;color:#64748b;">If you believe this was an error or would like to re-apply, please contact us at <a href="mailto:platform@lumoslogic.com" style="color:#3525cd;">platform@lumoslogic.com</a>.</p>
-      ${FOOTER}
+      ${FOOTER()}
     `)
   );
 }
 
 // Password reset email
-function passwordResetHtml(user, resetLink) {
+function passwordResetHtml(user, resetLink, orgName = '') {
   return WRAP(
-    HEADER('Reset Your Password', 'HR Tracker — Password Reset Request') +
+    HEADER('Reset Your Password', `${orgName || 'HR'} — Password Reset Request`) +
     BODY(`
       <p style="margin:0 0 16px;">Hello <strong>${user.name || 'User'}</strong>,</p>
-      <p style="margin:0 0 16px;">We received a request to reset your HR Tracker account password. Click the button below to set a new password. This link will expire in <strong>1 hour</strong>.</p>
+      <p style="margin:0 0 16px;">We received a request to reset your${orgName ? ` ${orgName}` : ''} HR account password. Click the button below to set a new password. This link will expire in <strong>1 hour</strong>.</p>
       <div style="text-align:center;margin:28px 0;">
         <a href="${resetLink}"
            style="display:inline-block;background:#3525cd;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px;font-family:Arial,sans-serif;">
@@ -368,7 +367,7 @@ function passwordResetHtml(user, resetLink) {
       <div style="margin-top:20px;padding:12px 16px;background:#fff1f2;border-left:4px solid #ef4444;border-radius:4px;font-size:13px;color:#7f1d1d;">
         <strong>Security notice:</strong> If you did not request a password reset, please ignore this email. Your password will not be changed.
       </div>
-      ${FOOTER}
+      ${FOOTER(orgName)}
     `)
   );
 }
@@ -408,7 +407,35 @@ function preOnboardingRequestHtml({ name, orgName, portalUrl }) {
       <p style="font-size:12px;color:#94a3b8;margin:0;">
         If you have any questions, please contact your HR team directly.
       </p>
-      ${FOOTER}
+      ${FOOTER()}
+    `)
+  );
+}
+
+const TYPE_COLORS = {
+  general:     { bg: '#f0f3ff', border: '#3525cd', text: '#3525cd', label: 'General' },
+  urgent:      { bg: '#fff1f2', border: '#ef4444', text: '#b91c1c', label: 'Urgent' },
+  policy:      { bg: '#fffbeb', border: '#f59e0b', text: '#92400e', label: 'Policy Update' },
+  celebration: { bg: '#ecfdf5', border: '#10b981', text: '#065f46', label: 'Celebration' },
+};
+
+// Email sent to org members when a new announcement is posted
+function announcementHtml(ann, orgName) {
+  const cfg = TYPE_COLORS[ann.type] || TYPE_COLORS.general;
+  const expiry = ann.expires_at
+    ? `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">This announcement expires on ${ann.expires_at}.</p>`
+    : '';
+  return WRAP(
+    HEADER(`📢 ${ann.title}`, `${orgName} — New Announcement`) +
+    BODY(`
+      <div style="display:inline-block;background:${cfg.bg};border:1px solid ${cfg.border};color:${cfg.text};font-size:11px;font-weight:bold;padding:3px 10px;border-radius:20px;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;">
+        ${cfg.label}
+      </div>
+      <p style="margin:0 0 16px;font-size:14px;white-space:pre-wrap;line-height:1.7;color:#1e293b;">${ann.content}</p>
+      ${ann.file_url ? `<p style="margin:0 0 16px;font-size:13px;"><a href="${ann.file_url}" style="color:#3525cd;font-weight:bold;">View Attachment →</a></p>` : ''}
+      <p style="margin:0;font-size:12px;color:#64748b;">Posted by <strong>${ann.creator_name || 'HR'}</strong></p>
+      ${expiry}
+      ${FOOTER()}
     `)
   );
 }
@@ -418,5 +445,5 @@ module.exports = {
   leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml,
   welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml,
   orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml,
-  preOnboardingRequestHtml,
+  preOnboardingRequestHtml, announcementHtml,
 };

@@ -12,13 +12,14 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
   try {
     const { subject, message, target_user_id } = req.body;
     if (!subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Subject and message required' });
+    const oId = orgId(req);
     let recipients;
     if (target_user_id) {
-      const { data: u } = await supabase.from('users').select('email').eq('id', parseInt(target_user_id)).single();
-      if (!u) return res.status(404).json({ error: 'User not found' });
+      const { data: u } = await supabase.from('users').select('email').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
+      if (!u) return res.status(404).json({ error: 'User not found in your organization' });
       recipients = [u.email];
     } else {
-      const { data: users } = await supabase.from('users').select('email').neq('role', 'root_admin');
+      const { data: users } = await supabase.from('users').select('email').eq('organization_id', oId).neq('role', 'root_admin');
       recipients = (users || []).map(u => u.email).filter(Boolean);
     }
     const html = `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
