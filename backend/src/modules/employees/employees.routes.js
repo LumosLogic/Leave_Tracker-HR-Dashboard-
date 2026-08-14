@@ -25,7 +25,7 @@ const EMPLOYEE_PUBLIC_COLS = [
   'citizenship', 'height', 'weight',
 ].join(', ');
 
-// Sensitive statutory fields — admin only
+// Sensitive statutory fields — admin only (last_credentials_sent_at added via startup migration)
 const EMPLOYEE_ADMIN_COLS = EMPLOYEE_PUBLIC_COLS + ', aadhar_no, pan_number, uan_no, pf_applicable, pf_no, esi_applicable, esi_no, ot_applicable, ot_rate, force_password_change, last_credentials_sent_at';
 
 // ─── Employees: List ──────────────────────────────────────────────────────────

@@ -236,9 +236,23 @@ app.get('*', (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+async function runStartupMigrations() {
+  const { pool } = require('./config/db');
+  const migrations = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_credentials_sent_at TIMESTAMPTZ`,
+    `ALTER TABLE employee_salary_structures ADD COLUMN IF NOT EXISTS retention NUMERIC DEFAULT 0`,
+    `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_in TEXT`,
+    `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_out TEXT`,
+  ];
+  for (const sql of migrations) {
+    await pool.query(sql).catch(e => console.warn('[startup-migration] skipped:', e.message));
+  }
+}
+
 async function start() {
   try {
     await seed();
+    await runStartupMigrations();
     app.listen(PORT, () => {
       console.log(`\n🚀 Lumos HRMS v${SERVER_VERSION} running at http://localhost:${PORT}\n`);
     });
