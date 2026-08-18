@@ -35,34 +35,55 @@ router.post('/goals', auth, hasPermission('performance', 'create'), async (req, 
     const oId = req.user.organization_id;
     const { title, description, category, target_date, review_cycle, user_id, progress } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
+    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
+    if (target_date) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (new Date(target_date) < today) return res.status(400).json({ error: 'Target date cannot be in the past.' });
+    }
     const targetUserId = isAdmin(req.user.role) && user_id ? user_id : req.user.id;
+    const cycle = review_cycle || String(new Date().getFullYear());
+    // Duplicate check: same title + category for same user in same cycle
+    const { data: existing } = await supabase.from('performance_goals')
+      .select('id').eq('organization_id', oId).eq('user_id', targetUserId)
+      .ilike('title', title.trim()).eq('category', category || 'individual').eq('review_cycle', cycle).maybeSingle();
+    if (existing) return res.status(400).json({ error: 'A goal with the same title and category already exists for this cycle.' });
+    const cappedProgress = Math.min(100, Math.max(0, Number(progress) || 0));
+    const autoStatus = cappedProgress >= 100 ? 'completed' : 'active';
     const { data, error } = await supabase.from('performance_goals')
-      .insert({ user_id: targetUserId, title, description: description || '', category: category || 'individual', target_date: target_date || null, review_cycle: review_cycle || String(new Date().getFullYear()), created_by: req.user.id, organization_id: oId, progress: Number(progress) || 0, status: 'active' })
+      .insert({ user_id: targetUserId, title: title.trim(), description: description || '', category: category || 'individual', target_date: target_date || null, review_cycle: cycle, created_by: req.user.id, organization_id: oId, progress: cappedProgress, status: autoStatus })
       .select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Admins can update all fields; employees can only update progress on their own goals.
+// Admins can update all fields; employees can update all fields on their own goals.
 router.put('/goals/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { title, description, category, target_date, progress, status } = req.body;
+
+    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
 
     // Fetch goal first to enforce ownership for employees
     const { data: goal } = await supabase.from('performance_goals')
       .select('user_id').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
 
+    if (!isAdmin(req.user.role) && goal.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const cappedProgress = Math.min(100, Math.max(0, Number(progress) || 0));
+    // Auto-complete when progress hits 100
+    const autoStatus = cappedProgress >= 100 ? 'completed' : (status || 'active');
+
     let updatePayload;
     if (isAdmin(req.user.role)) {
-      // Admins can update all fields
-      updatePayload = { title, description, category, target_date, progress: Number(progress) || 0, status };
+      updatePayload = { title, description, category, target_date, progress: cappedProgress, status: autoStatus };
     } else {
-      // Employees can only update progress on their own goals
-      if (goal.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
-      updatePayload = { progress: Number(progress) || 0 };
+      // Employees can update all their own goal fields (BUG_033 fix)
+      updatePayload = { title, description, category, target_date, progress: cappedProgress, status: autoStatus };
     }
 
     const { data, error } = await supabase.from('performance_goals')
@@ -73,9 +94,16 @@ router.put('/goals/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/goals/:id', auth, hasPermission('performance', 'manage'), async (req, res) => {
+router.delete('/goals/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
+    // Employees can delete their own goals; admins can delete any goal (BUG_034 fix)
+    const { data: goal } = await supabase.from('performance_goals')
+      .select('user_id').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (!isAdmin(req.user.role) && goal.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only delete your own goals.' });
+    }
     const { error } = await supabase.from('performance_goals').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });

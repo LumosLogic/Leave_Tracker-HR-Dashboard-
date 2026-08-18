@@ -22,6 +22,7 @@ function BranchModal({ open, onClose, branch }) {
   } : empty);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [nameErr, setNameErr] = useState('');
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/branches/${branch.id}`, form) : apiPost('/branches', form),
@@ -33,12 +34,22 @@ function BranchModal({ open, onClose, branch }) {
     onError: e => toast(e.message, 'error'),
   });
 
+  // BUG_063: Client-side validation
+  function handleSubmit() {
+    const name = form.name.trim();
+    if (!name) { setNameErr('Branch name is required.'); return; }
+    if (name.length < 2) { setNameErr('Branch name must be at least 2 characters.'); return; }
+    if (name.length > 100) { setNameErr('Branch name cannot exceed 100 characters.'); return; }
+    setNameErr('');
+    mut.mutate();
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Branch' : 'Add Branch'} size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.name}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.name}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : isEdit ? 'Save Changes' : 'Create Branch'}
           </button>
         </div>
@@ -47,7 +58,8 @@ function BranchModal({ open, onClose, branch }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Branch Name <span className="text-rose-500">*</span></label>
-            <input className="form-control" placeholder="e.g. Head Office" value={form.name} onChange={e => set('name', e.target.value)} />
+            <input className={`form-control ${nameErr ? 'border-rose-400' : ''}`} placeholder="e.g. Head Office" value={form.name} onChange={e => { set('name', e.target.value); if (nameErr) setNameErr(''); }} />
+            {nameErr && <p className="text-xs text-rose-600 mt-1">{nameErr}</p>}
           </div>
           <div>
             <label className="form-label">Branch Code</label>

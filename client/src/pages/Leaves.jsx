@@ -12,7 +12,8 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { fmtDate, fmtDateRange, fmtTime, fmtHours, initials, todayStr, cn, countWorkingDaysInRange } from '@/lib/utils';
 
 
-const LEAVE_TYPES = ['casual','sick','annual','maternity','paternity','bereavement','unpaid'];
+// BUG_069: Added 'emergency' and 'comp_off' which were missing from the filter dropdown
+const LEAVE_TYPES = ['casual','sick','annual','emergency','comp_off','maternity','paternity','bereavement','unpaid'];
 
 const ATT_STATUS_CFG = {
   present:  { label: 'Present',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -183,7 +184,7 @@ export default function Leaves() {
             <select className="form-control w-auto py-1.5 px-3 text-xs" value={filterType}
               onChange={e => setFilterType(e.target.value)}>
               <option value="">All Types</option>
-              {LEAVE_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+              {LEAVE_TYPES.map(t => <option key={t} value={t} className="capitalize">{t === 'comp_off' ? 'Comp Off' : t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
             </select>
             <input type="date" className="form-control w-auto py-1.5 px-3 text-xs" value={filterStart}
               onChange={e => { setFilterStart(e.target.value); setFilterMonth(''); }} />

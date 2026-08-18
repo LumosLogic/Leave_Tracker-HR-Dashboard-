@@ -638,7 +638,8 @@ function HRInsightsRow({ d, culture, navigate }) {
       bg: 'bg-pink-50',
       title: birthdayCount > 0 ? `${birthdayCount} birthday${birthdayCount > 1 ? 's' : ''} coming up` : 'No upcoming birthdays',
       subtitle: birthdayCount > 0 ? 'Send wishes to your team' : 'No birthdays in next 30 days.',
-      onClick: () => navigate('/employees'),
+      // BUG_065: Navigate to employees filtered to show upcoming birthdays
+      onClick: () => navigate('/employees?filter=birthday'),
     },
     {
       icon: <FileText size={16} className="text-blue-500" />,
@@ -792,12 +793,14 @@ export default function Dashboard() {
     {
       label: 'On Leave', value: onLeave, hint: pct(onLeave), hintGreen: false,
       icon: <Umbrella size={18} />, iconBg: 'bg-amber-50', iconColor: 'text-amber-600',
-      onClick: () => navigate(`/leaves?tab=all&date=${todayStr()}&status=approved`),
+      // BUG_055: Navigate to leave list filtered to today's on-leave employees
+      onClick: () => navigate(`/leaves?status=approved&date=${todayStr()}`),
     },
     {
       label: 'WFH Today', value: wfh, hint: pct(wfh), hintGreen: false,
       icon: <Home size={18} />, iconBg: 'bg-sky-50', iconColor: 'text-sky-600',
-      onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`),
+      // BUG_055: Navigate to WFH-specific filtered view
+      onClick: () => navigate(`/leaves?status=approved&filter=wfh&date=${todayStr()}`),
     },
     {
       label: 'Checked In', value: checked, hint: pct(checked), hintGreen: false,

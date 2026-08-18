@@ -69,6 +69,14 @@ export default function Calendar() {
     },
   });
 
+  // BUG_074: Fetch holidays to display in HR Calendar
+  const { data: holidays = [] } = useQuery({
+    queryKey: ['holidays', year],
+    queryFn: () => apiGet('/holidays', { year }),
+  });
+  // Build a map: date string → holiday name for quick lookup
+  const holidayMap = holidays.reduce((acc, h) => { acc[h.date] = h; return acc; }, {});
+
   // Build attendance map + overlay approved leaves so calendar cells always show leave status
   const grouped = {};
   attendance.forEach(r => {
@@ -162,10 +170,11 @@ export default function Calendar() {
             </button>
           ))}
         </div>
+        {/* BUG_071/073: Legend with matching colors — Half Day uses cyan (#06B6D4) to match badge */}
         <div className="hidden lg:flex items-center gap-3.5 ml-auto flex-wrap">
-          {[['#10B981','Present'],['#EF4444','Absent'],['#F59E0B','On Leave'],['#4f46e5','Half Day'],['#3525cd','WFH']].map(([c, l]) => (
+          {[['#10B981','Present'],['#EF4444','Absent'],['#F59E0B','On Leave'],['#06B6D4','Half Day'],['#3525cd','WFH']].map(([c, l]) => (
             <div key={l} className="flex items-center gap-1.5 text-xs text-[#777587] font-semibold">
-              <span className="w-2 h-2 rounded-full" style={{ background: c, boxShadow: `0 0 5px ${c}` }} /> {l}
+              <span className="w-2.5 h-2.5 rounded-full border border-white/30" style={{ background: c, boxShadow: `0 0 5px ${c}` }} /> {l}
             </div>
           ))}
         </div>
@@ -173,7 +182,7 @@ export default function Calendar() {
 
       {/* Calendar Body */}
       {mode === 'month'
-        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} />
+        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} holidayMap={holidayMap} />
         : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} getLeaveForDate={getLeaveForDate} />
       }
 
@@ -196,7 +205,7 @@ export default function Calendar() {
 }
 
 // ── Month View ────────────────────────────────────────────────────────────────
-function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick }) {
+function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick, holidayMap = {} }) {
   const today = todayStr();
   const firstDay = new Date(year, month, 1);
   const lastDay  = new Date(year, month + 1, 0);
@@ -230,6 +239,8 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick 
           const isTodayD = ds === today;
           const isWkend  = c.getDay() === 0 || c.getDay() === 6;
           const records  = grouped[ds] || [];
+          // BUG_074: Check if this date is a holiday
+          const holiday  = holidayMap[ds];
 
           return (
             <div
@@ -251,6 +262,13 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick 
               )} style={isTodayD ? { background: '#3525cd' } : {}}>
                 {c.getDate()}
               </div>
+
+              {/* BUG_074: Holiday indicator */}
+              {!isOther && holiday && (
+                <span className="text-[0.56rem] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 truncate leading-tight" title={holiday.name}>
+                  🗓 {holiday.name}
+                </span>
+              )}
 
               {/* Cell content */}
               {!isOther && !isWkend && (
@@ -315,7 +333,8 @@ function EmpCellContent({ records, userId }) {
 }
 
 // ── Week View ─────────────────────────────────────────────────────────────────
-const STATUS_COLORS_MAP = { present: '#10B981', absent: '#EF4444', on_leave: '#F59E0B', half_day: '#4f46e5', wfh: '#3525cd' };
+// BUG_073: half_day uses cyan (#06B6D4) to match the legend and badge colors
+const STATUS_COLORS_MAP = { present: '#10B981', absent: '#EF4444', on_leave: '#F59E0B', half_day: '#06B6D4', wfh: '#3525cd' };
 
 function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, getLeaveForDate }) {
   const today = todayStr();

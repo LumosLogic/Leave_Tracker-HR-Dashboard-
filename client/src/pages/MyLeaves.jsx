@@ -555,18 +555,22 @@ export default function MyLeaves() {
     queryKey: ['leave-policies'],
     queryFn:  () => apiGet('/leave-policies'),
   });
+  // BUG_14: staleTime:0 ensures balance always refreshes after leave submission
   const { data: leaveBalance } = useQuery({
-    queryKey: ['my-leave-balance', new Date().getFullYear()],
+    queryKey: ['my-leave-balance'],
     queryFn:  () => apiGet('/leaves/balance'),
-    staleTime: 2 * 60 * 1000,
+    staleTime: 0,
   });
 
   const apply = useMutation({
     mutationFn: (payload) => apiPost('/leaves', payload),
     onSuccess: (newLeave, vars) => {
-      qc.invalidateQueries({ queryKey: ['my-leaves'], refetchType: 'active' });
-      qc.invalidateQueries({ queryKey: ['my-leaves-recent'], refetchType: 'active' });
-      qc.invalidateQueries({ queryKey: ['my-leave-balance'], refetchType: 'active' });
+      // BUG_13: Remove refetchType:'active' so invalidation always triggers a refetch
+      qc.invalidateQueries({ queryKey: ['my-leaves'] });
+      qc.invalidateQueries({ queryKey: ['my-leaves-recent'] });
+      qc.invalidateQueries({ queryKey: ['my-leave-balance'] });
+      qc.invalidateQueries({ queryKey: ['leave-policies'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
       toast(vars.leave_type === 'wfh' ? 'WFH request submitted. HR will be notified.' : 'Leave request submitted. HR will be notified.', 'success');
       setApplyOpen(false);
     },
@@ -593,7 +597,8 @@ export default function MyLeaves() {
     else if (l.status === 'rejected') counts.rejected++;
   });
 
-  const activePolicies = policies.filter(p => p.active && p.annual_quota > 0);
+  // BUG_14: use !== false so that null active (default) is treated as active
+  const activePolicies = policies.filter(p => p.active !== false && p.annual_quota > 0);
 
   // Today string for upcoming leaves comparison
   const todayStr = new Date().toISOString().split('T')[0];
@@ -971,13 +976,14 @@ export default function MyLeaves() {
             </div>
             <div className="p-4 space-y-0">
               {(() => {
-                // Use API balance data as primary; fall back to computing from policies+leaves
-                const balanceItems = leaveBalance?.balances?.length > 0
-                  ? leaveBalance.balances.map(b => ({
+                // BUG_14: Support both { balances: [...] } and direct array API shapes
+                const rawBalances = leaveBalance?.balances ?? (Array.isArray(leaveBalance) ? leaveBalance : []);
+                const balanceItems = rawBalances.length > 0
+                  ? rawBalances.map(b => ({
                       leave_type: b.leave_type,
-                      label: b.label,
-                      total: b.allocated,
-                      used: b.used,
+                      label: b.label || b.leave_type,
+                      total: b.allocated ?? b.total ?? 0,
+                      used: b.used ?? 0,
                       pending: b.pending ?? leaves
                         .filter(l => l.leave_type === b.leave_type && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
                         .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0),

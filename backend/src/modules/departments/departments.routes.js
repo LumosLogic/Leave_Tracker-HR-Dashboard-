@@ -37,13 +37,21 @@ router.post('/', auth, hasPermission('departments', 'create'), async (req, res) 
   try {
     const oId = req.user.organization_id;
     const { name, description, head_user_id } = req.body;
-    if (!name) return res.status(400).json({ error: 'Department name is required' });
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Department name is required' });
+    if (name.trim().length < 2) return res.status(400).json({ error: 'Department name must be at least 2 characters.' });
+    if (name.trim().length > 100) return res.status(400).json({ error: 'Department name cannot exceed 100 characters.' });
     const { data, error } = await supabase
       .from('departments')
-      .insert({ name, description: description || '', head_user_id: head_user_id || null, organization_id: oId })
+      .insert({ name: name.trim(), description: description || '', head_user_id: head_user_id || null, organization_id: oId })
       .select()
       .single();
-    if (error) throw error;
+    // BUG_062: Return user-friendly message for duplicate department name
+    if (error) {
+      if (error.code === '23505' || (error.message && error.message.includes('unique'))) {
+        return res.status(400).json({ error: 'Department name already exists. Please use a different name.' });
+      }
+      throw error;
+    }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -60,10 +68,15 @@ router.put('/:id', auth, hasPermission('departments', 'edit'), async (req, res) 
 
     const { data, error } = await supabase
       .from('departments')
-      .update({ name, description: description || '', head_user_id: head_user_id || null })
+      .update({ name: name?.trim() || name, description: description || '', head_user_id: head_user_id || null })
       .eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505' || (error.message && error.message.includes('unique'))) {
+        return res.status(400).json({ error: 'Department name already exists. Please use a different name.' });
+      }
+      throw error;
+    }
 
     // Keep users.department string in sync when the department is renamed.
     // This is a denormalized field used in reports and filters.

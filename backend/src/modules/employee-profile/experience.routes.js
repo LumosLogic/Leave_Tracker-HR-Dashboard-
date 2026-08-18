@@ -32,6 +32,10 @@ router.post('/:id/experience', auth, async (req, res) => {
       start_date, end_date, ctc, last_salary, total_years, manager_name, reason_leaving,
     } = req.body;
     if (!company_name) return res.status(400).json({ error: 'company_name is required' });
+    // BUG_049: End date must be after start date
+    if (start_date && end_date && new Date(end_date) <= new Date(start_date)) {
+      return res.status(400).json({ error: 'End date must be after start date.' });
+    }
 
     const { data, error } = await supabase.from('employee_experiences').insert({
       user_id: empId, organization_id: orgId(req),
@@ -59,6 +63,10 @@ router.put('/:id/experience/:recordId', auth, async (req, res) => {
       company_name, designation, industry, department, employment_type,
       start_date, end_date, ctc, last_salary, total_years, manager_name, reason_leaving,
     } = req.body;
+    // BUG_049: End date must be after start date
+    if (start_date && end_date && new Date(end_date) <= new Date(start_date)) {
+      return res.status(400).json({ error: 'End date must be after start date.' });
+    }
 
     const { data, error } = await supabase.from('employee_experiences').update({
       company_name, designation, industry, department, employment_type,

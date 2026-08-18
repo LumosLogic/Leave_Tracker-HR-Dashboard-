@@ -32,6 +32,18 @@ router.post('/:id/education', auth, async (req, res) => {
       year_of_passing, percentage, cgpa, degree_class,
     } = req.body;
     if (!institution) return res.status(400).json({ error: 'institution is required' });
+    // BUG_050: Academic field validation
+    if (!/[a-zA-Z]/.test(institution)) return res.status(400).json({ error: 'Institution name must contain alphabetic characters.' });
+    const currentYear = new Date().getFullYear();
+    if (year_of_passing && (Number(year_of_passing) < 1950 || Number(year_of_passing) > currentYear)) {
+      return res.status(400).json({ error: `Year of passing must be between 1950 and ${currentYear}.` });
+    }
+    if (percentage !== undefined && percentage !== null && percentage !== '' && (Number(percentage) < 0 || Number(percentage) > 100)) {
+      return res.status(400).json({ error: 'Percentage must be between 0 and 100.' });
+    }
+    if (cgpa !== undefined && cgpa !== null && cgpa !== '' && (Number(cgpa) < 0 || Number(cgpa) > 10)) {
+      return res.status(400).json({ error: 'CGPA must be between 0 and 10.' });
+    }
 
     const { data, error } = await supabase.from('employee_qualifications').insert({
       user_id: empId, organization_id: orgId(req),

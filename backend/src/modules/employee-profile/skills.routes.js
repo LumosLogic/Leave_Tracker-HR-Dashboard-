@@ -30,6 +30,12 @@ router.post('/:id/skills', auth, async (req, res) => {
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
     if (!skill_name) return res.status(400).json({ error: 'skill_name is required' });
 
+    // BUG_047: Case-insensitive duplicate skill check
+    const { data: existing } = await supabase.from('employee_skills')
+      .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
+      .ilike('skill_name', skill_name.trim()).maybeSingle();
+    if (existing) return res.status(409).json({ error: `Skill "${skill_name}" already exists. Skill names are case-insensitive.` });
+
     const { data, error } = await supabase.from('employee_skills').insert({
       employee_id: empId, organization_id: orgId(req),
       skill_name, skill_category: skill_category || 'technical',

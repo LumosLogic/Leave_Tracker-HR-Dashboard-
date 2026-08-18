@@ -1196,6 +1196,25 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
 
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!isEdit) {
+        // BUG_057: Validate Add Employee required fields
+        if (!form.name.trim()) throw new Error('Full Name is required.');
+        if (form.name.trim().length < 2) throw new Error('Full Name must be at least 2 characters.');
+        if (!/[a-zA-Z]/.test(form.name.trim())) throw new Error('Full Name must contain at least one letter.');
+        if (!form.email.trim()) throw new Error('Company Email is required.');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error('Company Email must be a valid email address.');
+        if (!form.password) throw new Error('Temporary Password is required.');
+        if (form.password.length < 6) throw new Error('Temporary Password must be at least 6 characters.');
+        if (!form.position.trim()) throw new Error('Job Title / Position is required.');
+      } else {
+        // BUG_058: Validate Edit Employee fields
+        if (form.name && form.name.trim().length < 2) throw new Error('Full Name must be at least 2 characters.');
+        if (form.name && !/[a-zA-Z]/.test(form.name.trim())) throw new Error('Full Name must contain at least one letter.');
+        if (form.phone && !/^\d{10}$/.test(form.phone.trim())) throw new Error('Mobile number must be exactly 10 digits.');
+        if (form.personal_email && form.personal_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) {
+          throw new Error('Personal Email must be a valid email address.');
+        }
+      }
       if (isEdit) {
         const body = { ...form };
         if (!body.password) delete body.password;
@@ -1939,7 +1958,9 @@ export default function Employees() {
   }
 
   function handleEdit(emp, tab = 'personal') {
-    setEditInitialTab(tab);
+    // BUG_060: Map 'statutory' to 'extended' tab since statutory fields live in the Extended tab
+    const TAB_MAP = { statutory: 'extended', compliance: 'extended' };
+    setEditInitialTab(TAB_MAP[tab] || tab);
     setEditEmp(emp);
   }
 

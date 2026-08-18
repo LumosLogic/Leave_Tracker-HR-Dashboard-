@@ -50,7 +50,8 @@ const VIS_CFG = {
   self:       { label: 'Particular Employee', icon: <UserCheck size={10} />, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   all:        { label: 'All Employees',       icon: <Globe size={10} />,     cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   specific:   { label: 'Specific Employees',  icon: <Users size={10} />,     cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-  admin_only: { label: 'HR / Admin Only',     icon: <Lock size={10} />,      cls: 'bg-slate-50 text-slate-600 border-slate-200' },
+  // BUG_023: Changed from 'HR / Admin Only' to 'Shared with HR' for consistency with upload guidelines
+  admin_only: { label: 'Shared with HR',       icon: <Lock size={10} />,      cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 };
 
 const STATUS_CFG = {
@@ -345,7 +346,7 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
     { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: '🌍 Everyone in the organization can access this document' },
     { value: 'self',       Icon: User,   label: 'Particular Employee', desc: '👤 Visible only to the selected employee' },
     { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: '👥 Visible only to the selected group of employees' },
-    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: '🔒 Accessible only by HR/Admin users for internal use' },
+    { value: 'admin_only', Icon: Lock,   label: 'Shared with HR',       desc: '🔒 Shared directly with HR for review and internal use' },
   ];
 
   const sharingPool = allEmployees.filter(e => String(e.id) !== form.targetUserId);
@@ -2043,7 +2044,7 @@ function EditDocModal({ doc, isAdmin, colleagues, allEmployees, onClose, onSaved
     { value: 'all',        Icon: Globe,  label: 'All Employees',       desc: '🌍 Everyone in the organization can access this document' },
     { value: 'self',       Icon: User,   label: 'Particular Employee', desc: '👤 Visible only to the selected employee' },
     { value: 'specific',   Icon: Users,  label: 'Group of Employees',  desc: '👥 Visible only to the selected group of employees' },
-    { value: 'admin_only', Icon: Lock,   label: 'HR / Admin Only',     desc: '🔒 Accessible only by HR/Admin users for internal use' },
+    { value: 'admin_only', Icon: Lock,   label: 'Shared with HR',       desc: '🔒 Shared directly with HR for review and internal use' },
   ];
 
   async function handleSave() {

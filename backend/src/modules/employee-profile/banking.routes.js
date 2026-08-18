@@ -36,6 +36,12 @@ router.post('/:id/banking', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) =
     } = req.body;
     if (!bank_name || !account_number) return res.status(400).json({ error: 'bank_name and account_number are required' });
 
+    // BUG_045: Duplicate account number check for same employee
+    const { data: dupAcc } = await supabase.from('employee_bank_accounts')
+      .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
+      .eq('account_number', account_number).eq('is_active', true).maybeSingle();
+    if (dupAcc) return res.status(409).json({ error: 'This account number is already added for this employee.' });
+
     // Unset primary if this one is primary
     if (is_primary) {
       await supabase.from('employee_bank_accounts')

@@ -25,8 +25,12 @@ router.post('/', auth, hasPermission('shifts', 'manage'), async (req, res) => {
     const oId = req.user.organization_id;
     const { name, start_time, end_time, color, description, days_of_week } = req.body;
     if (!name || !start_time || !end_time) return res.status(400).json({ error: 'name, start_time and end_time required' });
+    // BUG_075: Duplicate shift check — same name (case-insensitive) in same org
+    const { data: existing } = await supabase.from('shifts')
+      .select('id').eq('organization_id', oId).ilike('name', name.trim()).maybeSingle();
+    if (existing) return res.status(400).json({ error: 'A shift with this name already exists. Please use a different name.' });
     const { data, error } = await supabase.from('shifts')
-      .insert({ name, start_time, end_time, color: color || '#3525cd', description: description || '', days_of_week: days_of_week || null, organization_id: oId })
+      .insert({ name: name.trim(), start_time, end_time, color: color || '#3525cd', description: description || '', days_of_week: days_of_week || null, organization_id: oId })
       .select().single();
     if (error) throw error;
     res.json(data);

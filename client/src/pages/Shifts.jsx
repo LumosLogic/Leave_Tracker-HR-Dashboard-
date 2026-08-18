@@ -40,7 +40,7 @@ function validateShiftName(val) {
 function validateTimeRange(start, end) {
   if (!start) return 'Start time is required';
   if (!end)   return 'End time is required';
-  if (start >= end) return 'End time must be after start time';
+  // BUG_076: Allow overnight shifts (end < start means next day, which is valid)
   return '';
 }
 
@@ -165,6 +165,11 @@ function ShiftModal({ open, onClose, shift }) {
             </div>
           </div>
           {errs.time && <p className="text-[0.72rem] text-rose-600 mt-1">{errs.time}</p>}
+          {form.start_time && form.end_time && form.end_time < form.start_time && (
+            <p className="text-[0.72rem] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 mt-1">
+              Overnight shift — ends the next day (e.g. 8:00 PM to 5:00 AM is valid)
+            </p>
+          )}
         </div>
 
         {/* Days of Week */}

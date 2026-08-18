@@ -921,7 +921,15 @@ function PersonalSection({ empId }) {
               <label className="form-label">Permanent Address</label>
               <textarea className="form-control" rows={3} value={form.permanent_address} onChange={e => setF('permanent_address', e.target.value)} placeholder="Permanent / native address" />
             </div>
-            <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
+            <button onClick={() => {
+              // BUG_052: Contact & Address validation
+              if (form.phone && !/^\+?[\d\s\-]{7,15}$/.test(form.phone.trim())) { toast('Enter a valid phone number.', 'error'); return; }
+              if (form.personal_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) { toast('Enter a valid personal email address.', 'error'); return; }
+              if (form.current_city && /\d/.test(form.current_city)) { toast('City should contain alphabetic characters only.', 'error'); return; }
+              if (form.current_state && /\d/.test(form.current_state)) { toast('State should contain alphabetic characters only.', 'error'); return; }
+              if (form.current_postal_code && !/^\d{4,10}$/.test(form.current_postal_code.trim())) { toast('PIN Code must be 4-10 digits.', 'error'); return; }
+              saveMutation.mutate();
+            }} disabled={saveMutation.isPending}
               className="btn btn-primary btn-sm flex items-center gap-2">
               {saveMutation.isPending ? <><span className="spinner w-3.5 h-3.5" /> Saving…</> : <><Save size={14} /> Save Changes</>}
             </button>
@@ -1375,7 +1383,11 @@ function ExperienceSection({ empId }) {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Experience' : 'Add Experience'} size="lg"
-        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
+        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => {
+          if (!form.company_name.trim()) { toast('Company name is required.', 'error'); return; }
+          if (!form.currently_working && form.start_date && form.end_date && form.end_date <= form.start_date) { toast('End date must be after start date.', 'error'); return; }
+          saveMut.mutate();
+        }} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
         <div className="space-y-4">
           <div>
             <label className="form-label">Company Name *</label>
@@ -1411,7 +1423,13 @@ function ExperienceSection({ empId }) {
             </div>
             <div>
               <label className="form-label">End Date</label>
-              <input type="date" className="form-control" value={form.end_date} onChange={e => setF('end_date', e.target.value)} disabled={form.currently_working} />
+              {/* BUG_049: End date must be after start date */}
+              <input type="date" className={`form-control ${form.end_date && form.start_date && form.end_date <= form.start_date ? 'border-rose-400' : ''}`}
+                min={form.start_date || undefined}
+                value={form.end_date} onChange={e => setF('end_date', e.target.value)} disabled={form.currently_working} />
+              {form.end_date && form.start_date && form.end_date <= form.start_date && (
+                <p className="text-xs text-rose-600 mt-1">End date must be after start date.</p>
+              )}
             </div>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -1552,7 +1570,12 @@ function SkillsSection({ empId }) {
           </div>
           <div>
             <label className="form-label">Years of Experience</label>
-            <input type="number" className="form-control" value={form.years_of_experience} onChange={e => setF('years_of_experience', e.target.value)} placeholder="2" min="0" max="50" />
+            {/* BUG_043: Validate years of experience 0-60 range */}
+            <input type="number" className={`form-control ${form.years_of_experience && (Number(form.years_of_experience) < 0 || Number(form.years_of_experience) > 60) ? 'border-rose-400' : ''}`}
+              value={form.years_of_experience} onChange={e => setF('years_of_experience', e.target.value)} placeholder="2" min="0" max="60" step="0.5" />
+            {form.years_of_experience && (Number(form.years_of_experience) < 0 || Number(form.years_of_experience) > 60) && (
+              <p className="text-xs text-rose-600 mt-1">Years of experience must be between 0 and 60.</p>
+            )}
           </div>
         </div>
       </Modal>
@@ -1655,7 +1678,16 @@ function BankingSection({ empId }) {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Bank Account' : 'Add Bank Account'} size="md"
-        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
+        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => {
+          // BUG_044: Bank form validation
+          if (!form.bank_name.trim()) { toast('Bank name is required.', 'error'); return; }
+          if (!/[a-zA-Z]/.test(form.bank_name)) { toast('Bank name must contain letters only.', 'error'); return; }
+          if (!form.account_number.trim()) { toast('Account number is required.', 'error'); return; }
+          if (!/^\d{9,18}$/.test(form.account_number.trim())) { toast('Account number must be 9-18 digits only.', 'error'); return; }
+          if (form.account_holder_name && !/[a-zA-Z]/.test(form.account_holder_name)) { toast('Account holder name must contain letters.', 'error'); return; }
+          if (form.ifsc_code && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc_code.toUpperCase())) { toast('Invalid IFSC code format (e.g. SBIN0001234).', 'error'); return; }
+          saveMut.mutate();
+        }} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
         <div className="space-y-4">
           <div>
             <label className="form-label">Bank Name *</label>
@@ -1667,7 +1699,8 @@ function BankingSection({ empId }) {
           </div>
           <div>
             <label className="form-label">Account Number *</label>
-            <input className="form-control" value={form.account_number} onChange={e => setF('account_number', e.target.value)} placeholder="1234567890" />
+            <input className="form-control font-mono" value={form.account_number} onChange={e => setF('account_number', e.target.value.replace(/\D/g, ''))} placeholder="1234567890" maxLength={18} />
+            <p className="text-[0.65rem] text-[#777587] mt-1">Numeric digits only, 9-18 digits</p>
           </div>
           <div>
             <label className="form-label">Account Holder Name</label>
@@ -1683,6 +1716,7 @@ function BankingSection({ empId }) {
             <div>
               <label className="form-label">IFSC Code</label>
               <input className="form-control font-mono uppercase" value={form.ifsc_code} onChange={e => setF('ifsc_code', e.target.value.toUpperCase())} placeholder="SBIN0001234" maxLength={11} />
+              <p className="text-[0.65rem] text-[#777587] mt-1">Format: XXXX0XXXXXX</p>
             </div>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
@@ -2018,8 +2052,18 @@ function AccountSection() {
         </div>
         <div>
           <label className="form-label flex items-center gap-1.5"><Mail size={13} className="text-[#3525cd]" /> Company Email</label>
-          <input className="form-control" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <p className="text-[0.7rem] text-[#777587] mt-1">Changing email updates your login credentials.</p>
+          {/* BUG_041: Company Email is read-only for employees — only HR/Admin can change it */}
+          {user?.role === 'employee' ? (
+            <>
+              <input className="form-control bg-[#f8f9ff] text-[#777587] cursor-not-allowed" type="email" value={email} readOnly disabled />
+              <p className="text-[0.7rem] text-[#777587] mt-1">Contact HR to update your company email.</p>
+            </>
+          ) : (
+            <>
+              <input className="form-control" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+              <p className="text-[0.7rem] text-[#777587] mt-1">Changing email updates your login credentials.</p>
+            </>
+          )}
         </div>
         {myDepts.length > 0 && (
           <div className="mt-3 pt-3 border-t border-[#f0f3ff]">
@@ -2056,9 +2100,14 @@ function AccountSection() {
         </div>
         <div className="mb-4">
           <label className="form-label">Display Name</label>
-          <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
+          {/* BUG_036: Display Name must contain at least one alphabetic character */}
+          <input className={`form-control ${name && !/[a-zA-Z]/.test(name) ? 'border-rose-400' : ''}`}
+            value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" />
+          {name && !/[a-zA-Z]/.test(name) && (
+            <p className="text-xs text-rose-600 mt-1">Display Name must contain at least one letter.</p>
+          )}
         </div>
-        <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+        <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim() || !/[a-zA-Z]/.test(name)}
           className="btn btn-primary btn-sm flex items-center gap-2">
           {saveMut.isPending ? <><span className="spinner w-3.5 h-3.5" /> Saving…</> : <><Save size={14} /> Save Changes</>}
         </button>
@@ -2263,9 +2312,18 @@ function PrivacySection() {
     onError: e => toast(e.message, 'error'),
   });
 
+  // BUG_039: Password policy rules
+  const pwRules = [
+    { label: 'At least 8 characters', ok: newPw.length >= 8 },
+    { label: 'One uppercase letter (A-Z)', ok: /[A-Z]/.test(newPw) },
+    { label: 'One lowercase letter (a-z)', ok: /[a-z]/.test(newPw) },
+    { label: 'One number (0-9)', ok: /\d/.test(newPw) },
+    { label: 'One special character (!@#$…)', ok: /[^A-Za-z0-9]/.test(newPw) },
+  ];
+
   function handlePwSubmit() {
     if (newPw !== confPw) { toast('Passwords do not match.', 'error'); return; }
-    if (newPw.length < 6) { toast('Password must be at least 6 characters.', 'error'); return; }
+    if (newPw.length < 8) { toast('Password must be at least 8 characters.', 'error'); return; }
     changePw.mutate();
   }
 
@@ -2274,7 +2332,19 @@ function PrivacySection() {
       {/* Change Password */}
       <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
         <SectionHeader>Change Password</SectionHeader>
-        <div className="space-y-4 mt-4">
+        {/* BUG_039: Password policy display */}
+        <div className="mt-4 mb-4 p-3 rounded-xl bg-[#f8f9ff] border border-[#e7eefe]">
+          <p className="text-[0.7rem] font-black text-[#777587] uppercase tracking-widest mb-2">Password Requirements</p>
+          <ul className="space-y-1">
+            {pwRules.map(r => (
+              <li key={r.label} className={`flex items-center gap-2 text-xs ${newPw ? (r.ok ? 'text-emerald-700' : 'text-rose-600') : 'text-[#777587]'}`}>
+                <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 border ${newPw ? (r.ok ? 'bg-emerald-500 border-emerald-500' : 'bg-rose-100 border-rose-300') : 'bg-[#e7eefe] border-[#c7c4d8]'}`} />
+                {r.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="space-y-4">
           <div>
             <label className="form-label">Current Password</label>
             <div className="relative">
@@ -2287,7 +2357,7 @@ function PrivacySection() {
           <div>
             <label className="form-label">New Password</label>
             <div className="relative">
-              <input className="form-control pr-10" type={showNew ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 6 characters" />
+              <input className="form-control pr-10" type={showNew ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min. 8 characters" />
               <button type="button" onClick={() => setShowNew(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
                 {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>

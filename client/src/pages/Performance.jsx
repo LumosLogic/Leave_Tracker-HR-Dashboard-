@@ -44,11 +44,12 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
   const qc     = useQueryClient();
   const isEdit = !!goal;
   const [form, setForm] = useState(() => isEdit
-    ? { title: goal.title, description: goal.description || '', category: goal.category, target_date: goal.target_date || '', review_cycle: goal.review_cycle, progress: goal.progress, status: goal.status, user_id: goal.user_id }
+    ? { title: goal.title, description: goal.description || '', category: goal.category, target_date: goal.target_date || '', review_cycle: goal.review_cycle, progress: Math.min(100, Math.max(0, Number(goal.progress) || 0)), status: goal.status, user_id: goal.user_id }
     : { title: '', description: '', category: 'individual', target_date: '', review_cycle: String(new Date().getFullYear()), progress: 0, status: 'active', user_id: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const hasValidTitle = /[a-zA-Z0-9]/.test(form.title.trim());
+  const DESC_MAX = 500;
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/performance/goals/${goal.id}`, form) : apiPost('/performance/goals', form),
@@ -59,6 +60,11 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
   function handleSave() {
     if (!form.title.trim()) { toast('Goal Title is required.', 'error'); return; }
     if (!hasValidTitle) { toast('Goal Title must contain at least one letter or number.', 'error'); return; }
+    if (form.description && form.description.length > DESC_MAX) { toast(`Description must be ${DESC_MAX} characters or less.`, 'error'); return; }
+    if (form.target_date) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (new Date(form.target_date) < today) { toast('Target date cannot be in the past.', 'error'); return; }
+    }
     mut.mutate();
   }
 
@@ -91,7 +97,8 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
         </div>
         <div>
           <label className="form-label">Description</label>
-          <textarea className="form-control" rows={2} placeholder="What does success look like?" value={form.description} onChange={e => set('description', e.target.value)} />
+          <textarea className={`form-control ${form.description.length > DESC_MAX ? 'border-rose-400' : ''}`} rows={2} placeholder="What does success look like?" maxLength={DESC_MAX + 10} value={form.description} onChange={e => set('description', e.target.value)} />
+          <p className={`text-xs mt-1 ${form.description.length > DESC_MAX ? 'text-rose-600' : 'text-[#777587]'}`}>{form.description.length}/{DESC_MAX}</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -104,7 +111,7 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
           </div>
           <div>
             <label className="form-label">Target Date</label>
-            <input type="date" className="form-control" value={form.target_date} onChange={e => set('target_date', e.target.value)} />
+            <input type="date" className="form-control" min={new Date().toISOString().slice(0, 10)} value={form.target_date} onChange={e => set('target_date', e.target.value)} />
           </div>
         </div>
         <div>
@@ -249,7 +256,7 @@ export default function Performance() {
   });
 
   const completedGoals = goals.filter(g => g.status === 'completed').length;
-  const avgProgress    = goals.length > 0 ? Math.round(goals.reduce((s, g) => s + (g.progress || 0), 0) / goals.length) : 0;
+  const avgProgress    = goals.length > 0 ? Math.min(100, Math.round(goals.reduce((s, g) => s + Math.min(100, Math.max(0, Number(g.progress) || 0)), 0) / goals.length)) : 0;
 
   return (
     <div className={wrap}>
@@ -331,9 +338,9 @@ export default function Performance() {
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="flex-1 bg-[#f0f3ff] rounded-full h-2">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${g.progress}%`, background: g.status === 'completed' ? '#10B981' : '#3525cd' }} />
+                              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, Number(g.progress) || 0))}%`, background: g.status === 'completed' ? '#10B981' : '#3525cd' }} />
                             </div>
-                            <span className="text-xs font-black min-w-[2.5rem] text-right" style={{ color: g.status === 'completed' ? '#059669' : '#3525cd' }}>{g.progress}%</span>
+                            <span className="text-xs font-black min-w-[2.5rem] text-right" style={{ color: g.status === 'completed' ? '#059669' : '#3525cd' }}>{Math.min(100, Math.max(0, Number(g.progress) || 0))}%</span>
                             {g.status === 'completed' && <CheckCircle2 size={14} className="text-emerald-500" />}
                           </div>
                         </div>

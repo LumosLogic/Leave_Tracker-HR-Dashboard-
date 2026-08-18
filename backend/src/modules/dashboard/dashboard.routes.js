@@ -86,16 +86,18 @@ router.get('/', auth, async (req, res) => {
 
     // ── 5. Pending leaves ────────────────────────────────────────────────────
     _step = 'leaves';
+    // BUG_056/BUG_070: Count ALL pending statuses, not just 'pending'
     const { count: pendingLeaves } = await supabase.from('leaves')
-      .select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', orgId(req));
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['pending', 'pending_root', 'pending_dept'])
+      .eq('organization_id', orgId(req));
 
     let pendingLeaveList;
     if (isAdminRole(req.user.role)) {
-      // Include pending_root leaves for visibility — HR sees them but only Root Admin can approve them.
-      // Frontend differentiates action buttons by status.
+      // BUG_070: Include all pending statuses so widget shows actual pending requests
       const { data: plRaw } = await supabase.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-        .in('status', ['pending', 'pending_root']).eq('organization_id', orgId(req))
+        .in('status', ['pending', 'pending_root', 'pending_dept']).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     } else {

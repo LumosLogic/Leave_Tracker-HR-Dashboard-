@@ -22,7 +22,7 @@ const STATUS_CFG = {
 
 const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-function ExpenseModal({ open, onClose, expense }) {
+function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const isEdit = !!expense;
@@ -30,6 +30,7 @@ function ExpenseModal({ open, onClose, expense }) {
   const [uploading,    setUploading]    = useState(false);
   const [pendingFile,  setPendingFile]  = useState(null);
   const [amountErr,    setAmountErr]    = useState('');
+  const [dupWarned,    setDupWarned]    = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState(() => isEdit
@@ -52,6 +53,21 @@ function ExpenseModal({ open, onClose, expense }) {
     const ok = ['application/pdf','image/jpeg','image/png','image/jpg'].includes(file.type);
     if (!ok) { toast('Unsupported file format. Please upload a PDF, JPG, or PNG file.', 'error'); return; }
     if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
+    // BUG_026: Warn if same receipt filename already used in another claim
+    if (allExpenses.length > 0) {
+      const nameStem = file.name.toLowerCase().replace(/\.[^.]+$/, '');
+      const dupClaim = allExpenses.find(exp => {
+        if (!exp.receipt_url) return false;
+        if (isEdit && exp.id === expense?.id) return false;
+        try {
+          const urlPath = decodeURIComponent(new URL(exp.receipt_url).pathname);
+          return urlPath.split('/').pop().toLowerCase().includes(nameStem);
+        } catch { return false; }
+      });
+      if (dupClaim) {
+        toast(`Warning: "${file.name}" appears already used in claim "${dupClaim.title}". Please verify this is a different receipt.`, 'warning');
+      }
+    }
     setPendingFile(file);
     setUploading(true);
     try {
@@ -83,6 +99,19 @@ function ExpenseModal({ open, onClose, expense }) {
     if (!validateAmount(form.amount)) { return; }
     if (!form.expense_date) { toast('Select an expense date', 'warning'); return; }
     if (!form.receipt_url) { toast('Receipt is required. Please upload a receipt before submitting.', 'warning'); return; }
+    // BUG_027: Duplicate claim detection — warn first, allow second submit
+    if (!isEdit && !dupWarned && allExpenses.length > 0) {
+      const dupClaim = allExpenses.find(exp =>
+        exp.expense_date?.slice(0, 10) === form.expense_date &&
+        exp.category === form.category &&
+        Number(exp.amount) === Number(form.amount)
+      );
+      if (dupClaim) {
+        setDupWarned(true);
+        toast(`Possible duplicate: A "${CAT_LABELS[form.category]}" claim of ${fmt(form.amount)} on ${fmtDate(form.expense_date)} already exists ("${dupClaim.title}"). Click Submit again to confirm.`, 'warning');
+        return;
+      }
+    }
     mut.mutate();
   }
 
@@ -284,6 +313,10 @@ export default function ExpensesPage() {
 
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });
   const expenses = Array.isArray(_expData) ? _expData : [];
+  // Fetch all claims (unfiltered) to differentiate "no records for filter" vs "no claims at all"
+  const { data: _allExpData } = useQuery({ queryKey: ['expenses', 'all'], queryFn: () => apiGet('/expenses') });
+  const allExpenses = Array.isArray(_allExpData) ? _allExpData : [];
+  const hasAnyClaims = allExpenses.length > 0;
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/expenses/${id}`),
@@ -341,9 +374,18 @@ export default function ExpensesPage() {
       ) : expenses.length === 0 ? (
         <div className="empty-state">
           <Receipt size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
-          <p className="font-semibold text-[#464555] mb-1">No expense claims</p>
-          <p className="text-sm">{!isAdmin ? 'Submit a claim to get reimbursed for work-related expenses' : 'No expense claims submitted yet'}</p>
-          {!isAdmin && <button className="btn btn-primary mt-4" onClick={() => setAddOpen(true)}><Plus size={14} />Submit First Claim</button>}
+          {hasAnyClaims && filter !== 'all' ? (
+            <>
+              <p className="font-semibold text-[#464555] mb-1">No claims for this status</p>
+              <p className="text-sm">No expense claims match the selected filter. Try a different status.</p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-[#464555] mb-1">No expense claims</p>
+              <p className="text-sm">{!isAdmin ? 'Submit a claim to get reimbursed for work-related expenses' : 'No expense claims submitted yet'}</p>
+              {!isAdmin && <button className="btn btn-primary mt-4" onClick={() => setAddOpen(true)}><Plus size={14} />Submit First Claim</button>}
+            </>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -418,8 +460,8 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {addOpen           && <ExpenseModal       open onClose={() => setAddOpen(false)} />}
-      {editExp           && <ExpenseModal       open onClose={() => setEditExp(null)} expense={editExp} />}
+      {addOpen           && <ExpenseModal       open onClose={() => setAddOpen(false)} allExpenses={allExpenses} />}
+      {editExp           && <ExpenseModal       open onClose={() => setEditExp(null)} expense={editExp} allExpenses={allExpenses} />}
       {reviewExp         && <ReviewModal        open onClose={() => setReviewExp(null)} expense={reviewExp} />}
       {managerReviewExp  && <ManagerReviewModal open onClose={() => setManagerReviewExp(null)} expense={managerReviewExp} />}
       <ConfirmModal open={!!confirmDel} title="Delete Expense" message={`Delete expense "${confirmDel?.name}"?`}

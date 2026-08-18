@@ -32,6 +32,11 @@ router.post('/:id/family', auth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
     if (!relationship || !name) return res.status(400).json({ error: 'relationship and name are required' });
+    // BUG_048: Name must contain letters; DOB must not be future date
+    if (!/[a-zA-Z]/.test(name)) return res.status(400).json({ error: 'Name must contain at least one alphabetic character.' });
+    if (date_of_birth && new Date(date_of_birth) > new Date()) {
+      return res.status(400).json({ error: 'Date of birth cannot be in the future.' });
+    }
 
     const { data, error } = await supabase.from('employee_family_members').insert({
       employee_id: empId, organization_id: orgId(req),

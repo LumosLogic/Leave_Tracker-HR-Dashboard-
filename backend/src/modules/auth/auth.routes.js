@@ -152,6 +152,10 @@ router.put('/change-password', auth, async (req, res) => {
     if (!bcrypt.compareSync(currentPassword, user.password))
       return res.status(400).json({ error: 'Current password is incorrect' });
 
+    // BUG_040: Prevent using the same current password as the new password
+    if (bcrypt.compareSync(newPassword, user.password))
+      return res.status(400).json({ error: 'New password must be different from your current password.' });
+
     // Check last 5 passwords for reuse
     const history = Array.isArray(user.password_history) ? user.password_history : [];
     const isReused = history.some(h => bcrypt.compareSync(newPassword, h));

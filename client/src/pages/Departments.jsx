@@ -16,6 +16,8 @@ function DeptModal({ open, onClose, dept, employees }) {
     ? { name: dept.name, description: dept.description || '', head_user_id: dept.head_user_id || '' }
     : { name: '', description: '', head_user_id: '' });
 
+  const [nameErr, setNameErr] = useState('');
+
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/departments/${dept.id}`, form) : apiPost('/departments', form),
     onSuccess: () => { toast(isEdit ? 'Department updated!' : 'Department created!', 'success'); qc.invalidateQueries({ queryKey: ['departments'] }); onClose(); },
@@ -24,12 +26,23 @@ function DeptModal({ open, onClose, dept, employees }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // BUG_061: Client-side validation before submit
+  function handleSubmit() {
+    const name = form.name.trim();
+    if (!name) { setNameErr('Department name is required.'); return; }
+    if (name.length < 2) { setNameErr('Department name must be at least 2 characters.'); return; }
+    if (name.length > 100) { setNameErr('Department name cannot exceed 100 characters.'); return; }
+    if (/[<>{}\[\]`\\]/.test(name)) { setNameErr('Department name contains invalid characters.'); return; }
+    setNameErr('');
+    mut.mutate();
+  }
+
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Department' : 'New Department'} size="md"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.name}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.name}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : isEdit ? 'Save Changes' : 'Create Department'}
           </button>
         </div>
@@ -37,7 +50,8 @@ function DeptModal({ open, onClose, dept, employees }) {
       <div className="space-y-4">
         <div>
           <label className="form-label">Department Name *</label>
-          <input className="form-control" placeholder="e.g. Engineering" value={form.name} onChange={e => set('name', e.target.value)} />
+          <input className={`form-control ${nameErr ? 'border-rose-400' : ''}`} placeholder="e.g. Engineering" value={form.name} onChange={e => { set('name', e.target.value); if (nameErr) setNameErr(''); }} />
+          {nameErr && <p className="text-xs text-rose-600 mt-1">{nameErr}</p>}
         </div>
         <div>
           <label className="form-label">Description</label>

@@ -23,7 +23,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
       supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
-      supabase.from('users').select('department, role').eq('organization_id', orgId(req)).in('role', ['employee', 'admin']),
+      supabase.from('users').select('department, role, employment_type, position').eq('organization_id', orgId(req)).in('role', ['employee', 'admin']),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from30).lte('date', today7),
       supabase.from('leave_policies').select('leave_type, annual_quota, label').eq('organization_id', orgId(req)).eq('active', true),
     ]);
@@ -95,16 +95,21 @@ router.get('/', auth, adminOnly, async (req, res) => {
       .map(([name, count]) => ({ name, count, pct: totalEmpCount > 0 ? Math.round((count / totalEmpCount) * 100) : 0 }))
       .sort((a, b) => b.count - a.count).slice(0, 8);
 
-    // Role distribution (Full Time = employee, HR Admin = admin)
-    const roleCount = { employee: 0, admin: 0 };
+    // BUG_066: Role distribution now groups by position/designation (actual role), not system role
+    // Falls back to employment_type if position is blank
+    const EMP_TYPE_LABELS = { full_time: 'Full Time', part_time: 'Part Time', contract: 'Contract', intern: 'Intern', freelance: 'Freelance' };
+    const roleCount = {};
     for (const e of allEmps || []) {
-      if (e.role === 'employee') roleCount.employee++;
-      else if (e.role === 'admin') roleCount.admin++;
+      // Use position (job title) if available, else fall back to employment_type label
+      const label = (e.position && e.position.trim())
+        ? e.position.trim()
+        : (EMP_TYPE_LABELS[e.employment_type] || 'Employee');
+      roleCount[label] = (roleCount[label] || 0) + 1;
     }
-    const roleDistribution = [
-      { name: 'Full Time', count: roleCount.employee, pct: totalEmpCount > 0 ? Math.round((roleCount.employee / totalEmpCount) * 100) : 0 },
-      { name: 'HR Admin',  count: roleCount.admin,    pct: totalEmpCount > 0 ? Math.round((roleCount.admin    / totalEmpCount) * 100) : 0 },
-    ];
+    const total = Object.values(roleCount).reduce((s, c) => s + c, 0);
+    const roleDistribution = Object.entries(roleCount)
+      .map(([name, count]) => ({ name, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
+      .sort((a, b) => b.count - a.count).slice(0, 8);
 
     // Leave balance overview (org-wide approved leaves this year vs policy quota)
     const LEAVE_COLORS = { casual: '#10b981', sick: '#ef4444', annual: '#3525cd', emergency: '#f59e0b', wfh: '#6366f1', maternity: '#ec4899', paternity: '#8b5cf6', comp_off: '#94a3b8' };
