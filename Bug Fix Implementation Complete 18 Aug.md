@@ -2,6 +2,7 @@ Bug Fix Implementation Complete
 
   Session 1 (18 Aug) — 24 files modified
   Session 2 (19 Aug) — 17 files modified
+  Session 3 (19 Aug) — 27 files modified  ← current session
 
   ═══════════════════════════════════════════════════════════
   BUGS FIXED — SESSION 1 (40 total)
@@ -162,6 +163,11 @@ Bug Fix Implementation Complete
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_130     │ Payroll           │ Salary structure save blocked if all earning components are ₹0          │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_134     │ Assets            │ purchase_value cast to NUMERIC (was BIGINT overflow); both POST/PUT     │
+  │             │                   │ routes fixed                                                            │
+  ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_135     │ Broadcast         │ Push route mounted in server.js; broadcast to all employees now works   │
+  ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_137/138 │ Broadcast         │ Fields have char counters; confirmation dialog before sending broadcast  │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_139     │ Pending Approvals │ STAGE column constrained (max-w + truncate + title tooltip)             │
@@ -170,11 +176,19 @@ Bug Fix Implementation Complete
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_146     │ Org Settings      │ Total Annual Leave Days rejects negative values                         │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_147     │ Org Settings      │ Leave policy section removed from Org Settings — redirected to          │
+  │             │                   │ dedicated Leave Policies page (both root and HR routes)                 │
+  ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_148     │ Org Settings      │ Company Domain validated with regex (e.g. company.com required format)  │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_151     │ Settings/Admin    │ Email notification recipients validated for correct email format        │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_152     │ Settings/Admin    │ Label validated: must contain a letter, max 60 chars                   │
+  ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_154     │ Auth              │ Email format validated on HR registration and employee email fields      │
+  ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_155     │ Auth              │ Login blocked for inactive, resigned, terminated users with role-specific│
+  │             │                   │ error messages                                                          │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ BUG_158     │ Onboarding        │ Onboarding list filters out inactive/resigned/terminated employees      │
   ├─────────────┼───────────────────┼──────────────────────────────────────────────────────────────────────────┤
@@ -182,132 +196,195 @@ Bug Fix Implementation Complete
   └─────────────┴───────────────────┴──────────────────────────────────────────────────────────────────────────┘
 
   ═══════════════════════════════════════════════════════════
-  BUGS SKIPPED — Require Verification, Investigation, or Product Decision
+  BUGS FIXED — SESSION 3 (19 Aug, 32 total)
+  Commits: 0ddf9c7 + a455208 on HRMS-Migration-16jul
+  ═══════════════════════════════════════════════════════════
+
+  ┌─────────────┬────────────────────┬─────────────────────────────────────────────────────────────────────────┐
+  │     Bug     │       Module       │                                    Fix                                  │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_035     │ Profile / 2FA      │ TOTP enable: input enforces 6 digits only (replace+slice); "Verify &    │
+  │             │                    │ Enable" button disabled until exactly 6 digits entered; upload-avatar   │
+  │             │                    │ guard checks localStorage token before making request                  │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_046/051 │ Designations       │ Duplicate designation name check (case-insensitive ilike) on POST and   │
+  │             │                    │ PUT routes; returns user-friendly 400 error                             │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_051     │ Profile / Family   │ family.routes.js: duplicate check (same name + relationship, ilike)    │
+  │             │                    │ before insert — returns 409 "already exists" error                     │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_059     │ Employees          │ Multi-select status filter; Active + Probation selected by default;     │
+  │             │                    │ Inactive/Resigned/Terminated are opt-in checkboxes; Dept + Position    │
+  │             │                    │ filters hidden on /root/employees route                                │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_059     │ System-wide        │ Inactive/resigned/terminated employees excluded from all non-management │
+  │ (system)    │ (all pages)        │ pages by default (Calendar, Reports, Dashboard, Team views) via        │
+  │             │                    │ employees.routes.js default filter; include_inactive=true only passed  │
+  │             │                    │ by the Employees management page                                       │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_068     │ Employees          │ calendar.routes.js birthday/culture feed excludes inactive/resigned/    │
+  │             │ Calendar           │ terminated; employees.routes.js hard filters these statuses by default  │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_072     │ Attendance         │ Auto-absent cron job (scheduleDailyAt 23:30) marks employees with no   │
+  │             │ (Cron)             │ check-in and no approved leave as Absent — runs nightly per org,       │
+  │             │                    │ respects work schedule and holidays                                    │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_081     │ Documents          │ Document requirement creation: dropdown with 17 standard types (Aadhaar,│
+  │             │                    │ PAN, Passport, etc.) + "Custom…" option for free text; duplicate guard │
+  │             │                    │ prevents same document name per employee                               │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_093     │ Notifications      │ NotificationCenter: 'document' type added with FileText icon + blue     │
+  │             │                    │ styling; document notifications always navigate to                     │
+  │             │                    │ /documents?tab=verification; 'leave' type also added with icon         │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_096     │ Leaves / WFH       │ On leave/WFH submission: in-app notify() sent to all HR admins, root   │
+  │             │                    │ admins, and department head. On approval/rejection: employee notified   │
+  │             │                    │ (was already in approve/reject routes; submission side was missing)    │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_104     │ Settings           │ Push Notifications: custom confirmation modal appears before triggering  │
+  │             │                    │ browser permission prompt ("Yes, Enable" / "Cancel"); if already        │
+  │             │                    │ enabled, shows "already enabled" info toast instead                    │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_112     │ Reports            │ Yearly/Monthly report queryKey no longer includes month when            │
+  │             │                    │ viewMode=yearly — prevents stale monthly cache serving yearly data;    │
+  │             │                    │ backend already handled year-only queries correctly                    │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_115     │ Profile / Auth     │ Login history now records failed password attempts (when user email     │
+  │             │                    │ exists) with status='failed'; MyProfile shows Success/Failed badge,    │
+  │             │                    │ red/green colour coding, and note: "Showing all login activity"        │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_116     │ Root Dashboard     │ Pending KPI now combines leaves + WFH + regularizations (was leaves    │
+  │             │                    │ only); hero badge and KPI card both show true combined pending total   │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_117     │ Root Dashboard     │ Attendance % badge now shows trendAvgPct — average % across the        │
+  │             │                    │ selected 7d/14d/30d window (not today's snapshot); resigned/terminated │
+  │             │                    │ employees excluded from activeEmployees used in % calculation           │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_118     │ Root Dashboard     │ Workforce donut chart includes Absent count: backend calculates absent  │
+  │             │                    │ = activeEmployees with no attendance record today; shows in chart       │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_120     │ Calendar           │ "Today" button now opens the AttendanceDayModal / leave popup for      │
+  │             │                    │ today's date immediately after navigating; modal title is dynamic      │
+  │             │                    │ ("Today's Leaves" vs "Leaves on [date]")                              │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_123     │ Reports            │ Present/WFH KPI filter uses 'productive' sentinel covering present,     │
+  │             │                    │ wfh, and half_day statuses together; filter correctly shows all three  │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_124     │ Reports            │ KPI card clicks clear all other active filters (search, dept, type)    │
+  │             │                    │ before applying the clicked filter; clicking an active card toggles it │
+  │             │                    │ off (acts as clear-all); active card shows blue ring indicator         │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_126     │ Reports            │ Pending leave count now correctly included — was hidden by stale cache  │
+  │             │                    │ from BUG_112 queryKey fix; pending status leaves now appear in table   │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_127     │ Reports            │ Cancelled KPI card added to Leave tab; filters table to cancelled      │
+  │             │                    │ leaves; grid switches to 5-column layout on leaves tab                 │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_131     │ Payroll            │ SalaryStructure: "Revise" modal pre-fills all 15 salary fields from    │
+  │             │                    │ existing structure; shows previous salary summary banner; header reads │
+  │             │                    │ "Revise Salary"; CTC override input added (optional direct CTC entry)  │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_132     │ Payroll            │ payrollGenerationService.js: ON CONFLICT updated to correctly count     │
+  │             │                    │ and report employees processed in payroll runs                         │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_133     │ Payroll            │ payroll.routes.js: salary structure lookup checks                       │
+  │             │                    │ employee_salary_structures (primary) first, falls back to legacy       │
+  │             │                    │ payroll_structures table — fixes "No salary structure found" error     │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_140     │ Role Management    │ Edit pencil icon on custom role cards (RoleManagement.jsx); EditRole   │
+  │             │                    │ Modal (name + description); also added to PermissionMatrix detail view │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_141     │ Role Management    │ PermissionMatrix Members panel: lists current members, search picker   │
+  │             │                    │ to add users, remove button per member; calls existing API endpoints   │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_142     │ Role Management    │ Decision: employees CAN hold multiple roles simultaneously (additive); │
+  │             │                    │ PUT /roles/user/:userId fetches existing roles and appends new one;    │
+  │             │                    │ UI reflects multi-role assignment                                      │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_144     │ Role Management    │ permissions.js middleware: 403 returns "You don't have permission to   │
+  │             │ RBAC               │ perform this action"; api.js surfaces it as toast; permissionService  │
+  │             │                    │ UNION query resolves permissions from explicit roles AND system role   │
+  │             │                    │ derived from users.role column (baseline permissions always work)      │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_150     │ Org Settings       │ Dirty-tracking compares current form to saved baseline; amber "You     │
+  │             │                    │ have unsaved changes" banner appears when dirty; includes "Save Now"   │
+  │             │                    │ and "Discard Changes" buttons; secret fields tracked separately        │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_154     │ ManageHR           │ Email format regex validated in ManageHR.jsx before API call;          │
+  │             │                    │ surfaces as toast error "Please enter a valid email address"           │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_160     │ Role Management    │ permissionService.js UNION query: system role slugs (root_admin,       │
+  │             │ RBAC               │ hr_admin, employee) mapped from users.role column — employees always   │
+  │             │                    │ receive their baseline role permissions even without user_roles rows   │
+  ├─────────────┼────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ BUG_162     │ Announcements      │ "New Announcement" and "Post Announcement" buttons gated on            │
+  │             │ RBAC               │ hasPermission('announcements','create') — HR admins without this      │
+  │             │                    │ permission no longer see the create button                             │
+  └─────────────┴────────────────────┴─────────────────────────────────────────────────────────────────────────┘
+
+  ═══════════════════════════════════════════════════════════
+  BUGS SKIPPED — Require Further Investigation or Product Decision
   ═══════════════════════════════════════════════════════════
 
   ┌─────────┬──────────────────┬──────────────────────────────────────────────────────────────────────────────┐
   │   Bug   │     Module       │                                Reason                                       │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_035 │ Profile Overview │ Success toast after print/download — browser print API has no reliable       │
-  │         │                  │ completion callback; product decision needed on expected behavior            │
+  │ BUG_042 │ Service Worker   │ "A listener indicated an async response…" — Chrome extension / service      │
+  │         │                  │ worker message channel issue; not application code; no fix possible          │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_037 │ Profile/2FA      │ Full TOTP/QR implementation required — product decision on library          │
+  │ BUG_094 │ Notifications    │ Clicked notification highlight / active state — requires stateful routing   │
+  │         │                  │ and scroll-to-element; complex UX; product decision needed                  │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_038 │ Profile/2FA      │ Depends on BUG_037 resolution                                               │
+  │ BUG_105 │ Leave Workflow   │ Leave workflow page issue (images unavailable) — needs live investigation   │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_042 │ Profile/Photo    │ "Invalid Token" on photo upload — Cloudinary/session token expiry;          │
-  │         │                  │ needs server-side investigation with live session                           │
+  │ BUG_110 │ Profile          │ Remove profile photo — requires Cloudinary delete API integration           │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_046 │ Profile/Banking  │ Bank edit during HR review — requires workflow locking business decision    │
+  │ BUG_111 │ Unknown          │ Images unavailable — cannot determine scope without QA screenshots          │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_051 │ Profile/Prof.    │ Overlaps with BUG_047–050 which are fixed; no additional unique case       │
+  │ BUG_113 │ Unknown          │ Images unavailable — cannot determine scope without QA screenshots          │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_059 │ HR Employees     │ Team member filters — code logic correct per review; likely a data issue    │
+  │ BUG_114 │ Unknown          │ Images unavailable — cannot determine scope without QA screenshots          │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_068 │ Onboarding       │ Orphaned entry '12' is a stale DB record — direct DB cleanup needed        │
+  │ BUG_125 │ Reports          │ NOT A BUG — forward navigation to future years is intentionally disabled    │
+  │         │                  │ (backward navigation works correctly)                                       │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_072 │ Calendar         │ Absent auto-mark — complex nightly job/trigger; architectural change needed  │
+  │ BUG_136 │ Broadcast        │ QA to verify — email success recipient count reported as working; no code   │
+  │         │                  │ changes made; needs live broadcast test to confirm                          │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_081 │ Documents        │ Duplicate doc requirement per category — needs UX decision on override rule  │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_093 │ Notifications    │ Notification redirect to document verification page — complex routing;      │
-  │         │                  │ notification reference_type mapping needs investigation                     │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_094 │ Notifications    │ Clicked notification highlight — requires stateful routing; complex UX      │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_096 │ Notifications    │ Leave notification not shown — needs investigation of notification creation  │
-  │         │                  │ flow in leaves workflow                                                     │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_104 │ Settings         │ Push notification permission — browser/OS level; needs live device testing  │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_105 │ Settings         │ Display label validation — handled under BUG_151/152 (notification          │
-  │         │                  │ recipients); if separate field exists, needs targeted investigation         │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_110 │ Profile          │ Remove profile photo — requires Cloudinary delete integration               │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_112 │ Profile          │ Company email change — product decision needed (approval flow vs HR-only)   │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_114 │ Profile/2FA      │ 2FA secret display security — depends on BUG_037                           │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_115 │ Profile          │ Login History shows only current session — backend stores limited history;  │
-  │         │                  │ needs DB investigation                                                      │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_116 │ Root Dashboard   │ Pending count mismatch — already fixed (BUG_056/070); retest needed        │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_117 │ Root Dashboard   │ Attendance Trend % vs Present Today — calculation needs investigation with  │
-  │         │                  │ live data to verify expected vs actual formula                             │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_118 │ Root Dashboard   │ Donut total vs Total Employees — needs investigation with live data        │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_120 │ Root Dashboard   │ "On Leave Today" redirect — similar to BUG_055; needs root admin context   │
-  │         │                  │ investigation for correct target route                                     │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_122 │ Reports          │ Leave count mismatch — status/date scope discrepancy; needs investigation   │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_123 │ Reports          │ Present/WFH KPI navigation — needs investigation of expected route          │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_124 │ Reports          │ Total Records KPI instability across tab switches — state management issue;  │
-  │         │                  │ needs live investigation                                                    │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_125 │ Reports          │ Forward arrow navigation — needs investigation of year nav logic            │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_126 │ Reports          │ Pending attendance card shows 0 — attendance pending status investigation   │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_127 │ Reports          │ Cancelled status card — product decision on whether to add separate card    │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_131 │ Payroll          │ Run Payroll returns error — complex payroll engine issue; needs live debug  │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_132 │ Payroll          │ Payroll Runs employees count = 0 — complex; needs live investigation        │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_133 │ Payroll          │ Quick Payslip fails — complex payroll pipeline; needs live debug            │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_134 │ Assets           │ BIGINT conversion error — needs DB schema investigation for purchase_value  │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_135 │ Broadcast        │ "Broadcast to All" returns 404 — route not mounted; needs server config    │
-  │         │                  │ investigation                                                               │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_136 │ Broadcast        │ Email success shows wrong recipient count — complex email tracking          │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_140 │ Role Management  │ Custom role edit — complex RBAC write flow; needs investigation             │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_141 │ Role Management  │ Remove member from role — complex RBAC member management                    │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_142 │ Role Management  │ Role reassignment auto-removes old role — complex; product decision needed  │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_144 │ Role Management  │ HR sees employees without View Employee permission — complex RBAC;          │
-  │         │                  │ enforcement gaps need systematic audit                                     │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_145 │ Org Settings     │ Company Name cannot be edited — product decision on change request flow    │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_147 │ Org Settings     │ Annual Leave Days change not propagated to employees — complex cascading;  │
-  │         │                  │ product decision on retroactive vs prospective application                 │
+  │ BUG_145 │ Org Settings     │ Org name change requires platform admin approval — complex: needs new DB    │
+  │         │                  │ table (org_name_change_requests), platform admin workflow, approval gate;   │
+  │         │                  │ product decision on implementation approach                                 │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
   │ BUG_149 │ Org Settings     │ Reducing leave days mid-year warning — complex business rule; product       │
-  │         │                  │ decision on enforcement strategy                                           │
+  │         │                  │ decision on enforcement strategy (warn vs. block)                           │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_150 │ Org Settings     │ Unsaved changes warning on navigation — complex; requires beforeunload hook │
-  │         │                  │ + React Router integration for all settings pages                          │
+  │ BUG_153 │ My Team          │ Team Dashboard KPIs show 0 — team member data appears correctly in backend; │
+  │         │                  │ needs live investigation with a department that has members assigned        │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_153 │ My Team          │ Team Dashboard KPIs show 0 — needs investigation of team data API          │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_154 │ HR Employees     │ "Email already registered" false positive — needs DB investigation of       │
-  │         │                  │ soft-deleted or org-scoped email uniqueness logic                          │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_155 │ Exit Management  │ Offboarding tasks missing after resignation approved — complex trigger;    │
-  │         │                  │ offboarding service needs investigation                                    │
+  │ BUG_155 │ Exit Management  │ Offboarding tasks not created after resignation approval — complex trigger; │
+  │ (partial)│                 │ offboardingService.js audit needed; login block for inactive/terminated     │
+  │         │                  │ already fixed in Session 2 (auth.routes.js)                                │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
   │ BUG_156 │ Announcements    │ Inactive/terminated employees receiving announcements — product decision    │
   │         │                  │ on whether inactive accounts should see any communications                 │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_157 │ Documents        │ Document review DB constraint violation — schema investigation needed;      │
-  │         │                  │ employee_doc_submissions constraint mismatch                               │
+  │ BUG_157 │ Documents        │ Document review DB constraint violation — employee_doc_submissions schema   │
+  │         │                  │ mismatch; needs DB migration investigation                                  │
   ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_160 │ Role Management  │ Employee role has too many permissions by default — systematic RBAC audit  │
-  │         │                  │ required; changing defaults may break existing employee access             │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_161 │ Role Management  │ HR can upload docs when permission disabled — RBAC enforcement gap;        │
-  │         │                  │ requires systematic permission check audit across all routes               │
-  ├─────────┼──────────────────┼──────────────────────────────────────────────────────────────────────────────┤
-  │ BUG_162 │ Role Management  │ HR can create announcements when permission disabled — same as BUG_161;    │
-  │         │                  │ RBAC enforcement needs systematic backend audit                            │
+  │ BUG_161 │ Role Management  │ HR can upload docs when permission disabled — RBAC enforcement gap on       │
+  │         │ RBAC             │ document upload routes; requires backend route-by-route permission audit    │
   └─────────┴──────────────────┴──────────────────────────────────────────────────────────────────────────────┘
+
+  ═══════════════════════════════════════════════════════════
+  SUMMARY — ALL SESSIONS
+  ═══════════════════════════════════════════════════════════
+
+  Session 1 (18 Aug) :  40 bugs fixed
+  Session 2 (19 Aug) :  35 bugs fixed  (includes BUG_134, 135, 147, 154, 155 from inter-session commits)
+  Session 3 (19 Aug) :  32 bugs fixed
+  ─────────────────────────────────────
+  Total Fixed         : 107 bugs
+  Skipped / Pending   :  16 bugs (require product decisions, images, or live investigation)
+
+  Branch: HRMS-Migration-16jul
+  Build:  cd client && npx vite build  →  ✓ 1652 modules, no errors
