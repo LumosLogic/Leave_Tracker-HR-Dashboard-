@@ -163,38 +163,38 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     const toDate = d30ahead.toISOString().split('T')[0];
 
     const [
-      { count: totalEmployees },
+      { data: allEmployeesRaw },
       { count: totalHR },
-      { count: pendingLeaves },
+      { count: pendingLeavesCount },
       { data: recentLeavesRaw },
       { data: pendingLeavesRaw },
       { data: todayAttendance },
       { data: yearLeaves },
       { data: last30Att },
-      { data: allEmployees },
       { data: upcomingHolidays },
       { data: upcomingEventsRaw },
       { count: pendingReg },
       { count: pendingExp },
       { count: totalDepartments },
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', oid),
+      // BUG_117: fetch employee_status so resigned/terminated can be excluded from active count
+      supabase.from('users')
+        .select('id, name, department, position, avatar_color, created_at, role, date_of_birth, joining_date, employee_status')
+        .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
+      // BUG_116: count pending leaves (WFH included as they share the leaves table)
       supabase.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root']).eq('organization_id', oid),
       supabase.from('leaves')
-        .select('id, user_id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .select('id, user_id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
       supabase.from('leaves')
-        .select('id, leave_type, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
+        .select('id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).in('status', ['pending', 'pending_root']).order('created_at', { ascending: false }).limit(15),
       supabase.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
       supabase.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
       supabase.from('attendance').select('date, user_id, status').eq('organization_id', oid)
         .gte('date', fromDate).lte('date', today),
-      supabase.from('users')
-        .select('id, name, department, position, avatar_color, created_at, role, date_of_birth, joining_date, employee_status')
-        .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
       supabase.from('holidays').select('id, name, date, type').eq('organization_id', oid)
         .gte('date', today).order('date', { ascending: true }).limit(5),
       supabase.from('events').select('id, title, date').eq('organization_id', oid)
@@ -207,12 +207,30 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
         .eq('organization_id', oid),
     ]);
 
+    // BUG_117: separate active vs all employees; exclude resigned/terminated from active count
+    const allEmployees = allEmployeesRaw || [];
+    const activeEmployees = allEmployees.filter(e =>
+      e.role !== 'admin' && !['resigned', 'terminated'].includes(e.employee_status)
+    );
+    const totalEmployees = activeEmployees.length;
+
+    // BUG_116: pendingLeaves counts leaves+WFH (they share the leaves table).
+    // pendingReg is separate. The frontend KPI adds them together; we also expose
+    // pendingRegCount so the frontend can use it without a second API call.
+    const pendingLeaves = pendingLeavesCount || 0;
+
     // Attendance breakdown today
     const attendanceBreakdown = {};
     for (const r of todayAttendance || []) {
       attendanceBreakdown[r.status] = (attendanceBreakdown[r.status] || 0) + 1;
     }
     const presentToday = (attendanceBreakdown.present || 0) + (attendanceBreakdown.wfh || 0) + (attendanceBreakdown.half_day || 0);
+
+    // BUG_118: compute absent count = active employees who have no attendance record today
+    // (and are not on approved leave)
+    const attendedUserIds = new Set((todayAttendance || []).map(r => r.user_id));
+    const absentCount = activeEmployees.filter(e => !attendedUserIds.has(e.id)).length;
+    if (absentCount > 0) attendanceBreakdown.absent = absentCount;
 
     // Leave count by type (approved this year, excluding WFH)
     const leavesByType = {};
@@ -237,7 +255,8 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     }
 
     // Department health — use org's departments table as source of truth to prevent cross-org contamination
-    const empIdList = (allEmployees || []).map(e => e.id);
+    // BUG_117: use activeEmployees (excludes resigned/terminated) for dept health headcount
+    const empIdList = activeEmployees.map(e => e.id);
 
     // Fetch only this org's departments
     const { data: orgDepts } = await supabase.from('departments')
@@ -273,7 +292,7 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
 
     // Fallback: employees with no junction entry — match by users.department text field to org departments only
     const junctionUserIds = new Set(userDeptRows.map(ud => ud.user_id));
-    for (const emp of allEmployees || []) {
+    for (const emp of activeEmployees) {
       if (!junctionUserIds.has(emp.id)) {
         const deptId = orgDeptNameToId[emp.department];
         if (deptId !== undefined && deptMap[deptId]) {
@@ -294,11 +313,12 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
         productivity: pct >= 90 ? 'High' : pct >= 70 ? 'Medium' : 'Low' };
     }).sort((a, b) => b.total - a.total);
 
-    // Headcount growth (cumulative by month this year)
+    // Headcount growth (cumulative by month this year — employees only, all statuses for historical accuracy)
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    let base = (allEmployees || []).filter(e => new Date(e.created_at).getFullYear() < year).length;
+    const empOnly = allEmployees.filter(e => e.role === 'employee');
+    let base = empOnly.filter(e => new Date(e.created_at).getFullYear() < year).length;
     const headcountGrowth = months.map((month, i) => {
-      const joined = (allEmployees || []).filter(e => {
+      const joined = empOnly.filter(e => {
         const d = new Date(e.created_at);
         return d.getFullYear() === year && d.getMonth() === i;
       }).length;
@@ -328,11 +348,11 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     }
     liveActivity.sort((a, b) => new Date(b.time) - new Date(a.time));
 
-    // Action center items
+    // Action center items (use raw individual counts for granular labels)
     const actionCenter = [];
-    if (pendingLeaves > 0) actionCenter.push({ type: 'leaves', label: `${pendingLeaves} leave approval${pendingLeaves !== 1 ? 's' : ''} pending`, priority: pendingLeaves > 5 ? 'High' : 'Medium', link: '/root/leaves' });
-    if (pendingReg > 0)   actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/regularization?status=pending' });
-    if (pendingExp > 0)   actionCenter.push({ type: 'expenses', label: `${pendingExp} expense${pendingExp !== 1 ? 's' : ''} awaiting approval`, priority: 'Medium', link: '/root/expenses' });
+    if (pendingLeavesCount > 0) actionCenter.push({ type: 'leaves', label: `${pendingLeavesCount} leave/WFH approval${pendingLeavesCount !== 1 ? 's' : ''} pending`, priority: pendingLeavesCount > 5 ? 'High' : 'Medium', link: '/root/leaves' });
+    if (pendingReg > 0)         actionCenter.push({ type: 'attendance', label: `${pendingReg} attendance correction${pendingReg !== 1 ? 's' : ''}`, priority: 'Medium', link: '/root/regularization?status=pending' });
+    if (pendingExp > 0)         actionCenter.push({ type: 'expenses', label: `${pendingExp} expense${pendingExp !== 1 ? 's' : ''} awaiting approval`, priority: 'Medium', link: '/root/expenses' });
     if (actionCenter.length === 0) actionCenter.push({ type: 'all_clear', label: 'All tasks up to date', priority: 'Low' });
 
     // Upcoming events (merge holidays + events)
@@ -361,6 +381,8 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
 
     res.json({
       totalEmployees, totalHR, pendingLeaves, presentToday,
+      // BUG_116: expose pendingRegCount so frontend KPI can add it to pendingLeaves
+      pendingRegCount: pendingReg || 0,
       totalDepartments: totalDepartments || 0,
       recentLeaves:      flat(recentLeavesRaw),
       pendingLeavesData: flat(pendingLeavesRaw),

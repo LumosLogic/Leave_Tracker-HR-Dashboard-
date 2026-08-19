@@ -15,6 +15,7 @@ const fmtD = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFracti
 
 const EMPTY_FORM = {
   effective_from: new Date().toISOString().split('T')[0],
+  ctc_override: '',
   basic: '', hra: '', da: '', transport_allowance: '',
   medical_allowance: '', special_allowance: '', other_allowance: '',
   employee_pf: '', employee_esi: '', professional_tax: '', tds: '', other_deductions: '', retention: '',
@@ -26,7 +27,31 @@ const EMPTY_FORM = {
 function SalaryModal({ employee, onClose }) {
   const toast = useToast();
   const qc    = useQueryClient();
-  const [form, setForm] = useState({ ...EMPTY_FORM, user_id: employee.id });
+  const isRevising = !!employee.salary_id;
+
+  const [form, setForm] = useState({
+    ...EMPTY_FORM,
+    user_id: employee.id,
+    // Pre-fill from existing salary if revising
+    ...(isRevising ? {
+      basic: employee.basic || '',
+      hra: employee.hra || '',
+      da: employee.da || '',
+      transport_allowance: employee.transport_allowance || '',
+      medical_allowance: employee.medical_allowance || '',
+      special_allowance: employee.special_allowance || '',
+      other_allowance: employee.other_allowance || '',
+      employee_pf: employee.employee_pf || '',
+      employee_esi: employee.employee_esi || '',
+      professional_tax: employee.professional_tax || '',
+      tds: employee.tds || '',
+      other_deductions: employee.other_deductions || '',
+      retention: employee.retention || '',
+      employer_pf: employee.employer_pf || '',
+      employer_esi: employee.employer_esi || '',
+      notes: employee.notes || '',
+    } : {}),
+  });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const num = k => Number(form[k] || 0);
@@ -53,6 +78,7 @@ function SalaryModal({ employee, onClose }) {
       professional_tax: num('professional_tax'), tds: num('tds'),
       other_deductions: num('other_deductions'), retention: num('retention'),
       employer_pf: num('employer_pf'), employer_esi: num('employer_esi'),
+      ctc_override: form.ctc_override ? Number(form.ctc_override) : null,
     }),
     onSuccess: () => {
       toast('Salary structure saved', 'success');
@@ -88,7 +114,9 @@ function SalaryModal({ employee, onClose }) {
           <div className="flex items-center gap-3">
             <Avatar name={employee.name} color={employee.avatar_color} size={34} />
             <div>
-              <h2 className="font-black text-[#151c27] text-sm">Set Salary Structure</h2>
+              <h2 className="font-black text-[#151c27] text-sm">
+                {isRevising ? 'Revise Salary' : 'Set Salary Structure'}
+              </h2>
               <p className="text-xs text-[#777587]">{employee.name} · {employee.department || 'No Department'}</p>
             </div>
           </div>
@@ -98,6 +126,58 @@ function SalaryModal({ employee, onClose }) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+
+          {/* Previous Salary Banner (Revise mode only) */}
+          {isRevising && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-[0.65rem] font-black uppercase tracking-widest text-amber-700 mb-2">
+                Previous Salary (will be superseded)
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {[
+                  ['Basic', employee.basic],
+                  ['HRA', employee.hra],
+                  ['DA', employee.da],
+                  ['Transport', employee.transport_allowance],
+                  ['Medical', employee.medical_allowance],
+                  ['Special', employee.special_allowance],
+                  ['Other Allow.', employee.other_allowance],
+                  ['Gross', employee.gross_salary],
+                ].filter(([, v]) => Number(v) > 0).map(([label, val]) => (
+                  <div key={label} className="flex justify-between gap-1">
+                    <span className="text-amber-600">{label}</span>
+                    <span className="font-bold text-amber-900">{fmt(val)}</span>
+                  </div>
+                ))}
+              </div>
+              {employee.gross_salary ? (
+                <p className="text-[0.6rem] text-amber-600 mt-2">
+                  CTC: {fmt(employee.ctc)}/mo · Effective {fmtDate(employee.effective_from)}
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {/* CTC Override */}
+          <div>
+            <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">
+              CTC (Total Cost to Company) <span className="font-normal text-[#9ca3af]">— optional override</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
+              <input
+                type="number" min={0} step="1"
+                placeholder="e.g. 50000"
+                value={form.ctc_override}
+                onChange={e => set('ctc_override', e.target.value)}
+                className="w-full border border-[#c7c4d8] rounded-lg pl-6 pr-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+              />
+            </div>
+            <p className="text-[0.65rem] text-[#9ca3af] mt-1">
+              Enter total CTC directly (e.g. ₹50,000). Leave blank to use the computed value from earnings + employer contributions below.
+            </p>
+          </div>
+
           {/* Effective Date */}
           <div>
             <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Effective From *</label>
@@ -187,7 +267,7 @@ function SalaryModal({ employee, onClose }) {
             className="flex items-center gap-2 px-4 py-2.5 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors">
             {mut.isPending
               ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
-              : <><Plus size={14} /> Save Structure</>}
+              : <><Plus size={14} /> {isRevising ? 'Revise Salary' : 'Save Structure'}</>}
           </button>
         </div>
       </div>

@@ -1966,11 +1966,18 @@ export default function Employees() {
     setEditEmp(emp);
   }
 
+  // BUG_059: detect if this is the root admin employees page
+  const isRootPage = location.pathname.startsWith('/root/');
+
+  // BUG_059: default status filter — show active + probation, hide inactive/resigned/terminated
+  const DEFAULT_STATUS_FILTER = new Set(['active', 'probation']);
+
   // Search / filter / sort / view / selection state
   const [search,        setSearch]       = useState('');
   const [deptFilter,    setDeptFilter]   = useState('');
   const [branchFilter,  setBranchFilter] = useState('');
-  const [statusFilter,  setStatusFilter] = useState('');
+  // BUG_059: statusFilter is now a Set of selected statuses (default: active + probation)
+  const [statusFilter,  setStatusFilter] = useState(DEFAULT_STATUS_FILTER);
   const [typeFilter,    setTypeFilter]   = useState('');
   const [sortBy,        setSortBy]       = useState('name');
   const [sortDir,      setSortDir]      = useState('asc');
@@ -1980,6 +1987,11 @@ export default function Employees() {
   const [pageSize,     setPageSize]     = useState(24);
   const [bulkDelConf,  setBulkDelConf]  = useState(false);
   const [isBulkDel,    setIsBulkDel]    = useState(false);
+
+  // BUG_059: derive stable string keys from statusFilter (Set) for use in
+  // useEffect / useMemo dependency arrays (Sets are compared by reference, not value).
+  const statusFilterKey  = [...statusFilter].sort().join(',');
+  const defaultStatusKey = [...DEFAULT_STATUS_FILTER].sort().join(',');
 
   // ── URL param effects (unchanged) ──────────────────────────────────────────
   useEffect(() => {
@@ -1995,9 +2007,13 @@ export default function Employees() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionParam]);
 
+  // BUG_059: pass include_inactive=true so the employee management page can see
+  // all statuses and the HR team can explicitly filter for inactive/resigned/terminated.
+  // Other pages (Calendar, TeamCalendar, etc.) do NOT pass this flag so they
+  // automatically get only active+probation employees from the backend.
   const { data: allEmployees = [], isLoading } = useQuery({
-    queryKey: ['employees'],
-    queryFn:  () => apiGet('/employees'),
+    queryKey: ['employees', 'all'],
+    queryFn:  () => apiGet('/employees', { include_inactive: 'true' }),
   });
 
   useEffect(() => {
@@ -2035,8 +2051,10 @@ export default function Employees() {
   }, [allEmployees]);
 
   // Reset to page 1 when any filter / sort changes
+  // BUG_059: use statusFilterKey (string) not statusFilter (Set) for stable comparison
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setPage(1); setSelected(new Set()); },
-    [search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam, filterParam]);
+    [search, deptFilter, branchFilter, statusFilterKey, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam, filterParam]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -2110,7 +2128,12 @@ export default function Employees() {
     if (deptFilter)   rows = rows.filter(e =>
       e.department === deptFilter || e.departments?.some(d => d.name === deptFilter));
     if (branchFilter) rows = rows.filter(e => String(e.branch_id) === String(branchFilter));
-    if (statusFilter) rows = rows.filter(e => (e.employee_status || 'active') === statusFilter);
+    // BUG_059: statusFilter is a Set; filter rows whose status is in the selected set.
+    // If the set matches the default (active+probation) we still apply it so inactive
+    // employees are hidden unless explicitly selected.
+    if (statusFilter && statusFilter.size > 0) {
+      rows = rows.filter(e => statusFilter.has(e.employee_status || 'active'));
+    }
     if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
     if (joinedYmParam) {
       const [yr, mo] = joinedYmParam.split('-').map(Number);
@@ -2140,12 +2163,16 @@ export default function Employees() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [employees, search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam, filterParam]);
+  // BUG_059: stable string key for statusFilter (Set → sorted CSV) so useMemo and
+  // useEffect dependency arrays compare by value, not by object reference.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, search, deptFilter, branchFilter, statusFilterKey, typeFilter, sortBy, sortDir, joinedYmParam, filterParam]);
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const anyFilter  = search || deptFilter || branchFilter || statusFilter || typeFilter || joinedYmParam || filterParam;
+  // BUG_059: anyFilter — status is "filtered" only when selection differs from the default (active+probation)
+  const anyFilter  = search || deptFilter || branchFilter || statusFilterKey !== defaultStatusKey || typeFilter || joinedYmParam || filterParam;
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
   const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));
@@ -2294,12 +2321,14 @@ export default function Employees() {
           )}
         </div>
 
-        {/* Department */}
-        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-          className="form-control w-auto text-xs py-1.5">
-          <option value="">All Departments</option>
-          {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
+        {/* Department — hidden for root admin page (BUG_059) */}
+        {!isRootPage && (
+          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+            className="form-control w-auto text-xs py-1.5">
+            <option value="">All Departments</option>
+            {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
 
         {/* Branch */}
         {branchList.length > 0 && (
@@ -2310,16 +2339,72 @@ export default function Employees() {
           </select>
         )}
 
-        {/* Employee Status */}
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="form-control w-auto text-xs py-1.5">
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="probation">Probation</option>
-          <option value="inactive">Inactive</option>
-          <option value="resigned">Resigned</option>
-          <option value="terminated">Terminated</option>
-        </select>
+        {/* Employee Status — multi-select dropdown (BUG_059)
+            Active + Probation are selected by default; Inactive/Resigned/Terminated
+            are hidden by default and only shown when explicitly checked. */}
+        {(() => {
+          const ALL_EMP_STATUSES = [
+            { value: 'active',     label: 'Active'     },
+            { value: 'probation',  label: 'Probation'  },
+            { value: 'inactive',   label: 'Inactive'   },
+            { value: 'resigned',   label: 'Resigned'   },
+            { value: 'terminated', label: 'Terminated' },
+          ];
+          const activeCount = statusFilter.size;
+          const label = activeCount === ALL_EMP_STATUSES.length
+            ? 'All Statuses'
+            : activeCount === 0
+              ? 'No Status'
+              : activeCount <= 2
+                ? [...statusFilter].map(s => ALL_EMP_STATUSES.find(o => o.value === s)?.label || s).join(', ')
+                : `${activeCount} Statuses`;
+
+          function toggleStatus(val) {
+            setStatusFilter(prev => {
+              const next = new Set(prev);
+              next.has(val) ? next.delete(val) : next.add(val);
+              return next;
+            });
+          }
+          return (
+            <div className="relative group">
+              <button
+                className="form-control w-auto text-xs py-1.5 flex items-center gap-1.5 cursor-pointer select-none"
+                type="button"
+                tabIndex={0}
+              >
+                <Filter size={11} className="text-[#777587] flex-shrink-0" />
+                <span className="truncate max-w-[130px]">{label}</span>
+                <ChevronDown size={11} className="text-[#777587] flex-shrink-0 ml-0.5" />
+              </button>
+              {/* Dropdown panel — visible on group hover/focus */}
+              <div className="absolute top-full left-0 mt-1 z-50 hidden group-hover:block group-focus-within:block bg-white border border-[#c7c4d8] rounded-xl shadow-lg py-1.5 min-w-[160px]">
+                {ALL_EMP_STATUSES.map(({ value, label: lbl }) => (
+                  <label key={value}
+                    className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#f0f3ff] text-xs text-[#464555] select-none">
+                    <input
+                      type="checkbox"
+                      checked={statusFilter.has(value)}
+                      onChange={() => toggleStatus(value)}
+                      className="accent-[#3525cd] w-3.5 h-3.5"
+                    />
+                    {lbl}
+                  </label>
+                ))}
+                <div className="border-t border-[#f0f3ff] mt-1 pt-1 px-3 pb-0.5 flex gap-2">
+                  <button
+                    className="text-[0.65rem] font-bold text-[#3525cd] hover:underline"
+                    onClick={() => setStatusFilter(new Set(ALL_EMP_STATUSES.map(o => o.value)))}
+                    type="button">All</button>
+                  <button
+                    className="text-[0.65rem] font-bold text-[#3525cd] hover:underline"
+                    onClick={() => setStatusFilter(DEFAULT_STATUS_FILTER)}
+                    type="button">Default</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Employment type */}
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
@@ -2344,7 +2429,9 @@ export default function Employees() {
 
         {anyFilter && (
           <button onClick={() => {
-            setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter('');
+            setSearch(''); setDeptFilter(''); setBranchFilter('');
+            setStatusFilter(DEFAULT_STATUS_FILTER); // BUG_059: reset to default, not empty
+            setTypeFilter('');
             if (joinedYmParam) setSearchParams(p => { const n = new URLSearchParams(p); n.delete('joined_ym'); return n; }, { replace: true });
           }}
             className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
@@ -2410,7 +2497,11 @@ export default function Employees() {
               : 'Add your first employee to get started.'}
           </p>
           {anyFilter && (
-            <button onClick={() => { setSearch(''); setDeptFilter(''); setBranchFilter(''); setStatusFilter(''); setTypeFilter(''); }}
+            <button onClick={() => {
+              setSearch(''); setDeptFilter(''); setBranchFilter('');
+              setStatusFilter(DEFAULT_STATUS_FILTER); // BUG_059: reset to default
+              setTypeFilter('');
+            }}
               className="mt-3 text-xs font-bold text-[#3525cd] hover:underline">
               Clear all filters
             </button>

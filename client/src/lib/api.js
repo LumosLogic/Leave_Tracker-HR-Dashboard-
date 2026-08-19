@@ -23,6 +23,10 @@ async function apiFetch(method, endpoint, body = null) {
     throw new Error(data.error || 'Invalid email or password');
   }
 
+  if (res.status === 403) {
+    throw new Error(data.error || 'You don\'t have permission to perform this action');
+  }
+
   if (res.status === 503 && data.maintenance) {
     window.dispatchEvent(new CustomEvent('maintenance:active', { detail: data }));
     throw new Error('System is under scheduled maintenance. Please try again later.');

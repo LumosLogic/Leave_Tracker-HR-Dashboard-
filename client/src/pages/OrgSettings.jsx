@@ -83,13 +83,26 @@ export default function OrgSettings() {
   });
 
   const [form, setForm] = useState({});
+  const [savedForm, setSavedForm] = useState({}); // BUG_150: baseline to compare against
   const [saved, setSaved] = useState(false);
   const [orgErrors, setOrgErrors] = useState({});
+
+  // BUG_150: computed dirty flag — form differs from last saved baseline
+  // Password fields (secrets) are always blank on load, so only mark dirty if user typed something
+  const isDirty = React.useMemo(() => {
+    if (Object.keys(savedForm).length === 0) return false;
+    return Object.keys(form).some(k => {
+      // Password/secret fields start blank; only dirty if user entered a value
+      const secretFields = ['google_client_secret', 'google_refresh_token', 'vapid_private_key'];
+      if (secretFields.includes(k)) return (form[k] || '') !== '';
+      return String(form[k] ?? '') !== String(savedForm[k] ?? '');
+    });
+  }, [form, savedForm]);
 
   // Sync loaded data into form once
   React.useEffect(() => {
     if (org && Object.keys(form).length === 0) {
-      setForm({
+      const initial = {
         name:                org.name || '',
         domain:              org.domain || '',
         google_client_id:    org.google_client_id || '',
@@ -99,11 +112,19 @@ export default function OrgSettings() {
         vapid_public_key:    org.vapid_public_key || '',
         vapid_private_key:   '',
         total_annual_leaves: org.total_annual_leaves || 18,
-      });
+      };
+      setForm(initial);
+      setSavedForm(initial); // BUG_150: set baseline
     }
   }, [org]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // BUG_150: discard changes — reset form back to last saved baseline
+  function handleDiscard() {
+    setForm({ ...savedForm });
+    setOrgErrors({});
+  }
 
   function validateOrgForm() {
     const errs = {};
@@ -133,6 +154,21 @@ export default function OrgSettings() {
       toast('Organization settings saved!', 'success');
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // BUG_150: update the baseline so isDirty resets to false after save
+      setSavedForm(prev => ({
+        ...prev,
+        ...form,
+        // secret fields reset back to blank after a save (server doesn't return them)
+        google_client_secret: '',
+        google_refresh_token: '',
+        vapid_private_key: '',
+      }));
+      setForm(f => ({
+        ...f,
+        google_client_secret: '',
+        google_refresh_token: '',
+        vapid_private_key: '',
+      }));
       qc.invalidateQueries({ queryKey: ['org-settings'] });
     },
     onError: err => toast(err.message, 'error'),
@@ -169,6 +205,33 @@ export default function OrgSettings() {
       </div>
 
 
+
+      {/* BUG_150: Unsaved changes banner */}
+      {isDirty && (
+        <div className="flex items-center justify-between gap-4 px-4 py-3 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
+          <div className="flex items-center gap-2 text-amber-800 text-sm font-semibold">
+            <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+            You have unsaved changes
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDiscard}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-800 border border-amber-300 bg-white hover:bg-amber-100 transition-colors"
+            >
+              Discard Changes
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveOrg}
+              disabled={saveMut.isPending}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 transition-colors disabled:opacity-60"
+            >
+              {saveMut.isPending ? 'Saving…' : 'Save Now'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Org Profile */}
       <Section icon={<Building2 size={18} />} title="Organization Profile" subtitle="Basic company information" defaultOpen>

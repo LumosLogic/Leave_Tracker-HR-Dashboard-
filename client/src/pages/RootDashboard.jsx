@@ -241,6 +241,8 @@ export default function RootDashboard() {
 
   const {
     totalEmployees = 0, totalHR = 0, pendingLeaves = 0, presentToday = 0,
+    // BUG_116: pendingRegCount comes from dashboard API (leaves table only for pendingLeaves)
+    pendingRegCount = 0,
     totalDepartments = 0,
     pendingLeavesData = [], attendanceBreakdown = {}, leavesByType = {},
     attendanceTrend = [], departmentHealth = [], headcountGrowth = [],
@@ -250,7 +252,10 @@ export default function RootDashboard() {
 
   const isBusy       = approveMut.isPending || rejectMut.isPending;
   const onLeaveToday = attendanceBreakdown.on_leave || 0;
+  // BUG_117: totalEmployees from backend already excludes resigned/terminated
   const presentPct   = totalEmployees > 0 ? Math.min(100, Math.round((presentToday / totalEmployees) * 100)) : 0;
+  // BUG_116: total pending = leaves/WFH (from dashboard API) + regularizations
+  const totalPendingApprovals = pendingLeaves + pendingRegCount;
 
   // ── Yearly leave: sort + filter ───────────────────────────────────────────────
   const allYearly   = yearlyData?.employees || [];
@@ -276,6 +281,11 @@ export default function RootDashboard() {
   const trendLabels = trendSlice.map((t, i) =>
     (i === 0 || i % Math.ceil(trendDays / 5) === 0 || i === trendSlice.length - 1) ? t.date.slice(5) : ''
   );
+  // BUG_117: avg attendance % for the selected period (exclude days with no data)
+  const trendDaysWithData = trendSlice.filter(t => t.total > 0);
+  const trendAvgPct = trendDaysWithData.length > 0
+    ? Math.round(trendDaysWithData.reduce((s, t) => s + t.pct, 0) / trendDaysWithData.length)
+    : (trendSlice[trendSlice.length - 1]?.pct ?? 0);
 
   // ── Today's Workforce chart data ─────────────────────────────────────────────
   const workforceEntries = Object.entries(WORKFORCE_STATUS)
@@ -515,12 +525,12 @@ export default function RootDashboard() {
       icon: <UserCheck size={16} />, iconBg: 'bg-emerald-50 text-emerald-600',
       tooltip: 'Percentage of employees present today. Click to view details.',
       onClick: () => setAttModal({ date: new Date().toISOString().split('T')[0], filter: 'present' }) },
-    { label: 'Pending Approvals', value: pendingLeaves + pendingRegs.length,
-      sub: (pendingLeaves + pendingRegs.length) > 0 ? 'Needs attention' : 'All clear',
+    { label: 'Pending Approvals', value: totalPendingApprovals,
+      sub: totalPendingApprovals > 0 ? 'Needs attention' : 'All clear',
       icon: <ClipboardList size={16} />,
-      iconBg: (pendingLeaves + pendingRegs.length) > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
-      tooltip: 'All pending approval requests. Click to view the dedicated approvals dashboard.',
-      alert: (pendingLeaves + pendingRegs.length) > 0,
+      iconBg: totalPendingApprovals > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
+      tooltip: 'All pending approval requests (leaves, WFH, regularizations). Click to view.',
+      alert: totalPendingApprovals > 0,
       onClick: () => navigate('/root/pending-approvals') },
     { label: 'HR Admins', value: totalHR, sub: 'Active admins',
       icon: <ShieldCheck size={16} />, iconBg: 'bg-purple-50 text-purple-600',
@@ -585,9 +595,9 @@ export default function RootDashboard() {
               <span className="flex items-center gap-1.5 bg-white/10 border border-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-full">
                 <CalendarDays size={11} /> {onLeaveToday} On Leave
               </span>
-              {pendingLeaves > 0 && (
+              {totalPendingApprovals > 0 && (
                 <span className="flex items-center gap-1.5 bg-amber-400/20 border border-amber-400/40 text-amber-200 text-xs font-bold px-3 py-1.5 rounded-full">
-                  <AlertCircle size={11} /> {pendingLeaves} Pending Approvals
+                  <AlertCircle size={11} /> {totalPendingApprovals} Pending Approvals
                 </span>
               )}
               {anniversaries.length > 0 && (
@@ -836,7 +846,7 @@ export default function RootDashboard() {
             <div className="flex items-center gap-2">
               {trendSlice.length > 0 && (
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {trendSlice[trendSlice.length - 1]?.pct ?? 0}% Today
+                  {trendAvgPct}% Avg ({trendDays}d)
                 </span>
               )}
               <div className="flex bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg p-0.5 gap-0.5">

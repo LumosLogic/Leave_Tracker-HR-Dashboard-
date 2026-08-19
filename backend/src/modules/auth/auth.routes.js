@@ -32,8 +32,16 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
 
-    if (!user || !bcrypt.compareSync(password, user.password))
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || '';
+
+    // Separate checks so we can record failed attempts for known accounts
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    if (!bcrypt.compareSync(password, user.password)) {
+      // BUG_115: Record failed login attempt (fire and forget, same response either way)
+      supabase.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'failed' }).then(() => {});
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
     // Block deactivated accounts — status check must happen AFTER password verify
     // to avoid leaking whether the email exists (timing attack surface).
@@ -51,9 +59,7 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
       return res.status(403).json({ error: msg });
     }
 
-    // Record login history (fire and forget)
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || '';
+    // Record successful login (fire and forget)
     supabase.from('users').update({ last_login_at: new Date().toISOString(), last_login_ip: clientIp, last_login_ua: userAgent }).eq('id', user.id).then(() => {});
     supabase.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'success' }).then(() => {});
 

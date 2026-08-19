@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Shield, Plus, Trash2, ChevronRight, Users, Lock,
-  Settings, AlertCircle, CheckCircle2, X,
+  Settings, AlertCircle, CheckCircle2, X, Pencil,
 } from 'lucide-react';
-import { apiGet, apiPost, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiDelete, apiPut } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ─── Create Role Modal ────────────────────────────────────────────────────────
@@ -139,6 +139,132 @@ function CreateRoleModal({ onClose, onCreate }) {
   );
 }
 
+// ─── Edit Role Modal ──────────────────────────────────────────────────────────
+
+function EditRoleModal({ role, onClose, onSaved }) {
+  const [name, setName]       = useState(role.name || '');
+  const [desc, setDesc]       = useState(role.description || '');
+  const [nameErr, setNameErr] = useState('');
+  const [error, setError]     = useState('');
+  const [saving, setSaving]   = useState(false);
+
+  function handleNameChange(e) {
+    const val = e.target.value;
+    setName(val);
+    setNameErr(validateRoleName(val));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const err = validateRoleName(name);
+    if (err) { setNameErr(err); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await apiPut(`/roles/${role.id}`, {
+        name: name.trim(),
+        description: desc.trim(),
+      });
+      onSaved(updated);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const nameOk = !nameErr && name.trim().length >= 2;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.6)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#c7c4d8]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7eefe]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#3525cd]/10 flex items-center justify-center">
+              <Pencil size={15} className="text-[#3525cd]" />
+            </div>
+            <h2 className="font-black text-[#151c27] text-base">Edit Role</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center transition-colors">
+            <X size={16} className="text-[#777587]" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#464555]">Role Name <span className="text-rose-500">*</span></label>
+              <span className={cn('text-[0.65rem] font-semibold', name.length > 90 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {name.length}/100
+              </span>
+            </div>
+            <input
+              autoFocus
+              value={name}
+              onChange={handleNameChange}
+              placeholder="e.g. Finance Manager"
+              maxLength={100}
+              className={cn(
+                'w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:ring-1 transition-colors',
+                nameErr
+                  ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                  : nameOk
+                    ? 'border-green-400 focus:border-green-500 focus:ring-green-100'
+                    : 'border-[#c7c4d8] focus:border-[#3525cd] focus:ring-[#3525cd]/20'
+              )}
+            />
+            {nameErr && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <AlertCircle size={11} className="text-rose-500 shrink-0" />
+                <p className="text-[0.68rem] text-rose-600">{nameErr}</p>
+              </div>
+            )}
+            {!nameErr && name.trim() && (
+              <p className="text-[0.68rem] text-[#777587] mt-1">Allowed: letters, numbers, spaces, hyphens, underscores</p>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#464555]">Description <span className="text-[#c7c4d8] font-normal">(optional)</span></label>
+              <span className={cn('text-[0.65rem] font-semibold', desc.length > 450 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {desc.length}/500
+              </span>
+            </div>
+            <textarea
+              value={desc}
+              onChange={e => setDesc(e.target.value.slice(0, 500))}
+              placeholder="What does this role do? Who should have it?"
+              rows={3}
+              maxLength={500}
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] resize-none focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+
+          <div className="flex gap-2.5 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 border border-[#c7c4d8] rounded-lg py-2.5 text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving || !!nameErr || !name.trim()}
+              className="flex-1 bg-[#3525cd] text-white rounded-lg py-2.5 text-sm font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Delete Confirm ───────────────────────────────────────────────────────────
 
 function DeleteConfirm({ role, onCancel, onConfirm, loading }) {
@@ -173,7 +299,7 @@ function DeleteConfirm({ role, onCancel, onConfirm, loading }) {
 
 // ─── Role Card ────────────────────────────────────────────────────────────────
 
-function RoleCard({ role, onDelete, onClick }) {
+function RoleCard({ role, onDelete, onClick, onEdit }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting]           = useState(false);
 
@@ -227,12 +353,22 @@ function RoleCard({ role, onDelete, onClick }) {
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {!role.is_system_role && (
-              <button
-                onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors"
-              >
-                <Trash2 size={13} className="text-red-400" />
-              </button>
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit(role); }}
+                  className="w-7 h-7 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center transition-colors"
+                  title="Edit role"
+                >
+                  <Pencil size={13} className="text-[#3525cd]" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+                  className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors"
+                  title="Delete role"
+                >
+                  <Trash2 size={13} className="text-red-400" />
+                </button>
+              </>
             )}
             <ChevronRight size={16} className="text-[#777587]" />
           </div>
@@ -274,6 +410,7 @@ export default function RoleManagement() {
   const navigate     = useNavigate();
   const queryClient  = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editRole, setEditRole]     = useState(null); // role object being edited
   const [toast, setToast]           = useState(null);
 
   const { data: roles = [], isLoading } = useQuery({
@@ -302,6 +439,11 @@ export default function RoleManagement() {
   function handleCreated(role) {
     queryClient.invalidateQueries({ queryKey: ['roles'] });
     showToast(`Role "${role.name}" created`, 'success');
+  }
+
+  function handleRoleSaved(updatedRole) {
+    queryClient.invalidateQueries({ queryKey: ['roles'] });
+    showToast(`Role "${updatedRole.name}" updated`, 'success');
   }
 
   const systemRoles = roles.filter(r => r.is_system_role);
@@ -334,9 +476,9 @@ export default function RoleManagement() {
       <div className="bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
         <Settings size={16} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-xs font-bold text-[#3525cd] mb-0.5">Click any role to manage its permissions</p>
+          <p className="text-xs font-bold text-[#3525cd] mb-0.5">Click any role to manage its permissions and members</p>
           <p className="text-xs text-[#777587]">
-            System roles are seeded automatically and cannot be deleted. Custom roles can be created for your organization's specific needs.
+            System roles are seeded automatically and cannot be deleted or renamed. Custom roles can be created, edited, and deleted. Hover a custom role card to edit or delete it.
           </p>
         </div>
       </div>
@@ -373,6 +515,7 @@ export default function RoleManagement() {
                   role={role}
                   onDelete={(id) => deleteMutation.mutateAsync(id)}
                   onClick={handleRoleClick}
+                  onEdit={setEditRole}
                 />
               ))}
             </div>
@@ -406,6 +549,7 @@ export default function RoleManagement() {
                     role={role}
                     onDelete={(id) => deleteMutation.mutateAsync(id)}
                     onClick={handleRoleClick}
+                    onEdit={setEditRole}
                   />
                 ))}
               </div>
@@ -418,6 +562,14 @@ export default function RoleManagement() {
         <CreateRoleModal
           onClose={() => setShowCreate(false)}
           onCreate={handleCreated}
+        />
+      )}
+
+      {editRole && (
+        <EditRoleModal
+          role={editRole}
+          onClose={() => setEditRole(null)}
+          onSaved={handleRoleSaved}
         />
       )}
 

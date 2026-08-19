@@ -161,7 +161,7 @@ export default function Calendar() {
           </span>
           <button className="btn btn-outline btn-icon p-1.5" onClick={navNext}><ChevronRight size={18} /></button>
         </div>
-        <button className="btn btn-outline btn-sm" onClick={() => setDate(new Date())}>Today</button>
+        <button className="btn btn-outline btn-sm" onClick={() => { setDate(new Date()); openDayModal(todayStr()); }}>Today</button>
         <div className="flex bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl p-1 gap-1">
           {['month','week'].map(m => (
             <button key={m} onClick={() => setMode(m)}
@@ -439,7 +439,7 @@ function DayModal({ dateStr, records, employees, isAdmin, user, onClose, onEditA
 
   return (
     <>
-    <Modal open onClose={onClose} title="" size="lg">
+    <Modal open onClose={onClose} title={dateStr === todayStr() ? "Today's Leaves" : `Leaves on ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`} size="lg">
       {{
         body: (
           <>

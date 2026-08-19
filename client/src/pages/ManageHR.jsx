@@ -19,9 +19,13 @@ function HRFormModal({ open, onClose, editing }) {
   React.useEffect(() => { setForm(editing ? { ...editing, password: '' } : INITIAL); }, [editing]);
 
   const save = useMutation({
-    mutationFn: () => editing
-      ? apiPut(`/root/hr/${editing.id}`, form)
-      : apiPost('/root/hr', form),
+    mutationFn: () => {
+      if (!form.email || !form.email.trim()) throw new Error('Email is required.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error('Please enter a valid email address.');
+      return editing
+        ? apiPut(`/root/hr/${editing.id}`, form)
+        : apiPost('/root/hr', form);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['root-hr'] });
       qc.invalidateQueries({ queryKey: ['root-stats'] });

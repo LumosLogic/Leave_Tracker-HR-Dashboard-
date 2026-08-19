@@ -26,10 +26,19 @@ router.post('/', auth, hasPermission('designations', 'manage'), async (req, res)
     const oId = req.user.organization_id;
     const { name, department_id } = req.body;
     if (!name) return res.status(400).json({ error: 'Designation name is required' });
+    // BUG_046/051: Prevent duplicate designation names within the same org
+    const { data: existing } = await supabase.from('designations')
+      .select('id').eq('organization_id', oId)
+      .ilike('name', name.trim())
+      .maybeSingle();
+    if (existing) return res.status(400).json({ error: `A designation named "${name.trim()}" already exists. Please use a different name.` });
     const { data, error } = await supabase.from('designations')
-      .insert({ name, department_id: department_id || null, organization_id: oId })
+      .insert({ name: name.trim(), department_id: department_id || null, organization_id: oId })
       .select().single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505') return res.status(400).json({ error: `A designation named "${name.trim()}" already exists.` });
+      throw error;
+    }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -39,8 +48,17 @@ router.put('/:id', auth, hasPermission('designations', 'manage'), async (req, re
   try {
     const oId = req.user.organization_id;
     const { name, department_id } = req.body;
+    if (name) {
+      // BUG_046/051: Prevent duplicate designation names on update too
+      const { data: existing } = await supabase.from('designations')
+        .select('id').eq('organization_id', oId)
+        .ilike('name', name.trim())
+        .neq('id', req.params.id)
+        .maybeSingle();
+      if (existing) return res.status(400).json({ error: `A designation named "${name.trim()}" already exists. Please use a different name.` });
+    }
     const { data, error } = await supabase.from('designations')
-      .update({ name, department_id: department_id || null })
+      .update({ name: name ? name.trim() : undefined, department_id: department_id || null })
       .eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
     if (error) throw error;

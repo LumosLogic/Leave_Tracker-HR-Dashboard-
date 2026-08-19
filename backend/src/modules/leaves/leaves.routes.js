@@ -80,6 +80,40 @@ function notify(userId, title, message, oId) {
   }).then(() => {});
 }
 
+// BUG_096: notify all HR admins and root admins in the org (fire-and-forget)
+async function notifyAdmins(oId, title, message, excludeUserId) {
+  try {
+    const query = supabase.from('users')
+      .select('id')
+      .eq('organization_id', oId)
+      .in('role', ['admin', 'root_admin']);
+    if (excludeUserId) query.neq('id', excludeUserId);
+    const { data: admins } = await query;
+    for (const admin of admins || []) {
+      notify(admin.id, title, message, oId);
+    }
+  } catch (_) {}
+}
+
+// BUG_096: get dept head user ID for a given employee (fire-and-forget safe)
+async function getDeptHeadId(userId, oId) {
+  try {
+    const { data: user } = await supabase.from('users')
+      .select('department_id')
+      .eq('id', userId)
+      .eq('organization_id', oId)
+      .maybeSingle();
+    if (!user?.department_id) return null;
+    const { data: dept } = await supabase.from('departments')
+      .select('head_user_id')
+      .eq('id', user.department_id)
+      .eq('organization_id', oId)
+      .maybeSingle();
+    const headId = dept?.head_user_id;
+    return (headId && headId !== userId) ? headId : null;
+  } catch (_) { return null; }
+}
+
 // ─── ROUTE: GET /workflow-config ──────────────────────────────────────────────
 // Returns the org's active workflow with all levels.
 // Accessible to all authenticated users (employees need it for timeline display).
@@ -704,16 +738,25 @@ router.post('/', auth, async (req, res) => {
     });
 
     // Notify the first approver
+    const leaveNotifyTitle = `New ${leave_type === 'wfh' ? 'WFH' : 'Leave'} Request from ${empName}`;
+    const leaveNotifyMsg   = `${empName} has applied for ${leave_type || 'casual'} leave from ${start_date} to ${end_date}. Your approval is required.`;
+
     if (wfInit.current_approver_id) {
       // Specific user approver (reporting manager / dept head / specific user)
       const { data: approverUser } = await supabase.from('users')
         .select('name, email').eq('id', wfInit.current_approver_id).maybeSingle();
 
-      notify(wfInit.current_approver_id,
-        `New Leave Request from ${empName}`,
-        `${empName} has applied for ${leave_type || 'casual'} leave from ${start_date} to ${end_date}. Your approval is required.`,
-        orgId(req)
-      );
+      notify(wfInit.current_approver_id, leaveNotifyTitle, leaveNotifyMsg, orgId(req));
+
+      // BUG_096: also notify all HR/root admins in-app (excluding the specific approver)
+      notifyAdmins(orgId(req), leaveNotifyTitle, leaveNotifyMsg, wfInit.current_approver_id);
+
+      // BUG_096: notify dept head if not already the current approver
+      getDeptHeadId(targetUserId, orgId(req)).then(headId => {
+        if (headId && headId !== wfInit.current_approver_id) {
+          notify(headId, leaveNotifyTitle, leaveNotifyMsg, orgId(req));
+        }
+      });
 
       if (approverUser?.email && typeof leaveDeptApprovalHtml === 'function') {
         const { orgName: _on, orgEmail: _oe } = await getOrgContext(orgId(req));
@@ -725,7 +768,7 @@ router.post('/', auth, async (req, res) => {
       }
     } else {
       // Role-based approver (hr_admin / root_admin) OR legacy flow with no dept head
-      // → notify all org recipients
+      // → notify all org recipients via email
       const recipients = await getRecipients(orgId(req));
       if (recipients.length > 0) {
         const { orgName: _on, orgEmail: _oe } = await getOrgContext(orgId(req));
@@ -735,6 +778,14 @@ router.post('/', auth, async (req, res) => {
           html: leaveAppliedHtml({ name: empName, email: empEmail, department: emp.department }, data, _on, _oe),
         });
       }
+
+      // BUG_096: in-app notify all HR/root admins
+      notifyAdmins(orgId(req), leaveNotifyTitle, leaveNotifyMsg, targetUserId);
+
+      // BUG_096: in-app notify dept head
+      getDeptHeadId(targetUserId, orgId(req)).then(headId => {
+        if (headId) notify(headId, leaveNotifyTitle, leaveNotifyMsg, orgId(req));
+      });
     }
 
     return res.json(flatOne(data));

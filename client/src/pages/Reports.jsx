@@ -79,15 +79,19 @@ function sortRows(rows, sort) {
 }
 
 // ── KPI card ───────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, icon, accent, sub, onClick }) {
+// BUG_124: isActive prop shows visual ring when this card's filter is active
+function KpiCard({ label, value, icon, accent, sub, onClick, isActive }) {
   return (
     <div onClick={onClick}
-      className={cn('bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-4 border-t-4 transition-all duration-200',
-        accent, onClick && 'cursor-pointer hover:shadow-md hover:-translate-y-0.5')}>
+      className={cn('bg-white rounded-xl border shadow-sm p-4 border-t-4 transition-all duration-200',
+        accent,
+        isActive ? 'border-[#3525cd] ring-2 ring-[#3525cd]/20 shadow-md' : 'border-[#c7c4d8]',
+        onClick && 'cursor-pointer hover:shadow-md hover:-translate-y-0.5')}>
       <div className="flex items-start justify-between mb-2">
         <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center', accent.replace('border-t-', 'bg-').replace('-500', '-50').replace('-400', '-50').replace('[#3525cd]', '[#f0f3ff]').replace('[#712ae2]', '[#f5f0ff]'))}>
           {icon}
         </div>
+        {isActive && <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full">Active</span>}
       </div>
       <p className="text-2xl font-black text-[#151c27] leading-tight">{value ?? '—'}</p>
       <p className="text-xs text-[#777587] mt-0.5 font-medium">{label}</p>
@@ -203,12 +207,12 @@ export default function Reports() {
   });
 
   const { data: _attResponse = {}, isLoading: attLoading } = useQuery({
-    queryKey: ['report-attendance', viewMode, year, month],
+    queryKey: viewMode === 'yearly' ? ['report-attendance', 'yearly', year] : ['report-attendance', 'monthly', year, month],
     queryFn:  () => apiGet('/reports/attendance', queryParams),
   });
 
   const { data: _lvData = [], isLoading: lvLoading } = useQuery({
-    queryKey: ['report-leaves', viewMode, year, month],
+    queryKey: viewMode === 'yearly' ? ['report-leaves', 'yearly', year] : ['report-leaves', 'monthly', year, month],
     queryFn:  () => apiGet('/reports/leaves', queryParams),
   });
 
@@ -237,7 +241,11 @@ export default function Reports() {
     let rows = attRows;
     if (search)         rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()));
     if (deptFilter)     rows = rows.filter(r => r.department === deptFilter);
-    if (attStatusFilter) rows = rows.filter(r => r.status === attStatusFilter);
+    if (attStatusFilter === 'productive') {
+      rows = rows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status));
+    } else if (attStatusFilter) {
+      rows = rows.filter(r => r.status === attStatusFilter);
+    }
     return sortRows(rows, sort);
   }, [attRows, search, deptFilter, attStatusFilter, sort]);
 
@@ -265,8 +273,22 @@ export default function Reports() {
   const hasMore = activeRows.length > pageSize;
 
   // ── KPI cards per tab ─────────────────────────────────────────────────────────
+  // BUG_124: helper to clear all other filters before setting a status filter
+  function clearAndSetAttFilter(value) {
+    setSearch('');
+    setDeptFilter('');
+    setAttStatusFilter(prev => prev === value ? '' : value);
+  }
+  function clearAndSetLeaveFilter(value) {
+    setSearch('');
+    setDeptFilter('');
+    setLeaveTypeFilter('');
+    setStatusFilter(prev => prev === value ? '' : value);
+  }
+
   const kpiCards = useMemo(() => {
     if (active === 'attendance') {
+      // BUG_123: count both 'present' AND 'wfh' (and half_day) for the Present/WFH card
       const present       = attRows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status)).length;
       const absent        = attRows.filter(r => r.status === 'absent').length;
       const onLeave       = attRows.filter(r => r.status === 'on_leave').length;
@@ -275,21 +297,29 @@ export default function Reports() {
       const totalEffHrs   = completedRows.reduce((s, r) => s + (r.work_hours > 0 ? Number(r.work_hours) : Number(r.estimated_hours) || 0), 0);
       const avgHrs        = completedRows.length > 0 ? (totalEffHrs / completedRows.length).toFixed(1) : 0;
       return [
-        { label: 'Total Records',  value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,   accent: 'border-t-[#3525cd]' },
-        { label: 'Present / WFH', value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,    accent: 'border-t-emerald-500', onClick: () => setAttStatusFilter(attStatusFilter === 'present' ? '' : 'present') },
-        { label: 'Absent',        value: absent,           icon: <X size={18} className="text-rose-500" />,              accent: 'border-t-rose-500',    onClick: () => setAttStatusFilter(attStatusFilter === 'absent' ? '' : 'absent') },
-        { label: 'Avg Working Hrs', value: `${avgHrs}h`,  icon: <TrendingUp size={18} className="text-amber-500" />,     accent: 'border-t-amber-400',   sub: noCheckout > 0 ? `${noCheckout} missing checkout` : undefined },
+        { label: 'Total Records',   value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,  accent: 'border-t-[#3525cd]' },
+        // BUG_123: onClick uses 'productive' sentinel to filter present+wfh+half_day; BUG_124: clears other filters; isActive shows ring
+        { label: 'Present / WFH',  value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,   accent: 'border-t-emerald-500', onClick: () => clearAndSetAttFilter('productive'), isActive: attStatusFilter === 'productive' },
+        // BUG_124: clears other filters before setting absent filter
+        { label: 'Absent',         value: absent,           icon: <X size={18} className="text-rose-500" />,             accent: 'border-t-rose-500',    onClick: () => clearAndSetAttFilter('absent'),     isActive: attStatusFilter === 'absent' },
+        { label: 'Avg Working Hrs', value: `${avgHrs}h`,   icon: <TrendingUp size={18} className="text-amber-500" />,    accent: 'border-t-amber-400',   sub: noCheckout > 0 ? `${noCheckout} missing checkout` : undefined },
       ];
     }
     if (active === 'leaves') {
-      const approved  = leaveRows.filter(r => r.status === 'approved').length;
-      const pending   = leaveRows.filter(r => r.status === 'pending').length;
-      const rejected  = leaveRows.filter(r => r.status === 'rejected').length;
+      const approved   = leaveRows.filter(r => r.status === 'approved').length;
+      // BUG_126: count pending from raw leaveRows (all statuses returned by backend)
+      const pending    = leaveRows.filter(r => r.status === 'pending').length;
+      const rejected   = leaveRows.filter(r => r.status === 'rejected').length;
+      // BUG_127: count cancelled leaves
+      const cancelled  = leaveRows.filter(r => r.status === 'cancelled').length;
       return [
-        { label: 'Total Leaves',   value: leaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]' },
-        { label: 'Approved',       value: approved,          icon: <CheckCircle2 size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500', onClick: () => setStatusFilter(statusFilter === 'approved' ? '' : 'approved') },
-        { label: 'Pending',        value: pending,           icon: <Clock size={18} className="text-amber-500" />,          accent: 'border-t-amber-400',   onClick: () => setStatusFilter(statusFilter === 'pending' ? '' : 'pending'), sub: pending > 0 ? 'Needs attention' : undefined },
-        { label: 'Rejected',       value: rejected,          icon: <AlertCircle size={18} className="text-rose-500" />,     accent: 'border-t-rose-500',    onClick: () => setStatusFilter(statusFilter === 'rejected' ? '' : 'rejected') },
+        { label: 'Total Leaves', value: leaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]' },
+        // BUG_124: clears other filters before setting leave status filter; isActive shows ring
+        { label: 'Approved',     value: approved,          icon: <CheckCircle2 size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500', onClick: () => clearAndSetLeaveFilter('approved'),   isActive: statusFilter === 'approved' },
+        { label: 'Pending',      value: pending,           icon: <Clock size={18} className="text-amber-500" />,          accent: 'border-t-amber-400',   onClick: () => clearAndSetLeaveFilter('pending'),    isActive: statusFilter === 'pending',    sub: pending > 0 ? 'Needs attention' : undefined },
+        { label: 'Rejected',     value: rejected,          icon: <AlertCircle size={18} className="text-rose-500" />,     accent: 'border-t-rose-500',    onClick: () => clearAndSetLeaveFilter('rejected'),   isActive: statusFilter === 'rejected' },
+        // BUG_127: new Cancelled KPI card
+        { label: 'Cancelled',    value: cancelled,         icon: <X size={18} className="text-slate-500" />,              accent: 'border-t-slate-400',   onClick: () => clearAndSetLeaveFilter('cancelled'),  isActive: statusFilter === 'cancelled' },
       ];
     }
     // employees
@@ -297,10 +327,10 @@ export default function Reports() {
     const resigned     = empRows.filter(r => r.employment_status === 'resigned').length;
     const depts        = new Set(empRows.map(r => r.department).filter(Boolean)).size;
     return [
-      { label: 'Total Employees', value: headcount?.total ?? empRows.length, icon: <Users size={18} className="text-[#3525cd]" />,           accent: 'border-t-[#3525cd]' },
-      { label: 'Active',          value: active_count,                        icon: <TrendingUp size={18} className="text-emerald-600" />,     accent: 'border-t-emerald-500' },
-      { label: 'Resigned',        value: resigned,                            icon: <AlertCircle size={18} className="text-rose-500" />,       accent: 'border-t-rose-500' },
-      { label: 'Departments',     value: depts,                               icon: <Building2 size={18} className="text-[#712ae2]" />,        accent: 'border-t-[#712ae2]' },
+      { label: 'Total Employees', value: headcount?.total ?? empRows.length, icon: <Users size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]' },
+      { label: 'Active',          value: active_count,                        icon: <TrendingUp size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500' },
+      { label: 'Resigned',        value: resigned,                            icon: <AlertCircle size={18} className="text-rose-500" />,   accent: 'border-t-rose-500' },
+      { label: 'Departments',     value: depts,                               icon: <Building2 size={18} className="text-[#712ae2]" />,    accent: 'border-t-[#712ae2]' },
     ];
   }, [active, attRows, leaveRows, empRows, headcount, statusFilter, attStatusFilter]);
 
@@ -360,7 +390,8 @@ export default function Reports() {
       </div>
 
       {/* ── KPI CARDS ─────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* BUG_127: leaves tab has 5 cards so use sm:grid-cols-5; others use sm:grid-cols-4 */}
+      <div className={cn('grid grid-cols-2 gap-4', active === 'leaves' ? 'sm:grid-cols-5' : 'sm:grid-cols-4')}>
         {kpiCards.map((card, i) => (
           <KpiCard key={i} {...card} />
         ))}

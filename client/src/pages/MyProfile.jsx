@@ -183,6 +183,7 @@ export default function MyProfile() {
       const fd = new FormData();
       fd.append('file', file);
       const token_ = localStorage.getItem('lt_token');
+      if (!token_) { toast('You are not logged in. Please log in again.', 'error'); setUploading(false); return; }
       const res  = await fetch('/api/auth/upload-avatar', { method: 'POST', headers: { Authorization: `Bearer ${token_}` }, body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
@@ -605,7 +606,7 @@ export default function MyProfile() {
                         maxLength={6}
                         placeholder="123456"
                         value={totpCode}
-                        onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                        onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       />
                     </div>
                     <div className="flex gap-3">
@@ -614,7 +615,7 @@ export default function MyProfile() {
                         disabled={enableTotp.isPending || totpCode.length !== 6}
                         className="btn btn-primary flex items-center gap-2"
                       >
-                        {enableTotp.isPending ? <><span className="spinner w-4 h-4" /> Enabling…</> : <><ShieldCheck size={14} /> Enable 2FA</>}
+                        {enableTotp.isPending ? <><span className="spinner w-4 h-4" /> Verifying…</> : <><ShieldCheck size={14} /> Verify &amp; Enable</>}
                       </button>
                       <button onClick={() => { setTotpSetup(null); setTotpCode(''); }} className="btn btn-outline btn-sm">
                         Cancel
@@ -652,23 +653,24 @@ export default function MyProfile() {
               <History size={13} className="text-[#3525cd]" /> Login History
             </h2>
 
+            <p className="text-[0.68rem] text-[#777587] mb-3">Showing all login activity — successful logins and failed attempts for your account.</p>
             {loginHistory.length === 0 ? (
               <p className="text-sm text-[#777587] text-center py-4">No login history yet.</p>
             ) : (
               <div className="space-y-2">
-                {loginHistory.slice(0, 10).map((entry, idx) => (
-                  <div key={entry.id || idx} className="flex items-center gap-3 py-2.5 px-3 rounded-xl bg-[#f9f9ff] border border-[#f0f3ff]">
-                    <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center shrink-0">
+                {loginHistory.slice(0, 15).map((entry, idx) => (
+                  <div key={entry.id || idx} className={`flex items-center gap-3 py-2.5 px-3 rounded-xl border ${entry.status === 'failed' ? 'bg-rose-50 border-rose-100' : 'bg-[#f9f9ff] border-[#f0f3ff]'}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${entry.status === 'failed' ? 'bg-rose-100' : 'bg-[#f0f3ff]'}`}>
                       {parseDevice(entry.user_agent) === 'Mobile'
-                        ? <Smartphone size={14} className="text-[#3525cd]" />
-                        : <Monitor size={14} className="text-[#3525cd]" />}
+                        ? <Smartphone size={14} className={entry.status === 'failed' ? 'text-rose-500' : 'text-[#3525cd]'} />
+                        : <Monitor size={14} className={entry.status === 'failed' ? 'text-rose-500' : 'text-[#3525cd]'} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-[#151c27]">
                           {entry.logged_in_at ? new Date(entry.logged_in_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                         </span>
-                        {idx === 0 && (
+                        {idx === 0 && entry.status !== 'failed' && (
                           <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-[#3525cd] text-white">Current Device</span>
                         )}
                       </div>
@@ -681,8 +683,8 @@ export default function MyProfile() {
                         </span>
                       </div>
                     </div>
-                    <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                      Success
+                    <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full shrink-0 ${entry.status === 'failed' ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                      {entry.status === 'failed' ? 'Failed' : 'Success'}
                     </span>
                   </div>
                 ))}

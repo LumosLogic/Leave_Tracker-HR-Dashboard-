@@ -41,7 +41,7 @@ function hasPermission(module, action) {
       }
 
       return res.status(403).json({
-        error: `Permission denied. Required: ${module}.${action}`,
+        error: 'You don\'t have permission to perform this action',
         required_permission: `${module}.${action}`,
       });
     } catch (err) {
@@ -74,7 +74,7 @@ function hasAnyPermission(permissionList) {
       if (hasOne) return next();
 
       return res.status(403).json({
-        error: `Permission denied. Required one of: ${permissionList.join(', ')}`,
+        error: 'You don\'t have permission to perform this action',
         required_permissions: permissionList,
       });
     } catch (err) {

@@ -862,11 +862,28 @@ function FilterSelect({ value, onChange, options }) {
   );
 }
 
+// ── Standard document type options for BUG_081 ──────────────────────────────
+const STANDARD_DOC_TYPES = [
+  'Aadhaar Card', 'PAN Card', 'Passport', 'Driving License', 'Voter ID',
+  'Birth Certificate', 'Education Certificate', 'Experience Letter',
+  'Offer Letter', 'Relieving Letter', 'Bank Statement',
+  'Medical Certificate', 'Police Verification', 'NOC Letter',
+  'Salary Slip', 'Tax Return (ITR)', 'Nomination Form',
+];
+
 // ── Admin: Requirement Modal (create/edit) ───────────────────────────────────
-function RequirementModal({ req, onClose, onSaved }) {
+function RequirementModal({ req, onClose, onSaved, existingRequirements = [] }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
+
+  // BUG_081: track whether user picked a standard type or is entering custom
+  const isEditingExistingCustom = req?.name && !STANDARD_DOC_TYPES.includes(req.name);
+  const [selectedDocType, setSelectedDocType] = useState(
+    req?.name ? (STANDARD_DOC_TYPES.includes(req.name) ? req.name : 'Custom...') : ''
+  );
+  const [customDocName, setCustomDocName] = useState(isEditingExistingCustom ? req.name : '');
+
   const [form, setForm] = useState({
     name:                  req?.name || '',
     description:           req?.description || '',
@@ -881,6 +898,23 @@ function RequirementModal({ req, onClose, onSaved }) {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // BUG_081: sync the resolved document name into form.name
+  function handleDocTypeChange(value) {
+    setSelectedDocType(value);
+    if (value !== 'Custom...') {
+      set('name', value);
+      setCustomDocName('');
+    } else {
+      set('name', '');
+    }
+  }
+
+  function handleCustomNameChange(e) {
+    const val = e.target.value.replace(/[^a-zA-Z\s\-\/().]/g, '');
+    setCustomDocName(val);
+    set('name', val);
+  }
+
   const formatOptions = ['pdf', 'jpg', 'png', 'doc', 'docx'];
   function toggleFormat(fmt) {
     set('accepted_formats', form.accepted_formats.includes(fmt)
@@ -891,6 +925,18 @@ function RequirementModal({ req, onClose, onSaved }) {
   async function handleSave() {
     if (!form.name.trim()) { toast('Document name is required', 'error'); return; }
     if (form.accepted_formats.length === 0) { toast('Select at least one accepted format', 'error'); return; }
+
+    // BUG_081: duplicate check — skip when editing same requirement
+    const normalizedName = form.name.trim().toLowerCase();
+    const isDuplicate = existingRequirements.some(r => {
+      if (req?.id && r.id === req.id) return false; // skip self when editing
+      return r.name?.trim().toLowerCase() === normalizedName;
+    });
+    if (isDuplicate) {
+      toast(`A requirement named "${form.name.trim()}" already exists.`, 'error');
+      return;
+    }
+
     setSaving(true);
     try {
       if (req?.id) {
@@ -921,14 +967,33 @@ function RequirementModal({ req, onClose, onSaved }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* BUG_081: Document type dropdown + custom input */}
           <div>
-            <label className="form-label">Document Name <span className="text-rose-500">*</span></label>
-            <input className="form-control" value={form.name} placeholder="e.g. Aadhaar Card"
-              onChange={e => {
-                const val = e.target.value.replace(/[^a-zA-Z\s\-\/().]/g, '');
-                set('name', val);
-              }} />
-            <p className="text-[0.65rem] text-[#9ca3af] mt-1">Only letters, spaces, and basic punctuation allowed</p>
+            <label className="form-label">Document Type <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <select
+                className="form-control appearance-none pr-8"
+                value={selectedDocType}
+                onChange={e => handleDocTypeChange(e.target.value)}
+              >
+                <option value="">— Select document type —</option>
+                {STANDARD_DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="Custom...">Custom...</option>
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] pointer-events-none" />
+            </div>
+            {selectedDocType === 'Custom...' && (
+              <div className="mt-2">
+                <input
+                  className="form-control"
+                  value={customDocName}
+                  placeholder="Enter custom document name…"
+                  onChange={handleCustomNameChange}
+                  autoFocus
+                />
+                <p className="text-[0.65rem] text-[#9ca3af] mt-1">Only letters, spaces, and basic punctuation allowed</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -1143,7 +1208,7 @@ function EmployeeRequirementsTab() {
         </div>
       )}
 
-      {modal && <RequirementModal req={modal === 'create' ? null : modal} onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
+      {modal && <RequirementModal req={modal === 'create' ? null : modal} existingRequirements={requirements} onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
       <ConfirmModal open={!!confirmDel} title="Delete Requirement"
         message={<>Delete requirement <strong>"{confirmDel?.name}"</strong>? All employee submissions for this requirement will also be deleted.</>}
         confirmLabel="Delete" onConfirm={() => delMut.mutate(confirmDel.id)} onCancel={() => setConfirmDel(null)} />

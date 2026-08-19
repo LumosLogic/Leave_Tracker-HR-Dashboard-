@@ -414,10 +414,27 @@ function NotificationRecipientsCard() {
 // ── Push Notifications Card ───────────────────────────────────────────────────
 function PushNotificationsCard({ userId }) {
   const { permission, subscribed, requestAndSubscribe, unsubscribe, isSupported } = usePushNotification(userId);
+  const toast = useToast();
+  const [showPushConfirm, setShowPushConfirm] = useState(false); // BUG_104
 
   if (!isSupported) return null;
 
   const isEnabled = permission === 'granted' && subscribed;
+
+  async function handleEnableClick() {
+    if (isEnabled) {
+      toast('Push notifications are already enabled in your browser.', 'info');
+      return;
+    }
+    // BUG_104: show confirmation modal before triggering the browser permission prompt
+    setShowPushConfirm(true);
+  }
+
+  async function handleConfirmEnable() {
+    setShowPushConfirm(false);
+    await requestAndSubscribe();
+    toast('Push notifications enabled!', 'success');
+  }
 
   return (
     <div className="card p-6">
@@ -434,7 +451,7 @@ function PushNotificationsCard({ userId }) {
         Receive browser push notifications for leave approvals, rejections, and important HR alerts even when you're not on the dashboard.
       </p>
       <button
-        onClick={isEnabled ? unsubscribe : requestAndSubscribe}
+        onClick={isEnabled ? unsubscribe : handleEnableClick}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold border transition-all ${
           isEnabled
             ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
@@ -448,6 +465,35 @@ function PushNotificationsCard({ userId }) {
         <p className="text-xs text-rose-500 mt-2">
           Notifications are blocked by your browser. Please update your browser settings to allow notifications for this site.
         </p>
+      )}
+
+      {/* BUG_104: Push notifications confirmation modal */}
+      {showPushConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 border border-[#c7c4d8]">
+            <div className="flex items-center gap-2 mb-3">
+              <Bell size={20} className="text-[#3525cd]" />
+              <h3 className="font-bold text-[#151c27] text-base">Enable Push Notifications</h3>
+            </div>
+            <p className="text-sm text-[#464555] mb-5 leading-relaxed">
+              You'll receive real-time updates for leave approvals, rejections, and important HR alerts in your browser.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowPushConfirm(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-[#464555] border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmEnable}
+                className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-[#3525cd] hover:bg-[#4f46e5] transition-colors"
+              >
+                Yes, Enable
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -29,16 +29,30 @@ const EMPLOYEE_PUBLIC_COLS = [
 const EMPLOYEE_ADMIN_COLS = EMPLOYEE_PUBLIC_COLS + ', aadhar_no, pan_number, uan_no, pf_applicable, pf_no, esi_applicable, esi_no, ot_applicable, ot_rate, force_password_change, last_credentials_sent_at';
 
 // ─── Employees: List ──────────────────────────────────────────────────────────
+// BUG_059 / BUG_068: By default exclude inactive/resigned/terminated employees so
+// they do not appear in Calendar, TeamCalendar, Reports, or any other consumer of
+// this endpoint.  Pass ?include_inactive=true to retrieve all statuses (used by
+// the Employees management page itself so HR can explicitly filter for them).
+const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
+
 router.get('/', auth, async (req, res) => {
   try {
     // root_admin sees all non-root users (HR admins + employees); others see only employees
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;
-    const { data: users } = await supabase.from('users')
+    let query = supabase.from('users')
       .select(cols)
       .eq('organization_id', orgId(req))
       .in('role', roleFilter)
       .order('name');
+
+    // BUG_059: exclude inactive/resigned/terminated unless the caller explicitly
+    // opts in with ?include_inactive=true (only the employee management page does this).
+    if (req.query.include_inactive !== 'true') {
+      query = query.not('employee_status', 'in', `(${INACTIVE_STATUSES.join(',')})`);
+    }
+
+    const { data: users } = await query;
 
     // Attach multi-department assignments
     const ids = (users || []).map(u => u.id);
