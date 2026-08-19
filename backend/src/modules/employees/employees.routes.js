@@ -62,6 +62,9 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
   try {
     const { name, email, password, role, department, position, avatar_color, date_of_birth } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, password required' });
+    // BUG_154: validate email format before uniqueness check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+      return res.status(400).json({ error: 'Please enter a valid Company Email address (e.g. name@company.com).' });
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can create root_admin accounts' });
     }

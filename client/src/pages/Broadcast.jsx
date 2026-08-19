@@ -112,7 +112,8 @@ export default function Broadcast() {
   async function sendNotification() {
     setNSending(true);
     try {
-      const res = await apiPost('/notifications/send', {
+      // BUG_135: push route is /api/push/send, not /api/notifications/send
+      const res = await apiPost('/push/send', {
         title:          nTitle.trim(),
         body:           nBody.trim(),
         url:            nUrl.trim() || '/',

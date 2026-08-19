@@ -30,6 +30,9 @@ router.post('/', auth, hasPermission('assets', 'create'), async (req, res) => {
     const oId = req.user.organization_id;
     const body = { ...req.body, organization_id: oId };
     delete body.id; delete body.created_at;
+    // BUG_134: serial_number is bigint in DB — send null if empty string to avoid type error
+    if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
+    if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
     const { data, error } = await supabase.from('assets').insert(body).select().single();
     if (error) throw error;
     res.json(data);
@@ -43,6 +46,9 @@ router.put('/:id', auth, hasPermission('assets', 'manage'), async (req, res) => 
     const oId = req.user.organization_id;
     const body = { ...req.body };
     delete body.id; delete body.created_at; delete body.organization_id;
+    // BUG_134: sanitize bigint/numeric fields
+    if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
+    if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
     const { data, error } = await supabase.from('assets')
       .update(body).eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
