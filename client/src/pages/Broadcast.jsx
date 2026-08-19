@@ -3,6 +3,26 @@ import { useQuery } from '@tanstack/react-query';
 import { Bell, Mail, Send } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+
+// BUG_137: character limits
+const TITLE_MAX   = 100;
+const MESSAGE_MAX = 1000;
+const SUBJECT_MAX = 150;
+
+function CharCounter({ value, max }) {
+  const over = value.length > max;
+  return (
+    <span className={`text-[0.65rem] font-semibold ml-1 ${over ? 'text-rose-500' : value.length > max * 0.85 ? 'text-amber-500' : 'text-[#c7c4d8]'}`}>
+      {value.length}/{max}
+    </span>
+  );
+}
+
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return <p className="text-[0.68rem] text-rose-500 mt-1">{msg}</p>;
+}
 
 function Section({ icon, title, iconBg, children }) {
   return (
@@ -46,14 +66,50 @@ export default function Broadcast() {
   const [nUrl,     setNUrl]     = useState('');
   const [nTarget,  setNTarget]  = useState('');
   const [nSending, setNSending] = useState(false);
+  const [nErrors,  setNErrors]  = useState({});
 
   const [eSubject, setESubject] = useState('');
   const [eMessage, setEMessage] = useState('');
   const [eTarget,  setETarget]  = useState('');
   const [eSending, setESending] = useState(false);
+  const [eErrors,  setEErrors]  = useState({});
+
+  // BUG_138: confirmation dialog state
+  const [confirm, setConfirm] = useState({ open: false, type: null });
+
+  function validateNotif() {
+    const errs = {};
+    if (!nTitle.trim())             errs.title   = 'Title is required';
+    else if (nTitle.length > TITLE_MAX) errs.title = `Title must be ${TITLE_MAX} characters or fewer`;
+    if (!nBody.trim())              errs.body    = 'Message is required';
+    else if (nBody.length > MESSAGE_MAX) errs.body = `Message must be ${MESSAGE_MAX} characters or fewer`;
+    return errs;
+  }
+
+  function validateEmail() {
+    const errs = {};
+    if (!eSubject.trim())               errs.subject = 'Subject is required';
+    else if (eSubject.length > SUBJECT_MAX) errs.subject = `Subject must be ${SUBJECT_MAX} characters or fewer`;
+    if (!eMessage.trim())               errs.message = 'Message is required';
+    else if (eMessage.length > MESSAGE_MAX) errs.message = `Message must be ${MESSAGE_MAX} characters or fewer`;
+    return errs;
+  }
+
+  function handleSendNotificationClick() {
+    const errs = validateNotif();
+    setNErrors(errs);
+    if (Object.keys(errs).length) return;
+    setConfirm({ open: true, type: 'push' });
+  }
+
+  function handleSendEmailClick() {
+    const errs = validateEmail();
+    setEErrors(errs);
+    if (Object.keys(errs).length) return;
+    setConfirm({ open: true, type: 'email' });
+  }
 
   async function sendNotification() {
-    if (!nTitle.trim() || !nBody.trim()) return toast('Enter title and message', 'warning');
     setNSending(true);
     try {
       const res = await apiPost('/notifications/send', {
@@ -63,13 +119,12 @@ export default function Broadcast() {
         target_user_id: nTarget || null,
       });
       toast(`Notification sent to ${res.sent} device${res.sent !== 1 ? 's' : ''}`, 'success');
-      setNTitle(''); setNBody(''); setNUrl(''); setNTarget('');
+      setNTitle(''); setNBody(''); setNUrl(''); setNTarget(''); setNErrors({});
     } catch (err) { toast(err.message, 'error'); }
     finally { setNSending(false); }
   }
 
   async function sendEmail() {
-    if (!eSubject.trim() || !eMessage.trim()) return toast('Enter subject and message', 'warning');
     setESending(true);
     try {
       const res = await apiPost('/root/send-email', {
@@ -78,10 +133,24 @@ export default function Broadcast() {
         target_user_id: eTarget || null,
       });
       toast(`Email sent to ${res.sent} recipient${res.sent !== 1 ? 's' : ''}`, 'success');
-      setESubject(''); setEMessage(''); setETarget('');
+      setESubject(''); setEMessage(''); setETarget(''); setEErrors({});
     } catch (err) { toast(err.message, 'error'); }
     finally { setESending(false); }
   }
+
+  function handleConfirm() {
+    if (confirm.type === 'push')  sendNotification();
+    if (confirm.type === 'email') sendEmail();
+  }
+
+  const recipientLabel = (target) =>
+    target
+      ? employees.find(e => String(e.id) === target)?.name || 'selected employee'
+      : `all ${employees.length} employee${employees.length !== 1 ? 's' : ''}`;
+
+  const confirmMessage = confirm.type === 'push'
+    ? `Type: Push Notification\nRecipients: ${recipientLabel(nTarget)}\n\nAre you sure you want to send this broadcast? This action cannot be undone.`
+    : `Type: Email\nRecipients: ${recipientLabel(eTarget)}\n\nAre you sure you want to send this broadcast? This action cannot be undone.`;
 
   return (
     <div>
@@ -108,12 +177,33 @@ export default function Broadcast() {
           <div className="space-y-4">
             <RecipientSelect label="Recipient" value={nTarget} onChange={setNTarget} employees={employees} />
             <div>
-              <label className="form-label">Title *</label>
-              <input className="form-control" placeholder="e.g. Office Closed Tomorrow" value={nTitle} onChange={e => setNTitle(e.target.value)} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Title *</label>
+                <CharCounter value={nTitle} max={TITLE_MAX} />
+              </div>
+              <input
+                className={`form-control ${nErrors.title ? 'border-rose-400' : ''}`}
+                placeholder="e.g. Office Closed Tomorrow"
+                value={nTitle}
+                maxLength={TITLE_MAX}
+                onChange={e => { setNTitle(e.target.value); if (nErrors.title) setNErrors(p => ({ ...p, title: '' })); }}
+              />
+              <FieldError msg={nErrors.title} />
             </div>
             <div>
-              <label className="form-label">Message *</label>
-              <textarea className="form-control" rows={3} placeholder="Notification message…" value={nBody} onChange={e => setNBody(e.target.value)} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Message *</label>
+                <CharCounter value={nBody} max={MESSAGE_MAX} />
+              </div>
+              <textarea
+                className={`form-control ${nErrors.body ? 'border-rose-400' : ''}`}
+                rows={3}
+                placeholder="Notification message…"
+                value={nBody}
+                maxLength={MESSAGE_MAX}
+                onChange={e => { setNBody(e.target.value); if (nErrors.body) setNErrors(p => ({ ...p, body: '' })); }}
+              />
+              <FieldError msg={nErrors.body} />
             </div>
             <div>
               <label className="form-label">
@@ -123,7 +213,7 @@ export default function Broadcast() {
             </div>
             <div className="flex items-center gap-3 pt-1 border-t border-[#f0f3ff]">
               <button
-                onClick={sendNotification}
+                onClick={handleSendNotificationClick}
                 disabled={nSending}
                 className="btn btn-primary btn-sm"
               >
@@ -148,16 +238,37 @@ export default function Broadcast() {
           <div className="space-y-4">
             <RecipientSelect label="Recipient" value={eTarget} onChange={setETarget} employees={employees} />
             <div>
-              <label className="form-label">Subject *</label>
-              <input className="form-control" placeholder="e.g. Important Company Announcement" value={eSubject} onChange={e => setESubject(e.target.value)} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Subject *</label>
+                <CharCounter value={eSubject} max={SUBJECT_MAX} />
+              </div>
+              <input
+                className={`form-control ${eErrors.subject ? 'border-rose-400' : ''}`}
+                placeholder="e.g. Important Company Announcement"
+                value={eSubject}
+                maxLength={SUBJECT_MAX}
+                onChange={e => { setESubject(e.target.value); if (eErrors.subject) setEErrors(p => ({ ...p, subject: '' })); }}
+              />
+              <FieldError msg={eErrors.subject} />
             </div>
             <div>
-              <label className="form-label">Message *</label>
-              <textarea className="form-control" rows={6} placeholder="Write your message here… (supports line breaks)" value={eMessage} onChange={e => setEMessage(e.target.value)} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Message *</label>
+                <CharCounter value={eMessage} max={MESSAGE_MAX} />
+              </div>
+              <textarea
+                className={`form-control ${eErrors.message ? 'border-rose-400' : ''}`}
+                rows={6}
+                placeholder="Write your message here… (supports line breaks)"
+                value={eMessage}
+                maxLength={MESSAGE_MAX}
+                onChange={e => { setEMessage(e.target.value); if (eErrors.message) setEErrors(p => ({ ...p, message: '' })); }}
+              />
+              <FieldError msg={eErrors.message} />
             </div>
             <div className="flex items-center gap-3 pt-1 border-t border-[#f0f3ff]">
               <button
-                onClick={sendEmail}
+                onClick={handleSendEmailClick}
                 disabled={eSending}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-all"
               >
@@ -173,6 +284,17 @@ export default function Broadcast() {
           </div>
         </Section>
       </div>
+
+      {/* BUG_138: broadcast confirmation dialog */}
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.type === 'push' ? 'Send Push Notification' : 'Send Email Broadcast'}
+        message={confirmMessage}
+        confirmLabel="Send"
+        variant="warning"
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirm({ open: false, type: null })}
+      />
     </div>
   );
 }

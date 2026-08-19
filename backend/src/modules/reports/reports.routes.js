@@ -204,13 +204,25 @@ router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res
     const oId = req.user.organization_id;
     const { format } = req.query;
     const { data, error } = await supabase.from('users')
-      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employment_status, date_of_joining')
+      // BUG_128: exclude HR/admin — report shows employees only
+      // BUG_159: no status filter so all statuses included when "All" selected
+      // BUG_129: select employee_status (authoritative column) + employment_type for normalisation
+      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, date_of_joining')
+      .in('role', ['employee'])
       .eq('organization_id', oId)
       .order('name');
     if (error) throw error;
 
+    // BUG_129: normalise employment_type (old migration stored 'full-time', app stores 'full_time')
+    // BUG_159: expose employee_status as employment_status for frontend field name consistency
+    const rows = (data || []).map(r => ({
+      ...r,
+      employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
+      employment_status: r.employee_status || null,
+    }));
+
     if (format === 'csv') {
-      const csv = toCSV(data || [], [
+      const csv = toCSV(rows, [
         { key: 'employee_id', label: 'Employee ID' },
         { key: 'name', label: 'Name' },
         { key: 'email', label: 'Email' },
@@ -226,7 +238,7 @@ router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res
       res.setHeader('Content-Disposition', 'attachment; filename="employee_list.csv"');
       return res.send(csv);
     }
-    res.json(data || []);
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

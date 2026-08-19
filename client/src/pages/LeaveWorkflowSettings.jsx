@@ -113,9 +113,18 @@ export default function LeaveWorkflowSettings() {
     queryFn:  () => apiGet('/leaves/workflow-config'),
   });
 
-  const [workflowName, setWorkflowName] = useState('');
+  const [workflowName,      setWorkflowName]      = useState('');
+  const [workflowNameError, setWorkflowNameError] = useState(''); // BUG_109
   const [levels, setLevels] = useState([]);
   const [dirty, setDirty] = useState(false);
+
+  // BUG_109: validate workflow name
+  function validateWorkflowName(name) {
+    if (!name.trim()) return 'Workflow name is required.';
+    if (!/[a-zA-Z]/.test(name)) return 'Workflow name must contain at least one alphabetic character.';
+    if (name.trim().length > 80) return 'Workflow name must be 80 characters or fewer.';
+    return '';
+  }
 
   useEffect(() => {
     if (workflow) {
@@ -140,19 +149,30 @@ export default function LeaveWorkflowSettings() {
       toast('Workflow saved successfully!', 'success');
       setDirty(false);
       qc.invalidateQueries({ queryKey: ['leave-workflow-config'] });
+      // BUG_108: also invalidate summary so the Settings page summary card refreshes
+      qc.invalidateQueries({ queryKey: ['leave-workflow-config-summary'] });
     },
     onError: err => toast(err.message, 'error'),
   });
 
   function addLevel() {
+    // BUG_107: prevent duplicate approver types
+    const defaultType = 'hr_admin';
+    const duplicate = levels.find(l => l.role_type === defaultType);
+    if (duplicate) { toast('An approver of this type is already in the workflow. Choose a different approver type.', 'warning'); return; }
     setLevels(prev => [
       ...prev,
-      { role_type: 'hr_admin', level_label: '', is_required: true, role_reference: '', _key: Date.now() },
+      { role_type: defaultType, level_label: '', is_required: true, role_reference: '', _key: Date.now() },
     ]);
     setDirty(true);
   }
 
   function updateLevel(index, updated) {
+    // BUG_107: check for duplicate role_type across other levels
+    if (updated.role_type && updated.role_type !== 'specific_user') {
+      const dup = levels.find((l, i) => i !== index && l.role_type === updated.role_type);
+      if (dup) { toast('This approver type is already in the workflow.', 'warning'); return; }
+    }
     setLevels(prev => prev.map((l, i) => i === index ? { ...updated } : l));
     setDirty(true);
   }
@@ -226,10 +246,12 @@ export default function LeaveWorkflowSettings() {
         <input
           type="text"
           value={workflowName}
-          onChange={e => { setWorkflowName(e.target.value); setDirty(true); }}
+          onChange={e => { setWorkflowName(e.target.value); setDirty(true); if (workflowNameError) setWorkflowNameError(validateWorkflowName(e.target.value)); }}
           placeholder="e.g. Standard Leave Approval"
-          className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+          className={`w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 ${workflowNameError ? 'border-rose-400' : 'border-[#c7c4d8]'}`}
+          maxLength={90}
         />
+        {workflowNameError && <p className="text-xs text-rose-500 mt-1">{workflowNameError}</p>}
       </div>
 
       {/* Flow preview */}
@@ -321,7 +343,13 @@ export default function LeaveWorkflowSettings() {
               Discard
             </button>
             <button
-              onClick={() => saveMut.mutate()}
+              onClick={() => {
+                // BUG_109: validate name before saving
+                const nameErr = validateWorkflowName(workflowName);
+                if (nameErr) { setWorkflowNameError(nameErr); return; }
+                setWorkflowNameError('');
+                saveMut.mutate();
+              }}
               disabled={saveMut.isPending}
               className="flex items-center gap-2 px-5 py-2 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors"
             >

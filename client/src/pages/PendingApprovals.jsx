@@ -183,9 +183,10 @@ export default function PendingApprovals() {
     if (item._flow === 'new') {
       const levelLabel = item.current_level_label || item.current_level_role_type?.replace(/_/g, ' ') || 'Your Approval';
       return (
-        <div className="space-y-0.5">
-          <span className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3525cd] animate-pulse" /> {levelLabel}
+        {/* BUG_139: constrain stage cell width to prevent layout overflow */}
+        <div className="space-y-0.5 max-w-full overflow-hidden">
+          <span title={levelLabel} className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8] max-w-full truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3525cd] animate-pulse flex-shrink-0" /> <span className="truncate">{levelLabel}</span>
           </span>
           {item.current_level && (
             <p className="text-[0.58rem] text-[#777587]">Level {item.current_level}</p>
@@ -317,7 +318,7 @@ export default function PendingApprovals() {
                     <td className="px-4 py-3 text-xs text-[#777587] whitespace-nowrap">
                       {item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </td>
-                    <td className="px-4 py-3"><StatusCell item={item} /></td>
+                    <td className="px-4 py-3 max-w-[140px] overflow-hidden"><StatusCell item={item} /></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">
                         <button onClick={() => handleApprove(item)} disabled={isBusy}

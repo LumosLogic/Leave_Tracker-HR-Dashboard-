@@ -13,6 +13,12 @@ import { usePushNotification } from '@/hooks/usePushNotification';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+function timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
 const STATUS_LEGEND = [
   { label: 'Present',    color: '#10B981', desc: 'Full day attendance' },
   { label: 'Absent',     color: '#EF4444', desc: 'Not present, no leave applied' },
@@ -49,6 +55,42 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
   }, [schedule]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [scheduleErrors, setScheduleErrors] = useState({});
+
+  function validateSchedule() {
+    const errs = {};
+    const startMins = timeToMinutes(form.start_time);
+    const endMins   = timeToMinutes(form.end_time);
+    const lateMins  = timeToMinutes(form.late_threshold);
+    const earlyMins = timeToMinutes(form.early_exit_threshold);
+    const halfHours = parseFloat(form.half_day_hours);
+    // BUG_097/098: start and end required, end must be after start
+    if (!form.start_time) errs.start_time = 'Work Start Time is required.';
+    if (!form.end_time)   errs.end_time   = 'Work End Time is required.';
+    if (startMins !== null && endMins !== null && endMins <= startMins)
+      errs.end_time = 'End time must be after start time.';
+    // BUG_099: Late threshold must be between start and end
+    if (lateMins !== null && startMins !== null && endMins !== null &&
+        (lateMins <= startMins || lateMins >= endMins))
+      errs.late_threshold = 'Late Entry Threshold must be between Start and End time.';
+    // BUG_100: Early exit must be between late threshold and end
+    if (earlyMins !== null && lateMins !== null && endMins !== null &&
+        (earlyMins <= lateMins || earlyMins >= endMins))
+      errs.early_exit_threshold = 'Early Exit Threshold must be between Late Threshold and End time.';
+    // BUG_101/102: Half day threshold must be positive and <= total work hours
+    if (isNaN(halfHours) || halfHours <= 0)
+      errs.half_day_hours = 'Half Day Threshold must be a positive number.';
+    else if (startMins !== null && endMins !== null) {
+      const totalWorkHours = (endMins - startMins) / 60;
+      if (halfHours > totalWorkHours)
+        errs.half_day_hours = `Half Day Threshold cannot exceed total work hours (${totalWorkHours.toFixed(1)} hrs).`;
+    }
+    // BUG_103: At least one working day required
+    if (form.work_days.length === 0)
+      errs.work_days = 'Please select at least one working day.';
+    setScheduleErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
   const toggleDay = (idx) => setForm(f => ({
     ...f,
@@ -81,13 +123,15 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Work Start Time</label>
-            <input type="time" className="form-control" value={form.start_time}
+            <input type="time" className={`form-control ${scheduleErrors.start_time ? 'border-rose-400' : ''}`} value={form.start_time}
               disabled={!isAdmin} onChange={e => set('start_time', e.target.value)} />
+            {scheduleErrors.start_time && <p className="text-xs text-rose-500 mt-1">{scheduleErrors.start_time}</p>}
           </div>
           <div>
             <label className="form-label">Work End Time</label>
-            <input type="time" className="form-control" value={form.end_time}
+            <input type="time" className={`form-control ${scheduleErrors.end_time ? 'border-rose-400' : ''}`} value={form.end_time}
               disabled={!isAdmin} onChange={e => set('end_time', e.target.value)} />
+            {scheduleErrors.end_time && <p className="text-xs text-rose-500 mt-1">{scheduleErrors.end_time}</p>}
           </div>
         </div>
 
@@ -108,10 +152,12 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
 
         <div>
           <label className="form-label">Half Day Threshold (hours)</label>
-          <input type="number" className="form-control" value={form.half_day_hours}
-            step="0.5" min="1" max="8" disabled={!isAdmin}
+          <input type="number" className={`form-control ${scheduleErrors.half_day_hours ? 'border-rose-400' : ''}`} value={form.half_day_hours}
+            step="0.5" min="0.5" disabled={!isAdmin}
             onChange={e => set('half_day_hours', e.target.value)} />
-          <p className="form-hint">Work hours below this = Half Day</p>
+          {scheduleErrors.half_day_hours
+            ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.half_day_hours}</p>
+            : <p className="form-hint">Work hours below this = Half Day</p>}
         </div>
 
         <div>
@@ -132,8 +178,10 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
           </div>
         </div>
 
+        {scheduleErrors.work_days && <p className="text-xs text-rose-500 mt-1">{scheduleErrors.work_days}</p>}
+
         {isAdmin ? (
-          <button className="btn btn-primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          <button className="btn btn-primary" onClick={() => { if (validateSchedule()) mutation.mutate(); }} disabled={mutation.isPending}>
             {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Schedule'}
           </button>
         ) : (
@@ -148,8 +196,9 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
 // ── Status Legend Card ────────────────────────────────────────────────────────
 function AttendanceCleanupCard() {
   const toast = useToast();
-  const [running, setRunning] = useState(false);
-  const [result,  setResult]  = useState(null);
+  const [running,        setRunning]        = useState(false);
+  const [result,         setResult]         = useState(null);
+  const [confirmCleanup, setConfirmCleanup] = useState(false); // BUG_106
 
   async function runCleanup() {
     setRunning(true);
@@ -187,13 +236,17 @@ function AttendanceCleanupCard() {
         </div>
       )}
       <button
-        onClick={runCleanup}
+        onClick={() => setConfirmCleanup(true)}
         disabled={running}
         className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all shadow-sm disabled:opacity-60"
         style={{ background: 'linear-gradient(135deg, #3525cd, #4f46e5)' }}
       >
         {running ? <><span className="spinner w-3.5 h-3.5" /> Running…</> : <><RefreshCw size={14} /> Run Cleanup</>}
       </button>
+      {/* BUG_106: confirm before destructive cleanup */}
+      <ConfirmModal open={confirmCleanup} title="Run Attendance Cleanup"
+        message="This will permanently delete orphaned attendance records. Are you sure you want to continue?"
+        confirmLabel="Yes, Run Cleanup" onConfirm={() => { setConfirmCleanup(false); runCleanup(); }} onCancel={() => setConfirmCleanup(false)} />
     </div>
   );
 }
@@ -260,6 +313,11 @@ function NotificationRecipientsCard() {
 
   async function addRecipient() {
     if (!newEmail.trim()) { toast('Email is required', 'warning'); return; }
+    // BUG_151: validate email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) { toast('Please enter a valid email address.', 'error'); return; }
+    // BUG_152: validate label (name) — must contain at least one letter if provided, max 60 chars
+    if (newName.trim() && !/[a-zA-Z]/.test(newName.trim())) { toast('Label must contain at least one letter.', 'error'); return; }
+    if (newName.trim().length > 60) { toast('Label must be 60 characters or fewer.', 'error'); return; }
     setAdding(true);
     try {
       await apiPost('/root/notify-recipients', { email: newEmail.trim(), name: newName.trim() });

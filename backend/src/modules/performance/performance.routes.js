@@ -35,6 +35,8 @@ router.post('/goals', auth, hasPermission('performance', 'create'), async (req, 
     const oId = req.user.organization_id;
     const { title, description, category, target_date, review_cycle, user_id, progress } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
+    // BUG_082: enforce title max length
+    if (title.length > 100) return res.status(400).json({ error: 'Goal Title must be 100 characters or less.' });
     if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
     if (target_date) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -63,6 +65,8 @@ router.put('/goals/:id', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { title, description, category, target_date, progress, status } = req.body;
 
+    // BUG_082: enforce title max length on update
+    if (title && title.length > 100) return res.status(400).json({ error: 'Goal Title must be 100 characters or less.' });
     if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
 
     // Fetch goal first to enforce ownership for employees

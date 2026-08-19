@@ -14,6 +14,15 @@ const GOAL_STATUS_CFG = {
   cancelled: { cls: 'badge-cancelled', strip: '#c7c4d8', label: 'Cancelled' },
 };
 
+// BUG_080: Distinct colors per category
+const CATEGORY_CFG = {
+  individual: { cls: 'bg-blue-100 text-blue-700',     label: 'Individual' },
+  department: { cls: 'bg-purple-100 text-purple-700', label: 'Department' },
+  team:       { cls: 'bg-amber-100 text-amber-700',   label: 'Team'       },
+};
+
+const TITLE_MAX = 100;
+
 const REVIEW_STATUS_CFG = {
   pending:     { cls: 'badge-pending',   label: 'Pending',    strip: '#F59E0B' },
   in_progress: { cls: 'badge-pending',   label: 'In Progress',strip: '#3525cd' },
@@ -39,16 +48,17 @@ function StarRating({ value, max = 5, onChange }) {
   );
 }
 
-function GoalModal({ open, onClose, goal, employees, isAdmin }) {
+function GoalModal({ open, onClose, goal, employees, isAdmin, currentCycle }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const isEdit = !!goal;
   const [form, setForm] = useState(() => isEdit
     ? { title: goal.title, description: goal.description || '', category: goal.category, target_date: goal.target_date || '', review_cycle: goal.review_cycle, progress: Math.min(100, Math.max(0, Number(goal.progress) || 0)), status: goal.status, user_id: goal.user_id }
-    : { title: '', description: '', category: 'individual', target_date: '', review_cycle: String(new Date().getFullYear()), progress: 0, status: 'active', user_id: '' });
+    : { title: '', description: '', category: 'individual', target_date: '', review_cycle: currentCycle || String(new Date().getFullYear()), progress: 0, status: 'active', user_id: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const hasValidTitle = /[a-zA-Z0-9]/.test(form.title.trim());
+  const titleTooLong  = form.title.length > TITLE_MAX;
   const DESC_MAX = 500;
 
   const mut = useMutation({
@@ -60,6 +70,7 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
   function handleSave() {
     if (!form.title.trim()) { toast('Goal Title is required.', 'error'); return; }
     if (!hasValidTitle) { toast('Goal Title must contain at least one letter or number.', 'error'); return; }
+    if (titleTooLong) { toast(`Goal Title must be ${TITLE_MAX} characters or less.`, 'error'); return; }
     if (form.description && form.description.length > DESC_MAX) { toast(`Description must be ${DESC_MAX} characters or less.`, 'error'); return; }
     if (form.target_date) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -73,7 +84,7 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={mut.isPending || !form.title || !hasValidTitle}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={mut.isPending || !form.title || !hasValidTitle || titleTooLong}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Save Goal'}
           </button>
         </div>
@@ -90,7 +101,15 @@ function GoalModal({ open, onClose, goal, employees, isAdmin }) {
         )}
         <div>
           <label className="form-label">Goal Title *</label>
-          <input className={`form-control ${form.title && !hasValidTitle ? 'border-rose-400' : ''}`} placeholder="e.g. Complete React certification" value={form.title} onChange={e => set('title', e.target.value)} />
+          <input
+            className={`form-control ${(form.title && !hasValidTitle) || titleTooLong ? 'border-rose-400' : ''}`}
+            placeholder="e.g. Complete React certification"
+            maxLength={TITLE_MAX + 10}
+            value={form.title}
+            onChange={e => set('title', e.target.value)}
+          />
+          <p className={`text-xs mt-1 ${titleTooLong ? 'text-rose-600' : 'text-[#777587]'}`}>{form.title.length}/{TITLE_MAX}</p>
+          {form.title && !hasValidTitle && <p className="text-xs text-rose-600 mt-0.5">Goal Title must contain at least one letter or number.</p>}
           {form.title && !hasValidTitle && (
             <p className="text-xs text-rose-600 mt-1">Goal Title must contain at least one letter or number.</p>
           )}
@@ -326,7 +345,7 @@ export default function Performance() {
                                 {isAdmin && <span className="text-xs text-[#777587]">{g.user_name}</span>}
                                 <span className="font-black text-[#151c27]">{g.title}</span>
                                 <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
-                                <span className="badge badge-cancelled capitalize">{g.category}</span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).cls}`}>{(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).label}</span>
                               </div>
                               {g.description && <p className="text-xs text-[#777587] mt-1">{g.description}</p>}
                               {g.target_date && <p className="text-xs text-[#777587] mt-0.5">Target: <span className="font-semibold">{g.target_date}</span></p>}
@@ -359,8 +378,8 @@ export default function Performance() {
             : <div className="flex flex-col gap-3">{reviews.map(r => <ReviewCard key={r.id} rv={r} />)}</div>
       )}
 
-      {addGoal  && <GoalModal open onClose={() => setAddGoal(false)} employees={employees} isAdmin={isAdmin} />}
-      {editGoal && <GoalModal open onClose={() => setEditGoal(null)} goal={editGoal} employees={employees} isAdmin={isAdmin} />}
+      {addGoal  && <GoalModal open onClose={() => setAddGoal(false)} employees={employees} isAdmin={isAdmin} currentCycle={cycle} />}
+      {editGoal && <GoalModal open onClose={() => setEditGoal(null)} goal={editGoal} employees={employees} isAdmin={isAdmin} currentCycle={cycle} />}
       <ConfirmModal open={!!confirmDel} title="Delete Goal" message={`Delete goal "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delGoal.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
     </div>

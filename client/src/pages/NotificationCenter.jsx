@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, BellOff, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList, Info } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { usePushNotification } from '@/hooks/usePushNotification';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 // Build role-aware navigation map for notification types
 function getTypeLink(isEmployee, isRootAdmin) {
@@ -22,16 +23,21 @@ function getTypeLink(isEmployee, isRootAdmin) {
   };
 }
 
+// BUG_091: Announcement uses Megaphone; General uses Bell; they must be distinct
 const TYPE_CFG = {
   regularization: { icon: <ClipboardList size={14} />, bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   strip: '#F59E0B', label: 'Regularization' },
   payroll:        { icon: <DollarSign size={14} />,    bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',   border: 'border-[#c7c4d8]',   strip: '#3525cd', label: 'Payroll' },
   expense:        { icon: <Receipt size={14} />,       bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', strip: '#10B981', label: 'Expense' },
+  // BUG_091: Announcement → Megaphone (distinct from General/Bell)
   announcement:   { icon: <Megaphone size={14} />,     bg: 'bg-[#f0f3ff]',  text: 'text-[#712ae2]',   border: 'border-[#c7c4d8]',   strip: '#712ae2', label: 'Announcement' },
+  // BUG_091: General → Bell (distinct from Announcement/Megaphone)
+  general:        { icon: <Bell size={14} />,          bg: 'bg-[#f0f3ff]',  text: 'text-[#464555]',   border: 'border-[#c7c4d8]',   strip: '#c7c4d8', label: 'General' },
   asset:          { icon: <Monitor size={14} />,       bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200',    strip: '#06B6D4', label: 'Asset' },
   performance:    { icon: <Target size={14} />,        bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   strip: '#F59E0B', label: 'Performance' },
   onboarding:     { icon: <UserCheck size={14} />,     bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', strip: '#10B981', label: 'Onboarding' },
   exit:           { icon: <ExitIcon size={14} />,      bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    strip: '#EF4444', label: 'Exit' },
-  info:           { icon: <Bell size={14} />,          bg: 'bg-[#f0f3ff]',  text: 'text-[#464555]',   border: 'border-[#c7c4d8]',   strip: '#c7c4d8', label: 'Info' },
+  // BUG_091: info fallback uses Info icon to differentiate from both Bell (general) and Megaphone (announcement)
+  info:           { icon: <Info size={14} />,          bg: 'bg-[#f0f3ff]',  text: 'text-[#464555]',   border: 'border-[#c7c4d8]',   strip: '#c7c4d8', label: 'Info' },
 };
 
 function timeAgo(dateStr) {
@@ -55,6 +61,9 @@ export default function NotificationCenter() {
   const toast    = useToast();
   const qc       = useQueryClient();
   const navigate = useNavigate();
+
+  // BUG_092: confirmation state for delete
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null });
 
   const { data: _notifData, isLoading } = useQuery({ queryKey: ['notifications'], queryFn: () => apiGet('/notifications') });
   const notifications = Array.isArray(_notifData) ? _notifData : [];
@@ -183,7 +192,7 @@ export default function NotificationCenter() {
                           <button
                             title="Delete"
                             className="p-1.5 rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                            onClick={e => { e.stopPropagation(); delMut.mutate(n.id); }}>
+                            onClick={e => { e.stopPropagation(); setDeleteConfirm({ open: true, id: n.id }); }}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -197,5 +206,16 @@ export default function NotificationCenter() {
         </div>
       )}
     </div>
+
+    {/* BUG_092: Delete confirmation */}
+    <ConfirmModal
+      open={deleteConfirm.open}
+      title="Delete Notification"
+      message="Delete this notification?"
+      confirmLabel="Delete"
+      variant="danger"
+      onConfirm={() => delMut.mutate(deleteConfirm.id)}
+      onCancel={() => setDeleteConfirm({ open: false, id: null })}
+    />
   );
 }

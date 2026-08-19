@@ -174,11 +174,11 @@ router.get('/headcount', async (req, res) => {
     // root_admin sees HR admins + employees; HR admin sees employees only
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const { data: users } = await supabase.from('users')
-      .select('id, role, employment_status, department, date_of_joining, created_at')
+      .select('id, role, employee_status, department, date_of_joining, created_at')
       .eq('organization_id', oId)
       .in('role', roleFilter);
     const total   = users?.length || 0;
-    const active  = users?.filter(u => u.employment_status === 'active' || !u.employment_status).length || 0;
+    const active  = users?.filter(u => u.employee_status === 'active' || !u.employee_status).length || 0;
     const byDept  = {};
     (users || []).forEach(u => {
       const d = u.department || 'General';
@@ -193,14 +193,29 @@ router.get('/employees', async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { format } = req.query;
+    // BUG_128: restrict to role='employee' only — exclude HR admins and root admins
+    // BUG_159: select employee_status (authoritative column written by employees module);
+    //          no active-only filter so all statuses are returned for "All Statuses" selection
+    // BUG_129: also select employment_type — normalised below to underscore form
     const { data, error } = await supabase.from('users')
-      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employment_status, date_of_joining')
+      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, date_of_joining')
       .eq('organization_id', oId)
+      .in('role', ['employee'])
       .order('name');
     if (error) throw error;
 
+    // BUG_129: normalise employment_type — DB may store 'full-time' (hyphen, from old migration)
+    //          while the app writes 'full_time' (underscore). Normalise all to underscore form
+    //          so the frontend filter value 'full_time' matches correctly.
+    // BUG_159: map employee_status → employment_status so the frontend field name stays consistent
+    const rows = (data || []).map(r => ({
+      ...r,
+      employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
+      employment_status: r.employee_status || null,
+    }));
+
     if (format === 'csv') {
-      const csv = toCSV(data || [], [
+      const csv = toCSV(rows, [
         { key: 'employee_id', label: 'Employee ID' },
         { key: 'name', label: 'Name' },
         { key: 'email', label: 'Email' },
@@ -216,7 +231,7 @@ router.get('/employees', async (req, res) => {
       res.setHeader('Content-Disposition', 'attachment; filename="employee_list.csv"');
       return res.send(csv);
     }
-    res.json(data || []);
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

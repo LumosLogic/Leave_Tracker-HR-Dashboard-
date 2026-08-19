@@ -69,6 +69,9 @@ function PasswordField({ label, hint, value, onChange, placeholder }) {
   );
 }
 
+// BUG_148 – domain format regex
+const DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/;
+
 export default function OrgSettings() {
   const toast = useToast();
   const qc    = useQueryClient();
@@ -81,6 +84,7 @@ export default function OrgSettings() {
 
   const [form, setForm] = useState({});
   const [saved, setSaved] = useState(false);
+  const [orgErrors, setOrgErrors] = useState({});
 
   // Sync loaded data into form once
   React.useEffect(() => {
@@ -101,6 +105,28 @@ export default function OrgSettings() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  function validateOrgForm() {
+    const errs = {};
+
+    // BUG_146 – annual leave days must be >= 0 and an integer
+    const leaves = form.total_annual_leaves;
+    const leavesNum = Number(leaves);
+    if (leaves === '' || leaves === undefined || leaves === null) {
+      errs.total_annual_leaves = 'Total Annual Leave Days is required.';
+    } else if (!Number.isInteger(leavesNum) || leavesNum < 0) {
+      errs.total_annual_leaves = 'Total Annual Leave Days cannot be negative and must be a whole number.';
+    }
+
+    // BUG_148 – domain format validation (only if a domain is entered)
+    const domain = (form.domain || '').trim();
+    if (domain && !DOMAIN_REGEX.test(domain)) {
+      errs.domain = 'Please enter a valid domain (e.g. company.com)';
+    }
+
+    setOrgErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
   const saveMut = useMutation({
     mutationFn: () => apiPut('/org/settings', form),
     onSuccess: () => {
@@ -111,6 +137,10 @@ export default function OrgSettings() {
     },
     onError: err => toast(err.message, 'error'),
   });
+
+  function handleSaveOrg() {
+    if (validateOrgForm()) saveMut.mutate();
+  }
 
   if (isLoading) return <div className="flex items-center justify-center py-20"><div className="spinner w-6 h-6" /></div>;
 
@@ -130,7 +160,7 @@ export default function OrgSettings() {
           )}
           <button
             className="btn btn-primary"
-            onClick={() => saveMut.mutate()}
+            onClick={handleSaveOrg}
             disabled={saveMut.isPending}
           >
             {saveMut.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : <><Save size={15} /> Save Changes</>}
@@ -147,7 +177,8 @@ export default function OrgSettings() {
             <input className="form-control" value={form.name || ''} onChange={e => set('name', e.target.value)} placeholder="Acme Corp" />
           </Field>
           <Field label="Company Domain" inlineHint="Used for email auto-detection">
-            <input className="form-control" value={form.domain || ''} onChange={e => set('domain', e.target.value)} placeholder="acmecorp.com" />
+            <input className={`form-control ${orgErrors.domain ? 'border-rose-400' : ''}`} value={form.domain || ''} onChange={e => { set('domain', e.target.value); setOrgErrors(p => ({ ...p, domain: undefined })); }} placeholder="acmecorp.com" />
+            {orgErrors.domain && <p className="text-xs text-rose-500 mt-1">{orgErrors.domain}</p>}
           </Field>
         </div>
         <div className="mt-4 p-3 bg-[#f0f3ff] rounded-xl">
@@ -167,10 +198,18 @@ export default function OrgSettings() {
       <Section icon={<Shield size={18} />} title="Leave Policy" subtitle="Annual leave allocation per employee">
         <Field label="Total Annual Leave Days" hint="Number of leave days each employee gets per year">
           <input
-            type="number" className="form-control w-32" min="1" max="60"
-            value={form.total_annual_leaves || 18}
-            onChange={e => set('total_annual_leaves', parseInt(e.target.value) || 18)}
+            type="number"
+            className={`form-control w-32 ${orgErrors.total_annual_leaves ? 'border-rose-400' : ''}`}
+            min="0" max="365"
+            value={form.total_annual_leaves ?? 18}
+            onChange={e => {
+              set('total_annual_leaves', e.target.value === '' ? '' : parseInt(e.target.value, 10));
+              setOrgErrors(p => ({ ...p, total_annual_leaves: undefined }));
+            }}
           />
+          {orgErrors.total_annual_leaves && (
+            <p className="text-xs text-rose-500 mt-1">{orgErrors.total_annual_leaves}</p>
+          )}
         </Field>
       </Section>
 
@@ -218,7 +257,7 @@ export default function OrgSettings() {
       <div className="flex justify-end pb-6">
         <button
           className="btn btn-primary px-8"
-          onClick={() => saveMut.mutate()}
+          onClick={handleSaveOrg}
           disabled={saveMut.isPending}
         >
           {saveMut.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : <><Save size={15} /> Save All Changes</>}

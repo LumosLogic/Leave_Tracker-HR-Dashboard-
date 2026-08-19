@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
     let q = supabase.from('announcements').select('*').eq('organization_id', oId)
       .order('pinned', { ascending: false }).order('created_at', { ascending: false });
     if (!isAdmin(req.user.role)) {
-      q = q.in('target_audience', ['all', 'employees']);
+      q = q.in('target_audience', ['all', 'employees', 'hr']);
     }
     const { data, error } = await q;
     if (error) throw error;
@@ -75,11 +75,29 @@ router.post('/', async (req, res) => {
     const { title, content, type, priority, target_audience, pinned, expires_at, file_url, file_name, file_type } = req.body;
     if (!title || !content) return res.status(400).json({ error: 'title and content required' });
 
+    // BUG_090: Duplicate check — same title by same creator within last 24 hours
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await supabase.from('announcements')
+      .select('id')
+      .eq('organization_id', oId)
+      .eq('created_by', req.user.id)
+      .eq('title', title.trim())
+      .gte('created_at', since24h)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: 'An announcement with this title was already posted recently.' });
+    }
+
+    // BUG_085: Map 'admins' (legacy frontend value) to 'hr' to satisfy DB constraint
+    // Valid DB values: 'all', 'employees', 'hr'
+    const rawAudience = target_audience || 'all';
+    const safeAudience = rawAudience === 'admins' ? 'hr' : rawAudience;
+
     const payload = {
-      title, content,
+      title: title.trim(), content,
       type: type || 'general',
       priority: priority || 'normal',
-      target_audience: target_audience || 'all',
+      target_audience: safeAudience,
       pinned: !!pinned,
       expires_at: expires_at || null,
       created_by: req.user.id,
@@ -113,7 +131,9 @@ router.put('/:id', async (req, res) => {
     const oId = req.user.organization_id;
     const { title, content, type, priority, target_audience, pinned, expires_at, file_url, file_name, file_type } = req.body;
     
-    const payload = { title, content, type, priority, target_audience, pinned: !!pinned, expires_at: expires_at || null };
+    // BUG_085: Map 'admins' to 'hr' to satisfy DB constraint ('all','employees','hr')
+    const safeAudience = target_audience === 'admins' ? 'hr' : (target_audience || 'all');
+    const payload = { title, content, type, priority, target_audience: safeAudience, pinned: !!pinned, expires_at: expires_at || null };
     if (file_url !== undefined) payload.file_url = file_url;
     if (file_name !== undefined) payload.file_name = file_name;
     if (file_type !== undefined) payload.file_type = file_type;

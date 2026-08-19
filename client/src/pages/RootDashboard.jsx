@@ -314,6 +314,20 @@ export default function RootDashboard() {
     .filter(e => e.value > 0);
   const totalLeaveSegs = leaveSegs.reduce((s, e) => s + e.value, 0);
 
+  // BUG_119: largest-remainder method so percentages always sum to exactly 100
+  const leaveSegPcts = (() => {
+    if (totalLeaveSegs === 0) return leaveSegs.map(() => 0);
+    const floats   = leaveSegs.map(e => (e.value / totalLeaveSegs) * 100);
+    const floors   = floats.map(f => Math.floor(f));
+    const remainder = 100 - floors.reduce((s, f) => s + f, 0);
+    const ranked   = floats
+      .map((f, i) => ({ i, rem: f - floors[i] }))
+      .sort((a, b) => b.rem - a.rem);
+    const result   = [...floors];
+    for (let j = 0; j < remainder; j++) result[ranked[j].i]++;
+    return result;
+  })();
+
   const leaveChartData = {
     labels: leaveSegs.map(e => e.label),
     datasets: [{
@@ -868,7 +882,7 @@ export default function RootDashboard() {
                 <DoughnutChart data={leaveChartData} options={leaveOptions} centerLabel={totalLeaveSegs} centerSub="Leaves" />
               </div>
               <div className="flex-1 space-y-2.5">
-                {leaveSegs.map(t => (
+                {leaveSegs.map((t, idx) => (
                   <button key={t.key} onClick={() => navigate(`/root/leaves?type=${t.key}&status=approved`)}
                     className="w-full flex items-center justify-between text-xs hover:bg-[#f9f9ff] px-2 py-1 rounded-lg transition-colors group">
                     <span className="flex items-center gap-2 font-medium text-[#464555] group-hover:text-[#3525cd] transition-colors">
@@ -877,7 +891,7 @@ export default function RootDashboard() {
                     </span>
                     <span className="font-bold text-[#151c27]">
                       {t.value}
-                      <span className="text-[#9ca3af] font-normal ml-1">({Math.round((t.value / totalLeaveSegs) * 100)}%)</span>
+                      <span className="text-[#9ca3af] font-normal ml-1">({leaveSegPcts[idx]}%)</span>
                     </span>
                   </button>
                 ))}
@@ -938,7 +952,7 @@ export default function RootDashboard() {
             <h2 className="text-sm font-black text-[#151c27] flex items-center gap-2">
               <Calendar size={13} className="text-[#3525cd]" /> Upcoming Events
             </h2>
-            <button onClick={() => navigate('/root/holidays')}
+            <button onClick={() => navigate('/root/calendar')}
               className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               View Calendar
             </button>
@@ -952,7 +966,7 @@ export default function RootDashboard() {
               </div>
             ) : upcomingEvents.map((ev, i) => (
               <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#fafaff] transition-colors cursor-pointer"
-                onClick={() => navigate('/root/holidays')}>
+                onClick={() => navigate('/root/calendar')}>
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${ev.type === 'holiday' ? 'bg-amber-50' : 'bg-[#f0f3ff]'}`}>
                   {ev.type === 'holiday' ? <Star size={13} className="text-amber-500" /> : <CalendarDays size={13} className="text-[#3525cd]" />}
                 </div>

@@ -201,7 +201,11 @@ function AdminOnboarding() {
   });
 
   const onboardedIds = new Set(overview.map(o => String(o.user?.id)));
-  const notStarted   = employees.filter(e => !onboardedIds.has(String(e.id)));
+  // BUG_158: only show active employees in the "not started" list — exclude inactive/terminated/resigned
+  const notStarted   = employees.filter(e =>
+    !onboardedIds.has(String(e.id)) &&
+    (!e.employee_status || e.employee_status === 'active' || e.employee_status === 'probation')
+  );
 
   return (
     <div className="space-y-5">

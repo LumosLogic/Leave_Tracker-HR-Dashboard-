@@ -31,6 +31,15 @@ function StructureModal({ open, onClose, userId }) {
     onError: e => toast(e.message, 'error'),
   });
 
+  // BUG_130: validate that at least one earning component is > 0 before saving
+  function handleSave() {
+    if (gross <= 0) {
+      toast('Salary amount must be greater than ₹0. Please enter at least one earning component.', 'error');
+      return;
+    }
+    mut.mutate();
+  }
+
   const row = (label, key) => (
     <div key={key}>
       <label className="form-label">{label}</label>
@@ -43,7 +52,7 @@ function StructureModal({ open, onClose, userId }) {
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={mut.isPending}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Save Structure'}
           </button>
         </div>

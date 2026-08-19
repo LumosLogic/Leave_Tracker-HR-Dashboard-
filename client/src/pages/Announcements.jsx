@@ -7,6 +7,10 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
+// BUG_088: max length constants
+const TITLE_MAX   = 150;
+const CONTENT_MAX = 2000;
+
 const TYPE_CFG = {
   general:     { icon: <Megaphone size={15} />,     bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',  border: 'border-[#c7c4d8]',  strip: '#3525cd', label: 'General' },
   urgent:      { icon: <AlertTriangle size={15} />, bg: 'bg-rose-50',    text: 'text-rose-700',   border: 'border-rose-200',   strip: '#EF4444', label: 'Urgent' },
@@ -33,6 +37,28 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [errors, setErrors] = useState({});
+
+  const titleLen   = form.title.length;
+  const contentLen = form.content.length;
+  const isOverLimit = titleLen > TITLE_MAX || contentLen > CONTENT_MAX;
+
+  // BUG_087/088: validate before save
+  function validate() {
+    const errs = {};
+    const trimTitle = form.title.trim();
+    if (!trimTitle) { errs.title = 'Title is required.'; }
+    else if (!/[a-zA-Z]/.test(trimTitle)) { errs.title = 'Title must contain at least one letter.'; }
+    else if (trimTitle.length > TITLE_MAX) { errs.title = `Title must not exceed ${TITLE_MAX} characters.`; }
+    if (!form.content.trim()) { errs.content = 'Content is required.'; }
+    else if (!/[a-zA-Z]/.test(form.content)) { errs.content = 'Content must contain at least one letter.'; }
+    else if (form.content.length > CONTENT_MAX) { errs.content = `Content must not exceed ${CONTENT_MAX} characters.`; }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  // BUG_089: clean filename for display
+  const displayFileName = form.file_name || (form.file_url ? form.file_url.split('/').pop() : 'Attached file');
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -64,19 +90,28 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || uploading || !form.title || !form.content}>
+          <button className="btn btn-primary" onClick={() => { if (validate()) mut.mutate(); }} disabled={mut.isPending || uploading || isOverLimit}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : isEdit ? 'Save Changes' : 'Post Announcement'}
           </button>
         </div>
       }>
       <div className="space-y-4">
         <div>
-          <label className="form-label">Title *</label>
-          <input className="form-control" placeholder="Announcement title…" value={form.title} onChange={e => set('title', e.target.value)} />
+          {/* BUG_087/088: Title with validation and char counter */}
+          <div className="flex justify-between items-center mb-1">
+            <label className="form-label mb-0">Title *</label>
+            <span className={`text-[0.65rem] font-semibold ${titleLen > TITLE_MAX ? 'text-rose-600' : 'text-[#777587]'}`}>{titleLen}/{TITLE_MAX}</span>
+          </div>
+          <input className={`form-control ${errors.title ? 'border-rose-400' : ''}`} placeholder="Announcement title…" maxLength={TITLE_MAX + 10} value={form.title} onChange={e => { set('title', e.target.value); if (errors.title) setErrors(p => ({ ...p, title: '' })); }} />
+          {errors.title && <p className="text-xs text-rose-500 mt-1">{errors.title}</p>}
         </div>
         <div>
-          <label className="form-label">Content *</label>
-          <textarea className="form-control" rows={4} placeholder="Write your announcement…" value={form.content} onChange={e => set('content', e.target.value)} />
+          {/* BUG_087/088: Content with validation and char counter */}
+          <div className="flex justify-between items-center mb-1">
+            <label className="form-label mb-0">Content *</label>
+            <span className={`text-[0.65rem] font-semibold ${contentLen > CONTENT_MAX ? 'text-rose-600' : 'text-[#777587]'}`}>{contentLen}/{CONTENT_MAX}</span>
+          </div>
+          <textarea className={`form-control ${errors.content ? 'border-rose-400' : ''}`} rows={4} placeholder="Write your announcement…" maxLength={CONTENT_MAX + 20} value={form.content} onChange={e => { set('content', e.target.value); if (errors.content) setErrors(p => ({ ...p, content: '' })); }} />
         </div>
         <div>
           <label className="form-label">Type</label>
@@ -92,13 +127,14 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
 
         {/* Poster / Document Upload Section */}
         <div>
-          <label className="form-label">Attach Poster or Document <span className="font-normal text-[#777587] normal-case tracking-normal">(Stored in Cloudinary)</span></label>
+          {/* BUG_089: no vendor name in label */}
+          <label className="form-label">Attachment <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — image / PDF / doc)</span></label>
           <input type="file" ref={fileRef} onChange={handleFileUpload} className="hidden" accept="image/*,application/pdf,.doc,.docx" />
           {form.file_url ? (
             <div className="flex items-center justify-between p-3 bg-[#f0f3ff] border border-[#3525cd]/30 rounded-xl">
               <div className="flex items-center gap-2 min-w-0">
                 <Paperclip size={16} className="text-[#3525cd] flex-shrink-0" />
-                <span className="text-xs font-bold text-[#151c27] truncate">{form.file_name || 'Attached Document'}</span>
+                <span className="text-xs font-bold text-[#151c27] truncate">{displayFileName}</span>
               </div>
               <button type="button" onClick={() => setForm(f => ({ ...f, file_url: null, file_name: null, file_type: null }))}
                 className="p-1 text-[#777587] hover:text-rose-600 rounded-lg transition-colors">
@@ -108,7 +144,7 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
           ) : (
             <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
               className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[#c7c4d8] hover:border-[#3525cd] bg-[#f9f9ff] hover:bg-[#f0f3ff] rounded-xl text-xs font-bold text-[#3525cd] transition-all">
-              {uploading ? <><span className="spinner w-4 h-4" /> Uploading to Cloudinary…</> : <><Upload size={16} /> Upload Image / PDF / Doc</>}
+              {uploading ? <><span className="spinner w-4 h-4" /> Uploading…</> : <><Upload size={16} /> Upload Image / PDF / Doc</>}
             </button>
           )}
         </div>
@@ -119,7 +155,8 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
             <select className="form-control" value={form.target_audience} onChange={e => set('target_audience', e.target.value)}>
               <option value="all">Everyone</option>
               <option value="employees">Employees Only</option>
-              <option value="admins">Admins Only</option>
+              {/* BUG_085: use 'hr' — valid DB enum value */}
+              <option value="hr">Admins / HR Only</option>
             </select>
           </div>
           <div>
@@ -234,7 +271,8 @@ export default function AnnouncementsPage() {
             <button key={f} onClick={() => setFilter(f)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize border transition-all flex items-center gap-1.5 ${filter === f ? 'bg-[#3525cd] text-white border-[#3525cd] shadow-sm' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'}`}>
               {cfg && <span className={filter === f ? 'text-white' : ''}>{cfg.icon}</span>}
-              {f === 'all' ? `All (${announcements.length})` : cfg?.label}
+              {/* BUG_086: show per-type count */}
+              {f === 'all' ? `All (${announcements.length})` : `${cfg?.label} (${announcements.filter(a => a.type === f).length})`}
             </button>
           );
         })}
