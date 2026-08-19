@@ -183,7 +183,6 @@ export default function PendingApprovals() {
     if (item._flow === 'new') {
       const levelLabel = item.current_level_label || item.current_level_role_type?.replace(/_/g, ' ') || 'Your Approval';
       return (
-        {/* BUG_139: constrain stage cell width to prevent layout overflow */}
         <div className="space-y-0.5 max-w-full overflow-hidden">
           <span title={levelLabel} className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8] max-w-full truncate">
             <span className="w-1.5 h-1.5 rounded-full bg-[#3525cd] animate-pulse flex-shrink-0" /> <span className="truncate">{levelLabel}</span>
