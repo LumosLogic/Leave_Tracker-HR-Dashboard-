@@ -1940,6 +1940,8 @@ export default function Employees() {
   const actionParam   = searchParams.get('action');
   const viewParam     = searchParams.get('view');
   const joinedYmParam = searchParams.get('joined_ym'); // 'YYYY-MM' — filters to new joiners of that month
+  // BUG_065: 'birthday' filter shows employees with birthdays today or in the next 30 days
+  const filterParam   = searchParams.get('filter');
 
   // Modal / profile state
   const [profileEmp,     setProfileEmp]     = useState(null);
@@ -2034,7 +2036,7 @@ export default function Employees() {
 
   // Reset to page 1 when any filter / sort changes
   useEffect(() => { setPage(1); setSelected(new Set()); },
-    [search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam]);
+    [search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, pageSize, roleFilter, joinedYmParam, filterParam]);
 
   const { data: _dData = [] } = useQuery({
     queryKey: ['departments'],
@@ -2117,18 +2119,33 @@ export default function Employees() {
         return d.getFullYear() === yr && d.getMonth() === mo - 1;
       });
     }
+    // BUG_065: filter to employees whose birthday is today or within the next 30 days
+    if (filterParam === 'birthday') {
+      const today = new Date();
+      rows = rows.filter(e => {
+        if (!e.date_of_birth) return false;
+        const parts = e.date_of_birth.split('-');
+        if (parts.length < 3) return false;
+        const bMonth = parts[1];
+        const bDay   = parts[2].slice(0, 2);
+        const nextBday = new Date(today.getFullYear(), parseInt(bMonth, 10) - 1, parseInt(bDay, 10));
+        if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
+        const daysUntil = Math.round((nextBday - today) / 86400000);
+        return daysUntil <= 30;
+      });
+    }
     return [...rows].sort((a, b) => {
       const av = (a[sortBy] || '').toString().toLowerCase();
       const bv = (b[sortBy] || '').toString().toLowerCase();
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [employees, search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam]);
+  }, [employees, search, deptFilter, branchFilter, statusFilter, typeFilter, sortBy, sortDir, joinedYmParam, filterParam]);
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pageRows   = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const anyFilter  = search || deptFilter || branchFilter || statusFilter || typeFilter || joinedYmParam;
+  const anyFilter  = search || deptFilter || branchFilter || statusFilter || typeFilter || joinedYmParam || filterParam;
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
   const allPageSelected = pageRows.length > 0 && pageRows.every(e => selected.has(e.id));

@@ -60,6 +60,11 @@ router.put('/:id/family/:recordId', auth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     const { relationship, name, date_of_birth, gender, occupation, contact_number, dependent } = req.body;
 
+    // BUG_048: Validate on update too
+    if (name && !/[a-zA-Z]/.test(name)) return res.status(400).json({ error: 'Family member name must contain letters.' });
+    if (date_of_birth && new Date(date_of_birth) > new Date())
+      return res.status(400).json({ error: 'Date of birth cannot be a future date.' });
+
     const { data, error } = await supabase.from('employee_family_members').update({
       relationship, name, date_of_birth: date_of_birth || null,
       gender, occupation, contact_number, dependent,

@@ -170,7 +170,8 @@ export default function MyProfile() {
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const isDirty = name !== savedName || email !== savedEmail || color !== savedColor || photoUrl !== savedPhotoUrl;
-  const nameValid = name.trim().length >= 2 && name.trim().length <= 60;
+  // BUG_036: Name must contain at least one alphabetic character
+  const nameValid = name.trim().length >= 2 && name.trim().length <= 60 && /[a-zA-Z]/.test(name);
 
   // ── Avatar photo upload ───────────────────────────────────────────────────
   async function handlePhotoUpload(e) {
@@ -412,7 +413,9 @@ export default function MyProfile() {
                 placeholder="Your full name"
               />
               {!nameValid && name.length > 0 && (
-                <p className="text-xs text-rose-600 mt-1">Name must be 2–60 characters.</p>
+                <p className="text-xs text-rose-600 mt-1">
+                  {!/[a-zA-Z]/.test(name) ? 'Name must contain at least one letter.' : 'Name must be 2–60 characters.'}
+                </p>
               )}
             </div>
             <div>

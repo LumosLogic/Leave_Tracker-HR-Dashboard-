@@ -74,6 +74,16 @@ router.put('/:id/education/:recordId', auth, async (req, res) => {
       year_of_passing, percentage, cgpa, degree_class,
     } = req.body;
 
+    // BUG_050: Validate on update too
+    if (institution && !/[a-zA-Z]/.test(institution)) return res.status(400).json({ error: 'Institution name must contain letters.' });
+    const currentYear = new Date().getFullYear();
+    if (year_of_passing && (year_of_passing < 1950 || year_of_passing > currentYear))
+      return res.status(400).json({ error: `Year of passing must be between 1950 and ${currentYear}.` });
+    if (percentage != null && percentage !== '' && (percentage < 0 || percentage > 100))
+      return res.status(400).json({ error: 'Percentage must be between 0 and 100.' });
+    if (cgpa != null && cgpa !== '' && (cgpa < 0 || cgpa > 10))
+      return res.status(400).json({ error: 'CGPA must be between 0 and 10.' });
+
     const { data, error } = await supabase.from('employee_qualifications').update({
       degree_level, institution, board_university, specialization,
       year_of_passing: year_of_passing || null,
