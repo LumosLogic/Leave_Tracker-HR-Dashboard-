@@ -49,9 +49,9 @@ for (const c of [...LEGACY_CATEGORIES, ...EMPLOYEE_CATEGORIES]) CAT_MAP[c.value]
 const VIS_CFG = {
   self:       { label: 'Particular Employee', icon: <UserCheck size={10} />, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   all:        { label: 'All Employees',       icon: <Globe size={10} />,     cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  specific:   { label: 'Specific Employees',  icon: <Users size={10} />,     cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-  // BUG_023: Changed from 'HR / Admin Only' to 'Shared with HR' for consistency with upload guidelines
-  admin_only: { label: 'Shared with HR',       icon: <Lock size={10} />,      cls: 'bg-slate-50 text-slate-600 border-slate-200' },
+  // BUG_023: Consistent visibility labels — "Shared with HR" used everywhere for admin_only
+  specific:   { label: 'Shared with Employees', icon: <Users size={10} />,  cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  admin_only: { label: 'Shared with HR',        icon: <Lock size={10} />,   cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 };
 
 const STATUS_CFG = {
@@ -593,7 +593,7 @@ function SharedDocumentsTab({ onUploadClick }) {
   function resetFilters() { setSearch(''); setCatFilter(''); setVisFilter(''); setEmpFilter(''); setStatusFilter(''); setPage(1); }
   function getSharedWith(doc) {
     if (doc.visibility === 'all') return <span className="text-[#464555]">Everyone</span>;
-    if (doc.visibility === 'admin_only') return <span className="text-[#464555]">HR &amp; Admins</span>;
+    if (doc.visibility === 'admin_only') return <span className="text-[#464555]">Shared with HR</span>;
     if (doc.visibility === 'self') return <span className="text-[#464555]">{doc.owner?.name || '—'}</span>;
     if (doc.visibility === 'specific') {
       const count = (doc.document_shares || []).length;
@@ -646,7 +646,7 @@ function SharedDocumentsTab({ onUploadClick }) {
           <FilterSelect label="Category" value={catFilter} onChange={v => { setCatFilter(v); setPage(1); }}
             options={[{ value: '', label: 'All Categories' }, ...EMPLOYEE_CATEGORIES.map(c => ({ value: c.value, label: c.label }))]} />
           <FilterSelect label="Visibility" value={visFilter} onChange={v => { setVisFilter(v); setPage(1); }}
-            options={[{ value: '', label: 'All Visibility' }, { value: 'all', label: 'All Employees' }, { value: 'specific', label: 'Specific Employees' }, { value: 'admin_only', label: 'HR / Admin Only' }, { value: 'self', label: 'Particular Employee' }]} />
+            options={[{ value: '', label: 'All Visibility' }, { value: 'all', label: 'All Employees' }, { value: 'specific', label: 'Shared with Employees' }, { value: 'admin_only', label: 'Shared with HR' }, { value: 'self', label: 'Particular Employee' }]} />
           <FilterSelect label="Employee" value={empFilter} onChange={v => { setEmpFilter(v); setPage(1); }}
             options={[{ value: '', label: 'All' }, ...uniqueEmployees.map(e => ({ value: String(e.id), label: e.name }))]} />
           <FilterSelect label="Status" value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }}

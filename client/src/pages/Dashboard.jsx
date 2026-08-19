@@ -1200,7 +1200,8 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2.5">
                 {birthdaysToday.map(u => (
-                  <div key={u.id} onClick={() => navigate('/employees')}
+                  // BUG_065: navigate to birthday-filtered employees view
+                  <div key={u.id} onClick={() => navigate('/employees?filter=birthday')}
                     className="flex items-center gap-3 p-2.5 rounded-xl bg-pink-50 border border-pink-100 cursor-pointer hover:bg-pink-100 transition-colors">
                     <Avatar name={u.name} color={u.avatar_color} size={32} />
                     <div className="min-w-0 flex-1">
@@ -1210,7 +1211,8 @@ export default function Dashboard() {
                   </div>
                 ))}
                 {upcomingBirthdays.slice(0, 5).map(u => (
-                  <div key={u.id + u.birthday_date} onClick={() => navigate('/employees')}
+                  // BUG_065: navigate to birthday-filtered employees view
+                  <div key={u.id + u.birthday_date} onClick={() => navigate('/employees?filter=birthday')}
                     className="flex items-center gap-3 cursor-pointer hover:bg-[#fafaff] -mx-1 px-1 py-1.5 rounded-lg transition-colors">
                     <div className="w-8 h-8 rounded-lg bg-pink-50 border border-pink-100 flex items-center justify-center text-base shrink-0">🎂</div>
                     <div className="flex-1 min-w-0">

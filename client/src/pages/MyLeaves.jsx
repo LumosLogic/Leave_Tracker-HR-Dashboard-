@@ -143,7 +143,8 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
   }
 
   const isWFHRecord = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
-  const activePolicies = (policies || []).filter(p => p.active && p.leave_type !== 'wfh');
+  // Treat active===null/undefined as active (DB may return null for default policies).
+  const activePolicies = (policies || []).filter(p => p.active !== false && p.leave_type !== 'wfh');
   const leaveTypeOptions = activePolicies.length > 0
     ? activePolicies.map(p => ({ value: p.leave_type, label: p.label, quota: p.annual_quota }))
     : ALL_LEAVE_TYPES.map(t => ({ ...t, quota: 12 }));
