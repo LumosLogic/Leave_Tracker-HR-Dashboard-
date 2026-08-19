@@ -192,7 +192,9 @@ function timeAgo(dateStr) {
 }
 
 export default function AnnouncementsPage() {
-  const { isAdmin, isEmployee, isRootAdmin, organization } = useAuth();
+  const { isAdmin, isEmployee, isRootAdmin, organization, hasPermission } = useAuth();
+  // BUG_162: gate create/manage actions on announcements.create permission
+  const canCreateAnnouncement = isAdmin && hasPermission('announcements', 'create');
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
@@ -237,7 +239,8 @@ export default function AnnouncementsPage() {
           <h1 className="page-title">Announcements</h1>
           <p className="page-subtitle">{announcements.length} announcement{announcements.length !== 1 ? 's' : ''} · company-wide communications</p>
         </div>
-        {isAdmin && <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Plus size={16} />New Announcement</button>}
+        {/* BUG_162: only show create button when announcements.create permission is granted */}
+        {canCreateAnnouncement && <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Plus size={16} />New Announcement</button>}
       </div>
 
       {/* Root admin: organization selector */}
@@ -285,7 +288,7 @@ export default function AnnouncementsPage() {
           <Megaphone size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
           <p className="font-semibold text-[#464555] mb-1">No announcements</p>
           <p className="text-sm">{isAdmin ? 'Post your first announcement to keep the team informed' : 'No announcements from management yet'}</p>
-          {isAdmin && <button className="btn btn-primary mt-4" onClick={() => setAddOpen(true)}><Plus size={14} />Post Announcement</button>}
+          {canCreateAnnouncement && <button className="btn btn-primary mt-4" onClick={() => setAddOpen(true)}><Plus size={14} />Post Announcement</button>}
         </div>
       ) : (
         <div className="space-y-3">

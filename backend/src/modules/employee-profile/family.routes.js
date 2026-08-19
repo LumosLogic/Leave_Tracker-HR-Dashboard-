@@ -38,6 +38,12 @@ router.post('/:id/family', auth, async (req, res) => {
       return res.status(400).json({ error: 'Date of birth cannot be in the future.' });
     }
 
+    // BUG_051: Prevent duplicate family members (same name + relationship, case-insensitive)
+    const { data: dup } = await supabase.from('employee_family_members')
+      .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
+      .eq('relationship', relationship).ilike('name', name.trim()).maybeSingle();
+    if (dup) return res.status(409).json({ error: 'A family member with this name and relationship already exists.' });
+
     const { data, error } = await supabase.from('employee_family_members').insert({
       employee_id: empId, organization_id: orgId(req),
       relationship, name, date_of_birth: date_of_birth || null,

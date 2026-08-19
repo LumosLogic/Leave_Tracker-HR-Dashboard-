@@ -4,9 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Shield, Lock, Save, CheckSquare, Square,
   Users, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  UserPlus, X, Search,
+  UserPlus, X, Search, Pencil,
 } from 'lucide-react';
-import { apiGet, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useFeature } from '@/context/FeatureFlagContext';
 
@@ -171,6 +171,94 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
   );
 }
 
+// ─── BUG_140: Edit Role Modal (name + description for custom roles) ───────────
+function EditRoleModal({ role, onClose, onSaved }) {
+  const [name, setName]   = useState(role.name || '');
+  const [desc, setDesc]   = useState(role.description || '');
+  const [error, setError] = useState('');
+  const qc                = useQueryClient();
+
+  const mut = useMutation({
+    mutationFn: () => apiPut(`/roles/${role.id}`, { name: name.trim(), description: desc.trim() }),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['role', String(role.id)] });
+      qc.invalidateQueries({ queryKey: ['roles'] });
+      onSaved(updated);
+      onClose();
+    },
+    onError: (err) => setError(err.message),
+  });
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    const trimmed = name.trim();
+    if (!trimmed) { setError('Role name is required'); return; }
+    if (trimmed.length < 2) { setError('Must be at least 2 characters'); return; }
+    if (trimmed.length > 100) { setError('Must be 100 characters or fewer'); return; }
+    if (/[^a-zA-Z0-9\s\-_]/.test(trimmed)) { setError('Only letters, numbers, spaces, hyphens, and underscores allowed'); return; }
+    mut.mutate();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.6)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#c7c4d8]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7eefe]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#3525cd]/10 flex items-center justify-center">
+              <Pencil size={15} className="text-[#3525cd]" />
+            </div>
+            <h2 className="font-black text-[#151c27] text-base">Edit Role</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center transition-colors">
+            <X size={16} className="text-[#777587]" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-[#464555] mb-1.5">Role Name <span className="text-rose-500">*</span></label>
+            <input
+              autoFocus
+              value={name}
+              onChange={e => setName(e.target.value)}
+              maxLength={100}
+              placeholder="e.g. Finance Manager"
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-[#464555] mb-1.5">Description <span className="text-[#c7c4d8] font-normal">(optional)</span></label>
+            <textarea
+              value={desc}
+              onChange={e => setDesc(e.target.value.slice(0, 500))}
+              rows={3}
+              maxLength={500}
+              placeholder="What does this role do?"
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] resize-none focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+            />
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+          <div className="flex gap-2.5 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 border border-[#c7c4d8] rounded-lg py-2.5 text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={mut.isPending || !name.trim()}
+              className="flex-1 bg-[#3525cd] text-white rounded-lg py-2.5 text-sm font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {mut.isPending ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Members Panel ────────────────────────────────────────────────────────────
 function MembersPanel({ members = [], roleId, onRefetch }) {
   const qc             = useQueryClient();
@@ -191,13 +279,11 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['role', String(roleId)] }); onRefetch?.(); },
   });
 
-  // Add a user to this role: fetch their current roles → append this role → PUT
+  // BUG_142 fix: use POST /:id/members (additive — does not touch other role assignments)
   const addMut = useMutation({
     mutationFn: async (user) => {
-      const currentRoles = await apiGet(`/roles/user/${user.id}`);
-      const currentIds   = (Array.isArray(currentRoles) ? currentRoles : []).map(r => r.id);
-      if (currentIds.includes(Number(roleId))) return; // already assigned
-      await apiPut(`/roles/user/${user.id}`, { role_ids: [...currentIds, Number(roleId)] });
+      // POST /roles/:id/members — inserts with ON CONFLICT DO NOTHING (safe + additive)
+      await apiPost(`/roles/${roleId}/members`, { user_id: user.id });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
@@ -311,6 +397,7 @@ export default function PermissionMatrix() {
   const [dirty, setDirty]             = useState(false);
   const [toast, setToast]             = useState(null);
   const [activeTab, setActiveTab]     = useState('permissions'); // 'permissions' | 'members'
+  const [showEditRole, setShowEditRole] = useState(false); // BUG_140
 
   // Fetch role details (with current permissions + members)
   const { data: role, isLoading: roleLoading, isError: roleError, refetch: refetchRole } = useQuery({
@@ -483,7 +570,19 @@ export default function PermissionMatrix() {
                 {isSystemRole ? <Lock size={17} className="text-[#3525cd]" /> : <Shield size={17} className="text-[#3525cd]" />}
               </div>
               <div>
-                <h1 className="text-xl font-black text-[#151c27]">{role.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-black text-[#151c27]">{role.name}</h1>
+                  {/* BUG_140: Edit button for custom roles */}
+                  {!isSystemRole && (
+                    <button
+                      onClick={() => setShowEditRole(true)}
+                      title="Edit role name and description"
+                      className="w-7 h-7 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center transition-colors"
+                    >
+                      <Pencil size={13} className="text-[#777587]" />
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={cn(
                     'text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full',
@@ -637,6 +736,15 @@ export default function PermissionMatrix() {
           }
           {toast.message}
         </div>
+      )}
+
+      {/* BUG_140: Edit role name/description modal (custom roles only) */}
+      {showEditRole && role && !isSystemRole && (
+        <EditRoleModal
+          role={role}
+          onClose={() => setShowEditRole(false)}
+          onSaved={() => { showToast('Role updated', 'success'); }}
+        />
       )}
     </div>
   );

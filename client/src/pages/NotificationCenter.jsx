@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, BellOff, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList, Info } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Trash2, Megaphone, DollarSign, Receipt, Monitor, Target, UserCheck, LogOut as ExitIcon, ClipboardList, Info, FileText } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { usePushNotification } from '@/hooks/usePushNotification';
@@ -20,6 +20,8 @@ function getTypeLink(isEmployee, isRootAdmin) {
     exit:           isEmployee ? '/portal/exit'          : `${prefix}/exit-management`,
     announcement:   isEmployee ? '/portal/announcements' : `${prefix}/announcements`,
     asset:          isEmployee ? '/portal/home'          : `${prefix}/assets`,
+    document:       '/documents?tab=verification',
+    leave:          isEmployee ? '/portal/leaves'        : `${prefix}/leaves`,
   };
 }
 
@@ -38,6 +40,9 @@ const TYPE_CFG = {
   exit:           { icon: <ExitIcon size={14} />,      bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    strip: '#EF4444', label: 'Exit' },
   // BUG_091: info fallback uses Info icon to differentiate from both Bell (general) and Megaphone (announcement)
   info:           { icon: <Info size={14} />,          bg: 'bg-[#f0f3ff]',  text: 'text-[#464555]',   border: 'border-[#c7c4d8]',   strip: '#c7c4d8', label: 'Info' },
+  // BUG_093: Document notification type
+  document:       { icon: <FileText size={14} />,      bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    strip: '#3B82F6', label: 'Document' },
+  leave:          { icon: <ClipboardList size={14} />, bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',   border: 'border-[#c7c4d8]',   strip: '#3525cd', label: 'Leave' },
 };
 
 function timeAgo(dateStr) {
@@ -168,6 +173,11 @@ export default function NotificationCenter() {
                           className="flex-1 min-w-0 cursor-pointer"
                           onClick={() => {
                             if (!n.is_read) readMut.mutate(n.id);
+                            // BUG_093: document notifications always go to verification queue
+                            if (n.type === 'document' || n.reference_type === 'document_submission') {
+                              navigate('/documents?tab=verification');
+                              return;
+                            }
                             const link = TYPE_LINK[n.type];
                             if (link) navigate(link);
                           }}>

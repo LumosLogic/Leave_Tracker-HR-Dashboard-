@@ -69,14 +69,36 @@ async function resolvePermissions(userId, orgId) {
   if (cached) return cached;
 
   try {
+    // BUG_144 fix: union permissions from two sources:
+    //   1. Explicitly assigned roles (user_roles entries — both custom & system roles)
+    //   2. The user's system role derived from users.role column (admin→hr_admin,
+    //      employee→employee, root_admin→root_admin) mapped to the seeded system
+    //      role record for this org.  This ensures HR/employee users always get
+    //      their baseline permissions even when no explicit user_roles row exists.
     const result = await pool.query(
-      `SELECT DISTINCT
-         p.module_key || '.' || p.action AS permission
+      `SELECT DISTINCT p.module_key || '.' || p.action AS permission
        FROM user_roles ur
        JOIN role_permissions rp ON rp.role_id = ur.role_id
        JOIN permissions p       ON p.id = rp.permission_id
        WHERE ur.user_id = $1
-         AND ur.org_id  = $2`,
+         AND ur.org_id  = $2
+
+       UNION
+
+       SELECT DISTINCT p.module_key || '.' || p.action AS permission
+       FROM users u
+       JOIN roles r ON r.org_id = $2
+                   AND r.is_system_role = true
+                   AND r.slug = CASE u.role
+                                  WHEN 'root_admin' THEN 'root_admin'
+                                  WHEN 'admin'      THEN 'hr_admin'
+                                  WHEN 'employee'   THEN 'employee'
+                                  ELSE NULL
+                                END
+       JOIN role_permissions rp ON rp.role_id = r.id
+       JOIN permissions p       ON p.id = rp.permission_id
+       WHERE u.id = $1
+         AND u.organization_id = $2`,
       [userId, orgId]
     );
 

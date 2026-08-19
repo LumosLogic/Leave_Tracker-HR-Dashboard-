@@ -542,24 +542,52 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
     const { user_id, month, year, other_deductions, notes } = req.body;
     if (!user_id || !month || !year) return res.status(400).json({ error: 'user_id, month, year required' });
 
-    // Fetch salary structure — most recent one effective on or before this pay period
-    // Secondary sort by id DESC so latest-created wins when two structures share the same date
-    let { data: structures } = await supabase.from('payroll_structures')
-      .select('*').eq('user_id', user_id).eq('organization_id', oId)
-      .lte('effective_from', `${year}-${String(month).padStart(2,'0')}-01`)
-      .order('effective_from', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(1);
-    // Fallback: if no structure matches the date filter, use the most recently created one
-    if (!structures?.length) {
-      const { data: fallback } = await supabase.from('payroll_structures')
+    // BUG_133 FIX: Fetch salary structure — check employee_salary_structures (primary table)
+    // first, then fall back to the legacy payroll_structures table.
+    // The date filter uses <= first day of the month so future-dated structures are excluded.
+    const periodStart = `${year}-${String(month).padStart(2,'0')}-01`;
+
+    // 1. Try employee_salary_structures (the Phase 3 primary table)
+    const essRes = await pool.query(
+      `SELECT id,
+              basic, hra, da, transport_allowance, medical_allowance,
+              special_allowance AS special_allowance,
+              other_allowance   AS other_allowances,
+              employee_pf AS pf_employee, employee_esi AS esi_employee,
+              employer_pf AS pf_employer, employer_esi AS esi_employer,
+              professional_tax, tds, other_deductions,
+              effective_from
+         FROM employee_salary_structures
+        WHERE user_id        = $1
+          AND organization_id = $2
+          AND effective_from <= $3
+          AND (effective_to IS NULL OR effective_to >= $3)
+        ORDER BY effective_from DESC
+        LIMIT 1`,
+      [user_id, oId, periodStart]
+    );
+
+    let structure = essRes.rows[0] || null;
+
+    // 2. Fallback: legacy payroll_structures table
+    if (!structure) {
+      let { data: structures } = await supabase.from('payroll_structures')
         .select('*').eq('user_id', user_id).eq('organization_id', oId)
+        .lte('effective_from', periodStart)
         .order('effective_from', { ascending: false })
         .order('id', { ascending: false })
         .limit(1);
-      structures = fallback;
+      if (!structures?.length) {
+        const { data: fallback } = await supabase.from('payroll_structures')
+          .select('*').eq('user_id', user_id).eq('organization_id', oId)
+          .order('effective_from', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(1);
+        structures = fallback;
+      }
+      structure = structures?.[0] || null;
     }
-    const structure = structures?.[0];
+
     if (!structure) return res.status(400).json({ error: 'No salary structure found for this employee' });
 
     // Block regeneration of locked or published payslips

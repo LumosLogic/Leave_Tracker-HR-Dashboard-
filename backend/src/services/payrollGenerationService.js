@@ -115,81 +115,104 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
   );
   const leaveDays = att.paidLeave + att.unpaidLeave;
 
-  const { rows } = await pool.query(
-    `INSERT INTO payslips (
-        user_id, month, year, pay_period, organization_id, generated_by,
-        payroll_run_id, formula_version, salary_structure_id,
-        attendance_snapshot, lop_snapshot,
-        basic, hra, da, transport_allowance, medical_allowance,
-        special_allowance, other_allowances,
-        gross_salary,
-        pf_employee, esi_employee, professional_tax, tds, other_deductions,
-        pf_employer, esi_employer,
-        total_deductions, lop_days, lop_amount,
-        net_salary, working_days, present_days, absent_days, leave_days,
-        status
-     )
-     VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16,$17,$18,$19,
-        $20,$21,$22,$23,$24,$25,$26,
-        $27,$28,$29,$30,$31,$32,$33,$34,
-        'generated'
-     )
-     ON CONFLICT (user_id, month, year) DO UPDATE SET
-        payroll_run_id      = EXCLUDED.payroll_run_id,
-        formula_version     = EXCLUDED.formula_version,
-        salary_structure_id = EXCLUDED.salary_structure_id,
-        attendance_snapshot = EXCLUDED.attendance_snapshot,
-        lop_snapshot        = EXCLUDED.lop_snapshot,
-        basic               = EXCLUDED.basic,
-        hra                 = EXCLUDED.hra,
-        da                  = EXCLUDED.da,
-        transport_allowance = EXCLUDED.transport_allowance,
-        medical_allowance   = EXCLUDED.medical_allowance,
-        special_allowance   = EXCLUDED.special_allowance,
-        other_allowances    = EXCLUDED.other_allowances,
-        gross_salary        = EXCLUDED.gross_salary,
-        pf_employee         = EXCLUDED.pf_employee,
-        esi_employee        = EXCLUDED.esi_employee,
-        professional_tax    = EXCLUDED.professional_tax,
-        tds                 = EXCLUDED.tds,
-        other_deductions    = EXCLUDED.other_deductions,
-        pf_employer         = EXCLUDED.pf_employer,
-        esi_employer        = EXCLUDED.esi_employer,
-        total_deductions    = EXCLUDED.total_deductions,
-        lop_days            = EXCLUDED.lop_days,
-        lop_amount          = EXCLUDED.lop_amount,
-        net_salary          = EXCLUDED.net_salary,
-        working_days        = EXCLUDED.working_days,
-        present_days        = EXCLUDED.present_days,
-        absent_days         = EXCLUDED.absent_days,
-        leave_days          = EXCLUDED.leave_days,
-        generated_by        = EXCLUDED.generated_by,
-        organization_id     = EXCLUDED.organization_id,
-        status              = 'generated'
-     RETURNING id, gross_salary, total_deductions, net_salary`,
-    [
-      uId, mStr, y, `${mStr}/${y}`, oId, generatedBy,         // 1-6
-      payrollRunId ?? null, '3.3', sal.id,                     // 7-9
-      JSON.stringify(att), JSON.stringify(lop),                // 10-11
-      sal.basic, sal.hra, sal.da,                              // 12-14
-      sal.transportAllowance, sal.medicalAllowance,            // 15-16
-      sal.specialAllowance, sal.otherAllowance,                // 17-18
-      calc.grossSalary,                                        // 19
-      ded.pf, ded.esi, ded.professionalTax, ded.tds,          // 20-23
-      ded.otherDeductions,                                     // 24
-      emp.pf, emp.esi,                                         // 25-26
-      ded.total, lop.total, ded.lopDeduction,                  // 27-29
-      calc.netSalary,                                          // 30
-      calc.workingDays, presentDays, att.absent, leaveDays,    // 31-34
-    ]
+  // BUG_131 FIX: the payslips table has no unique constraint on (user_id, month, year)
+  // so ON CONFLICT cannot be used. Instead: check for an existing row, then UPDATE or INSERT.
+  const existingPayslip = await pool.query(
+    `SELECT id FROM payslips
+      WHERE user_id = $1 AND month = $2 AND year = $3 AND organization_id = $4`,
+    [uId, mStr, y, oId]
   );
+
+  const payslipValues = [
+    uId, mStr, y, `${mStr}/${y}`, oId, generatedBy,         // 1-6
+    payrollRunId ?? null, '3.3', sal.id,                     // 7-9
+    JSON.stringify(att), JSON.stringify(lop),                // 10-11
+    sal.basic, sal.hra, sal.da,                              // 12-14
+    sal.transportAllowance, sal.medicalAllowance,            // 15-16
+    sal.specialAllowance, sal.otherAllowance,                // 17-18
+    calc.grossSalary,                                        // 19
+    ded.pf, ded.esi, ded.professionalTax, ded.tds,          // 20-23
+    ded.otherDeductions,                                     // 24
+    emp.pf, emp.esi,                                         // 25-26
+    ded.total, lop.total, ded.lopDeduction,                  // 27-29
+    calc.netSalary,                                          // 30
+    calc.workingDays, presentDays, att.absent, leaveDays,   // 31-34
+  ];
+
+  let rows;
+  if (existingPayslip.rows.length > 0) {
+    // UPDATE existing payslip (lock already checked above)
+    ({ rows } = await pool.query(
+      `UPDATE payslips SET
+          pay_period          = $4,
+          generated_by        = $6,
+          payroll_run_id      = $7,
+          formula_version     = $8,
+          salary_structure_id = $9,
+          attendance_snapshot = $10,
+          lop_snapshot        = $11,
+          basic               = $12,
+          hra                 = $13,
+          da                  = $14,
+          transport_allowance = $15,
+          medical_allowance   = $16,
+          special_allowance   = $17,
+          other_allowances    = $18,
+          gross_salary        = $19,
+          pf_employee         = $20,
+          esi_employee        = $21,
+          professional_tax    = $22,
+          tds                 = $23,
+          other_deductions    = $24,
+          pf_employer         = $25,
+          esi_employer        = $26,
+          total_deductions    = $27,
+          lop_days            = $28,
+          lop_amount          = $29,
+          net_salary          = $30,
+          working_days        = $31,
+          present_days        = $32,
+          absent_days         = $33,
+          leave_days          = $34,
+          status              = 'generated'
+        WHERE user_id = $1 AND month = $2 AND year = $3 AND organization_id = $5
+        RETURNING id, gross_salary, total_deductions, net_salary`,
+      payslipValues
+    ));
+  } else {
+    // INSERT new payslip
+    ({ rows } = await pool.query(
+      `INSERT INTO payslips (
+          user_id, month, year, pay_period, organization_id, generated_by,
+          payroll_run_id, formula_version, salary_structure_id,
+          attendance_snapshot, lop_snapshot,
+          basic, hra, da, transport_allowance, medical_allowance,
+          special_allowance, other_allowances,
+          gross_salary,
+          pf_employee, esi_employee, professional_tax, tds, other_deductions,
+          pf_employer, esi_employer,
+          total_deductions, lop_days, lop_amount,
+          net_salary, working_days, present_days, absent_days, leave_days,
+          status
+       )
+       VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+          $12,$13,$14,$15,$16,$17,$18,$19,
+          $20,$21,$22,$23,$24,$25,$26,
+          $27,$28,$29,$30,$31,$32,$33,$34,
+          'generated'
+       )
+       RETURNING id, gross_salary, total_deductions, net_salary`,
+      payslipValues
+    ));
+  }
 
   const payslipRow = rows[0];
 
   // ── Phase 3.7: Apply statutory calculations (PF/ESI/PT/TDS/LWF/Gratuity) ──
   // Fire-and-forget: if statutory config is absent nothing changes; errors are silent.
+  // BUG_131 FIX: removed invalid `data.salary` / `data.employee` references (data is not in
+  // scope here; use calc.salaryStructure and calc.employee instead).
   try {
     await applyStatutoryCalculations({
       organizationId: oId,
@@ -199,8 +222,8 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
       payslipId:      payslipRow.id,
       grossSalary:    calc.grossSalary,
       basicSalary:    sal.basic,
-      salary:         { ...data.salary, basic: sal.basic, da: sal.da },
-      joiningDate:    data.employee?.joining_date || null,
+      salary:         { basic: sal.basic, da: sal.da },
+      joiningDate:    calc.employee?.joining_date || null,
     });
   } catch (e) {
     // Log but don't fail payslip generation
