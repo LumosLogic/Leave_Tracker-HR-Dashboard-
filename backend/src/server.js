@@ -11,7 +11,7 @@ const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
 const { biometricSnGuard, biometricAuditLog } = require('./middleware/biometricSecurity');
-const { scheduleDailyAt, runDailyNotifications } = require('./utils/cronJobs');
+const { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent } = require('./utils/cronJobs');
 const payrollScheduler = require('./services/payrollScheduler');
 
 // ── Module routers (extracted from old server.js) ────────────────────────────
@@ -257,6 +257,8 @@ async function start() {
       console.log(`\n🚀 Lumos HRMS v${SERVER_VERSION} running at http://localhost:${PORT}\n`);
     });
     scheduleDailyAt(8, 0, runDailyNotifications);
+    // BUG_072: Auto-mark absent at 23:30 nightly — marks employees with no check-in and no leave as absent
+    scheduleDailyAt(23, 30, runAutoMarkAbsent);
     payrollScheduler.start();
   } catch (err) {
     console.error('Failed to start:', err.message);

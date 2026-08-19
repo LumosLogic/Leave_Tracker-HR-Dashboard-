@@ -100,4 +100,69 @@ async function runDailyNotifications() {
   console.log(`[Cron] Daily notifications sent for ${today}`);
 }
 
-module.exports = { scheduleDailyAt, runDailyNotifications };
+// BUG_072: Auto-mark absent — runs nightly after work hours end
+// For each active employee with no attendance record and no approved leave for that day,
+// inserts an 'absent' attendance record so the calendar/reports show the correct status.
+async function runAutoMarkAbsent() {
+  const today = localDateStr();
+  // Determine if today was a working day for each org (skip weekends by default)
+  const dayOfWeek = new Date().getDay(); // 0=Sun, 6=Sat
+  const { data: orgs } = await supabase.from('organizations').select('id').eq('status', 'active');
+
+  for (const org of (orgs || [])) {
+    const oId = org.id;
+    try {
+      // Fetch org work schedule to know working days
+      const { data: sched } = await supabase.from('organization_settings')
+        .select('work_days').eq('organization_id', oId).maybeSingle();
+      const workDays = sched?.work_days
+        ? sched.work_days.split(',').map(Number)
+        : [1, 2, 3, 4, 5]; // Mon–Fri default
+      if (!workDays.includes(dayOfWeek)) continue; // not a working day, skip
+
+      // Fetch all active employees
+      const { data: employees } = await supabase.from('users')
+        .select('id').eq('organization_id', oId)
+        .in('role', ['employee', 'admin'])
+        .in('employee_status', ['active', 'probation'])
+        .not('employee_status', 'in', '("inactive","resigned","terminated")');
+
+      if (!employees?.length) continue;
+      const empIds = employees.map(e => e.id);
+
+      // Find employees who checked in today
+      const { data: checkedIn } = await supabase.from('attendance')
+        .select('user_id').eq('organization_id', oId).eq('date', today)
+        .in('user_id', empIds);
+      const checkedInIds = new Set((checkedIn || []).map(r => r.user_id));
+
+      // Find employees with approved leave or WFH today
+      const { data: onLeave } = await supabase.from('leaves')
+        .select('user_id').eq('organization_id', oId)
+        .lte('start_date', today).gte('end_date', today)
+        .in('status', ['approved']).in('user_id', empIds);
+      const onLeaveIds = new Set((onLeave || []).map(r => r.user_id));
+
+      // Find employees with a holiday today
+      const { data: holidays } = await supabase.from('holidays')
+        .select('id').eq('organization_id', oId).eq('date', today).limit(1);
+      if (holidays?.length) continue; // org-wide holiday, skip absent marking
+
+      // Mark absent: employees not checked in and not on leave
+      const absentIds = empIds.filter(id => !checkedInIds.has(id) && !onLeaveIds.has(id));
+      if (!absentIds.length) continue;
+
+      // Insert absent records (skip if already exists)
+      const absentRecords = absentIds.map(uid => ({
+        user_id: uid, organization_id: oId, date: today, status: 'absent',
+        check_in: null, check_out: null,
+      }));
+      await supabase.from('attendance').upsert(absentRecords, { onConflict: 'user_id,date', ignoreDuplicates: true });
+      console.log(`[AutoAbsent] Marked ${absentIds.length} absent for org ${oId} on ${today}`);
+    } catch (err) {
+      console.error(`[AutoAbsent] Error for org ${oId}:`, err.message);
+    }
+  }
+}
+
+module.exports = { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent };

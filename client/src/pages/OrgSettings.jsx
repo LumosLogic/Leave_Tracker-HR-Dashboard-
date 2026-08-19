@@ -194,23 +194,15 @@ export default function OrgSettings() {
         </div>
       </Section>
 
-      {/* Leave Policy */}
-      <Section icon={<Shield size={18} />} title="Leave Policy" subtitle="Annual leave allocation per employee">
-        <Field label="Total Annual Leave Days" hint="Number of leave days each employee gets per year">
-          <input
-            type="number"
-            className={`form-control w-32 ${orgErrors.total_annual_leaves ? 'border-rose-400' : ''}`}
-            min="0" max="365"
-            value={form.total_annual_leaves ?? 18}
-            onChange={e => {
-              set('total_annual_leaves', e.target.value === '' ? '' : parseInt(e.target.value, 10));
-              setOrgErrors(p => ({ ...p, total_annual_leaves: undefined }));
-            }}
-          />
-          {orgErrors.total_annual_leaves && (
-            <p className="text-xs text-rose-500 mt-1">{orgErrors.total_annual_leaves}</p>
-          )}
-        </Field>
+      {/* BUG_147: Leave Policy managed from Leave Policies page — show info link only */}
+      <Section icon={<Shield size={18} />} title="Leave Policy" subtitle="Configure individual leave types and quotas in Leave Policies">
+        <div className="p-3 bg-[#f0f3ff] rounded-xl flex items-start gap-3">
+          <Shield size={16} className="text-[#3525cd] mt-0.5 shrink-0" />
+          <p className="text-xs text-[#464555] leading-relaxed">
+            Leave types, quotas, and policies are managed in the <strong>Leave Policies</strong> section.
+            Go to <a href="/leave-policies" className="text-[#3525cd] underline font-semibold">Leave Policies</a> to configure Casual Leave, Sick Leave, Annual Leave, and more.
+          </p>
+        </div>
       </Section>
 
       {/* Email — centralized, no per-org config needed */}

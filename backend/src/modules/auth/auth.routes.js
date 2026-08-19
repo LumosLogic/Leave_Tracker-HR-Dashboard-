@@ -40,6 +40,16 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
     if (user.status === 'inactive') {
       return res.status(403).json({ error: 'Your account has been deactivated. Please contact HR to restore access.' });
     }
+    // BUG_155: Also block employees with inactive/resigned/terminated employee_status
+    const blockedEmployeeStatuses = ['inactive', 'resigned', 'terminated'];
+    if (blockedEmployeeStatuses.includes(user.employee_status)) {
+      const msg = user.employee_status === 'resigned'
+        ? 'Your account has been deactivated following your resignation. Please contact HR if you believe this is an error.'
+        : user.employee_status === 'terminated'
+        ? 'Your access has been revoked. Please contact HR for assistance.'
+        : 'Your account is inactive. Please contact HR to restore access.';
+      return res.status(403).json({ error: msg });
+    }
 
     // Record login history (fire and forget)
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
