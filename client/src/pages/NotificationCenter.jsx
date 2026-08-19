@@ -102,6 +102,7 @@ export default function NotificationCenter() {
   ].filter(g => g.items.length > 0);
 
   return (
+    <>
     <div className={wrap}>
       <div className="flex items-center justify-between mb-6">
         <p className="text-sm font-medium text-[#777587]">
@@ -217,5 +218,6 @@ export default function NotificationCenter() {
       onConfirm={() => delMut.mutate(deleteConfirm.id)}
       onCancel={() => setDeleteConfirm({ open: false, id: null })}
     />
+    </>
   );
 }
