@@ -15,11 +15,11 @@ router.get('/', auth, async (req, res) => {
     // ── 1. Get all employees (never include admin) ───────────────────────────
     _step = 'employees';
     // BUG_117: exclude inactive/resigned/terminated from dashboard KPI counts
-    // Use .or() to also keep rows where employee_status IS NULL (= active/unset)
+    // adapter's not_in wraps with (IS NULL OR NOT IN) so NULL-status = active employees included
     const { data: allEmployees } = await supabase.from('users')
       .select('id, name, avatar_color, department, created_at')
       .eq('role', 'employee').eq('organization_id', orgId(req))
-      .or('employee_status.is.null,employee_status.not.in.(inactive,resigned,terminated)');
+      .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
     const totalEmployees = (allEmployees || []).length;
     const empIds         = (allEmployees || []).map(e => e.id);
 

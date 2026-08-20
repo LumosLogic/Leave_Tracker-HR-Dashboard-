@@ -48,10 +48,10 @@ router.get('/', auth, async (req, res) => {
 
     // BUG_059: exclude inactive/resigned/terminated unless the caller explicitly
     // opts in with ?include_inactive=true (only the employee management page does this).
-    // IMPORTANT: use .or() to also include rows where employee_status IS NULL
-    // (NULL NOT IN (...) evaluates to NULL in SQL, which would exclude those rows).
+    // adapter's not_in case wraps with (IS NULL OR NOT IN) so NULL-status employees
+    // (treated as active) are always included.
     if (req.query.include_inactive !== 'true') {
-      query = query.or(`employee_status.is.null,employee_status.not.in.(${INACTIVE_STATUSES.join(',')})`);
+      query = query.not('employee_status', 'in', INACTIVE_STATUSES);
     }
 
     const { data: users } = await query;

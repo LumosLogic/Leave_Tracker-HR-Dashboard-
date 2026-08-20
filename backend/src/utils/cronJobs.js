@@ -124,7 +124,7 @@ async function runAutoMarkAbsent() {
       const { data: employees } = await supabase.from('users')
         .select('id').eq('organization_id', oId)
         .in('role', ['employee', 'admin'])
-        .or('employee_status.is.null,employee_status.in.(active,probation)');
+        .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
 
       if (!employees?.length) continue;
       const empIds = employees.map(e => e.id);

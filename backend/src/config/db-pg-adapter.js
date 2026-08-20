@@ -86,6 +86,12 @@ function from(table) {
             const placeholders = f.val.map(v => addParam(v)).join(', ');
             return `${col} IN (${placeholders})`;
           }
+          case 'not_in': {
+            // NOT IN must also include IS NULL rows (SQL NULL NOT IN (...) = NULL = excluded)
+            if (!Array.isArray(f.val) || f.val.length === 0) return 'TRUE';
+            const placeholders = f.val.map(v => addParam(v)).join(', ');
+            return `(${col} IS NULL OR ${col} NOT IN (${placeholders}))`;
+          }
           case 'not_eq': return `${col} <> ${addParam(f.val)}`;
           default:       return `${col} = ${addParam(f.val)}`;
         }
