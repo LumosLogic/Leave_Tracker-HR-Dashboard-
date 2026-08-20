@@ -202,7 +202,11 @@ router.get('/logs', auth, adminOnly, async (req, res) => {
         [...filterParams, limit, offset]
       ),
       pool.query(
-        `SELECT COUNT(*) FROM biometric_raw_logs l ${where}`,
+        `SELECT COUNT(*)
+         FROM biometric_raw_logs l
+         LEFT JOIN biometric_employee_map m ON m.org_id = l.org_id AND m.employee_pin = l.employee_pin
+         LEFT JOIN users u ON u.id = m.user_id
+         ${where}`,
         filterParams
       ),
     ]);
