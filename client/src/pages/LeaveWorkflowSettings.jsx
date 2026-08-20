@@ -7,6 +7,7 @@ import {
 import { apiGet, apiPut } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 
+// Priority order enforced — each type can only appear once (except specific_user)
 const ROLE_TYPE_OPTIONS = [
   { value: 'reporting_manager', label: 'Reporting Manager', description: 'The employee\'s direct reporting manager (from profile)' },
   { value: 'department_head',   label: 'Department Head',   description: 'The head of the employee\'s primary department' },
@@ -14,9 +15,18 @@ const ROLE_TYPE_OPTIONS = [
   { value: 'root_admin',        label: 'Root Admin',        description: 'Any Root Admin only (highest authority)' },
   { value: 'specific_user',     label: 'Specific User',     description: 'A specific user by their Employee ID' },
 ];
+// Types that can only be used once in the workflow
+const UNIQUE_ROLE_TYPES = ['reporting_manager', 'department_head', 'hr_admin', 'root_admin'];
 
-function LevelRow({ level, index, total, onChange, onDelete, onMoveUp, onMoveDown }) {
+function LevelRow({ level, index, total, usedTypes = new Set(), onChange, onDelete, onMoveUp, onMoveDown }) {
   const roleOption = ROLE_TYPE_OPTIONS.find(r => r.value === level.role_type);
+
+  // Filter dropdown: hide unique types already used in OTHER levels
+  const availableOptions = ROLE_TYPE_OPTIONS.filter(opt =>
+    opt.value === level.role_type ||            // always show current selection
+    !UNIQUE_ROLE_TYPES.includes(opt.value) ||   // specific_user always available
+    !usedTypes.has(opt.value)                   // not used in another level
+  );
 
   return (
     <div className="bg-white border border-[#e7eefe] rounded-xl p-4 hover:border-[#3525cd]/30 transition-all">
@@ -32,10 +42,10 @@ function LevelRow({ level, index, total, onChange, onDelete, onMoveUp, onMoveDow
             <label className="block text-[0.68rem] font-bold text-[#777587] mb-1 uppercase tracking-wide">Approver Type</label>
             <select
               value={level.role_type}
-              onChange={e => onChange({ ...level, role_type: e.target.value, role_reference: '' })}
+              onChange={e => onChange({ ...level, role_type: e.target.value, role_reference: '', level_label: '' })}
               className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 bg-white"
             >
-              {ROLE_TYPE_OPTIONS.map(opt => (
+              {availableOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
@@ -157,23 +167,19 @@ export default function LeaveWorkflowSettings() {
   });
 
   function addLevel() {
-    // BUG_107: prevent duplicate approver types
-    const defaultType = 'hr_admin';
-    const duplicate = levels.find(l => l.role_type === defaultType);
-    if (duplicate) { toast('An approver of this type is already in the workflow. Choose a different approver type.', 'warning'); return; }
+    // Pick the next unused type from the priority order
+    const usedTypes = new Set(levels.map(l => l.role_type));
+    const nextType = UNIQUE_ROLE_TYPES.find(t => !usedTypes.has(t)) || 'specific_user';
+    // If all unique types are used and specific_user is also limited, just add specific_user
     setLevels(prev => [
       ...prev,
-      { role_type: defaultType, level_label: '', is_required: true, role_reference: '', _key: Date.now() },
+      { role_type: nextType, level_label: '', is_required: true, role_reference: '', _key: Date.now() },
     ]);
     setDirty(true);
   }
 
   function updateLevel(index, updated) {
-    // BUG_107: check for duplicate role_type across other levels
-    if (updated.role_type && updated.role_type !== 'specific_user') {
-      const dup = levels.find((l, i) => i !== index && l.role_type === updated.role_type);
-      if (dup) { toast('This approver type is already in the workflow.', 'warning'); return; }
-    }
+    // Dropdown already filters out duplicate types — just apply the update
     setLevels(prev => prev.map((l, i) => i === index ? { ...updated } : l));
     setDirty(true);
   }
@@ -305,27 +311,37 @@ export default function LeaveWorkflowSettings() {
           </div>
         ) : (
           <div className="space-y-3">
-            {levels.map((level, i) => (
-              <LevelRow
-                key={level._key || i}
-                level={level}
-                index={i}
-                total={levels.length}
-                onChange={updated => updateLevel(i, updated)}
-                onDelete={() => deleteLevel(i)}
-                onMoveUp={() => moveLevel(i, -1)}
-                onMoveDown={() => moveLevel(i, 1)}
-              />
-            ))}
+            {levels.map((level, i) => {
+              // Build set of types used by ALL other levels (not this one)
+              const usedByOthers = new Set(
+                levels.filter((_, j) => j !== i).map(l => l.role_type)
+              );
+              return (
+                <LevelRow
+                  key={level._key || i}
+                  level={level}
+                  index={i}
+                  total={levels.length}
+                  usedTypes={usedByOthers}
+                  onChange={updated => updateLevel(i, updated)}
+                  onDelete={() => deleteLevel(i)}
+                  onMoveUp={() => moveLevel(i, -1)}
+                  onMoveDown={() => moveLevel(i, 1)}
+                />
+              );
+            })}
           </div>
         )}
 
-        <button
-          onClick={addLevel}
-          className="w-full flex items-center justify-center gap-2 border border-dashed border-[#3525cd]/40 rounded-xl py-3 text-sm font-bold text-[#3525cd] hover:bg-[#f0f3ff] hover:border-[#3525cd] transition-all"
-        >
-          <Plus size={15} /> Add Approval Level
-        </button>
+        {/* Hide Add button when all unique types are already used */}
+        {UNIQUE_ROLE_TYPES.some(t => !levels.find(l => l.role_type === t)) && (
+          <button
+            onClick={addLevel}
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-[#3525cd]/40 rounded-xl py-3 text-sm font-bold text-[#3525cd] hover:bg-[#f0f3ff] hover:border-[#3525cd] transition-all"
+          >
+            <Plus size={15} /> Add Approval Level
+          </button>
+        )}
       </div>
 
       {/* Save bar */}
