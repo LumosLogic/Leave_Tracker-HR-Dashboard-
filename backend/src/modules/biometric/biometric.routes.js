@@ -164,9 +164,18 @@ router.get('/logs', auth, adminOnly, async (req, res) => {
       idx++;
     }
     if (req.query.user_id) {
-      // Filter by user_id via the biometric_employee_map join
-      where += ` AND m.user_id = $${idx++}`;
+      // Match via biometric_employee_map OR directly via device_enrollment_id on users table
+      // (covers cases where the map table is incomplete but device_enrollment_id is set)
+      where += ` AND (
+        m.user_id = $${idx}
+        OR l.employee_pin = (
+          SELECT device_enrollment_id FROM users
+          WHERE id = $${idx} AND organization_id = $1
+          LIMIT 1
+        )
+      )`;
       filterParams.push(parseInt(req.query.user_id));
+      idx++;
     }
     if (req.query.processed !== undefined && req.query.processed !== '') {
       where += ` AND l.processed = $${idx++}`;
