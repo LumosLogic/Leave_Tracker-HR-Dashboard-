@@ -164,11 +164,18 @@ function DownloadModal({ open, onClose, active, onDownload }) {
 }
 
 // ── Punch Log expansion row (biometric orgs only) ─────────────────────────────
-function PunchLogRow({ user_id, date, name, colSpan }) {
+function PunchLogRow({ employee_pin, user_id, date, name, colSpan }) {
+  // Prefer direct employee_pin (device_enrollment_id) — bypasses biometric_employee_map entirely
+  const pinParam = employee_pin || null;
   const { data, isLoading } = useQuery({
-    queryKey: ['punch-logs-row', user_id, date],
-    queryFn:  () => apiGet('/biometric/logs', { user_id, date_from: date, date_to: date, limit: 100 }),
-    enabled:  !!user_id && !!date,
+    queryKey: ['punch-logs-row', pinParam || user_id, date],
+    queryFn:  () => apiGet('/biometric/logs', {
+      ...(pinParam ? { employee_pin: pinParam } : { user_id }),
+      date_from: date,
+      date_to:   date,
+      limit:     100,
+    }),
+    enabled: !!(pinParam || user_id) && !!date,
   });
 
   const logs = Array.isArray(data?.data) ? data.data : Array.isArray(data?.logs) ? data.logs : Array.isArray(data) ? data : [];
@@ -716,7 +723,13 @@ export default function Reports() {
                     </tr>
                     {/* Punch log expansion row — only for biometric (isFiloOrg) orgs */}
                     {isFiloOrg && isExpanded && (
-                      <PunchLogRow user_id={r.user_id} date={r.date} name={r.name} colSpan={9} />
+                      <PunchLogRow
+                        employee_pin={r.users?.device_enrollment_id || r.device_enrollment_id || null}
+                        user_id={r.user_id}
+                        date={r.date}
+                        name={r.name}
+                        colSpan={9}
+                      />
                     )}
                     </React.Fragment>
                   );

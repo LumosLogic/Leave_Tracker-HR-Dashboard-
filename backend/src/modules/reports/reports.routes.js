@@ -31,7 +31,7 @@ router.get('/attendance', auth, async (req, res) => {
     const policy = await getOrgPolicy(oId);
     const { year, month, userId, format } = req.query;
     let q = supabase.from('attendance')
-      .select('*, users(name, department, position)')
+      .select('*, users(name, department, position, device_enrollment_id)')
       .eq('organization_id', oId)
       .order('date', { ascending: false });
     if (year && month) {
