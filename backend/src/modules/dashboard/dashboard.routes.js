@@ -14,9 +14,11 @@ router.get('/', auth, async (req, res) => {
 
     // ── 1. Get all employees (never include admin) ───────────────────────────
     _step = 'employees';
+    // BUG_117: exclude inactive/resigned/terminated from dashboard KPI counts
     const { data: allEmployees } = await supabase.from('users')
       .select('id, name, avatar_color, department, created_at')
-      .eq('role', 'employee').eq('organization_id', orgId(req));
+      .eq('role', 'employee').eq('organization_id', orgId(req))
+      .not('employee_status', 'in', '(inactive,resigned,terminated)');
     const totalEmployees = (allEmployees || []).length;
     const empIds         = (allEmployees || []).map(e => e.id);
 

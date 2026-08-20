@@ -266,17 +266,31 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
   const [showPicker, setShowPicker] = useState(false);
 
   // All employees in the org (for the picker)
-  const { data: allUsers = [] } = useQuery({
+  const { data: allUsers = [], isLoading: usersLoading } = useQuery({
     queryKey: ['employees-list'],
     queryFn:  () => apiGet('/employees'),
     enabled:  showPicker,
     select:   d => Array.isArray(d) ? d : (d?.employees || []),
   });
 
+  // BUG_135/141: also fetch members directly from the dedicated endpoint
+  const { data: directMembers, isLoading: membersLoading, refetch: refetchMembers } = useQuery({
+    queryKey: ['role-members', roleId],
+    queryFn:  () => apiGet(`/roles/${roleId}/members`),
+    enabled:  !!roleId,
+  });
+  // Use directly-fetched members if role.members is not populated
+  const effectiveMembers = (directMembers && directMembers.length > 0) ? directMembers : members;
+
   // Remove a member from this role
   const removeMut = useMutation({
     mutationFn: userId => apiDelete(`/roles/${roleId}/members/${userId}`),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['role', String(roleId)] }); onRefetch?.(); },
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
+      qc.invalidateQueries({ queryKey: ['role-members', roleId] });
+      refetchMembers?.();
+      onRefetch?.();
+    },
   });
 
   // BUG_142 fix: use POST /:id/members (additive — does not touch other role assignments)
@@ -287,13 +301,15 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
+      qc.invalidateQueries({ queryKey: ['role-members', roleId] });
+      refetchMembers?.();
       onRefetch?.();
       setShowPicker(false);
       setSearch('');
     },
   });
 
-  const memberIds  = new Set(members.map(m => m.id));
+  const memberIds  = new Set(effectiveMembers.map(m => m.id));
   const pickable   = allUsers.filter(u =>
     !memberIds.has(u.id) &&
     (!search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase()))
@@ -325,7 +341,7 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
           <div className="max-h-44 overflow-y-auto">
             {pickable.length === 0 ? (
               <p className="text-xs text-[#777587] text-center py-4">
-                {allUsers.length === 0 ? 'Loading…' : 'No more employees to add'}
+                {usersLoading ? 'Loading…' : 'No more employees to add'}
               </p>
             ) : pickable.map(u => (
               <button
@@ -350,8 +366,13 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
         </div>
       )}
 
-      {/* Current members */}
-      {members.length === 0 && !showPicker ? (
+      {/* Current members — BUG_135/141: use effectiveMembers from dedicated endpoint */}
+      {membersLoading && effectiveMembers.length === 0 ? (
+        <div className="text-center py-4">
+          <div className="spinner mx-auto mb-1.5" />
+          <p className="text-xs text-[#777587]">Loading members…</p>
+        </div>
+      ) : effectiveMembers.length === 0 && !showPicker ? (
         <div className="text-center py-4">
           <Users size={20} className="text-[#c7c4d8] mx-auto mb-1.5" />
           <p className="text-xs text-[#777587]">No members assigned yet</p>
@@ -359,7 +380,7 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
         </div>
       ) : (
         <div className="space-y-1">
-          {members.map(m => (
+          {effectiveMembers.map(m => (
             <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors group">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[0.65rem] font-black text-white flex-shrink-0"
@@ -640,7 +661,7 @@ export default function PermissionMatrix() {
         <div className="flex gap-1 mb-5 bg-[#f0f3ff] p-1 rounded-xl w-fit">
           {[
             { key: 'permissions', label: 'Permissions', icon: Shield },
-            { key: 'members', label: `Members (${role.members?.length || 0})`, icon: Users },
+            { key: 'members', label: `Members (${role.members?.length ?? 0})`, icon: Users },
           ].map(tab => (
             <button
               key={tab.key}

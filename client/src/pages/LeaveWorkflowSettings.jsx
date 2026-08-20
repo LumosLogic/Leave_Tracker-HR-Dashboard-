@@ -52,6 +52,7 @@ function LevelRow({ level, index, total, onChange, onDelete, onMoveUp, onMoveDow
               value={level.level_label || ''}
               onChange={e => onChange({ ...level, level_label: e.target.value })}
               placeholder={roleOption?.label || 'e.g. HR Approval'}
+              maxLength={30}
               className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
             />
             <p className="text-[0.62rem] text-[#9ca3af] mt-1">Shown in employee timeline</p>
@@ -269,7 +270,10 @@ export default function LeaveWorkflowSettings() {
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : 'bg-amber-50 text-amber-700 border-amber-200'
               }`}>
-                {level.level_label || ROLE_TYPE_OPTIONS.find(r => r.value === level.role_type)?.label || level.role_type}
+                {(() => {
+                  const raw = level.level_label || ROLE_TYPE_OPTIONS.find(r => r.value === level.role_type)?.label || level.role_type;
+                  return raw.length > 15 ? raw.slice(0, 15) + '…' : raw;
+                })()}
                 {level.is_required === false && <span className="ml-1 opacity-60">(opt.)</span>}
               </span>
             </React.Fragment>

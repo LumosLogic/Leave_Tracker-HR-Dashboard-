@@ -87,6 +87,11 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     const { data: dupEmail } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
     if (dupEmail) return res.status(400).json({ error: 'This email is already registered on the platform. Each user must have a unique email address.' });
 
+    // BUG_051: duplicate employee name within same org
+    const { data: dupName } = await supabase.from('users')
+      .select('id').eq('organization_id', orgId(req)).ilike('name', name.trim()).maybeSingle();
+    if (dupName) return res.status(400).json({ error: 'An employee with this name already exists in your organisation.' });
+
     const hashed = bcrypt.hashSync(password, 10);
     const {
       device_enrollment_id, branch_id, grade, division, sub_division,

@@ -183,10 +183,12 @@ router.get('/headcount', auth, async (req, res) => {
     const oId = req.user.organization_id;
     // root_admin sees HR admins + employees; HR admin sees employees only
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
+    // BUG_117/BUG_068: exclude inactive/resigned/terminated from headcount stats
     const { data: users } = await supabase.from('users')
       .select('id, role, employee_status, department, date_of_joining, created_at')
       .eq('organization_id', oId)
-      .in('role', roleFilter);
+      .in('role', roleFilter)
+      .not('employee_status', 'in', '(inactive,resigned,terminated)');
     const total   = users?.length || 0;
     const active  = users?.filter(u => u.employee_status === 'active' || !u.employee_status).length || 0;
     const byDept  = {};
