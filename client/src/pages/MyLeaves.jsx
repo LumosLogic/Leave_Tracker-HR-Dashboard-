@@ -155,7 +155,7 @@ function LeaveApplyPanel({ open, onClose, onSubmit, loading: submitting, policie
     const total   = policy.annual_quota;
     const used    = (leaves || []).filter(l => l.leave_type === typeVal && l.status === 'approved' && !isWFHRecord(l))
       .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
-    const pending = (leaves || []).filter(l => l.leave_type === typeVal && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
+    const pending = (leaves || []).filter(l => l.leave_type === typeVal && ['pending','pending_dept','pending_root','pending_approval'].includes(l.status) && !isWFHRecord(l))
       .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
     return { used, pending, total, remaining: Math.max(0, total - used - pending) };
   }
@@ -619,7 +619,7 @@ export default function MyLeaves() {
     }
   }
 
-  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root'];
+  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root', 'pending_approval'];
 
   // Filter + sort logic
   const sortedLeaves = [...leaves]
@@ -989,7 +989,7 @@ export default function MyLeaves() {
                       total: b.allocated ?? b.total ?? 0,
                       used: b.used ?? 0,
                       pending: b.pending ?? leaves
-                        .filter(l => l.leave_type === b.leave_type && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
+                        .filter(l => l.leave_type === b.leave_type && ['pending','pending_dept','pending_root','pending_approval'].includes(l.status) && !isWFHRecord(l))
                         .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0),
                       carry_forward: b.carry_forward,
                     }))
@@ -998,7 +998,7 @@ export default function MyLeaves() {
                         .filter(l => l.leave_type === p.leave_type && l.status === 'approved' && !isWFHRecord(l))
                         .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
                       const pending = leaves
-                        .filter(l => l.leave_type === p.leave_type && ['pending','pending_dept','pending_root'].includes(l.status) && !isWFHRecord(l))
+                        .filter(l => l.leave_type === p.leave_type && ['pending','pending_dept','pending_root','pending_approval'].includes(l.status) && !isWFHRecord(l))
                         .reduce((sum, l) => sum + (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date)), 0);
                       return { leave_type: p.leave_type, label: p.label, total: p.annual_quota, used, pending, carry_forward: p.carry_forward };
                     });

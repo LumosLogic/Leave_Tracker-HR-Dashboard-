@@ -89,10 +89,11 @@ router.get('/', auth, async (req, res) => {
 
     // ── 5. Pending leaves ────────────────────────────────────────────────────
     _step = 'leaves';
-    // BUG_056/BUG_070: Count ALL pending statuses, not just 'pending'
+    // BUG_054/056/070: Count ALL pending statuses including pending_approval
+    const ALL_PENDING = ['pending', 'pending_root', 'pending_dept', 'pending_approval'];
     const { count: pendingLeaves } = await supabase.from('leaves')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'pending_root', 'pending_dept'])
+      .in('status', ALL_PENDING)
       .eq('organization_id', orgId(req));
 
     let pendingLeaveList;
@@ -100,7 +101,7 @@ router.get('/', auth, async (req, res) => {
       // BUG_070: Include all pending statuses so widget shows actual pending requests
       const { data: plRaw } = await supabase.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-        .in('status', ['pending', 'pending_root', 'pending_dept']).eq('organization_id', orgId(req))
+        .in('status', ALL_PENDING).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     } else {
