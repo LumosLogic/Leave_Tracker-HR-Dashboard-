@@ -238,10 +238,11 @@ function AppRoutes() {
         <Route path="/performance"      element={<FeatureRoute featureKey="performance"><Performance /></FeatureRoute>} />
         <Route path="/onboarding"       element={<FeatureRoute featureKey="onboarding"><Onboarding /></FeatureRoute>} />
         <Route path="/exit-management"  element={<FeatureRoute featureKey="exit_management"><ExitManagement /></FeatureRoute>} />
-        <Route path="/notifications"    element={<NotificationCenter />} />
-        <Route path="/settings"         element={<Settings />} />
-        <Route path="/profile"          element={<MyProfile />} />
-        <Route path="/branches"          element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
+        <Route path="/notifications"      element={<NotificationCenter />} />
+        <Route path="/settings"           element={<Settings />} />
+        <Route path="/profile"            element={<MyProfile />} />
+        <Route path="/pending-approvals"  element={<PendingApprovals />} />
+        <Route path="/branches"           element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
         <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
         <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
@@ -283,7 +284,6 @@ function AppRoutes() {
         <Route path="/root/notifications"      element={<NotificationCenter />} />
         <Route path="/root/settings"           element={<Settings />} />
         <Route path="/root/pending-approvals"  element={<PendingApprovals />} />
-        <Route path="/pending-approvals"       element={<PendingApprovals />} />
         <Route path="/root/manage-hr"            element={<ManageHR />} />
         <Route path="/root/manage-root-admins"  element={<ManageRootAdmins />} />
         <Route path="/root/roles"               element={<RoleManagement />} />
