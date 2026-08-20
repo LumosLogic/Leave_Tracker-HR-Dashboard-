@@ -119,7 +119,8 @@ function PhotoUploadWidget({ currentUrl, initials, color, onUploaded }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('lt_token');
+      if (!token) { toast('Session expired. Please log in again.', 'error'); setUploading(false); return; }
       const res   = await fetch('/api/auth/upload-avatar', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
       const data  = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
@@ -1688,9 +1689,18 @@ function BankingSection({ empId }) {
                   {a.ifsc_code && <p className="text-xs text-[#464555] font-mono">{a.ifsc_code}</p>}
                   {a.account_holder_name && <p className="text-xs text-[#777587] mt-1">{a.account_holder_name}</p>}
                 </div>
-                <button onClick={() => openEdit(a)} className="btn btn-ghost btn-icon btn-sm text-[#777587] hover:text-[#3525cd] flex-shrink-0">
-                  <Pencil size={14} />
-                </button>
+                {/* BUG_046: lock edit while pending HR review */}
+                {a.hr_verified
+                  ? (
+                    <button onClick={() => openEdit(a)} className="btn btn-ghost btn-icon btn-sm text-[#777587] hover:text-[#3525cd] flex-shrink-0" title="Edit bank account">
+                      <Pencil size={14} />
+                    </button>
+                  ) : (
+                    <span title="Editing locked — account is awaiting HR review" className="btn btn-ghost btn-icon btn-sm text-[#c7c4d8] cursor-not-allowed flex-shrink-0">
+                      <Lock size={14} />
+                    </span>
+                  )
+                }
               </div>
             </div>
           ))}
