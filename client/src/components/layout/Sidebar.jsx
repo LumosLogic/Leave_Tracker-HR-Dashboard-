@@ -1,11 +1,11 @@
 import React, { useContext, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Calendar, FileText, Users, Settings, LogOut, UserCircle,
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
   Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee, Radio,
-  PieChart, FileBarChart, ShieldCheck,
+  PieChart, FileBarChart, ShieldCheck, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext } from '@/context/FeatureFlagContext';
@@ -38,25 +38,29 @@ const ATTENDANCE_ITEMS = [
 ];
 
 const BIOMETRIC_ITEMS = [
-  { to: '/biometric/devices',   label: 'Devices',    Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,      adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText, adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,      adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
+  { to: '/biometric/devices',   label: 'Devices',     Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
+  { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,       adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
 ];
 
-const FINANCE_ITEMS = [
-  { to: '/payroll',                label: 'Payroll',               Icon: DollarSign,   featureKey: 'payroll' },
-  { to: '/payroll/dashboard',      label: 'Payroll Dashboard',     Icon: PieChart,     featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/generate',       label: 'Payroll Generation',    Icon: Play,         featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/reports',        label: 'Payroll Reports',       Icon: FileBarChart, featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/salary',         label: 'Salary Structures',     Icon: IndianRupee,  featureKey: 'payroll', adminOnly: true },
-  { to: '/payroll/settings',       label: 'Payroll Settings',      Icon: Settings,     featureKey: 'payroll', adminOnly: true },
-  { to: '/statutory/compliance',   label: 'Compliance Dashboard',  Icon: ShieldCheck,  featureKey: 'payroll', adminOnly: true },
-  { to: '/statutory/config',       label: 'Statutory Config',      Icon: Shield,       featureKey: 'payroll', adminOnly: true },
-  { to: '/statutory/declarations', label: 'Tax Declarations',      Icon: FileText,     featureKey: 'payroll', adminOnly: true },
-  { to: '/expenses',               label: 'Expenses',              Icon: Receipt,      featureKey: 'expenses' },
-  { to: '/assets',                 label: 'Assets',                Icon: Monitor,      featureKey: 'assets' },
-  { to: '/reports',                label: 'Reports',               Icon: BarChart3,    featureKey: 'reports' },
+// Payroll sub-items (shown inside dropdown)
+const PAYROLL_SUB_ITEMS = [
+  { to: '/payroll/dashboard', label: 'Payroll Dashboard',  Icon: PieChart,     adminOnly: true },
+  { to: '/payroll/generate',  label: 'Payroll Generation', Icon: Play,         adminOnly: true },
+  { to: '/payroll/reports',   label: 'Payroll Reports',    Icon: FileBarChart, adminOnly: true },
+  { to: '/payroll/salary',    label: 'Salary Structures',  Icon: IndianRupee,  adminOnly: true },
+  { to: '/payroll/settings',  label: 'Payroll Settings',   Icon: Settings,     adminOnly: true },
+];
+
+// Non-payroll finance items
+const OTHER_FINANCE_ITEMS = [
+  { to: '/statutory/compliance',   label: 'Compliance Dashboard', Icon: ShieldCheck, featureKey: 'payroll', adminOnly: true },
+  { to: '/statutory/config',       label: 'Statutory Config',     Icon: Shield,      featureKey: 'payroll', adminOnly: true },
+  { to: '/statutory/declarations', label: 'Tax Declarations',     Icon: FileText,    featureKey: 'payroll', adminOnly: true },
+  { to: '/expenses',               label: 'Expenses',             Icon: Receipt,     featureKey: 'expenses' },
+  { to: '/assets',                 label: 'Assets',               Icon: Monitor,     featureKey: 'assets' },
+  { to: '/reports',                label: 'Reports',              Icon: BarChart3,   featureKey: 'reports' },
 ];
 
 const PERFORMANCE_ITEMS = [
@@ -65,8 +69,8 @@ const PERFORMANCE_ITEMS = [
 ];
 
 const COMMUNICATION_ITEMS = [
-  { to: '/announcements', label: 'Announcements', Icon: Megaphone,   featureKey: 'announcements' },
-  { to: '/notifications', label: 'Notifications', Icon: Bell,        notifBadge: true },
+  { to: '/announcements', label: 'Announcements', Icon: Megaphone, featureKey: 'announcements' },
+  { to: '/notifications', label: 'Notifications', Icon: Bell,      notifBadge: true },
 ];
 
 const ADMIN_ITEMS = [
@@ -75,6 +79,98 @@ const ADMIN_ITEMS = [
   { to: '/profile',  label: 'Profile',  Icon: UserCircle },
 ];
 
+// ── Standard nav item ────────────────────────────────────────────────────────
+function NavItem({ to, label, Icon, badge, onClose }) {
+  return (
+    <NavLink to={to} onClick={onClose}
+      className={({ isActive }) => cn(
+        'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+        isActive
+          ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+          : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+      )}>
+      {({ isActive }) => (
+        <>
+          <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
+          {label}
+          {badge && (
+            <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">
+              {badge > 99 ? '99+' : badge}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+// ── Payroll dropdown group ───────────────────────────────────────────────────
+function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' }) {
+  const featureFlags = useContext(FeatureFlagContext);
+  const location     = useLocation();
+
+  // Check if payroll feature is enabled
+  const payrollEnabled = featureKey in featureFlags ? featureFlags[featureKey] : true;
+  if (!payrollEnabled) return null;
+
+  // All payroll paths (for auto-expand detection)
+  const payrollPaths = ['/payroll', ...PAYROLL_SUB_ITEMS.map(i => i.to)];
+  const isChildActive = payrollPaths.some(p => location.pathname.startsWith(prefix + p));
+
+  const [open, setOpen] = useState(isChildActive);
+
+  const visibleSubs = PAYROLL_SUB_ITEMS.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
+
+  return (
+    <div>
+      {/* Parent toggle button */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
+          isChildActive
+            ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
+            : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
+        )}>
+        <DollarSign size={17} className={cn('flex-shrink-0', isChildActive ? 'opacity-100' : 'opacity-60')} />
+        <span className="flex-1 text-left">Payroll</span>
+        {open
+          ? <ChevronDown size={14} className="text-current opacity-60 flex-shrink-0" />
+          : <ChevronRight size={14} className="text-current opacity-60 flex-shrink-0" />}
+      </button>
+
+      {/* Sub-items */}
+      {open && (
+        <div className="ml-4 mt-0.5 pl-3 border-l-2 border-[#e7eefe] flex flex-col gap-0.5">
+          {visibleSubs.map(item => (
+            <NavLink
+              key={item.to}
+              to={prefix + item.to}
+              onClick={onClose}
+              className={({ isActive }) => cn(
+                'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.82rem] font-semibold border transition-all duration-150',
+                isActive
+                  ? 'bg-[#3525cd]/10 text-[#3525cd] border-[#3525cd]/20 font-bold'
+                  : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27]'
+              )}>
+              {({ isActive }) => (
+                <>
+                  <item.Icon size={14} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-50')} />
+                  {item.label}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Generic NavSection ───────────────────────────────────────────────────────
 function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', unreadCount = 0 }) {
   const featureFlags = useContext(FeatureFlagContext);
   const filtered = items.filter(i => {
@@ -92,28 +188,10 @@ function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', 
       {title && <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">{title}</p>}
       <div className="flex flex-col gap-0.5">
         {filtered.map(({ to, label, Icon, notifBadge }) => {
-          const path = prefix + to.replace(/^\//, '/');
+          const path  = prefix + to.replace(/^\//, '/');
           const badge = notifBadge && unreadCount > 0 ? unreadCount : null;
           return (
-            <NavLink key={path} to={path} onClick={onClose}
-              className={({ isActive }) => cn(
-                'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-all duration-150',
-                isActive
-                  ? 'bg-[#3525cd]/10 text-[#3525cd] border-l-[3px] border-[#3525cd] border-t-transparent border-r-transparent border-b-transparent font-bold'
-                  : 'text-[#464555] border-transparent hover:bg-[#f0f3ff] hover:text-[#151c27] hover:border-[#c7c4d8]'
-              )}>
-              {({ isActive }) => (
-                <>
-                  <Icon size={17} className={cn('flex-shrink-0', isActive ? 'opacity-100' : 'opacity-60')} />
-                  {label}
-                  {badge && (
-                    <span className="ml-auto bg-[#3525cd] text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full min-w-[1.2rem] text-center">
-                      {badge > 99 ? '99+' : badge}
-                    </span>
-                  )}
-                </>
-              )}
-            </NavLink>
+            <NavItem key={path} to={path} label={label} Icon={Icon} badge={badge} onClose={onClose} />
           );
         })}
       </div>
@@ -121,6 +199,37 @@ function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', 
   );
 }
 
+// ── Finance section: Payroll dropdown + other finance items ──────────────────
+function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
+  const featureFlags = useContext(FeatureFlagContext);
+
+  const otherFiltered = OTHER_FINANCE_ITEMS.filter(i => {
+    if (i.adminOnly && !isAdmin) return false;
+    if (i.featureKey) {
+      const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
+      if (!enabled) return false;
+    }
+    return true;
+  });
+
+  const payrollEnabled = 'payroll' in featureFlags ? featureFlags['payroll'] : true;
+
+  if (!payrollEnabled && !otherFiltered.length) return null;
+
+  return (
+    <div className="mb-3">
+      <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">Finance</p>
+      <div className="flex flex-col gap-0.5">
+        {payrollEnabled && <PayrollGroup onClose={onClose} isAdmin={isAdmin} prefix={prefix} />}
+        {otherFiltered.map(({ to, label, Icon }) => (
+          <NavItem key={prefix + to} to={prefix + to} label={label} Icon={Icon} onClose={onClose} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
 export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
   const { user, logout, isAdmin, isRootAdmin } = useAuth();
   const navigate = useNavigate();
@@ -138,14 +247,13 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">
-      {/* Brand + mobile menu toggle */}
+      {/* Brand */}
       <div className="px-4 py-4 border-b border-[#e7eefe]">
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
             aria-label="Close menu"
-            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0"
-          >
+            className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0">
             <X size={16} className="text-[#464555]" />
           </button>
           <img src="/LogoWithoutName.svg" alt="Lumos Logic" className="w-9 h-9 flex-shrink-0 hidden md:block" />
@@ -158,12 +266,11 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
         </div>
       </div>
 
-      {/* Search trigger */}
+      {/* Search */}
       <div className="px-3 py-2">
         <button
           onClick={onSearchOpen}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors"
-        >
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-[#777587] bg-[#f9f9ff] border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:text-[#151c27] transition-colors">
           <Search size={13} className="text-[#3525cd]" />
           <span>Search...</span>
         </button>
@@ -184,7 +291,7 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
           <NavSection title="Biometric" items={BIOMETRIC_ITEMS} {...sharedProps} />
         </div>
         <div id="tour-nav-finance">
-          <NavSection title="Finance" items={FINANCE_ITEMS} {...sharedProps} />
+          <FinanceSection onClose={onClose} isAdmin={isAdmin} isRootAdmin={isRootAdmin} prefix={prefix} />
         </div>
         <div id="tour-nav-people">
           <NavSection title="Performance" items={PERFORMANCE_ITEMS} {...sharedProps} />

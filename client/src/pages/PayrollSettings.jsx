@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Settings, Save, Info,
-  Calendar, Clock, Users, Shield,
+  Calendar, Clock, Users, Shield, IndianRupee,
+  ChevronDown, ChevronUp, Percent, Lock, Zap,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPut } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { DEFAULT_SALARY_RULES, mergeWithDefaults } from '@/lib/salaryCalculator';
 
 const DEFAULTS = {
   payroll_cycle:                'monthly',
@@ -28,7 +30,6 @@ const DEFAULTS = {
   auto_generate_payroll:        false,
   auto_publish:                 false,
   timezone:                     'Asia/Kolkata',
-  // Phase 3.5 — per-org configurable schedule
   payroll_generation_day:       null,
   payroll_generation_time:      '01:00',
   payroll_generate_for:         'PREVIOUS',
@@ -36,6 +37,7 @@ const DEFAULTS = {
   payroll_publish_time:         '09:00',
   payroll_payout_day:           null,
   payroll_payout_time:          null,
+  salary_calculation_rules:     null,
 };
 
 const TIMEZONES = [
@@ -53,7 +55,6 @@ const TIMEZONES = [
   { value: 'UTC',                label: 'UTC' },
 ];
 
-// ── Toggle Switch ─────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange, disabled }) {
   return (
     <button
@@ -73,7 +74,6 @@ function Toggle({ checked, onChange, disabled }) {
   );
 }
 
-// ── Section Card ──────────────────────────────────────────────────────────────
 function Section({ icon, title, subtitle, children }) {
   return (
     <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
@@ -114,7 +114,6 @@ function NumInput({ value, onChange, min, max, step = 1 }) {
   );
 }
 
-// Day-of-month picker — supports 1–28 and two special values
 function DayPicker({ value, onChange }) {
   const days = Array.from({ length: 28 }, (_, i) => i + 1);
   return (
@@ -132,7 +131,6 @@ function DayPicker({ value, onChange }) {
   );
 }
 
-// HH:MM time input
 function TimeInput({ value, onChange }) {
   return (
     <input
@@ -144,12 +142,217 @@ function TimeInput({ value, onChange }) {
   );
 }
 
+// ── Method badge ───────────────────────────────────────────────────────────────
+const METHOD_OPTS = [
+  { value: 'percentage', label: 'Percentage' },
+  { value: 'fixed',      label: 'Fixed Amount' },
+  { value: 'manual',     label: 'Manual' },
+  { value: 'remaining',  label: 'Remaining' },
+];
+
+const BASE_OPTS = [
+  { value: 'gross', label: 'of Gross' },
+  { value: 'basic', label: 'of Basic' },
+  { value: 'ctc',   label: 'of CTC' },
+];
+
+// Group labels / order for the rules table
+const GROUPS = [
+  { key: 'earning',   label: 'Earnings',                color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  { key: 'deduction', label: 'Employee Deductions',      color: 'text-rose-700 bg-rose-50 border-rose-200' },
+  { key: 'employer',  label: 'Employer Contributions',   color: 'text-blue-700 bg-blue-50 border-blue-200' },
+];
+
+function ComponentRow({ comp, onChange }) {
+  const [open, setOpen] = useState(false);
+  const needsBase    = comp.method === 'percentage';
+  const needsValue   = comp.method === 'percentage' || comp.method === 'fixed';
+  const isRemaining  = comp.method === 'remaining';
+
+  return (
+    <div className={cn(
+      'rounded-xl border transition-all',
+      comp.enabled ? 'border-[#c7c4d8] bg-white' : 'border-[#e7eefe] bg-[#fafaff] opacity-60'
+    )}>
+      {/* Row header */}
+      <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => comp.enabled && setOpen(o => !o)}>
+        <Toggle checked={comp.enabled} onChange={v => { onChange({ ...comp, enabled: v }); if (!v) setOpen(false); }} />
+        <span className={cn('text-sm font-semibold flex-1', comp.enabled ? 'text-[#151c27]' : 'text-[#9ca3af]')}>
+          {comp.label}
+        </span>
+        {comp.enabled && (
+          <span className="text-[0.65rem] text-[#777587] bg-[#f0f3ff] border border-[#c7c4d8] rounded-full px-2 py-0.5 font-semibold">
+            {comp.method === 'percentage' ? `${comp.value}% of ${comp.base}` :
+             comp.method === 'fixed'      ? `₹${Number(comp.value||0).toLocaleString('en-IN')} fixed` :
+             comp.method === 'remaining'  ? 'Remaining balance' :
+             'Manual entry'}
+          </span>
+        )}
+        {comp.enabled && (open ? <ChevronUp size={14} className="text-[#777587]" /> : <ChevronDown size={14} className="text-[#777587]" />)}
+      </div>
+
+      {/* Expanded config */}
+      {comp.enabled && open && (
+        <div className="px-4 pb-4 pt-0 space-y-3 border-t border-[#f0f3ff]">
+          {/* Method */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3">
+            {METHOD_OPTS.map(m => (
+              <button key={m.value} type="button"
+                onClick={() => onChange({ ...comp, method: m.value })}
+                className={cn(
+                  'py-1.5 px-2 rounded-lg text-xs font-bold border transition-all text-center',
+                  comp.method === m.value
+                    ? 'bg-[#3525cd] text-white border-[#3525cd]'
+                    : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'
+                )}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {isRemaining && (
+            <p className="text-xs text-[#777587] bg-[#f0f3ff] rounded-lg px-3 py-2 flex items-start gap-2">
+              <Info size={13} className="text-[#3525cd] mt-0.5 flex-shrink-0" />
+              This component fills the gap so that earnings sum exactly equals the gross target derived from CTC.
+            </p>
+          )}
+
+          {needsValue && (
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Value */}
+              <div>
+                <label className="block text-[0.65rem] font-bold text-[#777587] uppercase mb-1">
+                  {comp.method === 'percentage' ? 'Percentage (%)' : 'Amount (₹)'}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">
+                    {comp.method === 'percentage' ? '%' : '₹'}
+                  </span>
+                  <input type="number" min={0} step={comp.method === 'percentage' ? 0.01 : 1}
+                    value={comp.value || ''}
+                    onChange={e => onChange({ ...comp, value: Number(e.target.value) })}
+                    className="w-28 border border-[#c7c4d8] rounded-lg pl-7 pr-2 py-1.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+                  />
+                </div>
+              </div>
+
+              {/* Base (only for percentage) */}
+              {needsBase && (
+                <div>
+                  <label className="block text-[0.65rem] font-bold text-[#777587] uppercase mb-1">Base</label>
+                  <select value={comp.base || 'gross'}
+                    onChange={e => onChange({ ...comp, base: e.target.value })}
+                    className="border border-[#c7c4d8] rounded-lg px-3 py-1.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] bg-white">
+                    {BASE_OPTS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* Cap (optional) */}
+              {comp.method === 'percentage' && (
+                <div>
+                  <label className="block text-[0.65rem] font-bold text-[#777587] uppercase mb-1">Max Cap (₹, optional)</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
+                    <input type="number" min={0} step={1}
+                      placeholder="No cap"
+                      value={comp.cap || ''}
+                      onChange={e => onChange({ ...comp, cap: e.target.value ? Number(e.target.value) : null })}
+                      className="w-28 border border-[#c7c4d8] rounded-lg pl-7 pr-2 py-1.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Threshold (eligibility condition) */}
+          <div className="flex items-center gap-3 flex-wrap pt-1 border-t border-[#f0f3ff]">
+            <div className="flex items-center gap-2">
+              <Toggle checked={!!comp.threshold_enabled} onChange={v => onChange({ ...comp, threshold_enabled: v })} />
+              <span className="text-xs font-semibold text-[#464555]">Eligibility threshold</span>
+            </div>
+            {comp.threshold_enabled && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#777587]">Apply only if gross ≤</span>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
+                  <input type="number" min={0} step={1000}
+                    value={comp.threshold_value || ''}
+                    onChange={e => onChange({ ...comp, threshold_value: Number(e.target.value) })}
+                    className="w-28 border border-[#c7c4d8] rounded-lg pl-7 pr-2 py-1.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Salary Calculation Rules section ─────────────────────────────────────────
+function SalaryRulesSection({ rules, onChange }) {
+  const updateComp = (key, updated) => {
+    onChange({
+      ...rules,
+      components: rules.components.map(c => c.key === key ? updated : c),
+    });
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Master enable */}
+      <Row
+        label="Enable CTC-based Salary Calculation"
+        hint="When enabled, HR enters a monthly CTC and the system auto-calculates all components using the rules below.">
+        <Toggle checked={!!rules.enabled} onChange={v => onChange({ ...rules, enabled: v })} />
+      </Row>
+
+      {rules.enabled && (
+        <>
+          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+            <Info size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              Configure how each salary component is calculated from CTC.
+              <strong> Remaining</strong> = fills whatever balance is left so the earnings sum equals gross.
+              <strong> Manual</strong> = HR enters the amount directly.
+              Disabled components are excluded from calculations.
+            </p>
+          </div>
+
+          {GROUPS.map(group => {
+            const comps = rules.components.filter(c => c.group === group.key);
+            if (!comps.length) return null;
+            return (
+              <div key={group.key}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={cn('text-[0.62rem] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border', group.color)}>
+                    {group.label}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {comps.map(comp => (
+                    <ComponentRow key={comp.key} comp={comp} onChange={updated => updateComp(comp.key, updated)} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function PayrollSettings() {
   const toast = useToast();
   const qc    = useQueryClient();
   const [form, setForm]   = useState(DEFAULTS);
   const [dirty, setDirty] = useState(false);
+  const [salaryRules, setSalaryRules] = useState(mergeWithDefaults(null));
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['payroll-settings'],
@@ -159,6 +362,7 @@ export default function PayrollSettings() {
   useEffect(() => {
     if (settings) {
       setForm({ ...DEFAULTS, ...settings });
+      setSalaryRules(mergeWithDefaults(settings.salary_calculation_rules));
       setDirty(false);
     }
   }, [settings]);
@@ -168,8 +372,13 @@ export default function PayrollSettings() {
     setDirty(true);
   };
 
+  const handleRulesChange = (updated) => {
+    setSalaryRules(updated);
+    setDirty(true);
+  };
+
   const saveMut = useMutation({
-    mutationFn: () => apiPut('/payroll/settings', form),
+    mutationFn: () => apiPut('/payroll/settings', { ...form, salary_calculation_rules: salaryRules }),
     onSuccess: () => {
       toast('Payroll settings saved', 'success');
       qc.invalidateQueries({ queryKey: ['payroll-settings'] });
@@ -228,7 +437,6 @@ export default function PayrollSettings() {
         icon={<Calendar size={15} className="text-[#3525cd]" />}
         title="Payroll Cycle"
         subtitle="When payroll is calculated and payslips are generated">
-
         <Row label="Payroll Cycle" hint="Only monthly is supported in this version">
           <select
             value={form.payroll_cycle}
@@ -237,10 +445,7 @@ export default function PayrollSettings() {
             <option value="monthly">Monthly</option>
           </select>
         </Row>
-
-        <Row
-          label="Payroll Date"
-          hint={`Payroll runs on the ${ordinalDay(form.payroll_date)} of each month`}>
+        <Row label="Payroll Date" hint={`Payroll runs on the ${ordinalDay(form.payroll_date)} of each month`}>
           <NumInput value={form.payroll_date} onChange={v => set('payroll_date', v)} min={1} max={28} />
         </Row>
       </Section>
@@ -250,7 +455,6 @@ export default function PayrollSettings() {
         icon={<Users size={15} className="text-[#3525cd]" />}
         title="Working Days Rules"
         subtitle="Controls how expected working days are calculated for LOP">
-
         <Row label="Working Days Calculation" hint="Calendar: count from actual weekdays. Fixed: use a set number.">
           <div className="flex gap-2">
             {[['calendar','Calendar'], ['fixed','Fixed']].map(([val, label]) => (
@@ -266,13 +470,11 @@ export default function PayrollSettings() {
             ))}
           </div>
         </Row>
-
         {form.working_days_rule === 'fixed' && (
           <Row label="Fixed Working Days / Month" hint="Used as the denominator for per-day salary calculation">
             <NumInput value={form.fixed_working_days} onChange={v => set('fixed_working_days', v)} min={1} max={31} />
           </Row>
         )}
-
         <Row label="Weekend Policy" hint="Determines which days are weekends (unpaid)">
           <select
             value={form.weekend_policy}
@@ -284,7 +486,6 @@ export default function PayrollSettings() {
             <option value="none">No Weekends (6-day work week)</option>
           </select>
         </Row>
-
         <Row label="Count Holidays as Paid" hint="Public/org holidays will not count as LOP">
           <Toggle checked={form.count_holidays_as_paid} onChange={v => set('count_holidays_as_paid', v)} />
         </Row>
@@ -295,28 +496,19 @@ export default function PayrollSettings() {
         icon={<Clock size={15} className="text-[#3525cd]" />}
         title="Attendance Rules"
         subtitle="Controls how late arrivals, half days, and LOP are calculated">
-
         <Row label="Grace Period (minutes)" hint="Arrivals within grace window are not counted as late">
           <NumInput value={form.grace_minutes} onChange={v => set('grace_minutes', v)} min={0} max={60} />
         </Row>
-
         <Row label="Late Allowances per Month" hint="First N late arrivals are forgiven before counting toward half-day">
           <NumInput value={form.late_allowance_per_month} onChange={v => set('late_allowance_per_month', v)} min={0} max={31} />
         </Row>
-
         <Row label="Early Exit Allowance (minutes)" hint="Leaving early by less than this is not penalized">
           <NumInput value={form.early_exit_allowance_minutes} onChange={v => set('early_exit_allowance_minutes', v)} min={0} max={120} />
         </Row>
-
-        <Row
-          label="Lates Before Half Day"
-          hint={`Every ${form.half_day_after_lates} additional lates (after allowance) = 1 half day`}>
+        <Row label="Lates Before Half Day" hint={`Every ${form.half_day_after_lates} additional lates (after allowance) = 1 half day`}>
           <NumInput value={form.half_day_after_lates} onChange={v => set('half_day_after_lates', v)} min={1} max={10} />
         </Row>
-
-        <Row
-          label="Half Days Before LOP"
-          hint={`Every ${form.lop_after_half_days} half days = 1 LOP day`}>
+        <Row label="Half Days Before LOP" hint={`Every ${form.lop_after_half_days} half days = 1 LOP day`}>
           <NumInput value={form.lop_after_half_days} onChange={v => set('lop_after_half_days', v)} min={1} max={10} />
         </Row>
       </Section>
@@ -326,7 +518,6 @@ export default function PayrollSettings() {
         icon={<Shield size={15} className="text-[#3525cd]" />}
         title="Statutory Components"
         subtitle="Enable or disable statutory deductions. Amounts are set per employee in salary structures.">
-
         {[
           ['pf_enabled',                'Provident Fund (PF)',       'Employee and employer PF contributions'],
           ['esi_enabled',               'ESI',                       'Employee State Insurance contributions'],
@@ -339,41 +530,33 @@ export default function PayrollSettings() {
         ))}
       </Section>
 
+      {/* ── Salary Calculation Rules ─────────────────────────────────────── */}
+      <Section
+        icon={<IndianRupee size={15} className="text-[#3525cd]" />}
+        title="Salary Calculation Rules"
+        subtitle="Configure how CTC is broken down into individual salary components when setting salary structures">
+        <SalaryRulesSection rules={salaryRules} onChange={handleRulesChange} />
+      </Section>
+
       {/* Automation */}
       <Section
         icon={<Settings size={15} className="text-[#3525cd]" />}
         title="Automation"
         subtitle="Control automatic payroll generation, publishing, and payslip delivery">
-
         <Row label="Auto-generate Payroll" hint="Platform scheduler evaluates this organization's policy every hour">
           <Toggle checked={form.auto_generate_payroll} onChange={v => set('auto_generate_payroll', v)} />
         </Row>
-
         {form.auto_generate_payroll && (
           <>
-            {/* ── Generation schedule ─────────────────────────────── */}
             <div className="border-t border-[#f0f3ff] pt-4 space-y-4">
               <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Generation Schedule</p>
-
-              <Row
-                label="Generate On"
-                hint="Day of month the scheduler generates payroll. Leave blank to use the Payroll Date above.">
-                <DayPicker
-                  value={form.payroll_generation_day}
-                  onChange={v => set('payroll_generation_day', v)}
-                />
+              <Row label="Generate On" hint="Day of month the scheduler generates payroll. Leave blank to use the Payroll Date above.">
+                <DayPicker value={form.payroll_generation_day} onChange={v => set('payroll_generation_day', v)} />
               </Row>
-
               <Row label="Generate Time" hint="Earliest hour (in org timezone) the scheduler may generate payroll">
-                <TimeInput
-                  value={form.payroll_generation_time}
-                  onChange={v => set('payroll_generation_time', v || '01:00')}
-                />
+                <TimeInput value={form.payroll_generation_time} onChange={v => set('payroll_generation_time', v || '01:00')} />
               </Row>
-
-              <Row
-                label="Generate For"
-                hint="Which month's payroll to generate on the configured day">
+              <Row label="Generate For" hint="Which month's payroll to generate on the configured day">
                 <div className="flex gap-2">
                   {[['PREVIOUS', 'Previous month'], ['CURRENT', 'Current month']].map(([val, label]) => (
                     <button key={val} onClick={() => set('payroll_generate_for', val)}
@@ -389,93 +572,58 @@ export default function PayrollSettings() {
                 </div>
               </Row>
             </div>
-
-            {/* ── Publish schedule ────────────────────────────────── */}
             <div className="border-t border-[#f0f3ff] pt-4 space-y-4">
               <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Publish Schedule</p>
-
-              <Row
-                label="Auto-publish Payslips"
-                hint="Automatically publish payslips on the configured publish date (skips draft review)">
+              <Row label="Auto-publish Payslips" hint="Automatically publish payslips on the configured publish date (skips draft review)">
                 <Toggle checked={form.auto_publish} onChange={v => set('auto_publish', v)} />
               </Row>
-
               {form.auto_publish && (
                 <>
-                  <Row
-                    label="Publish On"
-                    hint="Day of month to publish generated payslips. Leave blank to publish on the same day as generation.">
-                    <DayPicker
-                      value={form.payroll_publish_day}
-                      onChange={v => set('payroll_publish_day', v)}
-                    />
+                  <Row label="Publish On" hint="Day of month to publish generated payslips. Leave blank to publish on the same day as generation.">
+                    <DayPicker value={form.payroll_publish_day} onChange={v => set('payroll_publish_day', v)} />
                   </Row>
-
                   <Row label="Publish Time" hint="Earliest hour the scheduler may publish payslips">
-                    <TimeInput
-                      value={form.payroll_publish_time}
-                      onChange={v => set('payroll_publish_time', v || '09:00')}
-                    />
+                    <TimeInput value={form.payroll_publish_time} onChange={v => set('payroll_publish_time', v || '09:00')} />
                   </Row>
                 </>
               )}
             </div>
-
-            {/* ── Email & payout ──────────────────────────────────── */}
             <div className="border-t border-[#f0f3ff] pt-4 space-y-4">
-              <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Delivery & Payout</p>
-
-              <Row
-                label="Auto-email Payslips"
-                hint="Email PDF payslips to each employee after publication">
+              <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Delivery &amp; Payout</p>
+              <Row label="Auto-email Payslips" hint="Email PDF payslips to each employee after publication">
                 <Toggle checked={form.payslip_auto_email} onChange={v => set('payslip_auto_email', v)} />
               </Row>
-
-              <Row
-                label="Expected Payout Day"
-                hint="Informational — shown to employees as expected salary credit date">
-                <DayPicker
-                  value={form.payroll_payout_day}
-                  onChange={v => set('payroll_payout_day', v)}
-                />
+              <Row label="Expected Payout Day" hint="Informational — shown to employees as expected salary credit date">
+                <DayPicker value={form.payroll_payout_day} onChange={v => set('payroll_payout_day', v)} />
               </Row>
             </div>
-
-            {/* ── Timezone ────────────────────────────────────────── */}
             <div className="border-t border-[#f0f3ff] pt-4">
               <Row label="Timezone" hint="All schedule day/time comparisons are evaluated in this timezone">
                 <select
                   value={form.timezone}
                   onChange={e => set('timezone', e.target.value)}
                   className="border border-[#c7c4d8] rounded-lg px-3 py-1.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] bg-white max-w-xs">
-                  {TIMEZONES.map(tz => (
-                    <option key={tz.value} value={tz.value}>{tz.label}</option>
-                  ))}
+                  {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
                 </select>
               </Row>
             </div>
-
             <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
               <Info size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-blue-700">
                 The platform scheduler runs every hour and evaluates each organization independently.
                 Actions execute only when today's date and time match this organization's configuration.
-                Duplicate protection ensures payroll is never generated twice for the same period.
               </p>
             </div>
           </>
         )}
-
         {!form.auto_generate_payroll && (
-          <Row
-            label="Auto-email Payslips"
-            hint="Email PDF payslips to each employee when payroll is manually published">
+          <Row label="Auto-email Payslips" hint="Email PDF payslips to each employee when payroll is manually published">
             <Toggle checked={form.payslip_auto_email} onChange={v => set('payslip_auto_email', v)} />
           </Row>
         )}
       </Section>
 
-      {/* Info footer */}
+      {/* Footer */}
       <div className="rounded-xl border border-[#e7eefe] bg-[#f9f9ff] px-5 py-4 flex items-start gap-3">
         <Info size={14} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
         <p className="text-xs text-[#777587]">
@@ -484,13 +632,13 @@ export default function PayrollSettings() {
         </p>
       </div>
 
-      {/* Fixed save bar when dirty */}
+      {/* Fixed save bar */}
       {dirty && (
         <div className="fixed bottom-0 left-0 md:left-64 right-0 z-20 bg-white border-t border-[#e7eefe] py-3 px-4 md:px-7 flex items-center justify-between shadow-lg">
           <p className="text-xs text-[#777587] font-semibold">You have unsaved changes.</p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setForm({ ...DEFAULTS, ...settings }); setDirty(false); }}
+              onClick={() => { setForm({ ...DEFAULTS, ...settings }); setSalaryRules(mergeWithDefaults(settings?.salary_calculation_rules)); setDirty(false); }}
               className="text-xs font-semibold text-[#777587] hover:text-[#464555] px-3 py-2">
               Discard
             </button>

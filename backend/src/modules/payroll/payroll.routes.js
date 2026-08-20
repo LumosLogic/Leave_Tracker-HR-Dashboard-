@@ -78,6 +78,8 @@ const SETTINGS_DEFAULTS = {
   payroll_generate_for: 'PREVIOUS',
   payroll_publish_day: null,    payroll_publish_time: '09:00',
   payroll_payout_day: null,     payroll_payout_time: null,
+  // Salary calculation rules (CTC-based auto-calculation)
+  salary_calculation_rules: null,
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);
