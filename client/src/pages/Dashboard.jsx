@@ -663,7 +663,7 @@ function HRInsightsRow({ d, culture, navigate }) {
         <h2 className="text-sm font-black text-[#151c27]">HR Insights</h2>
         <button onClick={() => navigate('/reports')}
           className="text-xs font-bold text-[#3525cd] hover:text-[#4f46e5] px-2 py-1 rounded-lg hover:bg-[#f0f3ff] transition-colors">
-          View all insights →
+          View Reports →
         </button>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-[#e7eefe]">
