@@ -96,7 +96,7 @@ router.get('/culture', auth, async (req, res) => {
       .select('id, name, avatar_color, department, date_of_birth')
       .eq('role', 'employee')
       .eq('organization_id', orgId(req))
-      .not('employee_status', 'in', '(inactive,resigned,terminated)');
+      .or('employee_status.is.null,employee_status.not.in.(inactive,resigned,terminated)');
 
     const birthdaysToday    = (users || []).filter(u => u.date_of_birth && u.date_of_birth.slice(5) === todayMD);
     const upcomingBirthdays = [];
