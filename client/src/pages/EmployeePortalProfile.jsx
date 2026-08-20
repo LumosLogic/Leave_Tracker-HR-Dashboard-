@@ -96,6 +96,19 @@ function PhotoUploadWidget({ currentUrl, initials, color, onUploaded }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(currentUrl);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  async function handleRemove() {
+    setRemoving(true);
+    try {
+      const tk = localStorage.getItem("lt_token") || localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch("/api/auth/remove-avatar", { method: "DELETE", headers: { Authorization: "Bearer " + tk } });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Remove failed"); }
+      setPreview("");
+      onUploaded?.("");
+    } catch (err) { console.error(err); }
+    finally { setRemoving(false); }
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
@@ -143,9 +156,16 @@ function PhotoUploadWidget({ currentUrl, initials, color, onUploaded }) {
       </div>
       <div>
         <p className="text-xs font-semibold text-[#151c27]">Profile Photo</p>
-        <button onClick={() => inputRef.current?.click()} disabled={uploading} className="text-[0.65rem] text-[#3525cd] hover:underline mt-0.5">
-          {uploading ? 'Uploading…' : preview ? 'Change photo' : 'Upload photo'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+          <button onClick={() => inputRef.current?.click()} disabled={uploading || removing} className="text-[0.65rem] text-[#3525cd] hover:underline">
+            {uploading ? 'Uploading…' : preview ? 'Change photo' : 'Upload photo'}
+          </button>
+          {preview && (
+            <button onClick={handleRemove} disabled={removing || uploading} className="text-[0.65rem] text-rose-500 hover:underline">
+              {removing ? 'Removing…' : 'Remove photo'}
+            </button>
+          )}
+        </div>
         <p className="text-[0.6rem] text-[#c7c4d8] mt-0.5">JPG, PNG — max 5 MB</p>
       </div>
     </div>

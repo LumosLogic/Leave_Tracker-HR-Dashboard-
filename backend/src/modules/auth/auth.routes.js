@@ -155,6 +155,14 @@ router.post('/upload-avatar', auth, upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Auth: Remove Avatar Photo (BUG_110) ─────────────────────
+router.delete("/remove-avatar", auth, async (req, res) => {
+  try {
+    await supabase.from("users").update({ avatar_url: null }).eq("id", req.user.id);
+    res.json({ success: true, avatar_url: null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Auth: Change Password ────────────────────────────────────────────────────
 router.put('/change-password', auth, async (req, res) => {
   try {

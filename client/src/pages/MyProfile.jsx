@@ -4,9 +4,9 @@ import {
   UserCircle, Lock, Save, Eye, EyeOff, Check, Building2, Briefcase, Mail,
   ShieldCheck, ShieldAlert, Trash2, AlertTriangle, Upload, User, Camera,
   Calendar, Shield, Hash, Clock,
-  Smartphone, Monitor, Globe, Download, Key, RefreshCw, History, Copy, QrCode,
+  Smartphone, Monitor, Globe, Download, Key, RefreshCw, History, Copy, QrCode, X,
 } from 'lucide-react';
-import { apiPut, apiGet, apiPost } from '@/lib/api';
+import { apiPut, apiGet, apiPost, apiDelete } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Modal } from '@/components/ui/Modal';
@@ -112,6 +112,7 @@ export default function MyProfile() {
   const [color,    setColor]    = useState(user?.avatar_color || '#3525cd');
   const [photoUrl, setPhotoUrl] = useState(user?.avatar_url || '');
   const [uploading, setUploading] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false); // BUG_110
 
   // Unsaved changes tracking
   const [savedName,     setSavedName]     = useState(user?.name || '');
@@ -192,6 +193,19 @@ export default function MyProfile() {
       toast('Profile photo updated!', 'success');
     } catch (err) { toast(err.message, 'error'); }
     finally { setUploading(false); if (avatarRef.current) avatarRef.current.value = ''; }
+  }
+
+
+  // ── BUG_110: Remove profile photo ─────────────────────────────────────────
+  async function handleRemovePhoto() {
+    setRemovingPhoto(true);
+    try {
+      await apiDelete('/auth/remove-avatar');
+      setPhotoUrl('');
+      saveAuth(token, { ...user, avatar_url: '' });
+      toast('Profile photo removed.', 'success');
+    } catch (err) { toast(err.message || 'Failed to remove photo', 'error'); }
+    finally { setRemovingPhoto(false); }
   }
 
   // ── Password generator ────────────────────────────────────────────────────
@@ -368,6 +382,16 @@ export default function MyProfile() {
                 {uploading ? <span className="spinner w-3 h-3" /> : <Camera size={12} />}
               </button>
               <input ref={avatarRef} type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+              {/* BUG_110: Remove Photo button */}
+              {photoUrl && (
+                <button
+                  onClick={handleRemovePhoto}
+                  disabled={removingPhoto}
+                  title="Remove photo"
+                  className="absolute top-0 right-0 w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600 transition-colors border-2 border-white disabled:opacity-60">
+                  {removingPhoto ? <span className="spinner w-2.5 h-2.5" /> : <X size={10} />}
+                </button>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-base font-black text-[#151c27]">{user?.name}</p>
