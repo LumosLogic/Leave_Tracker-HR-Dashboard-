@@ -64,7 +64,7 @@ async function fetchEligibleEmployees(oId, month, year) {
               AND (ess.effective_to IS NULL OR ess.effective_to >= $3)
       WHERE u.organization_id = $1
         AND u.role            = 'employee'
-        AND (u.status IS NULL OR u.status != 'inactive')
+        AND (u.employee_status IS NULL OR u.employee_status NOT IN ('inactive','resigned','terminated'))
       ORDER BY u.name ASC`,
     [oId, end, start]
   );

@@ -144,14 +144,30 @@ router.get('/employees', auth, hasPermission('payroll', 'manage_structures'), as
   try {
     const oId = orgId(req);
     const { rows, error } = await pool.query(
+      // BUG_131 FIX: return ALL salary structure fields so the ReviseModal pre-populates them.
       `SELECT
            u.id, u.name, u.email, u.department, u.position,
            u.employee_id, u.avatar_color, u.joining_date,
-           ess.id           AS salary_id,
+           ess.id                  AS salary_id,
            ess.gross_salary,
-           ess.basic,
            ess.ctc,
-           ess.effective_from
+           ess.effective_from,
+           ess.basic,
+           ess.hra,
+           ess.da,
+           ess.transport_allowance,
+           ess.medical_allowance,
+           ess.special_allowance,
+           ess.other_allowance,
+           ess.employee_pf,
+           ess.employee_esi,
+           ess.professional_tax,
+           ess.tds,
+           ess.other_deductions,
+           ess.retention,
+           ess.employer_pf,
+           ess.employer_esi,
+           ess.notes
          FROM users u
          LEFT JOIN employee_salary_structures ess
                 ON ess.user_id = u.id
@@ -159,7 +175,7 @@ router.get('/employees', auth, hasPermission('payroll', 'manage_structures'), as
                AND ess.effective_to IS NULL
         WHERE u.organization_id = $1
           AND u.role = 'employee'
-          AND (u.status IS NULL OR u.status != 'inactive')
+          AND (u.employee_status IS NULL OR u.employee_status NOT IN ('inactive','resigned','terminated'))
         ORDER BY u.name ASC`,
       [oId]
     );

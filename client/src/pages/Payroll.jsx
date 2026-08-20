@@ -105,12 +105,21 @@ function StructureModal({ open, onClose, userId }) {
 }
 
 // ── Generate Payslip Modal ────────────────────────────────────────────────────
-function GenerateModal({ open, onClose, employees }) {
+function GenerateModal({ open, onClose }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const now   = new Date();
   const [form, setForm] = useState({ user_id: '', month: now.getMonth() + 1, year: now.getFullYear(), other_deductions: 0, notes: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // BUG_132 FIX: self-fetch active employees (with salary_id set) so the
+  // dropdown populates independently of the parent pages employee cache.
+  const { data: _empForGenerate = [] } = useQuery({
+    queryKey: ['payroll-employees-modal'],
+    queryFn: () => apiGet('/payroll/employees'),
+    enabled: open,
+  });
+  const employees = _empForGenerate.filter(e => e.salary_id);
 
   const mut = useMutation({
     mutationFn: () => apiPost('/payroll/payslips/generate', form),
@@ -398,7 +407,7 @@ export default function Payroll() {
         </>
       )}
 
-      {genOpen   && <GenerateModal open onClose={() => setGenOpen(false)} employees={employees} />}
+      {genOpen   && <GenerateModal open onClose={() => setGenOpen(false)} />}
       {strucEmp  && <StructureModal open onClose={() => setStrucEmp(null)} userId={strucEmp.id} />}
     </div>
   );

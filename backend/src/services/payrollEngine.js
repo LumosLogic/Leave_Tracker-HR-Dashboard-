@@ -353,7 +353,7 @@ async function fetchAllData(oId, uId, month, year) {
 
     // Employee — org-scoped
     pool.query(
-      `SELECT id, name, email, department, position, employee_id, status
+      `SELECT id, name, email, department, position, employee_id, employee_status AS status
          FROM users
         WHERE id = $1 AND organization_id = $2`,
       [uId, oId]
