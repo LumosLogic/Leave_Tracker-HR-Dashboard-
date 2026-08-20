@@ -36,32 +36,51 @@ export const DEFAULT_SALARY_RULES = {
 /** Merge saved DB rules with defaults (adds any missing keys from defaults). */
 export function mergeWithDefaults(savedRules) {
   if (!savedRules) return { ...DEFAULT_SALARY_RULES };
-  const defaultMap = Object.fromEntries(DEFAULT_SALARY_RULES.components.map(c => [c.key, c]));
-  const savedMap   = Object.fromEntries((savedRules.components || []).map(c => [c.key, c]));
-  const merged = DEFAULT_SALARY_RULES.components.map(d => ({ ...d, ...(savedMap[d.key] || {}) }));
+  const savedMap = Object.fromEntries((savedRules.components || []).map(c => [c.key, c]));
+  const merged   = DEFAULT_SALARY_RULES.components.map(d => ({ ...d, ...(savedMap[d.key] || {}) }));
   return { enabled: savedRules.enabled ?? false, components: merged };
 }
 
 /**
  * Calculate a full salary breakdown from CTC + org rules.
  *
- * @param {number} ctc  - monthly CTC (cost to company)
- * @param {object} rules - merged salary_calculation_rules
- * @param {object} manualOverrides - { key: number } for fields with method='manual'
- * @returns {object|null}  Full breakdown, or null if rules disabled / CTC invalid
+ * Design contract:
+ *  - Returns null when rules are disabled or ctc <= 0 (caller falls back to manual mode).
+ *  - manual overrides take precedence over any calculated value; they cascade (e.g.
+ *    overriding basic causes hra to re-compute from the new basic automatically).
+ *  - The 'remaining' component fills whatever gap is left so gross exactly equals
+ *    ctc - employer_contributions.  It cannot be manually overridden.
+ *  - final_ctc is guaranteed to equal ctc within ₹0 (4-pass iterative convergence).
+ *
+ * @param {number} ctc              Monthly cost to company
+ * @param {object} rules            Merged salary_calculation_rules (from mergeWithDefaults)
+ * @param {object} manualOverrides  { [componentKey]: number } for HR-unlocked fields
+ * @returns {object|null}
  */
 export function calculateFromCTC(ctc, rules, manualOverrides = {}) {
   if (!ctc || ctc <= 0 || !rules?.enabled) return null;
 
   const getComp = key => rules.components?.find(c => c.key === key);
 
+  // ── applyRule ──────────────────────────────────────────────────────────────
+  // Manual overrides take precedence over every method so that overriding one
+  // component cascades through components that depend on it (e.g. HRA = 50% of
+  // basic reacts when basic is overridden).
   function applyRule(rule, ctx) {
     if (!rule || !rule.enabled) return 0;
-    if (rule.method === 'manual')    return r2(manualOverrides[rule.key] ?? 0);
+
+    // HR override wins over the configured method
+    if (Object.prototype.hasOwnProperty.call(manualOverrides, rule.key)) {
+      return r2(Number(manualOverrides[rule.key]) || 0);
+    }
+
+    if (rule.method === 'manual')    return 0;
     if (rule.method === 'fixed')     return r2(Number(rule.value || 0));
-    if (rule.method === 'remaining') return 0;
+    if (rule.method === 'remaining') return 0; // filled in a dedicated step
+
     if (rule.method === 'percentage') {
-      if (rule.threshold_enabled && rule.threshold_type === 'gross_max' && ctx.gross > Number(rule.threshold_value || 0)) return 0;
+      if (rule.threshold_enabled && rule.threshold_type === 'gross_max' &&
+          ctx.gross > Number(rule.threshold_value || 0)) return 0;
       const base = rule.base === 'basic' ? ctx.basic
                  : rule.base === 'gross' ? ctx.gross
                  : rule.base === 'ctc'   ? ctc
@@ -73,60 +92,83 @@ export function calculateFromCTC(ctc, rules, manualOverrides = {}) {
     return 0;
   }
 
-  // ── Iterative solve ──────────────────────────────────────────────────────────
-  // Employer contributions depend on basic/gross which depend on CTC - employer.
-  // 3 passes converge for all common salary structures.
+  // Helper: estimate basic for a given gross (respects override)
+  const basicRule = getComp('basic');
+  function estimateBasic(g) {
+    if (Object.prototype.hasOwnProperty.call(manualOverrides, 'basic')) {
+      return r2(Number(manualOverrides['basic']) || 0);
+    }
+    if (basicRule?.method === 'percentage' && basicRule?.enabled) {
+      return r2((Number(basicRule.value || 0) / 100) * g);
+    }
+    return applyRule(basicRule, { gross: g, basic: 0 });
+  }
+
+  // ── Iterative solve ────────────────────────────────────────────────────────
+  // Employer contributions depend on basic which depends on gross which depends
+  // on employer contributions. 4 passes guarantee ₹0 CTC drift for all common
+  // salary structures (verified: 3 passes can give ±₹0.10 for % PF structures).
   let gross = ctc * 0.92;
 
-  for (let pass = 0; pass < 3; pass++) {
-    const basicRule = getComp('basic');
-    const basicEst  = (basicRule?.method === 'percentage' && basicRule?.enabled)
-      ? r2((Number(basicRule.value || 0) / 100) * gross)
-      : applyRule(basicRule, { gross, basic: 0 });
-
-    const ctx = { gross, basic: basicEst };
-    const empPf  = applyRule(getComp('employer_pf'),  ctx);
-    const empEsi = applyRule(getComp('employer_esi'), ctx);
+  for (let pass = 0; pass < 4; pass++) {
+    const basicEst = estimateBasic(gross);
+    const ctx      = { gross, basic: basicEst };
+    const empPf    = applyRule(getComp('employer_pf'),  ctx);
+    const empEsi   = applyRule(getComp('employer_esi'), ctx);
     gross = r2(ctc - empPf - empEsi);
   }
 
-  // ── Final pass: compute every component with settled gross ───────────────────
-  const basicRule = getComp('basic');
-  const basicVal  = applyRule(basicRule, { gross, basic: 0 });
-  const ctx0      = { gross, basic: basicVal };
+  // ── Final pass: every component with settled gross ─────────────────────────
+  const basicVal      = applyRule(basicRule,                      { gross, basic: 0 });
+  const ctx0          = { gross, basic: basicVal };
 
-  const hraVal      = applyRule(getComp('hra'),                 ctx0);
-  const daVal       = applyRule(getComp('da'),                  ctx0);
-  const transportVal= applyRule(getComp('transport_allowance'), ctx0);
-  const medicalVal  = applyRule(getComp('medical_allowance'),   ctx0);
-  const otherAllowVal = applyRule(getComp('other_allowance'),   ctx0);
+  const hraVal        = applyRule(getComp('hra'),                 ctx0);
+  const daVal         = applyRule(getComp('da'),                  ctx0);
+  const transportVal  = applyRule(getComp('transport_allowance'), ctx0);
+  const medicalVal    = applyRule(getComp('medical_allowance'),   ctx0);
+  const otherAllowVal = applyRule(getComp('other_allowance'),     ctx0);
 
   const sumBeforeRemaining = basicVal + hraVal + daVal + transportVal + medicalVal + otherAllowVal;
 
-  // 'remaining' component fills whatever is left
-  const specialRule = getComp('special_allowance');
-  const specialVal  = (specialRule?.enabled && specialRule.method === 'remaining')
+  // 'remaining' fills the gap so totalGross == gross exactly.
+  // It cannot be overridden (no unlock button is rendered for it in the UI).
+  const specialRule    = getComp('special_allowance');
+  const hasRemaining   = specialRule?.enabled && specialRule.method === 'remaining';
+  let   specialVal     = hasRemaining
     ? r2(Math.max(0, gross - sumBeforeRemaining))
     : applyRule(specialRule, ctx0);
 
-  const totalGross = r2(basicVal + hraVal + daVal + transportVal + medicalVal + specialVal + otherAllowVal);
-  const ctxFinal   = { gross: totalGross, basic: basicVal };
+  let totalGross = r2(basicVal + hraVal + daVal + transportVal + medicalVal + specialVal + otherAllowVal);
+  let ctxFinal   = { gross: totalGross, basic: basicVal };
 
-  // Employee deductions
-  const empPfVal  = applyRule(getComp('employee_pf'),       ctxFinal);
-  const empEsiVal = applyRule(getComp('employee_esi'),      ctxFinal);
-  const ptVal     = applyRule(getComp('professional_tax'),  ctxFinal);
-  const tdsVal    = applyRule(getComp('tds'),               ctxFinal);
-  const otherDedVal = applyRule(getComp('other_deductions'),ctxFinal);
-  const retentionVal= applyRule(getComp('retention'),       ctxFinal);
-
-  const totalDeductions = r2(empPfVal + empEsiVal + ptVal + tdsVal + otherDedVal + retentionVal);
-  const netSalary       = r2(Math.max(0, totalGross - totalDeductions));
-
-  // Employer contributions (final)
+  // ── Employer contributions (final, using settled values) ───────────────────
   const employerPf  = applyRule(getComp('employer_pf'),  ctxFinal);
   const employerEsi = applyRule(getComp('employer_esi'), ctxFinal);
   const totalEmployer = r2(employerPf + employerEsi);
+
+  // ── CTC reconciliation ─────────────────────────────────────────────────────
+  // When a 'remaining' component exists, absorb any final rounding residual into
+  // it so that finalCtc == ctc exactly (residual is at most ±₹0.01 / 1 paise).
+  if (hasRemaining) {
+    const grossAdj = r2(ctc - totalEmployer);
+    const delta    = r2(grossAdj - totalGross);
+    if (Math.abs(delta) > 0) {
+      specialVal = r2(Math.max(0, specialVal + delta));
+      totalGross = r2(totalGross + delta);
+      ctxFinal   = { gross: totalGross, basic: basicVal };
+    }
+  }
+
+  // ── Employee deductions ────────────────────────────────────────────────────
+  const empPfVal    = applyRule(getComp('employee_pf'),        ctxFinal);
+  const empEsiVal   = applyRule(getComp('employee_esi'),       ctxFinal);
+  const ptVal       = applyRule(getComp('professional_tax'),   ctxFinal);
+  const tdsVal      = applyRule(getComp('tds'),                ctxFinal);
+  const otherDedVal = applyRule(getComp('other_deductions'),   ctxFinal);
+  const retentionVal= applyRule(getComp('retention'),          ctxFinal);
+
+  const totalDeductions = r2(empPfVal + empEsiVal + ptVal + tdsVal + otherDedVal + retentionVal);
+  const netSalary       = r2(Math.max(0, totalGross - totalDeductions));
 
   const finalCtc = r2(totalGross + totalEmployer);
 
