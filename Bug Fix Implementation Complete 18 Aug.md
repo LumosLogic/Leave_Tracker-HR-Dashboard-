@@ -2,7 +2,8 @@ Bug Fix Implementation Complete
 
   Session 1 (18 Aug) — 24 files modified
   Session 2 (19 Aug) — 17 files modified
-  Session 3 (19 Aug) — 27 files modified  ← current session
+  Session 3 (19 Aug) — 27 files modified
+  Session 4 (20 Aug) — 15 files modified  ← current session
 
   ═══════════════════════════════════════════════════════════
   BUGS FIXED — SESSION 1 (40 total)
@@ -323,6 +324,72 @@ Bug Fix Implementation Complete
   └─────────────┴────────────────────┴─────────────────────────────────────────────────────────────────────────┘
 
   ═══════════════════════════════════════════════════════════
+  BUGS FIXED — SESSION 4 (20 Aug, 14 bugs + 1 critical system fix)
+  Commits: 3d0317e + 26cbcc9 + 6fa3cd7 + 9026f05 + 870063d + 0985d07
+  Branch:  HRMS-Migration-16jul
+  ═══════════════════════════════════════════════════════════
+
+  ┌─────────────┬──────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+  │     Bug     │       Module         │                                    Fix                                   │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ CRITICAL    │ All employee         │ Employee dropdowns empty on all root/HR pages — SQL NULL NOT IN (...)    │
+  │ SYSTEM FIX  │ dropdowns            │ was silently excluding employees whose employee_status IS NULL.          │
+  │             │ (employees, dash-    │ Fixed all 5 files to use .or('employee_status.is.null, NOT IN (...)')    │
+  │             │ board, reports,      │ so NULL-status employees (majority) are always shown.                   │
+  │             │ calendar, cron)      │ Files: employees.routes.js, dashboard.routes.js, reports.routes.js,     │
+  │             │                      │ calendar.routes.js, cronJobs.js                                         │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_042     │ Employee Portal      │ Profile photo upload returned 401 "Invalid token" — EmployeePortalProfile│
+  │             │ Profile Photo        │ was reading localStorage key 'token' instead of 'lt_token'. Fixed to    │
+  │             │                      │ use correct key; added guard if session expired.                         │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_046     │ Profile – Work       │ Bank account edit button (pencil) now disabled when account status is   │
+  │             │ Bank Accounts        │ "Pending HR Review" (hr_verified=false). Shows Lock icon with tooltip   │
+  │             │                      │ "Editing locked — account is awaiting HR review" instead.               │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_051     │ Employees            │ Duplicate employee name within same org now blocked on POST — backend   │
+  │             │                      │ ilike check returns 400 "An employee with this name already exists."    │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_105     │ Leave Workflow       │ Display label input capped at maxLength=30 chars. Flow preview diagram  │
+  │             │ Settings             │ truncates labels longer than 15 chars with "…" — prevents overflow.     │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_110     │ Profile Photo        │ "Remove Photo" X button added to employee portal profile avatar and     │
+  │             │                      │ HR-side MyProfile. Backend DELETE /auth/remove-avatar sets avatar_url   │
+  │             │                      │ = null. Button only visible when a photo is set.                        │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_117     │ Dashboard / Reports  │ Dashboard KPI total employee count and reports headcount now exclude    │
+  │             │                      │ inactive/resigned/terminated employees (using .or() NULL-safe filter).  │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_120     │ Assets               │ Migration file created with docker copy+exec commands to add            │
+  │ BUG_133     │                      │ purchase_value NUMERIC(12,2), warranty_expiry DATE columns to assets    │
+  │             │                      │ table. Fixes 500 error on /api/assets. Run:                            │
+  │             │                      │ docker cp backend/migrations/bug120_133_assets_purchase_value.sql      │
+  │             │                      │   lumos_postgres:/tmp/bug120_assets.sql                                │
+  │             │                      │ docker exec -it lumos_postgres psql -U lumos_admin -d lumos_hrms       │
+  │             │                      │   -f /tmp/bug120_assets.sql        ← ALREADY RUN ON SERVER ✓          │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_131     │ Payroll / Salary     │ GET /payroll/employees now returns all 16 salary structure fields.      │
+  │             │ Structure            │ Revise Salary modal pre-populates all fields (Basic, HRA, DA, Transport,│
+  │             │                      │ Medical, Special, Other Allowances, PF, ESI, Prof Tax, TDS, Retention, │
+  │             │                      │ Other Deductions, Employer PF/ESI) from previous salary structure.     │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_132     │ Payroll / Quick      │ Quick Payslip "Generate" modal self-fetches employees from             │
+  │             │ Payslip              │ /payroll/employees — no longer empty. Only shows employees with a       │
+  │             │                      │ salary structure configured.                                            │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_134     │ Payroll Engine       │ Payroll engine was checking non-existent column u.status instead of    │
+  │             │                      │ u.employee_status — caused "Error" status for all employees in payroll  │
+  │             │                      │ preview. Fixed in payroll.routes.js, payrollGenerationService.js, and  │
+  │             │                      │ payrollEngine.js (aliased as "status" for backward compat).            │
+  ├─────────────┼──────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ BUG_135     │ Role Management      │ PermissionMatrix Members panel now uses dedicated GET /roles/:id/members│
+  │ BUG_141     │ Permissions          │ endpoint directly (instead of relying on role join that could be empty).│
+  │             │                      │ Loading state shown properly; picker "Loading…" now uses isLoading flag │
+  │             │                      │ not array length check. Invalidates both role and role-members cache    │
+  │             │                      │ on add/remove member actions.                                           │
+  └─────────────┴──────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+
+  ═══════════════════════════════════════════════════════════
   BUGS SKIPPED — Require Further Investigation or Product Decision
   ═══════════════════════════════════════════════════════════
 
@@ -382,9 +449,13 @@ Bug Fix Implementation Complete
   Session 1 (18 Aug) :  40 bugs fixed
   Session 2 (19 Aug) :  35 bugs fixed  (includes BUG_134, 135, 147, 154, 155 from inter-session commits)
   Session 3 (19 Aug) :  32 bugs fixed
-  ─────────────────────────────────────
-  Total Fixed         : 107 bugs
+  Session 4 (20 Aug) :  14 bugs fixed + 1 critical system fix (NULL employee_status filter)
+  ─────────────────────────────────────────────────────────────────────────────
+  Total Fixed         : 122 bugs
   Skipped / Pending   :  16 bugs (require product decisions, images, or live investigation)
+  Reopened (pending)  :  42 bugs from QA sheet — to be addressed in Session 5
 
   Branch: HRMS-Migration-16jul
-  Build:  cd client && npx vite build  →  ✓ 1652 modules, no errors
+  Build:  cd client && npx vite build  →  ✓ 1652 modules, no errors (Session 4)
+
+  DB Migration Run    : bug120_133_assets_purchase_value.sql ✓ (run 20 Aug on lumos_postgres)
