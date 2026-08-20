@@ -422,7 +422,10 @@ export default function Reports() {
           <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-3 py-2">
             <button onClick={() => setYear(y => y - 1)} className="text-[#3525cd] font-black text-base leading-none px-0.5">‹</button>
             <span className="font-bold text-[#151c27] min-w-[3rem] text-center text-sm">{year}</span>
-            <button onClick={() => setYear(y => Math.min(y + 1, now.getFullYear()))} className="text-[#3525cd] font-black text-base leading-none px-0.5">›</button>
+            <button
+              onClick={() => setYear(y => Math.min(y + 1, now.getFullYear()))}
+              disabled={year >= now.getFullYear()}
+              className={`font-black text-base leading-none px-0.5 ${year >= now.getFullYear() ? 'text-[#c7c4d8] cursor-not-allowed' : 'text-[#3525cd]'}`}>›</button>
           </div>
 
           {/* Report tabs */}

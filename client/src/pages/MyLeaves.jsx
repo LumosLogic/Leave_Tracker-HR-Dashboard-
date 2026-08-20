@@ -619,10 +619,13 @@ export default function MyLeaves() {
     }
   }
 
+  const PENDING_STATUSES = ['pending', 'pending_dept', 'pending_root'];
+
   // Filter + sort logic
   const sortedLeaves = [...leaves]
     .filter(l => {
-      if (statusFilter !== 'all' && l.status !== statusFilter) return false;
+      if (statusFilter === 'pending' && !PENDING_STATUSES.includes(l.status)) return false;
+      if (statusFilter !== 'all' && statusFilter !== 'pending' && l.status !== statusFilter) return false;
       if (typeFilter === 'wfh' && !isWFHRecord(l)) return false;
       if (typeFilter !== 'all' && typeFilter !== 'wfh' && (isWFHRecord(l) || l.leave_type !== typeFilter)) return false;
       if (dateFrom && l.start_date < dateFrom) return false;

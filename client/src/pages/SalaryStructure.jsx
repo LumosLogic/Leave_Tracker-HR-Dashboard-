@@ -262,8 +262,11 @@ function SalaryModal({ employee, onClose }) {
             Cancel
           </button>
           <button
-            onClick={() => mut.mutate()}
-            disabled={mut.isPending || !form.basic}
+            onClick={() => {
+              if (gross === 0) { toast('Salary amount must be greater than ₹0. Please enter at least one earning amount.', 'error'); return; }
+              mut.mutate();
+            }}
+            disabled={mut.isPending || !form.basic || num('basic') === 0}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors">
             {mut.isPending
               ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>

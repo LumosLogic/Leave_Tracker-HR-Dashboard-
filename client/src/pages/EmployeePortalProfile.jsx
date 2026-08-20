@@ -211,6 +211,7 @@ function InfoPill({ icon: Icon, text }) {
 // ─── PROFILE PRINT MODAL ─────────────────────────────────────────────────────
 
 function ProfilePrintModal({ empId, open, onClose }) {
+  const toast = useToast();
   const { data: ov }  = useQuery({ queryKey: ['profile-overview', empId], queryFn: () => apiGet(`/profile/${empId}/overview`), enabled: !!empId && open });
   const { data: per } = useQuery({ queryKey: ['profile-personal',  empId], queryFn: () => apiGet(`/profile/${empId}/personal`),  enabled: !!empId && open });
 
@@ -260,7 +261,7 @@ function ProfilePrintModal({ empId, open, onClose }) {
           <span className="text-sm font-black text-[#151c27]">Employee Profile</span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => window.print()}
+              onClick={() => { window.print(); toast('Profile downloaded successfully.', 'success'); }}
               className="btn btn-primary btn-sm flex items-center gap-1.5"
             >
               <Printer size={13} /> Save as PDF
@@ -855,6 +856,7 @@ function ContactAddressReadCard({ empId }) {
 function PersonalSection({ empId }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [contactErrors, setContactErrors] = useState({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['profile-personal', empId],
@@ -905,16 +907,19 @@ function PersonalSection({ empId }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="form-label">Phone</label>
-                <input className="form-control" value={form.phone} onChange={e => setF('phone', e.target.value)} placeholder="+91 98765 43210" />
+                <input className={`form-control ${contactErrors.phone ? 'border-rose-400' : ''}`} value={form.phone} onChange={e => { setF('phone', e.target.value); setContactErrors(er => ({ ...er, phone: undefined })); }} placeholder="+91 98765 43210" />
+                {contactErrors.phone && <p className="text-xs text-rose-600 mt-1">{contactErrors.phone}</p>}
               </div>
               <div>
                 <label className="form-label">Personal Email</label>
-                <input className="form-control" type="email" value={form.personal_email} onChange={e => setF('personal_email', e.target.value)} placeholder="personal@email.com" />
+                <input className={`form-control ${contactErrors.personal_email ? 'border-rose-400' : ''}`} type="email" value={form.personal_email} onChange={e => { setF('personal_email', e.target.value); setContactErrors(er => ({ ...er, personal_email: undefined })); }} placeholder="personal@email.com" />
+                {contactErrors.personal_email && <p className="text-xs text-rose-600 mt-1">{contactErrors.personal_email}</p>}
               </div>
             </div>
             <div>
               <label className="form-label">Address Line 1</label>
-              <input className="form-control" value={form.current_address_line1} onChange={e => setF('current_address_line1', e.target.value)} placeholder="House/Flat no, Street" />
+              <input className={`form-control ${contactErrors.current_address_line1 ? 'border-rose-400' : ''}`} value={form.current_address_line1} onChange={e => { setF('current_address_line1', e.target.value); setContactErrors(er => ({ ...er, current_address_line1: undefined })); }} placeholder="House/Flat no, Street" />
+              {contactErrors.current_address_line1 && <p className="text-xs text-rose-600 mt-1">{contactErrors.current_address_line1}</p>}
             </div>
             <div>
               <label className="form-label">Address Line 2</label>
@@ -923,19 +928,23 @@ function PersonalSection({ empId }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="form-label">City</label>
-                <input className="form-control" value={form.current_city} onChange={e => setF('current_city', e.target.value)} placeholder="City" />
+                <input className={`form-control ${contactErrors.current_city ? 'border-rose-400' : ''}`} value={form.current_city} onChange={e => { setF('current_city', e.target.value); setContactErrors(er => ({ ...er, current_city: undefined })); }} placeholder="City" />
+                {contactErrors.current_city && <p className="text-xs text-rose-600 mt-1">{contactErrors.current_city}</p>}
               </div>
               <div>
                 <label className="form-label">State</label>
-                <input className="form-control" value={form.current_state} onChange={e => setF('current_state', e.target.value)} placeholder="State" />
+                <input className={`form-control ${contactErrors.current_state ? 'border-rose-400' : ''}`} value={form.current_state} onChange={e => { setF('current_state', e.target.value); setContactErrors(er => ({ ...er, current_state: undefined })); }} placeholder="State" />
+                {contactErrors.current_state && <p className="text-xs text-rose-600 mt-1">{contactErrors.current_state}</p>}
               </div>
               <div>
                 <label className="form-label">Country</label>
-                <input className="form-control" value={form.current_country} onChange={e => setF('current_country', e.target.value)} placeholder="Country" />
+                <input className={`form-control ${contactErrors.current_country ? 'border-rose-400' : ''}`} value={form.current_country} onChange={e => { setF('current_country', e.target.value); setContactErrors(er => ({ ...er, current_country: undefined })); }} placeholder="Country" />
+                {contactErrors.current_country && <p className="text-xs text-rose-600 mt-1">{contactErrors.current_country}</p>}
               </div>
               <div>
                 <label className="form-label">PIN Code</label>
-                <input className="form-control" value={form.current_postal_code} onChange={e => setF('current_postal_code', e.target.value)} placeholder="400001" />
+                <input className={`form-control ${contactErrors.current_postal_code ? 'border-rose-400' : ''}`} value={form.current_postal_code} onChange={e => { setF('current_postal_code', e.target.value); setContactErrors(er => ({ ...er, current_postal_code: undefined })); }} placeholder="400001" />
+                {contactErrors.current_postal_code && <p className="text-xs text-rose-600 mt-1">{contactErrors.current_postal_code}</p>}
               </div>
             </div>
             <div>
@@ -943,12 +952,16 @@ function PersonalSection({ empId }) {
               <textarea className="form-control" rows={3} value={form.permanent_address} onChange={e => setF('permanent_address', e.target.value)} placeholder="Permanent / native address" />
             </div>
             <button onClick={() => {
-              // BUG_052: Contact & Address validation
-              if (form.phone && !/^\+?[\d\s\-]{7,15}$/.test(form.phone.trim())) { toast('Enter a valid phone number.', 'error'); return; }
-              if (form.personal_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) { toast('Enter a valid personal email address.', 'error'); return; }
-              if (form.current_city && /\d/.test(form.current_city)) { toast('City should contain alphabetic characters only.', 'error'); return; }
-              if (form.current_state && /\d/.test(form.current_state)) { toast('State should contain alphabetic characters only.', 'error'); return; }
-              if (form.current_postal_code && !/^\d{4,10}$/.test(form.current_postal_code.trim())) { toast('PIN Code must be 4-10 digits.', 'error'); return; }
+              const errs = {};
+              if (form.phone && !/^\+?[\d\s\-]{7,15}$/.test(form.phone.trim())) errs.phone = 'Enter a valid phone number (7-15 digits).';
+              if (form.personal_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) errs.personal_email = 'Enter a valid email address.';
+              if (form.current_address_line1 && form.current_address_line1.trim().length > 200) errs.current_address_line1 = 'Address must be under 200 characters.';
+              if (form.current_city && /\d/.test(form.current_city)) errs.current_city = 'City should contain letters only.';
+              if (form.current_state && /\d/.test(form.current_state)) errs.current_state = 'State should contain letters only.';
+              if (form.current_country && !/[a-zA-Z]/.test(form.current_country)) errs.current_country = 'Country must contain letters.';
+              if (form.current_postal_code && !/^\d{4,10}$/.test(form.current_postal_code.trim())) errs.current_postal_code = 'PIN Code must be 4-10 digits.';
+              setContactErrors(errs);
+              if (Object.keys(errs).length > 0) return;
               saveMutation.mutate();
             }} disabled={saveMutation.isPending}
               className="btn btn-primary btn-sm flex items-center gap-2">
@@ -1074,7 +1087,13 @@ function FamilySection({ empId }) {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Family Member' : 'Add Family Member'} size="md"
-        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
+        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => {
+          if (!form.relationship) { toast('Relationship is required.', 'error'); return; }
+          if (!form.name.trim()) { toast('Full name is required.', 'error'); return; }
+          if (form.contact_number && !/^\+?[\d\s\-]{7,15}$/.test(form.contact_number.trim())) { toast('Enter a valid contact number (7-15 digits).', 'error'); return; }
+          if (form.occupation && !/[a-zA-Z]/.test(form.occupation)) { toast('Occupation must contain letters.', 'error'); return; }
+          saveMut.mutate();
+        }} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></>}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1090,6 +1109,9 @@ function FamilySection({ empId }) {
                 <option value="">Select…</option>
                 {['male','female','other'].map(g => <option key={g} value={g}>{g.charAt(0).toUpperCase()+g.slice(1)}</option>)}
               </select>
+              {form.gender === 'other' && (
+                <input className="form-control mt-2" value={form.gender_specify || ''} onChange={e => setF('gender_specify', e.target.value)} placeholder="Please specify gender" />
+              )}
             </div>
           </div>
           <div>
@@ -1104,11 +1126,17 @@ function FamilySection({ empId }) {
             <div>
               <label className="form-label">Contact Number</label>
               <input className="form-control" value={form.contact_number} onChange={e => setF('contact_number', e.target.value)} placeholder="+91 98765 43210" />
+              {form.contact_number && !/^\+?[\d\s\-]{7,15}$/.test(form.contact_number.trim()) && (
+                <p className="text-xs text-rose-600 mt-1">Enter a valid contact number.</p>
+              )}
             </div>
           </div>
           <div>
             <label className="form-label">Occupation</label>
             <input className="form-control" value={form.occupation} onChange={e => setF('occupation', e.target.value)} placeholder="e.g. Teacher, Engineer" />
+            {form.occupation && !/[a-zA-Z]/.test(form.occupation) && (
+              <p className="text-xs text-rose-600 mt-1">Occupation must contain letters.</p>
+            )}
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" className="rounded" checked={form.dependent} onChange={e => setF('dependent', e.target.checked)} />
@@ -1712,6 +1740,7 @@ function BankingSection({ empId }) {
           // BUG_044: Bank form validation
           if (!form.bank_name.trim()) { toast('Bank name is required.', 'error'); return; }
           if (!/[a-zA-Z]/.test(form.bank_name)) { toast('Bank name must contain letters only.', 'error'); return; }
+          if (form.branch_name && !/[a-zA-Z]/.test(form.branch_name)) { toast('Branch name must contain letters (e.g. Andheri West Branch).', 'error'); return; }
           if (!form.account_number.trim()) { toast('Account number is required.', 'error'); return; }
           if (!/^\d{9,18}$/.test(form.account_number.trim())) { toast('Account number must be 9-18 digits only.', 'error'); return; }
           if (form.account_holder_name && !/[a-zA-Z]/.test(form.account_holder_name)) { toast('Account holder name must contain letters.', 'error'); return; }

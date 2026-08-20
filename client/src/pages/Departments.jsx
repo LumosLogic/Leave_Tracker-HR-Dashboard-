@@ -32,6 +32,7 @@ function DeptModal({ open, onClose, dept, employees }) {
     if (!name) { setNameErr('Department name is required.'); return; }
     if (name.length < 2) { setNameErr('Department name must be at least 2 characters.'); return; }
     if (name.length > 100) { setNameErr('Department name cannot exceed 100 characters.'); return; }
+    if (!/[a-zA-Z]/.test(name)) { setNameErr('Department name must contain at least one letter.'); return; }
     if (/[<>{}\[\]`\\]/.test(name)) { setNameErr('Department name contains invalid characters.'); return; }
     setNameErr('');
     mut.mutate();

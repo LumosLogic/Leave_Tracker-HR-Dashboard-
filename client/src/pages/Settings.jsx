@@ -138,15 +138,19 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Late Entry Threshold</label>
-            <input type="time" className="form-control" value={form.late_threshold}
+            <input type="time" className={`form-control ${scheduleErrors.late_threshold ? 'border-rose-400' : ''}`} value={form.late_threshold}
               disabled={!isAdmin} onChange={e => set('late_threshold', e.target.value)} />
-            <p className="form-hint">Check-in after this time = Late</p>
+            {scheduleErrors.late_threshold
+              ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.late_threshold}</p>
+              : <p className="form-hint">Check-in after this time = Late</p>}
           </div>
           <div>
             <label className="form-label">Early Exit Threshold</label>
-            <input type="time" className="form-control" value={form.early_exit_threshold}
+            <input type="time" className={`form-control ${scheduleErrors.early_exit_threshold ? 'border-rose-400' : ''}`} value={form.early_exit_threshold}
               disabled={!isAdmin} onChange={e => set('early_exit_threshold', e.target.value)} />
-            <p className="form-hint">Check-out before this time = Early Exit</p>
+            {scheduleErrors.early_exit_threshold
+              ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.early_exit_threshold}</p>
+              : <p className="form-hint">Check-out before this time = Early Exit</p>}
           </div>
         </div>
 

@@ -1377,7 +1377,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                     <label className="form-label">Date of Birth</label>
-                    <input className="form-control" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+                    <input className="form-control" type="date" max={new Date().toISOString().split('T')[0]} value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
                   </div>
                   <div>
                     <label className="form-label">Gender</label>
@@ -1388,6 +1388,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                       <option value="Other">Other</option>
                       <option value="Prefer not to say">Prefer not to say</option>
                     </select>
+                    {form.gender === 'Other' && (
+                      <input className="form-control mt-2" placeholder="Please specify gender" value={form.gender_specify || ''} onChange={e => set('gender_specify', e.target.value)} />
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

@@ -123,7 +123,7 @@ export default function LeaveWorkflowSettings() {
   function validateWorkflowName(name) {
     if (!name.trim()) return 'Workflow name is required.';
     if (!/[a-zA-Z]/.test(name)) return 'Workflow name must contain at least one alphabetic character.';
-    if (name.trim().length > 80) return 'Workflow name must be 80 characters or fewer.';
+    if (name.trim().length > 100) return 'Workflow name must be 100 characters or fewer.';
     return '';
   }
 
@@ -250,7 +250,7 @@ export default function LeaveWorkflowSettings() {
           onChange={e => { setWorkflowName(e.target.value); setDirty(true); if (workflowNameError) setWorkflowNameError(validateWorkflowName(e.target.value)); }}
           placeholder="e.g. Standard Leave Approval"
           className={`w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 ${workflowNameError ? 'border-rose-400' : 'border-[#c7c4d8]'}`}
-          maxLength={90}
+          maxLength={100}
         />
         {workflowNameError && <p className="text-xs text-rose-500 mt-1">{workflowNameError}</p>}
       </div>
