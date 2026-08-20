@@ -164,15 +164,12 @@ router.get('/logs', auth, adminOnly, async (req, res) => {
       idx++;
     }
     if (req.query.user_id) {
-      // Match via biometric_employee_map OR directly via device_enrollment_id on users table
-      // (covers cases where the map table is incomplete but device_enrollment_id is set)
-      where += ` AND (
-        m.user_id = $${idx}
-        OR l.employee_pin = (
-          SELECT device_enrollment_id FROM users
-          WHERE id = $${idx} AND organization_id = $1
-          LIMIT 1
-        )
+      // Use subqueries so org_id join mismatches don't silently filter everything out.
+      // Looks up pin from biometric_employee_map OR device_enrollment_id on users table.
+      where += ` AND l.employee_pin IN (
+        SELECT employee_pin FROM biometric_employee_map WHERE user_id = $${idx}
+        UNION
+        SELECT device_enrollment_id FROM users WHERE id = $${idx} AND device_enrollment_id IS NOT NULL
       )`;
       filterParams.push(parseInt(req.query.user_id));
       idx++;

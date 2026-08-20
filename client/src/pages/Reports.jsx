@@ -245,7 +245,8 @@ export default function Reports() {
   const [pageSize,        setPageSize]        = useState(50);
   const [dlOpen,          setDlOpen]          = useState(false);
   // Biometric punch log expansion (Relitrade / first_in_last_out orgs only)
-  const [expandedRow,     setExpandedRow]     = useState(null); // { user_id, date, name }
+  // Use attendance record id as key — user_id can be null causing all rows to expand
+  const [expandedRowId,   setExpandedRowId]   = useState(null);
 
   function handleTabChange(tab) {
     setActive(tab);
@@ -627,8 +628,10 @@ export default function Reports() {
                     </td>
                   </tr>
                 ) : displayRows.map((r, i) => {
-                  const rowKey = `${r.user_id}-${r.date}`;
-                  const isExpanded = expandedRow?.user_id === r.user_id && expandedRow?.date === r.date;
+                  // Use attendance record id as unique key — not user_id (can be null)
+                  const rowUniqueId = r.id ?? `${i}-${r.date}`;
+                  const rowKey = String(rowUniqueId);
+                  const isExpanded = expandedRowId === rowKey;
                   const fmtHrs = (h) => {
                     if (!h || h <= 0) return null;
                     const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60);
@@ -653,7 +656,7 @@ export default function Reports() {
                         r.is_live && 'bg-emerald-50/30',
                         isExpanded && 'bg-[#f0f3ff]'
                       )}
-                      onClick={isFiloOrg ? () => setExpandedRow(isExpanded ? null : { user_id: r.user_id, date: r.date, name: r.name }) : undefined}
+                      onClick={isFiloOrg ? () => setExpandedRowId(isExpanded ? null : rowKey) : undefined}
                     >
                       <td className="px-4 py-3 font-semibold text-[#151c27] whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
@@ -724,8 +727,8 @@ export default function Reports() {
                     {/* Punch log expansion row — only for biometric (isFiloOrg) orgs */}
                     {isFiloOrg && isExpanded && (
                       <PunchLogRow
-                        employee_pin={r.users?.device_enrollment_id || r.device_enrollment_id || null}
-                        user_id={r.user_id}
+                        employee_pin={r.device_enrollment_id || r.users?.device_enrollment_id || null}
+                        user_id={r.user_id || r.users?.id || null}
                         date={r.date}
                         name={r.name}
                         colSpan={9}
