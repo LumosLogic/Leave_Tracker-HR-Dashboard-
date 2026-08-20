@@ -63,6 +63,7 @@ export default function BiometricLogs() {
   const [dateTo,     setDateTo]     = useState(getToday());
   const [device,     setDevice]     = useState(initDevice);
   const [pin,        setPin]        = useState('');
+  const [nameSearch, setNameSearch] = useState('');
   const [page,       setPage]       = useState(1);
 
   // ── Import modal state ─────────────────────────────────────────────────────
@@ -108,7 +109,8 @@ export default function BiometricLogs() {
     ...(dateFrom  ? { date_from: dateFrom }        : {}),
     ...(dateTo    ? { date_to: dateTo }            : {}),
     ...(device    ? { device_serial: device }      : {}),
-    ...(pin       ? { employee_pin: pin }          : {}),
+    ...(pin        ? { employee_pin: pin }         : {}),
+    ...(nameSearch ? { name_search: nameSearch }   : {}),
   };
 
   const { data: _res, isLoading } = useQuery({
@@ -128,10 +130,10 @@ export default function BiometricLogs() {
   const devices     = Array.isArray(_devices) ? _devices : [];
 
   function resetFilters() {
-    setDateFrom(getToday()); setDateTo(getToday()); setDevice(initDevice); setPin(''); setPage(1);
+    setDateFrom(getToday()); setDateTo(getToday()); setDevice(initDevice); setPin(''); setNameSearch(''); setPage(1);
   }
 
-  const hasFilter = dateFrom || dateTo || (device && device !== initDevice) || pin;
+  const hasFilter = dateFrom || dateTo || (device && device !== initDevice) || pin || nameSearch;
 
   return (
     <div className="space-y-6">
@@ -193,9 +195,17 @@ export default function BiometricLogs() {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">PIN</label>
-            <input type="text" className="form-control font-mono text-xs py-1.5 w-24"
-              placeholder="e.g. 1001" value={pin} onChange={e => { setPin(e.target.value); setPage(1); }} />
+            <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">Name / Employee ID</label>
+            <input type="text" className="form-control text-xs py-1.5 w-44"
+              placeholder="Name or Employee ID…"
+              value={nameSearch || pin}
+              onChange={e => {
+                const v = e.target.value;
+                // If purely numeric treat as Employee ID (pin), otherwise name search
+                if (/^\d+$/.test(v)) { setPin(v); setNameSearch(''); }
+                else { setNameSearch(v); setPin(''); }
+                setPage(1);
+              }} />
           </div>
           {hasFilter && (
             <div className="flex items-end">
@@ -226,7 +236,7 @@ export default function BiometricLogs() {
                   <tr>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Date</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Time</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">PIN</th>
+                    <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Employee ID</th>
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Employee Name</th>
                     {/* Device hidden from UI, Verify Type removed */}
                     <th className="px-5 py-3.5 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Punch Type</th>

@@ -2424,10 +2424,8 @@ export default function Employees() {
           className="form-control w-auto text-xs py-1.5">
           <option value="name:asc">Name A–Z</option>
           <option value="name:desc">Name Z–A</option>
-          <option value="department:asc">Dept A–Z</option>
           <option value="joining_date:desc">Newest Joined</option>
           <option value="joining_date:asc">Oldest Joined</option>
-          <option value="position:asc">Position A–Z</option>
         </select>
 
         {anyFilter && (

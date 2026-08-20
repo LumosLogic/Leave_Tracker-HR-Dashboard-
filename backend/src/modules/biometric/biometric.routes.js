@@ -157,6 +157,17 @@ router.get('/logs', auth, adminOnly, async (req, res) => {
       where += ` AND l.employee_pin = $${idx++}`;
       filterParams.push(req.query.employee_pin);
     }
+    if (req.query.name_search) {
+      // Search by employee name (via joined users table) OR by employee_pin
+      where += ` AND (u.name ILIKE $${idx} OR l.employee_pin ILIKE $${idx})`;
+      filterParams.push(`%${req.query.name_search}%`);
+      idx++;
+    }
+    if (req.query.user_id) {
+      // Filter by user_id via the biometric_employee_map join
+      where += ` AND m.user_id = $${idx++}`;
+      filterParams.push(parseInt(req.query.user_id));
+    }
     if (req.query.processed !== undefined && req.query.processed !== '') {
       where += ` AND l.processed = $${idx++}`;
       filterParams.push(req.query.processed === 'true');

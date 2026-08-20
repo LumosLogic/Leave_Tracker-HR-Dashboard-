@@ -4,7 +4,7 @@ import {
   Download, BarChart3, Users, FileText, CalendarDays, TrendingUp,
   Search, Filter, X, ChevronUp, ChevronDown, Printer,
   CheckCircle2, Clock, AlertCircle, UserCheck, Umbrella,
-  Building2, ArrowUpDown,
+  Building2, ArrowUpDown, ChevronRight, Fingerprint,
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { MONTHS } from '@/lib/utils';
@@ -163,6 +163,62 @@ function DownloadModal({ open, onClose, active, onDownload }) {
   );
 }
 
+// ── Punch Log expansion row (biometric orgs only) ─────────────────────────────
+function PunchLogRow({ user_id, date, name, colSpan }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['punch-logs-row', user_id, date],
+    queryFn:  () => apiGet('/biometric/logs', { user_id, date_from: date, date_to: date, limit: 100 }),
+    enabled:  !!user_id && !!date,
+  });
+
+  const logs = Array.isArray(data?.data) ? data.data : Array.isArray(data?.logs) ? data.logs : Array.isArray(data) ? data : [];
+
+  function fmtPunchTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+    const hh = h % 12 || 12;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return `${hh}:${mm}:${ss} ${h >= 12 ? 'PM' : 'AM'}`;
+  }
+
+  return (
+    <tr className="bg-[#f8f9ff]">
+      <td colSpan={colSpan} className="px-6 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Fingerprint size={13} className="text-[#3525cd]" />
+          <span className="text-[0.7rem] font-black text-[#3525cd] uppercase tracking-wider">
+            Biometric Punches — {name} on {date}
+          </span>
+        </div>
+        {isLoading ? (
+          <p className="text-xs text-[#777587]">Loading punch records…</p>
+        ) : logs.length === 0 ? (
+          <p className="text-xs text-[#777587]">No punch records found for this day.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {logs.map((log, i) => {
+              const isIn = String(log.punch_type ?? log.punch_state ?? '').toLowerCase().includes('in') ||
+                           [0, '0', 'checkin', 'check-in'].includes(log.punch_type ?? log.punch_state);
+              return (
+                <span key={i} className={cn(
+                  'inline-flex items-center gap-1.5 text-[0.68rem] font-bold px-2.5 py-1 rounded-full border',
+                  isIn ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                )}>
+                  <span className={cn('w-1.5 h-1.5 rounded-full', isIn ? 'bg-emerald-500' : 'bg-rose-400')} />
+                  {isIn ? 'In' : 'Out'} · {fmtPunchTime(log.punch_time || log.timestamp)}
+                  {log.employee_pin && <span className="text-[0.6rem] opacity-60 ml-0.5">#{log.employee_pin}</span>}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 // ── Main Reports page ──────────────────────────────────────────────────────────
 export default function Reports() {
   const now = new Date();
@@ -181,6 +237,8 @@ export default function Reports() {
   const [sort,            setSort]            = useState({ col: 'date', dir: 'desc' });
   const [pageSize,        setPageSize]        = useState(50);
   const [dlOpen,          setDlOpen]          = useState(false);
+  // Biometric punch log expansion (Relitrade / first_in_last_out orgs only)
+  const [expandedRow,     setExpandedRow]     = useState(null); // { user_id, date, name }
 
   function handleTabChange(tab) {
     setActive(tab);
@@ -562,6 +620,8 @@ export default function Reports() {
                     </td>
                   </tr>
                 ) : displayRows.map((r, i) => {
+                  const rowKey = `${r.user_id}-${r.date}`;
+                  const isExpanded = expandedRow?.user_id === r.user_id && expandedRow?.date === r.date;
                   const fmtHrs = (h) => {
                     if (!h || h <= 0) return null;
                     const hrs = Math.floor(h); const min = Math.round((h - hrs) * 60);
@@ -578,8 +638,22 @@ export default function Reports() {
                     return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
                   };
                   return (
-                    <tr key={i} className={cn('hover:bg-[#f9f9ff] transition-colors', r.is_live && 'bg-emerald-50/30')}>
-                      <td className="px-4 py-3 font-semibold text-[#151c27] whitespace-nowrap">{r.name}</td>
+                    <React.Fragment key={rowKey}>
+                    <tr
+                      className={cn(
+                        'transition-colors',
+                        isFiloOrg ? 'cursor-pointer hover:bg-[#f0f3ff]' : 'hover:bg-[#f9f9ff]',
+                        r.is_live && 'bg-emerald-50/30',
+                        isExpanded && 'bg-[#f0f3ff]'
+                      )}
+                      onClick={isFiloOrg ? () => setExpandedRow(isExpanded ? null : { user_id: r.user_id, date: r.date, name: r.name }) : undefined}
+                    >
+                      <td className="px-4 py-3 font-semibold text-[#151c27] whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {isFiloOrg && <ChevronRight size={13} className={cn('text-[#3525cd] transition-transform', isExpanded && 'rotate-90')} />}
+                          {r.name}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-[#464555] text-xs">{r.department || '—'}</td>
                       <td className="px-4 py-3 text-[#464555] text-xs whitespace-nowrap">{r.date}</td>
                       <td className="px-4 py-3">
@@ -640,6 +714,11 @@ export default function Reports() {
                         ) : '—'}
                       </td>
                     </tr>
+                    {/* Punch log expansion row — only for biometric (isFiloOrg) orgs */}
+                    {isFiloOrg && isExpanded && (
+                      <PunchLogRow user_id={r.user_id} date={r.date} name={r.name} colSpan={9} />
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
