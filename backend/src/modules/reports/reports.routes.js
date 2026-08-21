@@ -82,6 +82,9 @@ router.get('/attendance', auth, async (req, res) => {
       }
 
       return {
+        id:                   r.id,
+        user_id:              r.user_id,
+        device_enrollment_id: r.users?.device_enrollment_id || null,
         name:                 r.users?.name || '',
         department:           r.users?.department || '',
         position:             r.users?.position || '',
