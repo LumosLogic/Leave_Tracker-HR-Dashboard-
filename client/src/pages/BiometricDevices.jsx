@@ -96,6 +96,9 @@ function RegisterDeviceModal({ open, onClose, branches }) {
   );
 }
 
+const today     = new Date().toISOString().slice(0, 10);
+const defaultFrom = '2026-06-01';
+
 export default function BiometricDevices() {
   const { isAdmin } = useAuth();
   const toast       = useToast();
@@ -103,7 +106,9 @@ export default function BiometricDevices() {
   const navigate    = useNavigate();
   const [regOpen,      setRegOpen]      = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [syncTarget,   setSyncTarget]   = useState(null); // device awaiting sync confirmation
+  const [syncTarget,   setSyncTarget]   = useState(null);
+  const [syncFromDate, setSyncFromDate] = useState(defaultFrom);
+  const [syncToDate,   setSyncToDate]   = useState(today);
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/biometric/devices/${id}`),
@@ -116,7 +121,8 @@ export default function BiometricDevices() {
   });
 
   const syncMut = useMutation({
-    mutationFn: id => apiPost(`/biometric/devices/${id}/force-sync`, {}),
+    mutationFn: ({ id, fromDate, toDate }) =>
+      apiPost(`/biometric/devices/${id}/force-sync`, { from_date: fromDate, to_date: toDate }),
     onSuccess: (res) => {
       toast(res.message || 'Historical sync requested — device will upload stored records on next heartbeat.', 'success');
       qc.invalidateQueries({ queryKey: ['biometric-devices'] });
@@ -308,22 +314,49 @@ export default function BiometricDevices() {
         onCancel={() => !deleteMut.isPending && setDeleteTarget(null)}
       />
 
-      {/* Historical Sync confirmation modal */}
-      <ConfirmModal
+      {/* Historical Sync modal with date range */}
+      <Modal
         open={!!syncTarget}
+        onClose={() => !syncMut.isPending && setSyncTarget(null)}
         title="Request Historical Sync"
-        message={
-          `This will instruct "${syncTarget?.device_name}" (${syncTarget?.serial_number}) to resend all attendance records stored on the device.\n\n` +
-          `• The sync will trigger on the device's next heartbeat (within ~30–60 seconds).\n` +
-          `• Records already in HRMS will not be duplicated — they are silently skipped.\n` +
-          `• New records will flow through the existing biometric pipeline exactly like live punches.\n` +
-          `• You can monitor incoming punches on the Live Logs page.`
-        }
-        confirmLabel={syncMut.isPending ? 'Requesting…' : 'Request Historical Sync'}
-        variant="primary"
-        onConfirm={() => syncMut.mutate(syncTarget.id)}
-        onCancel={() => !syncMut.isPending && setSyncTarget(null)}
-      />
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button className="btn btn-outline" onClick={() => setSyncTarget(null)} disabled={syncMut.isPending}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={syncMut.isPending || !syncFromDate || !syncToDate}
+              onClick={() => syncMut.mutate({ id: syncTarget.id, fromDate: syncFromDate, toDate: syncToDate })}>
+              {syncMut.isPending ? <><span className="spinner w-4 h-4" />Requesting…</> : <><RefreshCw size={14} /> Request Sync</>}
+            </button>
+          </div>
+        }>
+        <div className="space-y-4">
+          <p className="text-sm text-[#464555]">
+            Request <span className="font-bold">{syncTarget?.device_name}</span> to resend all stored attendance records for the selected date range.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="form-label">From Date</label>
+              <input type="date" className="form-control"
+                value={syncFromDate} onChange={e => setSyncFromDate(e.target.value)} max={syncToDate} />
+            </div>
+            <div>
+              <label className="form-label">To Date</label>
+              <input type="date" className="form-control"
+                value={syncToDate} onChange={e => setSyncToDate(e.target.value)} min={syncFromDate} max={today} />
+            </div>
+          </div>
+          <div className="bg-[#f9f9ff] rounded-lg border border-[#e7eefe] p-3 space-y-1.5 text-xs text-[#464555]">
+            <p>• Sync triggers on the device's next heartbeat (~30–60 seconds).</p>
+            <p>• Records already in HRMS are silently skipped — no duplicates created.</p>
+            <p>• New records flow through the existing biometric pipeline like live punches.</p>
+            <p>• Monitor incoming records on the <span className="font-semibold text-[#3525cd]">Live Logs</span> page.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
