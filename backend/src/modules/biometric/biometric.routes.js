@@ -8,7 +8,7 @@ const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
 const { processAttlogLine } = require('./biometricPush.handler');
 const biometricEmitter = require('../../utils/biometricEmitter');
 const { reprocessPin } = require('./biometricReprocess.util');
-const { importEasyWDMS } = require('./biometricEasyWDMSImport.handler');
+const { importEasyWDMS, previewEasyWDMS } = require('./biometricEasyWDMSImport.handler');
 const { getOrgPolicy }   = require('../../utils/orgPolicy');
 
 const upload = multer({
@@ -604,9 +604,15 @@ router.post('/bulk-import', async (req, res) => {
   }
 });
 
+// ─── POST /api/biometric/preview-easywdms ────────────────────────────────────
+// Parse file + validate + check DB for duplicates — returns counts WITHOUT writing.
+// Accepts same multipart form as import-easywdms (file, date_from, date_to).
+router.post('/preview-easywdms', auth, adminOnly, upload.single('file'), previewEasyWDMS);
+
 // ─── POST /api/biometric/import-easywdms ─────────────────────────────────────
 // Upload an EasyWDMS Transaction Report file (.xlsx/.xls/.csv/.tsv/.txt).
 // Parses, inserts historical raw logs (bypassing go-live cutoff), auto-reprocesses.
+// Optional multipart fields: date_from, date_to (YYYY-MM-DD) to filter by date range.
 router.post('/import-easywdms', auth, adminOnly, upload.single('file'), importEasyWDMS);
 
 // ─── GET /api/biometric/import-batches ───────────────────────────────────────

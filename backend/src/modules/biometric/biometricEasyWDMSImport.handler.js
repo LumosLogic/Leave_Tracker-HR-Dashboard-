@@ -108,50 +108,140 @@ function parseEasyWDMSFile(buffer, originalname) {
   return records;
 }
 
+// ── Shared: parse file + device whitelist + optional date-range filter ────────
+// Returns { validRecords, filteredRecords, skippedDevices } or throws.
+async function _parseAndFilter(file, orgId, dateFrom, dateTo) {
+  const records = parseEasyWDMSFile(file.buffer, file.originalname);
+  if (!records.length) throw { status: 422, message: 'No valid records found. Check that the file is a Transaction Report with "Employee ID", "Date", "Punch Time", "Punch State", and "Serial Number" columns.' };
+
+  // Device whitelist
+  const devRes = await pool.query(
+    `SELECT serial_number FROM biometric_devices WHERE org_id = $1`,
+    [orgId]
+  );
+  const allowedSerials = new Set(devRes.rows.map(d => d.serial_number).filter(Boolean));
+  const skippedDevices = {};
+  const validRecords = records.filter(rec => {
+    if (allowedSerials.has(rec.deviceSerial)) return true;
+    skippedDevices[rec.deviceSerial] = (skippedDevices[rec.deviceSerial] || 0) + 1;
+    return false;
+  });
+
+  // Optional date-range filter
+  let filteredRecords = validRecords;
+  if (dateFrom || dateTo) {
+    const from = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+    const to   = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
+    filteredRecords = validRecords.filter(rec => {
+      if (from && rec.punchTime < from) return false;
+      if (to   && rec.punchTime > to)   return false;
+      return true;
+    });
+  }
+
+  return { records, validRecords, filteredRecords, skippedDevices };
+}
+
+/**
+ * POST /api/biometric/preview-easywdms
+ * Parse the file, run device validation + optional date-range filter,
+ * check DB for existing duplicates — returns counts WITHOUT writing anything.
+ * Safe to call any number of times; reads-only.
+ */
+async function previewEasyWDMS(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const orgId    = req.user.organization_id;
+  const dateFrom = (req.body.date_from || '').trim() || null;
+  const dateTo   = (req.body.date_to   || '').trim() || null;
+
+  let parsed;
+  try {
+    parsed = await _parseAndFilter(req.file, orgId, dateFrom, dateTo);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Parse/filter failed' });
+  }
+
+  const { records, validRecords, filteredRecords, skippedDevices } = parsed;
+
+  if (validRecords.length === 0) {
+    const summary = Object.entries(skippedDevices).map(([sn, n]) => `${sn} (${n})`).join(', ');
+    return res.status(422).json({ error: `No records from registered devices. Unregistered: ${summary}` });
+  }
+
+  // Check how many of the filtered records already exist in biometric_raw_logs
+  let existingCount = 0;
+  if (filteredRecords.length > 0) {
+    try {
+      const ds  = filteredRecords.map(r => r.deviceSerial);
+      const eps = filteredRecords.map(r => r.employeePin);
+      const pts = filteredRecords.map(r => r.punchTime.toISOString());
+
+      const dupRes = await pool.query(
+        `WITH incoming AS (
+           SELECT * FROM unnest($2::text[], $3::text[], $4::timestamptz[])
+           AS t(device_serial, employee_pin, punch_time)
+         )
+         SELECT COUNT(*) AS cnt FROM incoming i
+         WHERE EXISTS (
+           SELECT 1 FROM biometric_raw_logs r
+           WHERE r.org_id       = $1
+             AND r.device_serial = i.device_serial
+             AND r.employee_pin  = i.employee_pin
+             AND r.punch_time    = i.punch_time
+         )`,
+        [orgId, ds, eps, pts]
+      );
+      existingCount = parseInt(dupRes.rows[0].cnt, 10);
+    } catch (err) {
+      console.warn('[preview-easywdms] Duplicate check failed (non-fatal):', err.message);
+    }
+  }
+
+  const dates   = filteredRecords.map(r => r.punchTime.toISOString().slice(0, 10));
+  const minDate = dates.length ? dates.reduce((a, b) => a < b ? a : b) : null;
+  const maxDate = dates.length ? dates.reduce((a, b) => a > b ? a : b) : null;
+
+  res.json({
+    ok:                true,
+    total_in_file:     records.length,
+    invalid_device:    records.length - validRecords.length,
+    after_date_filter: filteredRecords.length,
+    existing_in_db:    existingCount,
+    new_records:       Math.max(0, filteredRecords.length - existingCount),
+    date_range:        { from: minDate, to: maxDate },
+    unique_pin_count:  new Set(filteredRecords.map(r => r.employeePin)).size,
+    skipped_devices:   skippedDevices,
+  });
+}
+
 /**
  * POST /api/biometric/import-easywdms
  * Accepts a multipart file upload, parses the EasyWDMS export,
- * validates device serials against registered devices (Issue 1 fix),
+ * validates device serials against registered devices,
  * inserts raw logs (bypassing go-live cutoff), and auto-reprocesses
  * all affected PINs using the org's attendance policy.
+ *
+ * Optional body fields (multipart):
+ *   date_from  YYYY-MM-DD  — only import records on or after this date
+ *   date_to    YYYY-MM-DD  — only import records on or before this date
  */
 async function importEasyWDMS(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const orgId = req.user.organization_id;
+  const orgId    = req.user.organization_id;
+  const dateFrom = (req.body.date_from || '').trim() || null;
+  const dateTo   = (req.body.date_to   || '').trim() || null;
 
-  // 1. Parse file
-  let records;
+  // 1. Parse + device whitelist + date-range filter
+  let parsed;
   try {
-    records = parseEasyWDMSFile(req.file.buffer, req.file.originalname);
-  } catch (parseErr) {
-    return res.status(422).json({ error: `File parse error: ${parseErr.message}` });
-  }
-  if (!records.length) {
-    return res.status(422).json({
-      error: 'No valid records found. Check that the file is a Transaction Report with ' +
-        '"Employee ID", "Date", "Punch Time", "Punch State", and "Serial Number" columns.',
-    });
-  }
-
-  // 2. Device whitelist — reject records from serials not registered in biometric_devices.
-  //    Matches the behaviour of the live ADMS push and collector-push endpoints.
-  let validRecords = records;
-  const skippedDevices = {}; // serialNumber → count
-  try {
-    const devRes = await pool.query(
-      `SELECT serial_number FROM biometric_devices WHERE org_id = $1`,
-      [orgId]
-    );
-    const allowedSerials = new Set(devRes.rows.map(d => d.serial_number).filter(Boolean));
-
-    validRecords = records.filter(rec => {
-      if (allowedSerials.has(rec.deviceSerial)) return true;
-      skippedDevices[rec.deviceSerial] = (skippedDevices[rec.deviceSerial] || 0) + 1;
-      return false;
-    });
+    parsed = await _parseAndFilter(req.file, orgId, dateFrom, dateTo);
   } catch (err) {
-    return res.status(500).json({ error: `Device lookup failed: ${err.message}` });
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Parse failed' });
   }
+
+  const { records, validRecords, filteredRecords, skippedDevices } = parsed;
 
   if (validRecords.length === 0) {
     const skippedSummary = Object.entries(skippedDevices)
@@ -163,7 +253,9 @@ async function importEasyWDMS(req, res) {
     });
   }
 
-  // 3. Create import batch record (status=processing while inserts run)
+  const importRecords = filteredRecords; // alias for clarity
+
+  // 2. Create import batch record (status=processing while inserts run)
   let batchId;
   try {
     const batchRes = await pool.query(
@@ -171,19 +263,19 @@ async function importEasyWDMS(req, res) {
          (org_id, filename, total_rows, imported_by, status)
        VALUES ($1, $2, $3, $4, 'processing')
        RETURNING id`,
-      [orgId, req.file.originalname, validRecords.length, req.user.id]
+      [orgId, req.file.originalname, importRecords.length, req.user.id]
     );
     batchId = batchRes.rows[0].id;
   } catch (err) {
     return res.status(500).json({ error: `Failed to create import batch: ${err.message}` });
   }
 
-  // 4. Insert raw logs — no go-live cutoff for historical imports
+  // 3. Insert raw logs — no go-live cutoff for historical imports
   let inserted = 0;
   let skipped  = 0;
   const errors = [];
 
-  for (const rec of validRecords) {
+  for (const rec of importRecords) {
     try {
       const result = await pool.query(
         `INSERT INTO biometric_raw_logs
@@ -213,8 +305,8 @@ async function importEasyWDMS(req, res) {
     }
   }
 
-  // 5. Auto-reprocess all unique PINs that had new rows — policy-aware via reprocessPin
-  const uniquePins = [...new Set(validRecords.map(r => r.employeePin))];
+  // 4. Auto-reprocess all unique PINs that had new rows — policy-aware via reprocessPin
+  const uniquePins = [...new Set(importRecords.map(r => r.employeePin))];
   let reprocessed = 0;
   for (const pin of uniquePins) {
     try {
@@ -225,7 +317,7 @@ async function importEasyWDMS(req, res) {
     }
   }
 
-  // 6. Finalise batch record
+  // 5. Finalise batch record
   await pool.query(
     `UPDATE biometric_import_batches
      SET inserted = $1, skipped = $2, error_count = $3, status = 'completed'
@@ -239,26 +331,25 @@ async function importEasyWDMS(req, res) {
 
   console.log(
     `[easywdms-import] batch=${batchId} total=${records.length} ` +
-    `valid=${validRecords.length} inserted=${inserted} skipped=${skipped} ` +
+    `filtered=${importRecords.length} inserted=${inserted} skipped=${skipped} ` +
     `reprocessed=${reprocessed}` +
     (skippedDeviceSummary ? ` skipped_devices=[${skippedDeviceSummary}]` : '')
   );
 
   res.json({
-    ok: true,
-    batch_id: batchId,
-    total: records.length,
-    valid: validRecords.length,
+    ok:          true,
+    batch_id:    batchId,
+    total:       records.length,
+    valid:       importRecords.length,
     inserted,
     skipped,
     reprocessed,
     errors,
     ...(Object.keys(skippedDevices).length > 0 && {
-      skipped_devices: skippedDevices,
-      skipped_devices_warning:
-        `Records from unregistered devices were ignored: ${skippedDeviceSummary}`,
+      skipped_devices:         skippedDevices,
+      skipped_devices_warning: `Records from unregistered devices were ignored: ${skippedDeviceSummary}`,
     }),
   });
 }
 
-module.exports = { importEasyWDMS };
+module.exports = { importEasyWDMS, previewEasyWDMS };

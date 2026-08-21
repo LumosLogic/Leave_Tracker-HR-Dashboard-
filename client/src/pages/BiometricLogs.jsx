@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ScrollText, ChevronLeft, ChevronRight, Filter, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { ScrollText, ChevronLeft, ChevronRight, Filter, Upload, X, CheckCircle, AlertCircle, Eye, Database, ArrowRight } from 'lucide-react';
 import { apiGet, apiUpload } from '@/lib/api';
 
 const PAGE_SIZE = 20;
@@ -66,40 +66,69 @@ export default function BiometricLogs() {
   const [nameSearch, setNameSearch] = useState('');
   const [page,       setPage]       = useState(1);
 
-  // ── Import modal state ─────────────────────────────────────────────────────
+  // ── Import modal state (3-step: select → preview → result) ───────────────
   const [showImport,    setShowImport]    = useState(false);
+  const [importStep,    setImportStep]    = useState('select'); // 'select'|'preview'|'result'
   const [importFile,    setImportFile]    = useState(null);
-  const [importing,     setImporting]     = useState(false);
+  const [importFrom,    setImportFrom]    = useState('');
+  const [importTo,      setImportTo]      = useState('');
+  const [importBusy,    setImportBusy]    = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
   const [importResult,  setImportResult]  = useState(null);
   const [importError,   setImportError]   = useState('');
   const fileInputRef = useRef(null);
 
   function openImport() {
     setShowImport(true);
+    setImportStep('select');
     setImportFile(null);
+    setImportFrom('');
+    setImportTo('');
+    setImportPreview(null);
     setImportResult(null);
     setImportError('');
   }
   function closeImport() {
-    if (importing) return;
+    if (importBusy) return;
     setShowImport(false);
+  }
+
+  async function handlePreview() {
+    if (!importFile) return;
+    setImportBusy(true);
+    setImportError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      if (importFrom) fd.append('date_from', importFrom);
+      if (importTo)   fd.append('date_to',   importTo);
+      const preview = await apiUpload('/biometric/preview-easywdms', fd);
+      setImportPreview(preview);
+      setImportStep('preview');
+    } catch (err) {
+      setImportError(err.message || 'Preview failed');
+    } finally {
+      setImportBusy(false);
+    }
   }
 
   async function handleImport() {
     if (!importFile) return;
-    setImporting(true);
+    setImportBusy(true);
     setImportError('');
-    setImportResult(null);
     try {
       const fd = new FormData();
       fd.append('file', importFile);
+      if (importFrom) fd.append('date_from', importFrom);
+      if (importTo)   fd.append('date_to',   importTo);
       const result = await apiUpload('/biometric/import-easywdms', fd);
       setImportResult(result);
+      setImportStep('result');
       queryClient.invalidateQueries({ queryKey: ['biometric-logs'] });
     } catch (err) {
       setImportError(err.message || 'Import failed');
     } finally {
-      setImporting(false);
+      setImportBusy(false);
     }
   }
 
@@ -303,52 +332,67 @@ export default function BiometricLogs() {
         </>
       )}
 
-      {/* ── Import EasyWDMS Modal ─────────────────────────────────────────── */}
+      {/* ── EasyWDMS Historical Import Modal (3-step) ────────────────────── */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            {/* Modal header */}
+
+            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7eefe]">
               <div className="flex items-center gap-2">
-                <Upload size={18} className="text-[#3525cd]" />
-                <h2 className="text-base font-black text-[#151c27]">Import EasyWDMS Data</h2>
+                <Database size={18} className="text-[#3525cd]" />
+                <h2 className="text-base font-black text-[#151c27]">Import EasyWDMS Historical Data</h2>
               </div>
-              <button onClick={closeImport} disabled={importing}
+              <button onClick={closeImport} disabled={importBusy}
                 className="p-1.5 rounded-lg hover:bg-[#f0f3ff] text-[#777587] transition-colors disabled:opacity-40">
                 <X size={16} />
               </button>
             </div>
 
-            {/* Modal body */}
+            {/* Step indicator */}
+            <div className="flex items-center gap-1 px-6 pt-4 pb-1">
+              {[['select','1','Select File'],['preview','2','Preview'],['result','3','Result']].map(([s, n, lbl], idx) => (
+                <React.Fragment key={s}>
+                  <div className={`flex items-center gap-1.5 text-[0.68rem] font-bold ${importStep === s ? 'text-[#3525cd]' : importStep === 'preview' && s === 'select' || importStep === 'result' ? 'text-emerald-600' : 'text-[#c7c4d8]'}`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.6rem] font-black ${importStep === s ? 'bg-[#3525cd] text-white' : importStep === 'preview' && s === 'select' || importStep === 'result' ? 'bg-emerald-500 text-white' : 'bg-[#f0f3ff] text-[#c7c4d8]'}`}>{n}</span>
+                    {lbl}
+                  </div>
+                  {idx < 2 && <ArrowRight size={11} className="text-[#c7c4d8] flex-shrink-0" />}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Body */}
             <div className="px-6 py-5 space-y-4">
-              {!importResult ? (
+
+              {/* STEP 1: Select file + date range */}
+              {importStep === 'select' && (
                 <>
                   <p className="text-xs text-[#777587] leading-relaxed">
-                    Export the <strong className="text-[#464555]">Transaction Report</strong> from EasyWDMS
-                    and upload it here. Supported formats: <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.xlsx</code>,{' '}
-                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.xls</code>,{' '}
-                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.csv</code>,{' '}
-                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.tsv</code>,{' '}
-                    <code className="bg-[#f0f3ff] px-1 rounded text-[#3525cd]">.txt</code>.
-                    Duplicates are automatically skipped.
+                    Export the <strong className="text-[#464555]">Transaction Report</strong> from EasyWDMS and upload it here.
+                    Optionally filter by date range to import only specific months.
                   </p>
 
+                  {/* Date range */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider block mb-1">From Date <span className="font-normal normal-case">(optional)</span></label>
+                      <input type="date" className="form-control text-xs py-1.5"
+                        value={importFrom} onChange={e => setImportFrom(e.target.value)} max={importTo || undefined} />
+                    </div>
+                    <div>
+                      <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider block mb-1">To Date <span className="font-normal normal-case">(optional)</span></label>
+                      <input type="date" className="form-control text-xs py-1.5"
+                        value={importTo} onChange={e => setImportTo(e.target.value)} min={importFrom || undefined} />
+                    </div>
+                  </div>
+
                   {/* File drop zone */}
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
+                  <div onClick={() => fileInputRef.current?.click()}
                     className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors
-                      ${importFile ? 'border-[#3525cd] bg-[#f0f3ff]' : 'border-[#c7c4d8] hover:border-[#3525cd] hover:bg-[#fafafe]'}`}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".xlsx,.xls,.csv,.tsv,.txt"
-                      className="hidden"
-                      onChange={e => {
-                        setImportFile(e.target.files?.[0] || null);
-                        setImportError('');
-                      }}
-                    />
+                      ${importFile ? 'border-[#3525cd] bg-[#f0f3ff]' : 'border-[#c7c4d8] hover:border-[#3525cd] hover:bg-[#fafafe]'}`}>
+                    <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" className="hidden"
+                      onChange={e => { setImportFile(e.target.files?.[0] || null); setImportError(''); }} />
                     {importFile ? (
                       <div className="space-y-1">
                         <p className="text-sm font-bold text-[#3525cd]">{importFile.name}</p>
@@ -358,76 +402,129 @@ export default function BiometricLogs() {
                       <div className="space-y-1">
                         <Upload size={24} className="mx-auto text-[#c7c4d8]" />
                         <p className="text-sm font-semibold text-[#464555]">Click to select file</p>
-                        <p className="text-xs text-[#777587]">EasyWDMS Transaction Report export</p>
+                        <p className="text-xs text-[#777587]">.xlsx · .xls · .csv · .tsv · .txt</p>
                       </div>
                     )}
                   </div>
 
                   {importError && (
                     <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                      <span>{importError}</span>
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" /><span>{importError}</span>
                     </div>
                   )}
                 </>
-              ) : (
-                /* Result view */
+              )}
+
+              {/* STEP 2: Preview */}
+              {importStep === 'preview' && importPreview && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <CheckCircle size={18} className="shrink-0" />
-                    <span className="font-bold text-sm">Import completed</span>
+                  <div className="flex items-center gap-2 text-[#3525cd]">
+                    <Eye size={16} className="shrink-0" />
+                    <span className="font-bold text-sm">Preview — no changes made yet</span>
                   </div>
+
+                  {/* Date range detected */}
+                  {importPreview.date_range?.from && (
+                    <div className="text-xs text-[#464555] bg-[#f8f9fe] rounded-xl px-4 py-2.5 border border-[#e7eefe]">
+                      Date range in file: <strong>{importPreview.date_range.from}</strong> → <strong>{importPreview.date_range.to}</strong>
+                      {' · '}{importPreview.unique_pin_count} employee{importPreview.unique_pin_count !== 1 ? 's' : ''}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { label: 'Total rows',    value: importResult.total },
-                      { label: 'Inserted',      value: importResult.inserted,    cls: 'text-green-700' },
-                      { label: 'Skipped (dup)', value: importResult.skipped,     cls: 'text-amber-700' },
-                      { label: 'Reprocessed',   value: importResult.reprocessed, cls: 'text-blue-700'  },
+                      { label: 'Records in file',   value: importPreview.total_in_file,     cls: 'text-[#151c27]' },
+                      { label: 'After date filter',  value: importPreview.after_date_filter, cls: 'text-[#3525cd]' },
+                      { label: 'New records',        value: importPreview.new_records,       cls: 'text-green-700' },
+                      { label: 'Already in HRMS',   value: importPreview.existing_in_db,    cls: 'text-amber-700' },
                     ].map(({ label, value, cls }) => (
-                      <div key={label} className="bg-[#f8f9fe] rounded-xl px-4 py-3">
+                      <div key={label} className="bg-[#f8f9fe] rounded-xl px-4 py-3 border border-[#e7eefe]">
                         <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">{label}</p>
-                        <p className={`text-xl font-black mt-0.5 ${cls || 'text-[#151c27]'}`}>{value ?? '—'}</p>
+                        <p className={`text-xl font-black mt-0.5 ${cls}`}>{value ?? '—'}</p>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[0.65rem] text-[#777587]">
-                    Batch ID: <span className="font-mono">{importResult.batch_id}</span>
-                  </p>
+
+                  {importPreview.invalid_device > 0 && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                      <span>{importPreview.invalid_device} records from unregistered devices will be skipped.</span>
+                    </div>
+                  )}
+
+                  {importPreview.new_records === 0 && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] text-xs text-[#464555]">
+                      <CheckCircle size={14} className="shrink-0 mt-0.5 text-[#3525cd]" />
+                      <span>All records in this file already exist in HRMS. Import will complete with 0 new records inserted.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 3: Result */}
+              {importStep === 'result' && importResult && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <CheckCircle size={18} className="shrink-0" />
+                    <span className="font-bold text-sm">Import completed successfully</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: 'Total records',     value: importResult.total,       cls: 'text-[#151c27]' },
+                      { label: 'New records',        value: importResult.inserted,    cls: 'text-green-700' },
+                      { label: 'Duplicates skipped', value: importResult.skipped,     cls: 'text-amber-700' },
+                      { label: 'Attendance updated', value: importResult.reprocessed, cls: 'text-blue-700'  },
+                    ].map(({ label, value, cls }) => (
+                      <div key={label} className="bg-[#f8f9fe] rounded-xl px-4 py-3 border border-[#e7eefe]">
+                        <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">{label}</p>
+                        <p className={`text-xl font-black mt-0.5 ${cls}`}>{value ?? '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[0.65rem] text-[#777587]">Batch ID: <span className="font-mono">{importResult.batch_id}</span></p>
                   {importResult.errors?.length > 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
                       <p className="text-xs font-bold text-amber-700">Warnings ({importResult.errors.length})</p>
                       {importResult.errors.slice(0, 5).map((e, i) => (
                         <p key={i} className="text-xs text-amber-600 font-mono">{e}</p>
                       ))}
-                      {importResult.errors.length > 5 && (
-                        <p className="text-xs text-amber-500">…and {importResult.errors.length - 5} more</p>
-                      )}
+                      {importResult.errors.length > 5 && <p className="text-xs text-amber-500">…and {importResult.errors.length - 5} more</p>}
                     </div>
                   )}
                 </div>
               )}
+
+              {importError && importStep !== 'select' && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" /><span>{importError}</span>
+                </div>
+              )}
             </div>
 
-            {/* Modal footer */}
+            {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#e7eefe]">
-              {importResult ? (
-                <button onClick={closeImport}
-                  className="px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors">
-                  Done
-                </button>
+              {importStep === 'result' ? (
+                <button onClick={closeImport} className="px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors">Done</button>
+              ) : importStep === 'preview' ? (
+                <>
+                  <button onClick={() => { setImportStep('select'); setImportError(''); }} disabled={importBusy}
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-[#464555] hover:bg-[#f0f3ff] border border-[#c7c4d8] transition-colors disabled:opacity-40">
+                    Back
+                  </button>
+                  <button onClick={handleImport} disabled={importBusy || importPreview?.after_date_filter === 0}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {importBusy ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Importing…</> : <><Upload size={14} />Confirm Import</>}
+                  </button>
+                </>
               ) : (
                 <>
-                  <button onClick={closeImport} disabled={importing}
+                  <button onClick={closeImport} disabled={importBusy}
                     className="px-4 py-2 rounded-xl text-sm font-bold text-[#464555] hover:bg-[#f0f3ff] border border-[#c7c4d8] transition-colors disabled:opacity-40">
                     Cancel
                   </button>
-                  <button onClick={handleImport} disabled={!importFile || importing}
+                  <button onClick={handlePreview} disabled={!importFile || importBusy}
                     className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#3525cd] text-white text-sm font-bold hover:bg-[#2a1eb0] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                    {importing ? (
-                      <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing…</>
-                    ) : (
-                      <><Upload size={14} /> Import</>
-                    )}
+                    {importBusy ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analysing…</> : <><Eye size={14} />Preview Import</>}
                   </button>
                 </>
               )}
