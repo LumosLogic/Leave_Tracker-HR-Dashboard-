@@ -421,7 +421,7 @@ router.post('/collector-push', async (req, res) => {
       if (isNaN(pt.getTime())) { skipped++; continue; }
 
       // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
-      if (pt < new Date('2026-08-01T00:00:00+05:30')) {
+      if (pt < new Date('2026-06-01T00:00:00+05:30')) {
         skipped++;
         continue;
       }
@@ -542,7 +542,7 @@ router.post('/bulk-import', async (req, res) => {
       for (const punch of punches) {
         const pt = new Date(punch.punch_time);
         if (isNaN(pt.getTime())) { totalSkipped++; continue; }
-        if (pt < new Date('2026-08-01T00:00:00+05:30')) { totalSkipped++; continue; }
+        if (pt < new Date('2026-06-01T00:00:00+05:30')) { totalSkipped++; continue; }
 
         const timeStr    = pt.toISOString().replace('T', ' ').slice(0, 19);
         const attlogLine = `${punch.employee_pin}\t${timeStr}\t${punch.punch_type}`;

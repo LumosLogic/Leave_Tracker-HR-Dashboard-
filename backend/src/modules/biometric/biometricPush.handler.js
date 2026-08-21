@@ -137,8 +137,8 @@ async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard')
     return;
   }
 
-  // Hard cutoff: ignore punches before August 1st, 2026 (Go-Live Date)
-  if (punchTime < new Date('2026-08-01T00:00:00+05:30')) {
+  // Cutoff: ignore punches before June 1st, 2026 (covers full historical recovery window)
+  if (punchTime < new Date('2026-06-01T00:00:00+05:30')) {
     return;
   }
 
