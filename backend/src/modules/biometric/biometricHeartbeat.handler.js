@@ -45,9 +45,16 @@ module.exports = async function biometricHeartbeatHandler(req, res) {
       // GET ATTLOG Stamp=0 is the correct ZKTeco ADMS command for full re-upload.
       // C:N:DATA QUERY is a device-push format — many firmware versions don't understand it
       // and enter a command-wait state, killing heartbeats. Always use GET ATTLOG Stamp=0.
-      const msg = `[biometric] Sending GET ATTLOG Stamp=0 to SN=${sn} (full re-upload)`;
+      const msg = `[biometric] Sending GET ATTLOG Stamp=0 to SN=${sn} (full historical re-upload)`;
       console.log(msg);
       biometricEmitter.emit('log', { sn, message: msg, timestamp: new Date().toISOString() });
+
+      // Advance sync status to 'syncing' — command is now en-route to the device
+      pool.query(
+        `UPDATE biometric_devices SET last_sync_status = 'syncing' WHERE serial_number = $1`,
+        [sn]
+      ).catch(err => console.error('[biometric] Sync status update error:', err.message));
+
       return res.status(200).send('GET ATTLOG Stamp=0');
     } else {
       const msg = `[biometric] Sending C:DATA UPDATE to SN=${sn}`;

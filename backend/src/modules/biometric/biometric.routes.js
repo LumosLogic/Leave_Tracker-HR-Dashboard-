@@ -269,8 +269,10 @@ router.delete('/employee-map/:id', auth, adminOnly, async (req, res) => {
 });
 
 // ─── POST /api/biometric/devices/:id/force-sync ──────────────────────────────
-// Schedules a C:DATA UPDATE command for the device's next heartbeat,
-// forcing it to re-upload all stored attendance records.
+// Requests the device to resend all stored historical attendance records.
+// Schedules GET ATTLOG Stamp=0 for the device's next heartbeat (~60s).
+// Records are received via the existing live PUSH pipeline with full duplicate
+// protection — already-stored punches are silently skipped (ON CONFLICT DO NOTHING).
 router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
   try {
     const orgId = req.user.organization_id;
@@ -280,8 +282,25 @@ router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
     );
     if (!devRes.rows.length) return res.status(404).json({ error: 'Device not found' });
     const { serial_number, device_name } = devRes.rows[0];
+
+    // Schedule GET ATTLOG Stamp=0 — full re-upload of all device-stored records
     scheduleSyncForSn(serial_number);
-    res.json({ ok: true, message: `Force-sync scheduled for ${device_name} (${serial_number}). Will trigger on next heartbeat (~60s).` });
+
+    // Record that a sync was requested so the UI can show "last sync: X ago"
+    await pool.query(
+      `UPDATE biometric_devices
+       SET last_sync_requested_at = NOW(), last_sync_status = 'requested'
+       WHERE id = $1 AND org_id = $2`,
+      [req.params.id, orgId]
+    );
+
+    res.json({
+      ok: true,
+      message: `Historical sync requested for ${device_name} (${serial_number}). ` +
+               `The device will resend all stored records on its next heartbeat (~30–60 s). ` +
+               `Records already in HRMS will not be duplicated.`,
+      sync_status: 'requested',
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

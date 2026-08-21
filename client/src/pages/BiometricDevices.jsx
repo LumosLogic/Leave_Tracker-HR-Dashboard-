@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2, RefreshCw, History } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
@@ -101,8 +101,9 @@ export default function BiometricDevices() {
   const toast       = useToast();
   const qc          = useQueryClient();
   const navigate    = useNavigate();
-  const [regOpen,    setRegOpen]    = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null); // device to confirm-delete
+  const [regOpen,      setRegOpen]      = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [syncTarget,   setSyncTarget]   = useState(null); // device awaiting sync confirmation
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/biometric/devices/${id}`),
@@ -116,8 +117,12 @@ export default function BiometricDevices() {
 
   const syncMut = useMutation({
     mutationFn: id => apiPost(`/biometric/devices/${id}/force-sync`, {}),
-    onSuccess: (res) => toast(res.message || 'Force-sync scheduled', 'success'),
-    onError: e => toast(e.message, 'error'),
+    onSuccess: (res) => {
+      toast(res.message || 'Historical sync requested — device will upload stored records on next heartbeat.', 'success');
+      qc.invalidateQueries({ queryKey: ['biometric-devices'] });
+      setSyncTarget(null);
+    },
+    onError: e => { toast(e.message, 'error'); setSyncTarget(null); },
   });
 
   const { data: _devices, isLoading } = useQuery({
@@ -234,6 +239,26 @@ export default function BiometricDevices() {
                         {timeAgo(device.last_seen)}
                       </span>
                     </div>
+                    {/* Historical sync status */}
+                    {device.last_sync_requested_at && (
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <History size={11} className="text-[#777587] flex-shrink-0" />
+                        <span className="text-[0.68rem] text-[#777587]">
+                          Last sync: {timeAgo(device.last_sync_requested_at)}
+                        </span>
+                        {device.last_sync_status === 'requested' && (
+                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            Waiting for device…
+                          </span>
+                        )}
+                        {device.last_sync_status === 'syncing' && (
+                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                            Syncing…
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -247,11 +272,12 @@ export default function BiometricDevices() {
                   {isAdmin && (
                     <>
                       <button
-                        onClick={() => syncMut.mutate(device.id)}
-                        disabled={syncMut.isPending}
-                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-[#464555] hover:bg-[#e7eefe] transition-colors"
-                        title="Fetch missed historical punches">
-                        <RefreshCw size={12} className={syncMut.isPending ? "animate-spin" : ""} /> Sync
+                        onClick={() => setSyncTarget(device)}
+                        disabled={syncMut.isPending && syncMut.variables === device.id}
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] hover:bg-[#e7eefe] border border-transparent hover:border-[#c7c4d8] transition-colors"
+                        title="Request device to resend all stored historical punch records">
+                        <RefreshCw size={12} className={(syncMut.isPending && syncMut.variables === device.id) ? 'animate-spin' : ''} />
+                        Historical Sync
                       </button>
                       <button
                         onClick={() => setDeleteTarget(device)}
@@ -280,6 +306,23 @@ export default function BiometricDevices() {
         variant="danger"
         onConfirm={() => deleteMut.mutate(deleteTarget.id)}
         onCancel={() => !deleteMut.isPending && setDeleteTarget(null)}
+      />
+
+      {/* Historical Sync confirmation modal */}
+      <ConfirmModal
+        open={!!syncTarget}
+        title="Request Historical Sync"
+        message={
+          `This will instruct "${syncTarget?.device_name}" (${syncTarget?.serial_number}) to resend all attendance records stored on the device.\n\n` +
+          `• The sync will trigger on the device's next heartbeat (within ~30–60 seconds).\n` +
+          `• Records already in HRMS will not be duplicated — they are silently skipped.\n` +
+          `• New records will flow through the existing biometric pipeline exactly like live punches.\n` +
+          `• You can monitor incoming punches on the Live Logs page.`
+        }
+        confirmLabel={syncMut.isPending ? 'Requesting…' : 'Request Historical Sync'}
+        variant="primary"
+        onConfirm={() => syncMut.mutate(syncTarget.id)}
+        onCancel={() => !syncMut.isPending && setSyncTarget(null)}
       />
     </div>
   );
