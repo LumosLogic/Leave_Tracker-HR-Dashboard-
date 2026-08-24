@@ -6,6 +6,7 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
  * dayLogs      – ALL punch records for this employee+date (processed or not).
  * existingAtt  – current attendance row from DB, or null.
  * halfDayHours – threshold below which work_hours is considered a half-day (default 4.5).
+ * shiftEndTime – HH:MM or HH:MM:SS when the working day ends (default '17:30').
  *
  * Semantics:
  *   check_in            = first punch of day (regardless of punch_type)
@@ -13,9 +14,13 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
  *   total_break_minutes = sum of consecutive out(1)→in(0) gaps (non-working time)
  *   gross_hours         = check_out − check_in
  *   work_hours          = gross_hours − gap_hours
- *   status              = 'present' if work_hours ≥ halfDayHours, else 'half_day'
+ *
+ * Status finalisation rule:
+ *   Past date             → always finalise (day is definitively over)
+ *   Today before shiftEnd → keep 'present' (employee may still punch; don't show Half Day prematurely)
+ *   Today after  shiftEnd → finalise: work_hours ≥ halfDayHours → 'present', else 'half_day'
  */
-async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5) {
+async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5, shiftEndTime = '17:30') {
   if (!dayLogs.length) return;
 
   const sorted = [...dayLogs].sort((a, b) =>
@@ -45,8 +50,23 @@ async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHo
   }
 
   const workHours = parseFloat(Math.max(0, grossHours - gapMinutes / 60).toFixed(2));
-  // Single punch = still at work (can't know work hours yet), treat as present
-  const status = checkOutStr ? (workHours >= halfDayHours ? 'present' : 'half_day') : 'present';
+
+  // Determine whether the working day is definitively over for this date.
+  // TZ=Asia/Kolkata is set in the container, so toLocaleDateString/toLocaleTimeString use IST.
+  const todayIST    = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+  const dateStr     = typeof date === 'string' ? date.slice(0, 10)
+                    : new Date(date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const nowTimeIST  = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+  const shiftEndHHMM = shiftEndTime.slice(0, 5); // normalise to HH:MM
+
+  const dayFinished = dateStr < todayIST                         // past date — always done
+                   || (dateStr === todayIST && nowTimeIST >= shiftEndHHMM); // today past shift end
+
+  // Only mark Half Day once the day is confirmed over.
+  // Before shift end: always 'present' so mid-day snapshots don't prematurely finalise.
+  const status = (checkOutStr && dayFinished)
+    ? (workHours >= halfDayHours ? 'present' : 'half_day')
+    : 'present';
 
   if (existingAtt) {
     await pool.query(
@@ -95,12 +115,13 @@ async function reprocessPin(orgId, employeePin) {
 
   // ── FILO mode ──────────────────────────────────────────────────────────────
   if (policy === 'first_in_last_out') {
-    // Fetch half_day_hours threshold from work_schedule for this org
+    // Fetch thresholds from work_schedule for this org
     const wsRes = await pool.query(
-      `SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
+      `SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
       [orgId]
     );
     const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+    const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
 
     // Find unique dates that have unprocessed logs
     const datesRes = await pool.query(
@@ -148,7 +169,7 @@ async function reprocessPin(orgId, employeePin) {
         continue;
       }
 
-      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours);
+      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime);
 
       await pool.query(
         `UPDATE biometric_raw_logs SET processed = true

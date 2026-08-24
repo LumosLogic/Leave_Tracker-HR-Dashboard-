@@ -407,9 +407,10 @@ router.post('/collector-push', async (req, res) => {
     // Fetch org policy once — shared across all punches from this device
     const [policy, wsRow] = await Promise.all([
       getOrgPolicy(orgId),
-      pool.query(`SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
+      pool.query(`SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
     ]);
     const halfDayHours = parseFloat(wsRow.rows[0]?.half_day_hours ?? 4.5);
+    const shiftEndTime = wsRow.rows[0]?.end_time || '17:30';
 
     // ── Process each punch ────────────────────────────────────────────────────
     let imported = 0;
@@ -436,7 +437,7 @@ router.post('/collector-push', async (req, res) => {
       const attlogLine   = `${String(employee_pin).trim()}\t${timeStr}\t${punchTypeInt}`;
 
       try {
-        await processAttlogLine(attlogLine, orgId, device_serial.trim(), policy, halfDayHours);
+        await processAttlogLine(attlogLine, orgId, device_serial.trim(), policy, halfDayHours, shiftEndTime);
         imported++;
       } catch (err) {
         skipped++;

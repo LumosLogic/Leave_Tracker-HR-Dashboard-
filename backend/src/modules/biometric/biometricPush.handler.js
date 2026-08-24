@@ -75,12 +75,13 @@ module.exports = async function biometricPushHandler(req, res) {
       // 3. Fetch org policy + half_day threshold once — shared across all lines
       const [policy, wsRes] = await Promise.all([
         getOrgPolicy(orgId),
-        pool.query(`SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
+        pool.query(`SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
       ]);
       const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+      const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
 
       for (const line of rawLines) {
-        await processAttlogLine(line, orgId, sn, policy, halfDayHours);
+        await processAttlogLine(line, orgId, sn, policy, halfDayHours, shiftEndTime);
       }
     } catch (err) {
       console.error('[biometric] Push processing error:', err.message);
@@ -127,7 +128,7 @@ function extractAttlogLines(body, query = {}) {
 }
 
 // ─── Process a single ATTLOG line ─────────────────────────────────────────────
-async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard', halfDayHours = 4.5) {
+async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard', halfDayHours = 4.5, shiftEndTime = '17:30') {
   const parts = line.split('\t');
   if (parts.length < 3) return;
 
@@ -201,7 +202,7 @@ async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard',
       [orgId, pin, punchDate]
     );
 
-    await applyFILODay(userId, punchDate, orgId, allLogsRes.rows, att, halfDayHours);
+    await applyFILODay(userId, punchDate, orgId, allLogsRes.rows, att, halfDayHours, shiftEndTime);
     await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
     return;
   }
