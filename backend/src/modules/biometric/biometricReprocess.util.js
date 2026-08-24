@@ -27,43 +27,64 @@ async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHo
     new Date(a.punch_time) - new Date(b.punch_time)
   );
 
-  const firstTime = new Date(sorted[0].punch_time);
-  const lastTime  = new Date(sorted[sorted.length - 1].punch_time);
-
-  const checkInStr  = firstTime.toTimeString().slice(0, 8);
-  // Only set check_out when there are at least 2 punches
-  const checkOutStr = sorted.length > 1 ? lastTime.toTimeString().slice(0, 8) : null;
-
-  const grossMs    = checkOutStr ? lastTime - firstTime : 0;
-  const grossHours = parseFloat((grossMs / 3600000).toFixed(2));
-
-  // Non-working gaps: consecutive out(1) → in(0) pairs
-  let gapMinutes = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const currType = parseInt(sorted[i].punch_type,     10);
-    const nextType = parseInt(sorted[i + 1].punch_type, 10);
-    if (currType === 1 && nextType === 0) {
-      gapMinutes += Math.round(
-        (new Date(sorted[i + 1].punch_time) - new Date(sorted[i].punch_time)) / 60000
-      );
-    }
-  }
-
-  const workHours = parseFloat(Math.max(0, grossHours - gapMinutes / 60).toFixed(2));
+  const firstTime    = new Date(sorted[0].punch_time);
+  const checkInStr   = firstTime.toTimeString().slice(0, 8);
 
   // Determine whether the working day is definitively over for this date.
-  // TZ=Asia/Kolkata is set in the container, so toLocaleDateString/toLocaleTimeString use IST.
-  const todayIST    = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
-  const dateStr     = typeof date === 'string' ? date.slice(0, 10)
-                    : new Date(date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-  const nowTimeIST  = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
-  const shiftEndHHMM = shiftEndTime.slice(0, 5); // normalise to HH:MM
+  // TZ=Asia/Kolkata is set in the container.
+  const todayIST     = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const dateStr      = typeof date === 'string' ? date.slice(0, 10)
+                     : new Date(date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const nowTimeIST   = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+  const shiftEndHHMM = shiftEndTime.slice(0, 5);
 
-  const dayFinished = dateStr < todayIST                         // past date — always done
-                   || (dateStr === todayIST && nowTimeIST >= shiftEndHHMM); // today past shift end
+  const dayFinished  = dateStr < todayIST
+                    || (dateStr === todayIST && nowTimeIST >= shiftEndHHMM);
 
-  // Only mark Half Day once the day is confirmed over.
-  // Before shift end: always 'present' so mid-day snapshots don't prematurely finalise.
+  // Is the employee currently IN the office?
+  // True when: last punch is type=0 (IN) AND the day is not yet over.
+  const lastPunchType = parseInt(sorted[sorted.length - 1].punch_type, 10);
+  const currentlyIn   = !dayFinished && lastPunchType === 0;
+
+  let checkOutStr, grossHours, workHours, gapMinutes;
+
+  if (currentlyIn) {
+    // Employee is still in office — do NOT set a check_out time.
+    // Only count fully-completed IN→OUT segments for accumulated work hours.
+    checkOutStr = null;
+    gapMinutes  = 0;
+    let completedMs = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (parseInt(sorted[i].punch_type,     10) === 0 &&
+          parseInt(sorted[i + 1].punch_type, 10) === 1) {
+        completedMs += new Date(sorted[i + 1].punch_time) - new Date(sorted[i].punch_time);
+      }
+    }
+    // IN→OUT pairs already capture net work time (no separate break deduction needed)
+    grossHours = parseFloat((completedMs / 3600000).toFixed(2));
+    workHours  = grossHours;
+  } else {
+    // Day is over OR last punch is OUT — standard FILO: first in, last punch = check_out.
+    const lastTime = new Date(sorted[sorted.length - 1].punch_time);
+    checkOutStr    = sorted.length > 1 ? lastTime.toTimeString().slice(0, 8) : null;
+    const grossMs  = checkOutStr ? lastTime - firstTime : 0;
+    grossHours     = parseFloat((grossMs / 3600000).toFixed(2));
+
+    // Non-working gaps: consecutive out(1) → in(0) pairs
+    gapMinutes = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (parseInt(sorted[i].punch_type,     10) === 1 &&
+          parseInt(sorted[i + 1].punch_type, 10) === 0) {
+        gapMinutes += Math.round(
+          (new Date(sorted[i + 1].punch_time) - new Date(sorted[i].punch_time)) / 60000
+        );
+      }
+    }
+    workHours = parseFloat(Math.max(0, grossHours - gapMinutes / 60).toFixed(2));
+  }
+
+  // Half Day is a finalised end-of-day verdict — never a mid-day label.
+  // Before shift ends: always 'present' regardless of hours accumulated so far.
   const status = (checkOutStr && dayFinished)
     ? (workHours >= halfDayHours ? 'present' : 'half_day')
     : 'present';
