@@ -323,6 +323,37 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       data = updated;
     }
 
+    // Auto-sync device_enrollment_id → biometric_employee_map
+    // Runs after user update succeeds so the mapping is always consistent with the stored PIN.
+    if (device_enrollment_id !== undefined) {
+      const cleanPin = device_enrollment_id ? String(device_enrollment_id).trim() : null;
+      try {
+        if (cleanPin) {
+          // Upsert: reassign PIN to this user if it was previously mapped to someone else
+          await pool.query(
+            `INSERT INTO biometric_employee_map (org_id, employee_pin, user_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (org_id, employee_pin) DO UPDATE SET user_id = EXCLUDED.user_id`,
+            [orgId(req), cleanPin, empId]
+          );
+          // Remove any old mappings this user had under a different PIN
+          await pool.query(
+            `DELETE FROM biometric_employee_map
+             WHERE org_id = $1 AND user_id = $2 AND employee_pin != $3`,
+            [orgId(req), empId, cleanPin]
+          );
+        } else {
+          // PIN cleared — remove all mappings for this user
+          await pool.query(
+            `DELETE FROM biometric_employee_map WHERE org_id = $1 AND user_id = $2`,
+            [orgId(req), empId]
+          );
+        }
+      } catch (mapErr) {
+        console.error('[employees] biometric_employee_map sync error:', mapErr.message);
+      }
+    }
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

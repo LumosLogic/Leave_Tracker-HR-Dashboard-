@@ -55,6 +55,19 @@ export default function Calendar() {
     queryFn: () => apiGet('/attendance', { year, month }),
   });
 
+  const { data: orgSettings } = useQuery({
+    queryKey: ['org-settings'],
+    queryFn: () => apiGet('/settings'),
+    staleTime: 5 * 60 * 1000,
+  });
+  // Parse work_days into a Set of JS day numbers (0=Sun,1=Mon,...,6=Sat)
+  // Default Mon–Fri until settings load
+  const workingDayNumbers = React.useMemo(() => {
+    const raw = orgSettings?.schedule?.work_days;
+    if (!raw) return new Set([1, 2, 3, 4, 5]);
+    return new Set(raw.split(',').map(Number));
+  }, [orgSettings]);
+
   // Fetch leaves for the month to show leave types in calendar
   const { data: leaves = [] } = useQuery({
     queryKey: ['calendar-leaves', year, month],
@@ -93,7 +106,7 @@ export default function Calendar() {
                       : 'on_leave';
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dow = d.getDay();
-      if (dow === 0 || dow === 6) continue; // Skip Saturday and Sunday
+      if (!workingDayNumbers.has(dow)) continue; // Skip non-working days per org schedule
       const ds = toISODate(d);
       if (!grouped[ds]) grouped[ds] = [];
       const existingIdx = grouped[ds].findIndex(r => r.user_id === l.user_id);
@@ -182,7 +195,7 @@ export default function Calendar() {
 
       {/* Calendar Body */}
       {mode === 'month'
-        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} holidayMap={holidayMap} />
+        ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} holidayMap={holidayMap} workingDayNumbers={workingDayNumbers} />
         : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} getLeaveForDate={getLeaveForDate} />
       }
 
@@ -205,7 +218,7 @@ export default function Calendar() {
 }
 
 // ── Month View ────────────────────────────────────────────────────────────────
-function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick, holidayMap = {} }) {
+function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick, holidayMap = {}, workingDayNumbers = new Set([1,2,3,4,5]) }) {
   const today = todayStr();
   const firstDay = new Date(year, month, 1);
   const lastDay  = new Date(year, month + 1, 0);
@@ -225,8 +238,8 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick,
   return (
     <>
       <div className="grid grid-cols-7 rounded-t-xl overflow-hidden border border-[#c7c4d8] border-b-0" style={{ background: 'linear-gradient(135deg, #f0f3ff, #fff)' }}>
-        {DAYS.map(d => (
-          <div key={d} className={cn('py-3 text-center text-[0.7rem] font-black uppercase tracking-widest text-[#777587]', (d === 'Sun' || d === 'Sat') && 'text-rose-400')}>
+        {DAYS.map((d, idx) => (
+          <div key={d} className={cn('py-3 text-center text-[0.7rem] font-black uppercase tracking-widest text-[#777587]', !workingDayNumbers.has(idx) && 'text-rose-400')}>
             {d}
           </div>
         ))}
@@ -237,7 +250,7 @@ function MonthView({ year, month, grouped, employees, user, isAdmin, onDayClick,
           const ds      = toISODate(c);
           const isOther = c.getMonth() !== month;
           const isTodayD = ds === today;
-          const isWkend  = c.getDay() === 0 || c.getDay() === 6;
+          const isWkend  = !workingDayNumbers.has(c.getDay()); // non-working day per org schedule
           const records  = grouped[ds] || [];
           // BUG_074: Check if this date is a holiday
           const holiday  = holidayMap[ds];

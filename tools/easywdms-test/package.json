@@ -1,0 +1,13 @@
+{
+  "name": "easywdms-test",
+  "version": "1.0.0",
+  "description": "Standalone read-only connectivity test for EasyWDMS SQL Server",
+  "main": "test.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1",
+    "dotenv": "^16.4.5"
+  }
+}

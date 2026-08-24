@@ -72,11 +72,15 @@ module.exports = async function biometricPushHandler(req, res) {
         [device.id]
       );
 
-      // 3. Fetch org policy once — shared across all lines from this push
-      const policy = await getOrgPolicy(orgId);
+      // 3. Fetch org policy + half_day threshold once — shared across all lines
+      const [policy, wsRes] = await Promise.all([
+        getOrgPolicy(orgId),
+        pool.query(`SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
+      ]);
+      const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
 
       for (const line of rawLines) {
-        await processAttlogLine(line, orgId, sn, policy);
+        await processAttlogLine(line, orgId, sn, policy, halfDayHours);
       }
     } catch (err) {
       console.error('[biometric] Push processing error:', err.message);
@@ -123,7 +127,7 @@ function extractAttlogLines(body, query = {}) {
 }
 
 // ─── Process a single ATTLOG line ─────────────────────────────────────────────
-async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard') {
+async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard', halfDayHours = 4.5) {
   const parts = line.split('\t');
   if (parts.length < 3) return;
 
@@ -137,8 +141,8 @@ async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard')
     return;
   }
 
-  // Cutoff: ignore punches before June 1st, 2026 (covers full historical recovery window)
-  if (punchTime < new Date('2026-06-01T00:00:00+05:30')) {
+  // Hard cutoff: ignore punches before August 1st, 2026 (Go-Live Date)
+  if (punchTime < new Date('2026-08-01T00:00:00+05:30')) {
     return;
   }
 
@@ -181,7 +185,8 @@ async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard')
     );
     const att = attRes.rows[0] || null;
 
-    if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
+    // Leave guard — only block on full-day leave or WFH; allow half_day to be recalculated
+    if (att && ['on_leave', 'wfh'].includes(att.status)) {
       await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
       return;
     }
@@ -196,7 +201,7 @@ async function processAttlogLine(line, orgId, deviceSerial, policy = 'standard')
       [orgId, pin, punchDate]
     );
 
-    await applyFILODay(userId, punchDate, orgId, allLogsRes.rows, att);
+    await applyFILODay(userId, punchDate, orgId, allLogsRes.rows, att, halfDayHours);
     await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [rawLogId]);
     return;
   }

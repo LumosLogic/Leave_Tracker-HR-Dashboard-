@@ -269,18 +269,10 @@ router.delete('/employee-map/:id', auth, adminOnly, async (req, res) => {
 });
 
 // ─── POST /api/biometric/devices/:id/force-sync ──────────────────────────────
-// Requests the device to resend stored historical attendance records.
-//
-// Body (all optional):
-//   from_date : "YYYY-MM-DD"  — start of date range (uses C:DATA QUERY mode)
-//   to_date   : "YYYY-MM-DD"  — end of date range   (defaults to today)
-//
-// Without dates  → GET ATTLOG Stamp=0  (full re-upload, stamp-based)
-// With dates     → C:DATA QUERY tableName:AttLog,Stime:...,Etime:...
-//                  (date-range query, bypasses stamp tracking — recovers records
-//                   the device previously sent to another server like EasyWDMS)
-//
-// Records arrive via the existing live PUSH pipeline with full duplicate protection.
+// Requests the device to resend all stored historical attendance records.
+// Schedules GET ATTLOG Stamp=0 for the device's next heartbeat (~60s).
+// Records are received via the existing live PUSH pipeline with full duplicate
+// protection — already-stored punches are silently skipped (ON CONFLICT DO NOTHING).
 router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
   try {
     const orgId = req.user.organization_id;
@@ -291,36 +283,10 @@ router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
     if (!devRes.rows.length) return res.status(404).json({ error: 'Device not found' });
     const { serial_number, device_name } = devRes.rows[0];
 
-    const { from_date, to_date } = req.body || {};
+    // Schedule GET ATTLOG Stamp=0 — full re-upload of all device-stored records
+    scheduleSyncForSn(serial_number);
 
-    if (from_date) {
-      // Date-range mode: C:DATA QUERY — bypasses stamp tracking
-      const toDateFinal = to_date || new Date().toISOString().slice(0, 10);
-      scheduleSyncForSn(serial_number, 'query', { fromDate: from_date, toDate: toDateFinal });
-
-      await pool.query(
-        `UPDATE biometric_devices
-         SET last_sync_requested_at = NOW(), last_sync_status = 'requested'
-         WHERE id = $1 AND org_id = $2`,
-        [req.params.id, orgId]
-      );
-
-      return res.json({
-        ok:          true,
-        mode:        'query',
-        from_date,
-        to_date:     toDateFinal,
-        message:     `Date-range sync requested for ${device_name} (${serial_number}) ` +
-                     `from ${from_date} to ${toDateFinal}. ` +
-                     `Device will send matching records on next heartbeat (~30–60 s). ` +
-                     `Records already in HRMS will not be duplicated.`,
-        sync_status: 'requested',
-      });
-    }
-
-    // Default: GET ATTLOG Stamp=0 — full re-upload
-    scheduleSyncForSn(serial_number, 'attlog');
-
+    // Record that a sync was requested so the UI can show "last sync: X ago"
     await pool.query(
       `UPDATE biometric_devices
        SET last_sync_requested_at = NOW(), last_sync_status = 'requested'
@@ -329,11 +295,10 @@ router.post('/devices/:id/force-sync', auth, adminOnly, async (req, res) => {
     );
 
     res.json({
-      ok:          true,
-      mode:        'attlog',
-      message:     `Historical sync requested for ${device_name} (${serial_number}). ` +
-                   `The device will resend all stored records on its next heartbeat (~30–60 s). ` +
-                   `Records already in HRMS will not be duplicated.`,
+      ok: true,
+      message: `Historical sync requested for ${device_name} (${serial_number}). ` +
+               `The device will resend all stored records on its next heartbeat (~30–60 s). ` +
+               `Records already in HRMS will not be duplicated.`,
       sync_status: 'requested',
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -440,7 +405,11 @@ router.post('/collector-push', async (req, res) => {
     );
 
     // Fetch org policy once — shared across all punches from this device
-    const policy = await getOrgPolicy(orgId);
+    const [policy, wsRow] = await Promise.all([
+      getOrgPolicy(orgId),
+      pool.query(`SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`, [orgId]),
+    ]);
+    const halfDayHours = parseFloat(wsRow.rows[0]?.half_day_hours ?? 4.5);
 
     // ── Process each punch ────────────────────────────────────────────────────
     let imported = 0;
@@ -456,7 +425,7 @@ router.post('/collector-push', async (req, res) => {
       if (isNaN(pt.getTime())) { skipped++; continue; }
 
       // Hard cutoff: Strictly ignore any punches before August 1st, 2026 (Go-Live Date)
-      if (pt < new Date('2026-06-01T00:00:00+05:30')) {
+      if (pt < new Date('2026-08-01T00:00:00+05:30')) {
         skipped++;
         continue;
       }
@@ -467,7 +436,7 @@ router.post('/collector-push', async (req, res) => {
       const attlogLine   = `${String(employee_pin).trim()}\t${timeStr}\t${punchTypeInt}`;
 
       try {
-        await processAttlogLine(attlogLine, orgId, device_serial.trim(), policy);
+        await processAttlogLine(attlogLine, orgId, device_serial.trim(), policy, halfDayHours);
         imported++;
       } catch (err) {
         skipped++;
@@ -577,7 +546,7 @@ router.post('/bulk-import', async (req, res) => {
       for (const punch of punches) {
         const pt = new Date(punch.punch_time);
         if (isNaN(pt.getTime())) { totalSkipped++; continue; }
-        if (pt < new Date('2026-06-01T00:00:00+05:30')) { totalSkipped++; continue; }
+        if (pt < new Date('2026-08-01T00:00:00+05:30')) { totalSkipped++; continue; }
 
         const timeStr    = pt.toISOString().replace('T', ' ').slice(0, 19);
         const attlogLine = `${punch.employee_pin}\t${timeStr}\t${punch.punch_type}`;

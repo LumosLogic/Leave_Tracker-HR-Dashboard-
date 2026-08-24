@@ -2662,7 +2662,7 @@ export default function Employees() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs font-mono text-[#777587] whitespace-nowrap">
-                      EMP{String(emp.id).padStart(3, '0')}
+                      {emp.device_enrollment_id || `EMP${String(emp.id).padStart(3, '0')}`}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#464555]">
                       {emp.departments?.length > 0

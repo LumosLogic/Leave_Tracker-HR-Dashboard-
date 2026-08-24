@@ -3,8 +3,9 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
 
 /**
  * Compute and upsert one day's attendance using first-in / last-out logic.
- * dayLogs  – ALL punch records for this employee+date (processed or not).
- * existingAtt – current attendance row from DB, or null.
+ * dayLogs      – ALL punch records for this employee+date (processed or not).
+ * existingAtt  – current attendance row from DB, or null.
+ * halfDayHours – threshold below which work_hours is considered a half-day (default 4.5).
  *
  * Semantics:
  *   check_in            = first punch of day (regardless of punch_type)
@@ -12,8 +13,9 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
  *   total_break_minutes = sum of consecutive out(1)→in(0) gaps (non-working time)
  *   gross_hours         = check_out − check_in
  *   work_hours          = gross_hours − gap_hours
+ *   status              = 'present' if work_hours ≥ halfDayHours, else 'half_day'
  */
-async function applyFILODay(userId, date, orgId, dayLogs, existingAtt) {
+async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5) {
   if (!dayLogs.length) return;
 
   const sorted = [...dayLogs].sort((a, b) =>
@@ -43,29 +45,32 @@ async function applyFILODay(userId, date, orgId, dayLogs, existingAtt) {
   }
 
   const workHours = parseFloat(Math.max(0, grossHours - gapMinutes / 60).toFixed(2));
+  // Single punch = still at work (can't know work hours yet), treat as present
+  const status = checkOutStr ? (workHours >= halfDayHours ? 'present' : 'half_day') : 'present';
 
   if (existingAtt) {
     await pool.query(
       `UPDATE attendance
        SET check_in = $1, check_out = $2, gross_hours = $3, work_hours = $4,
-           total_break_minutes = $5, source = 'biometric'
-       WHERE id = $6`,
-      [checkInStr, checkOutStr, grossHours, workHours, gapMinutes, existingAtt.id]
+           total_break_minutes = $5, status = $6, source = 'biometric'
+       WHERE id = $7`,
+      [checkInStr, checkOutStr, grossHours, workHours, gapMinutes, status, existingAtt.id]
     );
   } else {
     await pool.query(
       `INSERT INTO attendance
          (user_id, date, check_in, check_out, gross_hours, work_hours,
           total_break_minutes, status, source, organization_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'present', 'biometric', $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'biometric', $9)
        ON CONFLICT (user_id, date, organization_id) DO UPDATE
          SET check_in            = EXCLUDED.check_in,
              check_out           = EXCLUDED.check_out,
              gross_hours         = EXCLUDED.gross_hours,
              work_hours          = EXCLUDED.work_hours,
              total_break_minutes = EXCLUDED.total_break_minutes,
+             status              = EXCLUDED.status,
              source              = 'biometric'`,
-      [userId, date, checkInStr, checkOutStr, grossHours, workHours, gapMinutes, orgId]
+      [userId, date, checkInStr, checkOutStr, grossHours, workHours, gapMinutes, status, orgId]
     );
   }
 }
@@ -90,6 +95,13 @@ async function reprocessPin(orgId, employeePin) {
 
   // ── FILO mode ──────────────────────────────────────────────────────────────
   if (policy === 'first_in_last_out') {
+    // Fetch half_day_hours threshold from work_schedule for this org
+    const wsRes = await pool.query(
+      `SELECT half_day_hours FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
+      [orgId]
+    );
+    const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+
     // Find unique dates that have unprocessed logs
     const datesRes = await pool.query(
       `SELECT DISTINCT punch_time::date AS d
@@ -116,14 +128,16 @@ async function reprocessPin(orgId, employeePin) {
       const unprocessedLogs = dayLogs.filter(l => !l.processed);
       if (!unprocessedLogs.length) continue;
 
-      // Leave guard
+      // Leave guard — only skip on full-day leave or WFH.
+      // half_day is NOT guarded: biometric data with multiple punches overrides an
+      // incorrectly-short attendance record (e.g. early-checkout that set half_day).
       const attRes = await pool.query(
         `SELECT id, status FROM attendance WHERE user_id = $1 AND date = $2 LIMIT 1`,
         [userId, date]
       );
       const att = attRes.rows[0] || null;
 
-      if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
+      if (att && ['on_leave', 'wfh'].includes(att.status)) {
         await pool.query(
           `UPDATE biometric_raw_logs SET processed = true
            WHERE org_id = $1 AND employee_pin = $2
@@ -134,7 +148,7 @@ async function reprocessPin(orgId, employeePin) {
         continue;
       }
 
-      await applyFILODay(userId, date, orgId, dayLogs, att);
+      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours);
 
       await pool.query(
         `UPDATE biometric_raw_logs SET processed = true
