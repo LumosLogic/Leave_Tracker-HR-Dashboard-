@@ -708,9 +708,18 @@ router.post('/devices/:id/historical-sync', auth, adminOnly, async (req, res) =>
     );
     const jobId = jobRes.rows[0].id;
 
-    // ── Activate in-memory job + trigger GET ATTLOG Stamp=0 ───────────────
+    // ── Activate in-memory job + trigger two-step historical recovery ─────
+    // Step 1 (next heartbeat): server sends C:N:DATA CLEAR ATTLOG — resets the
+    //   device's upload-pointer without deleting any records on the device.
+    // Step 2 (heartbeat after that): server sends GET ATTLOG Stamp=0 — device
+    //   re-uploads its entire ATTLOG because the pointer was just reset.
+    //
+    // WHY 'dataclear' not 'attlog': after the Aug 21 force-sync the device
+    // advanced its internal upload-pointer to the last acknowledged record.
+    // A bare GET ATTLOG Stamp=0 now returns only 1 new record (the single
+    // punch added since Aug 21). DATA CLEAR ATTLOG resets that pointer first.
     await activateJob(device.serial_number, jobId, orgId, from, to, dry_run);
-    scheduleSyncForSn(device.serial_number); // existing heartbeat mechanism — unchanged
+    scheduleSyncForSn(device.serial_number, 'dataclear');
 
     const mode = dry_run ? 'DRY RUN' : 'LIVE';
     const msg = `[historical-sync] ${mode} job ${jobId} created for ${device.device_name} (${device.serial_number}) range=${from}→${to}`;
@@ -727,8 +736,8 @@ router.post('/devices/:id/historical-sync', auth, adminOnly, async (req, res) =>
       dry_run,
       status:     'running',
       message: dry_run
-        ? `Dry-run preview started. Device will send all stored records on next heartbeat (~30–60 s). No data will be written.`
-        : `Historical sync started. Device will send all stored records on next heartbeat (~30–60 s). Matching records will be inserted as source='historical_recovery' (processed=false). Run /api/biometric/reprocess-all afterward to build attendance records.`,
+        ? `Dry-run preview started. Step 1: device upload-pointer reset. Step 2: device re-uploads all stored records (~60–120 s total). No data will be written.`
+        : `Historical sync started. Step 1: device upload-pointer reset on next heartbeat. Step 2: device re-uploads full ATTLOG (~60–120 s total). Matching records inserted as source='historical_recovery' (processed=false). Run /api/biometric/reprocess-all afterward to build attendance records.`,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
