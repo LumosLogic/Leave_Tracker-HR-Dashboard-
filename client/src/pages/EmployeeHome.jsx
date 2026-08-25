@@ -135,10 +135,9 @@ function WeekBarChart({ recentAttendance, today }) {
 
   return (
     <div>
-      {/* bars */}
-      <div className="flex items-end gap-2 h-28 mb-2">
+      {/* bars — outer is items-stretch so columns fill h-28 (112px) */}
+      <div className="flex gap-2 h-28 mb-2">
         {weekDays.map((d, i) => {
-          const pct    = Math.min(100, (d.hours / maxH) * 100);
           const isWknd = i === 5 || i === 6; // Sat/Sun
           let barColor = '#e0e7ff';
           if (!d.isFuture && !isWknd && d.hours > 0) {
@@ -146,24 +145,27 @@ function WeekBarChart({ recentAttendance, today }) {
           }
           if (d.isToday && d.hours === 0 && !isWknd) barColor = '#c7c4d8';
 
+          // Use pixel heights so bars are visible regardless of parent flex sizing
+          const barPx = (!d.isFuture && d.hours > 0)
+            ? Math.max(6, Math.round((d.hours / maxH) * 88))
+            : 6;
+
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+            <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
               {/* tooltip */}
               {!d.isFuture && d.hours > 0 && (
                 <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 bg-[#151c27] text-white text-[0.6rem] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
                   {d.hours.toFixed(1)}h
                 </div>
               )}
-              <div className="w-full flex flex-col justify-end" style={{ height: '100%' }}>
-                <div
-                  className="rounded-t-md transition-all duration-300"
-                  style={{
-                    height: d.isFuture || d.hours === 0 ? '6px' : `${Math.max(6, pct)}%`,
-                    background: barColor,
-                    opacity: d.isFuture ? 0.35 : 1,
-                  }}
-                />
-              </div>
+              <div
+                className="w-full rounded-t-md transition-all duration-300"
+                style={{
+                  height: `${barPx}px`,
+                  background: barColor,
+                  opacity: d.isFuture ? 0.35 : 1,
+                }}
+              />
               <span className={`text-[0.6rem] font-bold ${d.isToday ? 'text-[#3525cd]' : 'text-[#9ca3af]'}`}>
                 {d.label}
               </span>

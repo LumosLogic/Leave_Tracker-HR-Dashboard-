@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2, Search, Download, SortDesc, X, CalendarRange } from 'lucide-react';
+import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2, Search, Download, SortDesc, X, CalendarRange, Send } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -9,6 +9,22 @@ import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Avatar } from '@/components/ui/Avatar';
 import { fmtDate } from '@/lib/utils';
+
+function fmtRecordDate(dateStr) {
+  if (!dateStr) return '--';
+  try {
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    });
+  } catch { return dateStr; }
+}
+
+function fmtTime12(t) {
+  if (!t) return '--:--';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
 
 const STATUS_CFG = {
   pending:  { cls: 'badge-pending',  icon: <Clock size={11} />,         label: 'Pending'  },
@@ -72,11 +88,15 @@ function ReviewModal({ open, onClose, request }) {
   );
 }
 
-function ApplyModal({ open, onClose }) {
+function ApplyModal({ open, onClose, initialDate }) {
   const toast = useToast();
   const qc    = useQueryClient();
-  const [form, setForm] = useState({ date: '', requested_check_in: '', requested_check_out: '', reason: '' });
+  const [form, setForm] = useState({ date: initialDate || '', requested_check_in: '', requested_check_out: '', reason: '' });
   const [timeErr, setTimeErr] = useState('');
+
+  useEffect(() => {
+    if (open && initialDate) setForm(f => ({ ...f, date: initialDate }));
+  }, [open, initialDate]);
   const set = (k, v) => {
     setForm(f => {
       const updated = { ...f, [k]: v };
@@ -147,6 +167,335 @@ function ApplyModal({ open, onClose }) {
   );
 }
 
+// ─── Multi-day Regularization Modal (Relitrade / biometric orgs only) ─────────
+function MultiDayApplyModal({ open, onClose, initialDate }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+
+  const makeRecord = (id, date) => ({
+    id, date: date || '', requested_check_in: '', requested_check_out: '', reason: '', saved: false,
+  });
+
+  const [records,  setRecords]  = useState([makeRecord(1, initialDate)]);
+  const [activeId, setActiveId] = useState(1);
+  const [nextId,   setNextId]   = useState(2);
+  const [timeErr,  setTimeErr]  = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Re-seed when opened with a different initialDate
+  useEffect(() => {
+    if (open) {
+      setRecords([makeRecord(1, initialDate)]);
+      setActiveId(1);
+      setNextId(2);
+      setTimeErr('');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  if (!open) return null;
+
+  const activeRecord = records.find(r => r.id === activeId) || records[0];
+
+  function addDay() {
+    if (records.length >= 30) return;
+    const id = nextId;
+    setRecords(prev => [...prev, makeRecord(id, '')]);
+    setActiveId(id);
+    setNextId(n => n + 1);
+  }
+
+  function updateField(field, value) {
+    setRecords(prev => prev.map(r => {
+      if (r.id !== activeId) return r;
+      const updated = { ...r, [field]: value, saved: false };
+      if (field === 'requested_check_in' || field === 'requested_check_out') {
+        const ci = field === 'requested_check_in' ? value : r.requested_check_in;
+        const co = field === 'requested_check_out' ? value : r.requested_check_out;
+        setTimeErr(ci && co && co <= ci ? 'Check-Out must be after Check-In' : '');
+      }
+      return updated;
+    }));
+  }
+
+  function saveCurrentRecord() {
+    if (!activeRecord.date || !activeRecord.reason) {
+      toast('Date and reason are required', 'error');
+      return;
+    }
+    if (activeRecord.requested_check_in && activeRecord.requested_check_out
+        && activeRecord.requested_check_out <= activeRecord.requested_check_in) {
+      toast('Check-Out must be after Check-In', 'error');
+      return;
+    }
+    setRecords(prev => prev.map(r => r.id === activeId ? { ...r, saved: true } : r));
+    setTimeErr('');
+    const unsaved = records.filter(r => r.id !== activeId && !r.saved);
+    if (unsaved.length > 0) setActiveId(unsaved[0].id);
+  }
+
+  function deleteRecord(id) {
+    if (records.length <= 1) return;
+    setRecords(prev => {
+      const next = prev.filter(r => r.id !== id);
+      if (activeId === id) setActiveId(next[0].id);
+      return next;
+    });
+  }
+
+  const completedRecords = records.filter(r => r.saved && r.date && r.reason);
+  const canSubmit = completedRecords.length > 0 && !submitting;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    let succeeded = 0;
+    let failed    = 0;
+    for (const rec of completedRecords) {
+      try {
+        await apiPost('/regularization', {
+          date:                  rec.date,
+          requested_check_in:    rec.requested_check_in  || null,
+          requested_check_out:   rec.requested_check_out || null,
+          reason:                rec.reason,
+        });
+        succeeded++;
+      } catch (err) {
+        failed++;
+        toast(`${rec.date}: ${err.message}`, 'error');
+      }
+    }
+    if (succeeded > 0) {
+      toast(`${succeeded} request${succeeded > 1 ? 's' : ''} submitted!`, 'success');
+      qc.invalidateQueries({ queryKey: ['regularization'] });
+    }
+    setSubmitting(false);
+    if (failed === 0) onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+      style={{ background: 'rgba(21,28,39,.6)', backdropFilter: 'blur(14px) saturate(180%)' }}
+    >
+      <div className="bg-white rounded-xl w-full max-w-5xl flex flex-col border border-[#c7c4d8] shadow-[0_32px_80px_rgba(0,0,0,.18)] overflow-hidden" style={{ maxHeight: '92vh' }}>
+        {/* Accent bar */}
+        <div className="h-[3px] shrink-0 rounded-t-xl" style={{ background: 'linear-gradient(90deg,#3525cd,#4f46e5,#712ae2,#8a4cfc)' }} />
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-4 border-b border-[#f0f3ff] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] flex items-center justify-center shrink-0">
+              <CalendarRange size={18} className="text-[#3525cd]" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-[#151c27]">Attendance Regularization</h2>
+              <p className="text-xs text-[#777587]">Submit attendance corrections for one or more working days.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={addDay}
+              disabled={records.length >= 30}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#3525cd] border border-[#3525cd] rounded-lg px-3 py-1.5 hover:bg-[#f0f3ff] disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <Plus size={13} /> Add Another Day
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-[#777587] hover:text-[#151c27] hover:bg-[#f0f3ff] transition ml-1">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body: two-panel */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left panel — record list */}
+          <div className="w-[270px] shrink-0 border-r border-[#f0f3ff] flex flex-col">
+            <div className="px-4 py-2.5 border-b border-[#f0f3ff] bg-[#f9f9ff]">
+              <p className="text-[0.65rem] font-bold text-[#777587] uppercase tracking-wide">Requested Days ({records.length})</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {records.map((rec, idx) => {
+                const isActive    = rec.id === activeId;
+                const isCompleted = rec.saved && rec.date && rec.reason;
+                return (
+                  <div
+                    key={rec.id}
+                    onClick={() => setActiveId(rec.id)}
+                    className={`rounded-xl border p-3 cursor-pointer transition-all ${
+                      isActive
+                        ? 'border-[#3525cd] bg-[#f0f3ff]'
+                        : 'border-[#e7eefe] bg-white hover:border-[#3525cd]/40 hover:bg-[#f8f9ff]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[#3525cd] flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-[0.55rem] font-bold text-white">{idx + 1}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
+                          <p className="text-xs font-bold text-[#151c27] truncate">
+                            {rec.date ? fmtRecordDate(rec.date) : '— Not set —'}
+                          </p>
+                          {isCompleted ? (
+                            <span className="flex items-center gap-0.5 text-[0.55rem] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 shrink-0">
+                              <CheckCircle2 size={7} /> Completed
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-0.5 text-[0.55rem] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0">
+                              ⚠ Draft
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[0.6rem] text-[#777587]">
+                          {rec.requested_check_in ? fmtTime12(rec.requested_check_in) : '--:--'}
+                          {' – '}
+                          {rec.requested_check_out ? fmtTime12(rec.requested_check_out) : '--:--'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Note */}
+            <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] shrink-0">
+              <div className="flex items-start gap-1.5 text-[0.6rem] text-[#777587]">
+                <span className="text-[#3525cd] shrink-0 mt-0.5">ℹ</span>
+                <span>You can add up to 30 days in a single request.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right panel — form */}
+          <div className="flex-1 overflow-y-auto">
+            {activeRecord ? (
+              <div className="p-5">
+                {/* Record header */}
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#f0f3ff]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-[#3525cd]">
+                      Record {records.findIndex(r => r.id === activeId) + 1}
+                    </span>
+                    {activeRecord.date && (
+                      <>
+                        <span className="text-[#c7c4d8]">•</span>
+                        <span className="text-sm font-semibold text-[#151c27]">{fmtRecordDate(activeRecord.date)}</span>
+                      </>
+                    )}
+                  </div>
+                  {records.length > 1 && (
+                    <button
+                      onClick={() => deleteRecord(activeId)}
+                      className="flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-700 transition"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
+                  )}
+                </div>
+
+                {/* Form fields */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="form-label">Date *</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={activeRecord.date}
+                      onChange={e => updateField('date', e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="form-label">Correct Check-In</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={activeRecord.requested_check_in}
+                        onChange={e => updateField('requested_check_in', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">Correct Check-Out</label>
+                      <input
+                        type="time"
+                        className={`form-control ${timeErr ? 'border-rose-400' : ''}`}
+                        value={activeRecord.requested_check_out}
+                        onChange={e => updateField('requested_check_out', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {timeErr && (
+                    <p className="text-xs text-rose-600 flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-rose-100 flex items-center justify-center text-[0.6rem] shrink-0">!</span>
+                      {timeErr}
+                    </p>
+                  )}
+                  <div>
+                    <label className="form-label">Reason *</label>
+                    <textarea
+                      className="form-control"
+                      rows={4}
+                      placeholder="Explain why the attendance needs correction…"
+                      value={activeRecord.reason}
+                      onChange={e => updateField('reason', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Record-level actions */}
+                <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-[#f0f3ff]">
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => {
+                      setRecords(prev => prev.map(r => r.id === activeId ? { ...r, saved: false } : r));
+                      setTimeErr('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={saveCurrentRecord}
+                    disabled={!activeRecord.date || !activeRecord.reason || !!timeErr}
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-[#777587] text-sm">
+                Select a record to edit
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-[#f0f3ff] shrink-0 bg-[#fafaff]">
+          <p className="text-sm font-semibold text-[#151c27]">
+            Total Records: <span className="text-[#3525cd] font-black">{records.length}</span>
+          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-[#777587]">All records must be valid to submit.</p>
+            <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+            >
+              {submitting
+                ? <><span className="spinner w-4 h-4" />Submitting…</>
+                : <><Send size={14} />Submit Request</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 15;
 
 function fmtUpdated(dateStr) {
@@ -195,6 +544,8 @@ export default function Regularization() {
   const { isAdmin, isEmployee, isRootAdmin } = useAuth();
   const wrap = '';
   const [searchParams] = useSearchParams();
+  const dateParam = searchParams.get('date') || '';
+
   const [applyOpen,   setApplyOpen]   = useState(false);
   const [reviewReq,   setReviewReq]   = useState(null);
   const [confirmDel,  setConfirmDel]  = useState(null);
@@ -210,10 +561,22 @@ export default function Regularization() {
   const toast = useToast();
   const qc    = useQueryClient();
 
-  // Auto-open apply modal if coming from quick actions
+  // Check if the org has biometric (Relitrade / biometric orgs get multi-day modal)
+  const { data: biometricData, isSuccess: biometricResolved } = useQuery({
+    queryKey: ['org-has-biometric'],
+    queryFn: () => apiGet('/biometric/has-biometric').catch(() => ({ has_biometric: false })),
+    staleTime: 10 * 60 * 1000,
+    enabled: !isAdmin,
+  });
+  const hasBiometric = biometricData?.has_biometric === true;
+
+  // Auto-open apply modal only after the biometric check resolves,
+  // so we open the correct modal type from the start (no flash/switch).
   useEffect(() => {
-    if (!isAdmin && searchParams.get('action') === 'apply') setApplyOpen(true);
-  }, []);
+    if (!isAdmin && biometricResolved && searchParams.get('action') === 'apply') {
+      setApplyOpen(true);
+    }
+  }, [biometricResolved]);
 
   const { data: _regData, isLoading } = useQuery({ queryKey: ['regularization'], queryFn: () => apiGet('/regularization') });
   const requests = Array.isArray(_regData) ? _regData : [];
@@ -559,7 +922,12 @@ export default function Regularization() {
         </div>
       )}
 
-      {applyOpen && <ApplyModal open onClose={() => setApplyOpen(false)} />}
+      {applyOpen && !isAdmin && hasBiometric && (
+        <MultiDayApplyModal open onClose={() => setApplyOpen(false)} initialDate={dateParam} />
+      )}
+      {applyOpen && !isAdmin && !hasBiometric && (
+        <ApplyModal open onClose={() => setApplyOpen(false)} initialDate={dateParam} />
+      )}
       {reviewReq && <ReviewModal open onClose={() => setReviewReq(null)} request={reviewReq} />}
       <ConfirmModal
         open={!!confirmDel}

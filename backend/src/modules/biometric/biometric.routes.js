@@ -777,4 +777,57 @@ router.get('/historical-sync-jobs/:jobId', auth, adminOnly, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── GET /api/biometric/has-biometric ─────────────────────────────────────────
+// Employee-facing: returns whether this org has any biometric devices registered.
+// Used to gate biometric-specific UI features for the employee portal.
+router.get('/has-biometric', auth, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `SELECT EXISTS(SELECT 1 FROM biometric_devices WHERE org_id = $1) AS has_biometric`,
+      [orgId]
+    );
+    res.json({ has_biometric: result.rows[0]?.has_biometric === true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── GET /api/biometric/my-punches ────────────────────────────────────────────
+// Employee-facing: returns the current user's biometric raw punch logs for a date.
+// Query param: date=YYYY-MM-DD (required)
+router.get('/my-punches', auth, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const uid   = req.user.id;
+    const { date } = req.query;
+
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
+    }
+
+    // Resolve the employee's biometric PIN(s) via map table OR device_enrollment_id on user row
+    const pinRes = await pool.query(
+      `SELECT employee_pin FROM biometric_employee_map WHERE user_id = $1 AND org_id = $2
+       UNION
+       SELECT device_enrollment_id AS employee_pin FROM users WHERE id = $1 AND device_enrollment_id IS NOT NULL`,
+      [uid, orgId]
+    );
+    if (!pinRes.rows.length) return res.json([]);
+
+    const pins = pinRes.rows.map(r => r.employee_pin).filter(Boolean);
+
+    const logsRes = await pool.query(
+      `SELECT id, punch_time, punch_type, device_serial, employee_pin
+       FROM biometric_raw_logs
+       WHERE org_id = $1
+         AND employee_pin = ANY($2)
+         AND punch_time >= $3::date
+         AND punch_time < ($3::date + INTERVAL '1 day')
+       ORDER BY punch_time DESC`,
+      [orgId, pins, date]
+    );
+
+    res.json(logsRes.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

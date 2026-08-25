@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, LogIn, LogOut,
   Timer, Clock, Coffee, Play,
   Download, Search, TrendingUp, BarChart2,
+  Fingerprint, ClipboardEdit,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 
 function fmtTime(t) {
   if (!t) return '—';
@@ -24,6 +27,15 @@ function fmtBreak(mins) {
   if (!mins) return '—';
   const h = Math.floor(mins / 60), m = mins % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function fmtPunchTime(ts) {
+  if (!ts) return '--';
+  try {
+    return new Date(ts).toLocaleTimeString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+  } catch { return '--'; }
 }
 
 // ─── AttendanceCheckinCard — DO NOT MODIFY ────────────────────────────────────
@@ -275,6 +287,9 @@ function exportCSV(rows, monthName, year) {
 
 export default function MyAttendance() {
   const now = new Date();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
@@ -282,6 +297,11 @@ export default function MyAttendance() {
   const [statusFilter, setStatusFilter] = useState(null);
   const [dateSearch,   setDateSearch]   = useState('');
   const [page, setPage] = useState(1);
+
+  // Biometric punch-log expansion state
+  const [expandedDate,    setExpandedDate]    = useState(null);
+  const [punchCache,      setPunchCache]      = useState({});
+  const [loadingPunchDate, setLoadingPunchDate] = useState(null);
 
   // Reset pagination when filters / month change
   useEffect(() => { setPage(1); }, [statusFilter, dateSearch, month, year]);
@@ -306,6 +326,34 @@ export default function MyAttendance() {
     queryFn: () => apiGet('/holidays').catch(() => []),
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: biometricData } = useQuery({
+    queryKey: ['org-has-biometric'],
+    queryFn: () => apiGet('/biometric/has-biometric').catch(() => ({ has_biometric: false })),
+    staleTime: 10 * 60 * 1000,
+  });
+  const hasBiometric = biometricData?.has_biometric === true;
+
+  async function handleRowClick(date) {
+    if (!hasBiometric) return;
+    if (expandedDate === date) { setExpandedDate(null); return; }
+    setExpandedDate(date);
+    if (punchCache[date] !== undefined) return;
+    setLoadingPunchDate(date);
+    try {
+      const data = await apiGet('/biometric/my-punches', { date });
+      setPunchCache(c => ({ ...c, [date]: data }));
+    } catch {
+      setPunchCache(c => ({ ...c, [date]: [] }));
+    } finally {
+      setLoadingPunchDate(null);
+    }
+  }
+
+  function handleRegularize(e, date) {
+    e.stopPropagation();
+    navigate(`/portal/regularization?action=apply&date=${date}`);
+  }
 
   function prevMonth() {
     setStatusFilter(null); setDateSearch('');
@@ -618,7 +666,7 @@ export default function MyAttendance() {
         <>
           <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[640px]">
+              <table className="w-full text-sm min-w-[780px]">
                 <thead className="bg-[#f0f3ff] border-b border-[#c7c4d8]">
                   <tr>
                     <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Date</th>
@@ -643,27 +691,92 @@ export default function MyAttendance() {
                     >
                       Working Hours
                     </th>
+                    <th className="px-3 py-3 text-left text-xs font-bold text-[#464555] uppercase tracking-wide">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f0f3ff]">
                   {visibleRecords.map(r => {
-                    const cfg      = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
-                    const grossH   = r.gross_hours > 0 ? r.gross_hours : r.work_hours || null;
+                    const cfg        = STATUS_CONFIG[r.status] || STATUS_CONFIG.present;
+                    const grossH     = r.gross_hours > 0 ? r.gross_hours : r.work_hours || null;
                     const effectiveH = r.work_hours > 0 ? r.work_hours : null;
+                    const isExpanded = hasBiometric && expandedDate === r.date;
+                    const punches    = punchCache[r.date];
                     return (
-                      <tr key={r.id ?? r.date} className="hover:bg-[#f8f9ff] transition-colors">
-                        <td className="px-3 py-3 font-medium text-[#151c27] text-xs">{r.date}</td>
-                        <td className="px-3 py-3">
-                          <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                            {cfg.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-[#464555]">{r.check_in  ? fmtTime(r.check_in)  : '—'}</td>
-                        <td className="px-3 py-3 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
-                        <td className="px-3 py-3 text-xs text-amber-600">{r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '—'}</td>
-                        <td className="px-3 py-3 text-xs text-[#151c27]">{grossH    ? fmtHours(grossH)     : '—'}</td>
-                        <td className="px-3 py-3 text-xs font-semibold text-[#151c27]">{effectiveH ? fmtHours(effectiveH) : '—'}</td>
-                      </tr>
+                      <React.Fragment key={r.id ?? r.date}>
+                        <tr
+                          onClick={() => handleRowClick(r.date)}
+                          className={`transition-colors hover:bg-[#f8f9ff] ${hasBiometric ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-[#f0f3ff]' : ''}`}
+                        >
+                          <td className="px-3 py-3 font-medium text-[#151c27] text-xs">
+                            <div className="flex items-center gap-1.5">
+                              {r.date}
+                              {hasBiometric && (
+                                <Fingerprint size={10} className={`${isExpanded ? 'text-[#3525cd]' : 'text-[#c7c4d8]'}`} />
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                              {cfg.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-xs text-[#464555]">{r.check_in  ? fmtTime(r.check_in)  : '—'}</td>
+                          <td className="px-3 py-3 text-xs text-[#464555]">{r.check_out ? fmtTime(r.check_out) : '—'}</td>
+                          <td className="px-3 py-3 text-xs text-amber-600">{r.total_break_minutes ? fmtBreak(r.total_break_minutes) : '—'}</td>
+                          <td className="px-3 py-3 text-xs text-[#151c27]">{grossH    ? fmtHours(grossH)     : '—'}</td>
+                          <td className="px-3 py-3 text-xs font-semibold text-[#151c27]">{effectiveH ? fmtHours(effectiveH) : '—'}</td>
+                          <td className="px-3 py-3">
+                            <button
+                              onClick={e => handleRegularize(e, r.date)}
+                              className="inline-flex items-center gap-1 text-[0.65rem] font-semibold text-[#3525cd] border border-[#c7c4d8] rounded-lg px-2 py-1 hover:bg-[#f0f3ff] hover:border-[#3525cd] transition whitespace-nowrap"
+                              title="Apply attendance regularization for this date"
+                            >
+                              <ClipboardEdit size={10} />
+                              Regularize
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-[#f8f9ff]">
+                            <td colSpan={8} className="px-4 pb-3 pt-0">
+                              <div className="border border-[#e7eefe] rounded-xl p-3 bg-white">
+                                <div className="flex items-center gap-2 mb-2.5">
+                                  <Fingerprint size={12} className="text-[#3525cd]" />
+                                  <span className="text-[0.65rem] font-bold uppercase tracking-wide text-[#3525cd]">
+                                    Biometric Punches — {user?.name?.toUpperCase()} on {r.date}
+                                  </span>
+                                </div>
+                                {loadingPunchDate === r.date ? (
+                                  <div className="flex items-center gap-2 text-xs text-[#777587]">
+                                    <span className="spinner w-3 h-3" /> Loading punches…
+                                  </div>
+                                ) : !punches || punches.length === 0 ? (
+                                  <p className="text-xs text-[#777587] italic">No biometric punches found for this date.</p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
+                                    {punches.map(punch => {
+                                      const isIn = punch.punch_type === 0;
+                                      return (
+                                        <span
+                                          key={punch.id}
+                                          className={`inline-flex items-center gap-1.5 text-[0.65rem] font-semibold px-3 py-1 rounded-full border ${
+                                            isIn
+                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                                          }`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isIn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                          {isIn ? 'In' : 'Out'} · {fmtPunchTime(punch.punch_time)} #{punch.employee_pin}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

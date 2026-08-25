@@ -109,15 +109,14 @@ function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' })
   const featureFlags = useContext(FeatureFlagContext);
   const location     = useLocation();
 
-  // Check if payroll feature is enabled
   const payrollEnabled = featureKey in featureFlags ? featureFlags[featureKey] : true;
-  if (!payrollEnabled) return null;
+  const payrollPaths   = ['/payroll', ...PAYROLL_SUB_ITEMS.map(i => i.to)];
+  const isChildActive  = payrollPaths.some(p => location.pathname.startsWith(prefix + p));
 
-  // All payroll paths (for auto-expand detection)
-  const payrollPaths = ['/payroll', ...PAYROLL_SUB_ITEMS.map(i => i.to)];
-  const isChildActive = payrollPaths.some(p => location.pathname.startsWith(prefix + p));
-
+  // All hooks must be called before any conditional return
   const [open, setOpen] = useState(isChildActive);
+
+  if (!payrollEnabled) return null;
 
   const visibleSubs = PAYROLL_SUB_ITEMS.filter(item => {
     if (item.adminOnly && !isAdmin) return false;
