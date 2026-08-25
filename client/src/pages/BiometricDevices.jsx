@@ -128,7 +128,7 @@ function HistoricalSyncModal({ device, open, onClose }) {
       toast(
         form.dry_run
           ? 'Preview started — no data will be written'
-          : 'Historical sync started — device will reset and re-upload in ~60–120 s',
+          : 'Historical sync started — waiting for device heartbeat',
         'success'
       );
     },
@@ -244,9 +244,8 @@ function HistoricalSyncModal({ device, open, onClose }) {
 
           {/* How it works */}
           <div className="text-xs text-[#777587] bg-[#f9f9ff] rounded-lg p-3 border border-[#f0f3ff] space-y-1.5">
-            <p><span className="font-semibold text-[#464555]">How it works (2 steps, ~60–120 s):</span></p>
-            <p><span className="font-semibold text-[#464555]">Step 1:</span> Device upload-pointer is reset so the device treats ALL stored records as pending. Records are not deleted.</p>
-            <p><span className="font-semibold text-[#464555]">Step 2:</span> Device re-uploads its full ATTLOG. Only records within the selected date range are imported; duplicates are automatically skipped.</p>
+            <p><span className="font-semibold text-[#464555]">How it works:</span> The device is instructed to resend all stored records on its next heartbeat (~30–60 s).</p>
+            <p>Only records within the selected date range are imported. Records already in HRMS are automatically skipped (no duplicates).</p>
             <p>After sync completes, go to <span className="font-semibold">Biometric Logs → Reprocess All</span> to build attendance entries.</p>
           </div>
         </div>
@@ -263,7 +262,7 @@ function HistoricalSyncModal({ device, open, onClose }) {
                   {job ? 'Receiving records from device…' : 'Waiting for device heartbeat…'}
                 </div>
                 <div className="text-xs text-blue-600 mt-0.5">
-                  Two-step sync: device pointer reset, then full upload (~60–120 s). Stats update automatically.
+                  Device responds within ~30–60 s. Stats update automatically.
                 </div>
               </div>
             </div>
@@ -503,13 +502,7 @@ export default function BiometricDevices() {
                             Waiting for device…
                           </span>
                         )}
-                        {device.last_sync_status === 'clearing' && (
-                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse inline-block" />
-                            Clearing stamp…
-                          </span>
-                        )}
-                        {device.last_sync_status === 'syncing' && (
+{device.last_sync_status === 'syncing' && (
                           <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
                             Syncing…

@@ -708,18 +708,15 @@ router.post('/devices/:id/historical-sync', auth, adminOnly, async (req, res) =>
     );
     const jobId = jobRes.rows[0].id;
 
-    // ── Activate in-memory job + trigger two-step historical recovery ─────
-    // Step 1 (next heartbeat): server sends C:N:DATA CLEAR ATTLOG — resets the
-    //   device's upload-pointer without deleting any records on the device.
-    // Step 2 (heartbeat after that): server sends GET ATTLOG Stamp=0 — device
-    //   re-uploads its entire ATTLOG because the pointer was just reset.
-    //
-    // WHY 'dataclear' not 'attlog': after the Aug 21 force-sync the device
-    // advanced its internal upload-pointer to the last acknowledged record.
-    // A bare GET ATTLOG Stamp=0 now returns only 1 new record (the single
-    // punch added since Aug 21). DATA CLEAR ATTLOG resets that pointer first.
+    // ── Activate in-memory job + trigger date-based ATTLOG query ──────────
+    // Uses 'query' mode: server sends C:N:DATA QUERY ATTLOG StartTime=from
+    // This queries the device's ATTLOG table by timestamp, bypassing the
+    // upload-pointer that caused only 1 record to be returned after Aug 21 sync.
+    // Read-only: does not modify device data or upload-pointer state.
+    // If device doesn't support DATA QUERY ATTLOG, devicecmd logs Return!=0
+    // and we fall back to GET ATTLOG Stamp=0 (see force-sync endpoint).
     await activateJob(device.serial_number, jobId, orgId, from, to, dry_run);
-    scheduleSyncForSn(device.serial_number, 'dataclear');
+    scheduleSyncForSn(device.serial_number, 'query', { startTime: from });
 
     const mode = dry_run ? 'DRY RUN' : 'LIVE';
     const msg = `[historical-sync] ${mode} job ${jobId} created for ${device.device_name} (${device.serial_number}) range=${from}→${to}`;

@@ -28,7 +28,8 @@ const PLAN_FEATURES = {
 };
 
 // Orgs that cannot be deleted (platform-owner orgs)
-const PROTECTED_ORG_SLUGS = ['lumoslogic', 'sanghavi-association'];
+// 'sanghvi-association' is the current slug; 'relitrade' is the new slug after rename
+const PROTECTED_ORG_SLUGS = ['lumoslogic', 'sanghvi-association', 'relitrade'];
 
 // ─── Platform Admin: Login ────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -353,6 +354,37 @@ router.post('/requests/:id/reject', platformAdminAuth, async (req, res) => {
     });
 
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Update Org Name / Slug ──────────────────────────────────
+router.patch('/organizations/:id', platformAdminAuth, async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.id);
+    if (isNaN(orgId)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const { name, slug } = req.body;
+    if (!name && !slug) return res.status(400).json({ error: 'name or slug is required' });
+
+    const updates = {};
+    if (name && name.trim()) updates.name = name.trim();
+    if (slug && slug.trim()) {
+      const cleanSlug = slug.trim().toLowerCase();
+      if (!/^[a-z0-9-]+$/.test(cleanSlug)) {
+        return res.status(400).json({ error: 'Slug may only contain lowercase letters, numbers, and hyphens' });
+      }
+      // Uniqueness check
+      const { data: existing } = await supabase.from('organizations')
+        .select('id').eq('slug', cleanSlug).neq('id', orgId).maybeSingle();
+      if (existing) return res.status(409).json({ error: `Slug "${cleanSlug}" is already in use` });
+      updates.slug = cleanSlug;
+    }
+
+    const { data: updated, error } = await supabase.from('organizations')
+      .update(updates).eq('id', orgId).select('id, name, slug, plan, status').single();
+    if (error) throw new Error(error.message);
+
+    res.json({ ok: true, org: updated });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

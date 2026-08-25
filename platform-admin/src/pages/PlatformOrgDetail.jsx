@@ -7,6 +7,7 @@ import {
   Crown, Zap, Megaphone, DollarSign, Receipt, Monitor, BarChart3,
   Target, FolderOpen, UserCheck, LogOut, Shield, Timer, Bell,
   Layers, Activity, UserPlus, UserMinus, Fingerprint, GitBranch, ScrollText,
+  Pencil, X, Save,
 } from 'lucide-react';
 import { paGet, paPut, paPatch } from '@/lib/platformApi';
 
@@ -147,6 +148,10 @@ export default function PlatformOrgDetail() {
   const [localFlags,  setLocalFlags]  = useState({});
   const [savingKey,   setSavingKey]   = useState(null);
   const [planSaving,  setPlanSaving]  = useState(false);
+  const [editingOrg,  setEditingOrg]  = useState(false);
+  const [editName,    setEditName]    = useState('');
+  const [editSlug,    setEditSlug]    = useState('');
+  const [editErr,     setEditErr]     = useState('');
 
   // Org + members
   const { data: orgData, isLoading } = useQuery({
@@ -192,6 +197,35 @@ export default function PlatformOrgDetail() {
     FEATURES.forEach(f => { updates[f.key] = all; });
     setLocalFlags(prev => ({ ...prev, ...updates }));
     saveMut.mutate({ updates });
+  }
+
+  // Org name / slug edit
+  const editMut = useMutation({
+    mutationFn: (body) => paPatch(`/organizations/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['platform-org-members', id] });
+      qc.invalidateQueries({ queryKey: ['platform-orgs'] });
+      setEditingOrg(false);
+      setEditErr('');
+    },
+    onError: (err) => setEditErr(err.message),
+  });
+
+  function openEdit() {
+    setEditName(org?.name || '');
+    setEditSlug(org?.slug || '');
+    setEditErr('');
+    setEditingOrg(true);
+  }
+
+  function handleSlugInput(val) {
+    setEditSlug(val.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-'));
+  }
+
+  function saveEdit() {
+    if (!editName.trim()) { setEditErr('Name is required'); return; }
+    if (!editSlug.trim()) { setEditErr('Slug is required'); return; }
+    editMut.mutate({ name: editName.trim(), slug: editSlug.trim() });
   }
 
   // Plan change
@@ -251,15 +285,57 @@ export default function PlatformOrgDetail() {
               {org.name?.charAt(0).toUpperCase() || '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h1 className="text-xl font-black text-[#151c27] tracking-tight">{org.name}</h1>
-                <StatusBadge status={org.status} />
-                <span className="text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-700">
-                  {currentPlan}
-                </span>
-              </div>
-              {org.domain && <p className="text-sm text-[#777587]">{org.domain}</p>}
-              <code className="text-xs text-[#777587] font-mono">{org.slug}</code>
+              {editingOrg ? (
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-[0.65rem] font-bold text-[#777587] uppercase tracking-wide mb-1">Organization Name</label>
+                    <input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl text-sm border border-[#c7c4d8] text-[#151c27] bg-white focus:outline-none focus:border-[#3525cd] focus:ring-2 focus:ring-[#3525cd]/20 transition-all"
+                      placeholder="Organization name"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[0.65rem] font-bold text-[#777587] uppercase tracking-wide mb-1">Slug (URL identifier)</label>
+                    <input
+                      value={editSlug}
+                      onChange={e => handleSlugInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl text-sm font-mono border border-[#c7c4d8] text-[#151c27] bg-white focus:outline-none focus:border-[#3525cd] focus:ring-2 focus:ring-[#3525cd]/20 transition-all"
+                      placeholder="org-slug"
+                    />
+                    <p className="text-[0.6rem] text-[#777587] mt-1">Lowercase letters, numbers and hyphens only. Users need to re-login after slug change.</p>
+                  </div>
+                  {editErr && <p className="text-xs text-rose-600 font-semibold">{editErr}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} disabled={editMut.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-[#3525cd] hover:bg-[#4f46e5] disabled:opacity-50 transition-all">
+                      <Save size={12} /> {editMut.isPending ? 'Saving…' : 'Save Changes'}
+                    </button>
+                    <button onClick={() => { setEditingOrg(false); setEditErr(''); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#464555] border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+                      <X size={12} /> Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 flex-wrap mb-1">
+                    <h1 className="text-xl font-black text-[#151c27] tracking-tight">{org.name}</h1>
+                    <StatusBadge status={org.status} />
+                    <span className="text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-700">
+                      {currentPlan}
+                    </span>
+                    <button onClick={openEdit}
+                      className="flex items-center gap-1 text-[0.68rem] font-semibold text-[#777587] hover:text-[#3525cd] border border-[#c7c4d8] rounded-lg px-2 py-0.5 hover:border-[#3525cd] transition-all">
+                      <Pencil size={10} /> Edit
+                    </button>
+                  </div>
+                  {org.domain && <p className="text-sm text-[#777587]">{org.domain}</p>}
+                  <code className="text-xs text-[#777587] font-mono">{org.slug}</code>
+                </>
+              )}
             </div>
           </div>
 

@@ -38,7 +38,7 @@ module.exports = async function biometricPushHandler(req, res) {
   const bodySnippet = typeof bodyForParsing === 'string'
     ? bodyForParsing.slice(0, 300).replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
     : JSON.stringify(bodyForParsing);
-  console.log(`[biometric] ATTLOG push SN=${sn} CT="${ctHeader}" body="${bodySnippet}"`);
+  console.log(`[biometric] ATTLOG push SN=${sn} CT="${ctHeader}" Stamp=${req.query.Stamp} body="${bodySnippet}"`);
 
   const rawLines = extractAttlogLines(bodyForParsing, req.query);
 

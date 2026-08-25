@@ -5,7 +5,7 @@ import { Building2, Users, Search, Calendar, ChevronRight, Trash2, Lock, AlertTr
 import { paGet, paDelete } from '@/lib/platformApi';
 
 // Must match backend PROTECTED_ORG_SLUGS
-const PROTECTED_SLUGS = ['lumoslogic', 'sanghavi-association'];
+const PROTECTED_SLUGS = ['lumoslogic', 'sanghvi-association', 'relitrade'];
 
 function StatusBadge({ status }) {
   const map = {
