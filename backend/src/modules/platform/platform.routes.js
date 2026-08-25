@@ -370,9 +370,14 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
   }
 
   const client = await pool.connect();
-  // Use a SAVEPOINT so a failed query doesn't abort the whole transaction.
-  // Without savepoints, any error inside BEGIN poisons subsequent queries with
-  // "current transaction is aborted, commands ignored until end of transaction block".
+  // Each uncertain DELETE runs inside its own SAVEPOINT so a failure only
+  // rolls back that one statement instead of aborting the whole transaction.
+  // We suppress two classes of schema-mismatch errors:
+  //   42P01 = undefined_table  (table doesn't exist)
+  //   42703 = undefined_column (table exists but FK column has a different name)
+  // Any other error (FK violation, permission, etc.) is re-thrown and the
+  // outer catch will ROLLBACK the entire transaction.
+  const SCHEMA_MISMATCH = new Set(['42P01', '42703']);
   let _spCounter = 0;
   const safe = async (sql, params = []) => {
     const sp = `sp_${++_spCounter}`;
@@ -382,8 +387,8 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
       await client.query(`RELEASE SAVEPOINT ${sp}`);
     } catch (err) {
       await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-      // 42P01 = undefined_table — table doesn't exist yet, safe to skip
-      if (err.code !== '42P01') throw err;
+      if (!SCHEMA_MISMATCH.has(err.code)) throw err;
+      console.warn(`[org-delete] skipped (${err.code}): ${sql.substring(0, 80)}`);
     }
   };
 
@@ -407,9 +412,9 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await safe(`DELETE FROM leaves           WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM leave_policies   WHERE organization_id = $1`, [orgId]);
 
-    // Payroll
-    await safe(`DELETE FROM payslips       WHERE payroll_run_id IN (SELECT id FROM payroll_runs WHERE organization_id = $1)`, [orgId]);
-    await safe(`DELETE FROM payroll_runs   WHERE organization_id = $1`, [orgId]);
+    // Payroll (payslips has organization_id directly, no payroll_run_id FK)
+    await safe(`DELETE FROM payslips         WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM payroll_runs     WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM salary_structures WHERE organization_id = $1`, [orgId]);
 
     // Finance
@@ -428,7 +433,8 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await safe(`DELETE FROM shift_assignments    WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM shifts               WHERE organization_id = $1`, [orgId]);
 
-    // Employee profile sub-tables (all keyed by user_id)
+    // Employee profile sub-tables — use organization_id (they also have employee_id,
+    // not user_id, so deleting by org_id avoids any column-name guessing)
     const profileTables = [
       'employee_personal','employee_professional','employee_family',
       'employee_emergency_contacts','employee_education','employee_experience',
@@ -437,7 +443,7 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
       'employee_health','employee_training','employee_certifications',
     ];
     for (const t of profileTables) {
-      await safe(`DELETE FROM ${t} WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
+      await safe(`DELETE FROM ${t} WHERE organization_id = $1`, [orgId]);
     }
 
     // User junction tables
