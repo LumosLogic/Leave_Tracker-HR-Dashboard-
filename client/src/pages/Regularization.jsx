@@ -223,6 +223,12 @@ function MultiDayApplyModal({ open, onClose, initialDate }) {
       toast('Date and reason are required', 'error');
       return;
     }
+    // Prevent duplicate dates within the same batch
+    const isDuplicate = records.some(r => r.id !== activeId && r.date === activeRecord.date);
+    if (isDuplicate) {
+      toast(`${activeRecord.date} is already added in another record in this batch`, 'error');
+      return;
+    }
     if (activeRecord.requested_check_in && activeRecord.requested_check_out
         && activeRecord.requested_check_out <= activeRecord.requested_check_in) {
       toast('Check-Out must be after Check-In', 'error');
@@ -400,11 +406,17 @@ function MultiDayApplyModal({ open, onClose, initialDate }) {
                     <label className="form-label">Date *</label>
                     <input
                       type="date"
-                      className="form-control"
+                      className={`form-control ${records.some(r => r.id !== activeId && r.date === activeRecord.date && activeRecord.date) ? 'border-rose-400' : ''}`}
                       value={activeRecord.date}
                       onChange={e => updateField('date', e.target.value)}
                       max={new Date().toISOString().split('T')[0]}
                     />
+                    {records.some(r => r.id !== activeId && r.date === activeRecord.date && activeRecord.date) && (
+                      <p className="text-xs text-rose-600 mt-1 flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-rose-100 flex items-center justify-center text-[0.6rem] shrink-0">!</span>
+                        This date is already used in another record in this batch.
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -458,7 +470,10 @@ function MultiDayApplyModal({ open, onClose, initialDate }) {
                   <button
                     className="btn btn-primary"
                     onClick={saveCurrentRecord}
-                    disabled={!activeRecord.date || !activeRecord.reason || !!timeErr}
+                    disabled={
+                      !activeRecord.date || !activeRecord.reason || !!timeErr ||
+                      records.some(r => r.id !== activeId && r.date === activeRecord.date && !!activeRecord.date)
+                    }
                   >
                     Save Changes
                   </button>
