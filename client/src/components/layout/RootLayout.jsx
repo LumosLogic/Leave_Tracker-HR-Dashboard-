@@ -61,7 +61,8 @@ const NAV_SECTIONS = [
     { to: '/root/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
     { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
   ]},
-  // Finance section is rendered separately via RootFinanceSection
+  // Finance is handled by RootFinanceSection — this sentinel keeps the position
+  { id: 'tour-nav-finance', title: null, items: [] },
   { id: 'tour-nav-people', title: 'Performance', items: [
     { to: '/root/performance', label: 'Performance', Icon: Target },
     { to: '/root/documents',   label: 'Documents',   Icon: FolderOpen },
@@ -230,6 +231,11 @@ function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
       {/* Nav */}
       <nav className="flex-1 p-3 overflow-y-auto space-y-1">
         {NAV_SECTIONS.map(sec => {
+          // Finance sentinel — render dropdown in correct position
+          if (sec.id === 'tour-nav-finance') {
+            return <RootFinanceSection key="finance" onClose={onClose} />;
+          }
+
           const visibleItems = sec.items.filter(i => {
             if (!i.featureKey) return true;
             return i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
@@ -263,9 +269,6 @@ function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
             </div>
           );
         })}
-
-        {/* Finance section with collapsible Payroll dropdown */}
-        <RootFinanceSection onClose={onClose} unread={unread} />
       </nav>
 
       {/* User */}
