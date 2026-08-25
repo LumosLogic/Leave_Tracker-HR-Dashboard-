@@ -2,9 +2,15 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, XCircle, Clock, Building2, Mail, Phone,
-  Globe, MessageSquare, ClipboardList, Inbox,
+  Globe, MessageSquare, ClipboardList, Inbox, Trash2, AlertTriangle,
 } from 'lucide-react';
-import { paGet, paPost } from '@/lib/platformApi';
+import { paGet, paPost, paDelete } from '@/lib/platformApi';
+
+function daysUntilAutoDelete(reviewedAt) {
+  if (!reviewedAt) return null;
+  const diff = Math.ceil((new Date(reviewedAt).getTime() + 7 * 24 * 60 * 60 * 1000 - Date.now()) / 86400000);
+  return Math.max(0, diff);
+}
 
 function StatusBadge({ status }) {
   const map = {
@@ -28,10 +34,11 @@ function fmtDate(d) {
   });
 }
 
-function RequestCard({ req, onApprove, onReject, isActing, compact }) {
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [notes, setNotes]         = useState('');
-  const [action, setAction]       = useState(null);
+function RequestCard({ req, onApprove, onReject, onDelete, isActing, compact }) {
+  const [notesOpen,   setNotesOpen]   = useState(false);
+  const [notes,       setNotes]       = useState('');
+  const [action,      setAction]      = useState(null);
+  const [confirmDel,  setConfirmDel]  = useState(false);
 
   function submit() {
     if (action === 'approve') onApprove(req.id, notes);
@@ -100,7 +107,20 @@ function RequestCard({ req, onApprove, onReject, isActing, compact }) {
           </div>
         )}
 
-        {req.status === 'pending' && !notesOpen && (
+        {/* Auto-delete countdown for rejected requests */}
+        {req.status === 'rejected' && req.reviewed_at && (() => {
+          const days = daysUntilAutoDelete(req.reviewed_at);
+          return (
+            <div className="mb-3 p-2.5 rounded-xl border border-amber-200 bg-amber-50 flex items-center gap-2">
+              <AlertTriangle size={12} className="text-amber-600 flex-shrink-0" />
+              <p className="text-[0.68rem] text-amber-700 font-semibold">
+                {days === 0 ? 'Auto-deletes today' : `Auto-deletes in ${days} day${days !== 1 ? 's' : ''}`}
+              </p>
+            </div>
+          );
+        })()}
+
+        {req.status === 'pending' && !notesOpen && !confirmDel && (
           <div className="flex gap-2">
             <button onClick={() => { setAction('approve'); setNotesOpen(true); }} disabled={isActing}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 transition-all disabled:opacity-40">
@@ -134,6 +154,27 @@ function RequestCard({ req, onApprove, onReject, isActing, compact }) {
             </div>
           </div>
         )}
+
+        {/* Delete button — shown on rejected and pending (not approved) */}
+        {!notesOpen && req.status !== 'approved' && (
+          confirmDel ? (
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => { onDelete(req.id); setConfirmDel(false); }} disabled={isActing}
+                className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-40 transition-all">
+                Yes, delete permanently
+              </button>
+              <button onClick={() => setConfirmDel(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[#464555] border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-colors">
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDel(true)} disabled={isActing}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-all disabled:opacity-40">
+              <Trash2 size={12} /> Delete request
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -165,11 +206,15 @@ export default function PlatformRequests() {
     mutationFn: ({ id, notes }) => paPost(`/requests/${id}/reject`, { notes }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['platform-requests-all'] }); qc.invalidateQueries({ queryKey: ['platform-stats'] }); },
   });
+  const { mutate: deleteReq, isPending: isDeleting } = useMutation({
+    mutationFn: (id) => paDelete(`/requests/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['platform-requests-all'] }); qc.invalidateQueries({ queryKey: ['platform-stats'] }); },
+  });
 
   const pending  = all.filter(r => r.status === 'pending');
   const approved = all.filter(r => r.status === 'approved');
   const rejected = all.filter(r => r.status === 'rejected');
-  const isActing = isApproving || isRejecting;
+  const isActing = isApproving || isRejecting || isDeleting;
 
   return (
     <div className="space-y-6">
@@ -219,6 +264,7 @@ export default function PlatformRequests() {
                   <RequestCard key={req.id} req={req}
                     onApprove={(id, notes) => approve({ id, notes })}
                     onReject={(id, notes) => reject({ id, notes })}
+                    onDelete={id => deleteReq(id)}
                     isActing={isActing} />
                 ))}
               </div>
@@ -244,6 +290,7 @@ export default function PlatformRequests() {
                     <RequestCard key={req.id} req={req} compact
                       onApprove={(id, notes) => approve({ id, notes })}
                       onReject={(id, notes) => reject({ id, notes })}
+                      onDelete={id => deleteReq(id)}
                       isActing={isActing} />
                   ))}
                 </div>
@@ -267,6 +314,7 @@ export default function PlatformRequests() {
                     <RequestCard key={req.id} req={req} compact
                       onApprove={(id, notes) => approve({ id, notes })}
                       onReject={(id, notes) => reject({ id, notes })}
+                      onDelete={id => deleteReq(id)}
                       isActing={isActing} />
                   ))}
                 </div>

@@ -188,14 +188,22 @@ router.get('/org/hr-contact', auth, async (req, res) => {
 });
 
 // ─── Org Feature Flags (for client app) ──────────────────────────────────────
-// Returns a key→boolean map of all features for the caller's organization.
-// Missing features default to true (enabled).
+// Returns a key→boolean map. Missing biometric features default off (on by plan).
+const BIOMETRIC_FEATURE_KEYS = ['biometric', 'branches', 'statutory'];
 router.get('/features', auth, async (req, res) => {
   try {
-    const { data } = await supabase.from('organization_features')
-      .select('feature_key, enabled').eq('organization_id', orgId(req));
+    const oId = orgId(req);
+    const [{ data: orgRow }, { data: featureRows }] = await Promise.all([
+      supabase.from('organizations').select('plan').eq('id', oId).maybeSingle(),
+      supabase.from('organization_features').select('feature_key, enabled').eq('organization_id', oId),
+    ]);
+    const plan = (orgRow?.plan || 'free').toLowerCase();
     const flags = {};
-    for (const row of data || []) flags[row.feature_key] = row.enabled;
+    for (const row of featureRows || []) flags[row.feature_key] = row.enabled;
+    // For keys with no explicit DB row, biometric features = off unless Platinum
+    for (const key of BIOMETRIC_FEATURE_KEYS) {
+      if (!(key in flags)) flags[key] = plan === 'platinum';
+    }
     res.json(flags);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

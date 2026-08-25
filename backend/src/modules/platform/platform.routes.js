@@ -3,6 +3,7 @@ const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { supabase } = require('../../config/db');
+const { pool }     = require('../../config/db-pg-adapter');
 const { JWT_SECRET, platformAdminAuth } = require('../../middleware/auth');
 const { sendMail, orgApprovedHtml, orgRejectedHtml } = require('../../services/emailService');
 const { generateUniqueSlug } = require('../../utils/helpers');
@@ -16,12 +17,18 @@ const ALL_FEATURE_KEYS = [
   'biometric','branches','statutory',
 ];
 
-// Plan → feature preset map
+// Features that are off by default; only enabled when plan explicitly includes them
+const BIOMETRIC_FEATURES = ['biometric', 'branches', 'statutory'];
+
+// Plan → feature preset map (platinum now includes biometric suite)
 const PLAN_FEATURES = {
-  free:     { announcements: true, documents: true, regularization: false, leave_policies: false, shifts: false, onboarding: false, exit_management: false, payroll: false, expenses: false, assets: false, reports: false, performance: false, google_calendar: false, push_notifications: false },
-  gold:     { announcements: true, documents: true, regularization: true, leave_policies: true, shifts: true, reports: true, performance: true, payroll: true, onboarding: false, exit_management: false, expenses: false, assets: false, google_calendar: false, push_notifications: false },
-  platinum: Object.fromEntries(['announcements','regularization','leave_policies','shifts','onboarding','exit_management','payroll','expenses','assets','reports','performance','documents','google_calendar','push_notifications'].map(k => [k, true])),
+  free:     { announcements: true, documents: true, regularization: false, leave_policies: false, shifts: false, onboarding: false, exit_management: false, payroll: false, expenses: false, assets: false, reports: false, performance: false, google_calendar: false, push_notifications: false, biometric: false, branches: false, statutory: false },
+  gold:     { announcements: true, documents: true, regularization: true, leave_policies: true, shifts: true, reports: true, performance: true, payroll: true, onboarding: false, exit_management: false, expenses: false, assets: false, google_calendar: false, push_notifications: false, biometric: false, branches: false, statutory: false },
+  platinum: Object.fromEntries(ALL_FEATURE_KEYS.map(k => [k, true])),
 };
+
+// Orgs that cannot be deleted (platform-owner orgs)
+const PROTECTED_ORG_SLUGS = ['lumoslogic', 'sanghavi-association'];
 
 // ─── Platform Admin: Login ────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -143,13 +150,24 @@ router.get('/organizations/:id/members', platformAdminAuth, async (req, res) => 
 router.get('/organizations/:id/features', platformAdminAuth, async (req, res) => {
   try {
     const orgId = parseInt(req.params.id);
-    const { data } = await supabase.from('organization_features')
-      .select('feature_key, enabled').eq('organization_id', orgId);
+    const [{ data: orgRow }, { data: featureRows }] = await Promise.all([
+      supabase.from('organizations').select('plan').eq('id', orgId).maybeSingle(),
+      supabase.from('organization_features').select('feature_key, enabled').eq('organization_id', orgId),
+    ]);
+    const plan = (orgRow?.plan || 'free').toLowerCase();
     const map = {};
-    for (const row of data || []) map[row.feature_key] = row.enabled;
-    // Fill missing keys with default true
+    for (const row of featureRows || []) map[row.feature_key] = row.enabled;
+    // Biometric features default off except for Platinum orgs that have no explicit flag
     const flags = {};
-    for (const key of ALL_FEATURE_KEYS) flags[key] = key in map ? map[key] : true;
+    for (const key of ALL_FEATURE_KEYS) {
+      if (key in map) {
+        flags[key] = map[key];
+      } else if (BIOMETRIC_FEATURES.includes(key)) {
+        flags[key] = plan === 'platinum';
+      } else {
+        flags[key] = true;
+      }
+    }
     res.json(flags);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -195,11 +213,32 @@ router.patch('/organizations/:id/plan', platformAdminAuth, async (req, res) => {
 // ─── Platform Admin: Registration Requests ───────────────────────────────────
 router.get('/requests', platformAdminAuth, async (req, res) => {
   try {
+    // Auto-delete rejected requests older than 7 days
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase.from('org_registration_requests')
+      .delete().eq('status', 'rejected').lt('reviewed_at', cutoff);
+
     const status = req.query.status || 'pending';
     let q = supabase.from('org_registration_requests').select('*').order('created_at', { ascending: false });
     if (status !== 'all') q = q.eq('status', status);
     const { data } = await q;
     res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Delete a Registration Request ────────────────────────────
+// Allowed for rejected or pending requests; approved requests are blocked.
+router.delete('/requests/:id', platformAdminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: request } = await supabase.from('org_registration_requests')
+      .select('id, status, company_name').eq('id', id).maybeSingle();
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    if (request.status === 'approved') {
+      return res.status(400).json({ error: 'Approved requests cannot be deleted — they have an active organization linked to them.' });
+    }
+    await supabase.from('org_registration_requests').delete().eq('id', id);
+    res.json({ ok: true, deleted: request.company_name });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -253,6 +292,16 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
       console.error('[platform] seedSystemRolesForOrg failed for org', org.id, err.message)
     );
 
+    // Seed default feature flags — biometric suite OFF by default on free plan
+    const defaultFeatureFlags = ALL_FEATURE_KEYS.map(key => ({
+      organization_id: org.id,
+      feature_key: key,
+      enabled: !BIOMETRIC_FEATURES.includes(key), // biometric/branches/statutory = false
+      updated_at: new Date().toISOString(),
+    }));
+    await supabase.from('organization_features')
+      .upsert(defaultFeatureFlags, { onConflict: 'organization_id,feature_key' });
+
     // Update request status
     await supabase.from('org_registration_requests').update({
       status: 'approved', reviewed_at: new Date().toISOString(),
@@ -305,6 +354,122 @@ router.post('/requests/:id/reject', platformAdminAuth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Platform Admin: Delete Organization (cascade) ───────────────────────────
+// Permanently deletes an org and ALL its data. Protected orgs are blocked.
+router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
+  const orgId = parseInt(req.params.id);
+  if (isNaN(orgId)) return res.status(400).json({ error: 'Invalid organization ID' });
+
+  const { data: org } = await supabase.from('organizations')
+    .select('id, name, slug').eq('id', orgId).maybeSingle();
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  if (PROTECTED_ORG_SLUGS.includes(org.slug)) {
+    return res.status(403).json({ error: `"${org.name}" is a protected organization and cannot be deleted.` });
+  }
+
+  const client = await pool.connect();
+  const safe = async (sql, params = []) => {
+    try { await client.query(sql, params); }
+    catch (err) { if (err.code !== '42P01') throw err; } // ignore missing tables
+  };
+
+  try {
+    await client.query('BEGIN');
+
+    // Biometric
+    await safe(`DELETE FROM biometric_import_batches        WHERE org_id = $1`, [orgId]);
+    await safe(`DELETE FROM biometric_historical_sync_jobs  WHERE org_id = $1`, [orgId]);
+    await safe(`DELETE FROM biometric_raw_logs              WHERE org_id = $1`, [orgId]);
+    await safe(`DELETE FROM biometric_employee_map          WHERE org_id = $1`, [orgId]);
+    await safe(`DELETE FROM biometric_devices               WHERE org_id = $1`, [orgId]);
+
+    // Attendance
+    await safe(`DELETE FROM attendance_breaks WHERE attendance_id IN (SELECT id FROM attendance WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM attendance_regularization WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM attendance              WHERE organization_id = $1`, [orgId]);
+
+    // Leaves
+    await safe(`DELETE FROM leave_balances   WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM leaves           WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM leave_policies   WHERE organization_id = $1`, [orgId]);
+
+    // Payroll
+    await safe(`DELETE FROM payslips       WHERE payroll_run_id IN (SELECT id FROM payroll_runs WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM payroll_runs   WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM salary_structures WHERE organization_id = $1`, [orgId]);
+
+    // Finance
+    await safe(`DELETE FROM expenses    WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM assets      WHERE organization_id = $1`, [orgId]);
+
+    // Comms & docs
+    await safe(`DELETE FROM announcements WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM notifications WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM documents    WHERE organization_id = $1`, [orgId]);
+
+    // HR modules
+    await safe(`DELETE FROM performance_reviews  WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM onboarding_tasks     WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM exit_requests        WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM shift_assignments    WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM shifts               WHERE organization_id = $1`, [orgId]);
+
+    // Employee profile sub-tables (all keyed by user_id)
+    const profileTables = [
+      'employee_personal','employee_professional','employee_family',
+      'employee_emergency_contacts','employee_education','employee_experience',
+      'employee_skills','employee_banking','employee_nominees',
+      'employee_government_docs','employee_immigration','employee_statutory',
+      'employee_health','employee_training','employee_certifications',
+    ];
+    for (const t of profileTables) {
+      await safe(`DELETE FROM ${t} WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
+    }
+
+    // User junction tables
+    await safe(`DELETE FROM user_departments WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM user_roles       WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
+
+    // RBAC
+    await safe(`DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM roles            WHERE organization_id = $1`, [orgId]);
+
+    // Org config
+    await safe(`DELETE FROM departments         WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM designations        WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM holidays            WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM branches            WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM work_schedule       WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM organization_features WHERE organization_id = $1`, [orgId]);
+
+    // Delink registration requests (preserve history, unlink from deleted org)
+    await safe(`UPDATE org_registration_requests SET organization_id = NULL WHERE organization_id = $1`, [orgId]);
+
+    // Users (after all child tables)
+    await client.query(`DELETE FROM users WHERE organization_id = $1`, [orgId]);
+
+    // Finally the org itself
+    await client.query(`DELETE FROM organizations WHERE id = $1`, [orgId]);
+
+    await client.query('COMMIT');
+
+    // Log (fire-and-forget — not part of transaction)
+    supabase.from('platform_activity').insert({
+      event_type:  'org_deleted',
+      description: `Organization "${org.name}" (ID: ${orgId}) permanently deleted by platform admin`,
+      metadata:    { org_id: orgId, org_name: org.name, org_slug: org.slug },
+    }).then(() => {}).catch(() => {});
+
+    res.json({ ok: true, deleted: org.name });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[platform] org-delete error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // ─── Platform Admin: Activity Feed ───────────────────────────────────────────
