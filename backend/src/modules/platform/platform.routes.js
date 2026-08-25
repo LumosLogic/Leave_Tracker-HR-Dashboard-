@@ -370,9 +370,21 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
   }
 
   const client = await pool.connect();
+  // Use a SAVEPOINT so a failed query doesn't abort the whole transaction.
+  // Without savepoints, any error inside BEGIN poisons subsequent queries with
+  // "current transaction is aborted, commands ignored until end of transaction block".
+  let _spCounter = 0;
   const safe = async (sql, params = []) => {
-    try { await client.query(sql, params); }
-    catch (err) { if (err.code !== '42P01') throw err; } // ignore missing tables
+    const sp = `sp_${++_spCounter}`;
+    await client.query(`SAVEPOINT ${sp}`);
+    try {
+      await client.query(sql, params);
+      await client.query(`RELEASE SAVEPOINT ${sp}`);
+    } catch (err) {
+      await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+      // 42P01 = undefined_table — table doesn't exist yet, safe to skip
+      if (err.code !== '42P01') throw err;
+    }
   };
 
   try {
