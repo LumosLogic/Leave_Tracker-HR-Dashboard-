@@ -1,0 +1,17 @@
+{
+  "name": "zkteco-historical-investigation",
+  "version": "1.0.0",
+  "description": "READ-ONLY ZKTeco historical attendance investigation for Relitrade",
+  "private": true,
+  "main": "investigate.js",
+  "scripts": {
+    "start": "node investigate.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "pg": "^8.11.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
