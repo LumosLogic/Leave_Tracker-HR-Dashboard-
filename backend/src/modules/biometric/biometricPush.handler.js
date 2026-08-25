@@ -17,6 +17,7 @@ const { pool } = require('../../config/db-pg-adapter');
 const biometricEmitter = require('../../utils/biometricEmitter');
 const { getOrgPolicy }  = require('../../utils/orgPolicy');
 const { applyFILODay }  = require('./biometricReprocess.util');
+const historicalSync    = require('./biometricHistoricalSync.handler');
 
 module.exports = async function biometricPushHandler(req, res) {
   // Always respond immediately — ZKTeco requires response within 2s
@@ -79,6 +80,24 @@ module.exports = async function biometricPushHandler(req, res) {
       ]);
       const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
       const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
+
+      // ── Historical sync path ─────────────────────────────────────────────
+      // If a historical sync job is active for this device, route matching lines
+      // to the historical processor.  Lines outside the requested date range are
+      // returned (false) and fall through to the unchanged live path below so
+      // no live punch is ever silently dropped during a historical session.
+      const activeHistoricalJob = historicalSync.getActiveJobForSn(sn);
+      if (activeHistoricalJob) {
+        let historicalCount = 0;
+        for (const line of rawLines) {
+          const handled = await historicalSync.processHistoricalLine(line, sn, activeHistoricalJob);
+          if (!handled) await processAttlogLine(line, orgId, sn, policy, halfDayHours, shiftEndTime);
+          else          historicalCount++;
+        }
+        historicalSync.onBatchComplete(sn, historicalCount);
+        return;
+      }
+      // ── End historical sync path ─────────────────────────────────────────
 
       for (const line of rawLines) {
         await processAttlogLine(line, orgId, sn, policy, halfDayHours, shiftEndTime);

@@ -10,6 +10,7 @@ const biometricEmitter = require('../../utils/biometricEmitter');
 const { reprocessPin } = require('./biometricReprocess.util');
 const { importEasyWDMS, previewEasyWDMS } = require('./biometricEasyWDMSImport.handler');
 const { getOrgPolicy }   = require('../../utils/orgPolicy');
+const { activateJob, getActiveJobForSn } = require('./biometricHistoricalSync.handler');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -632,6 +633,147 @@ router.delete('/import-batches/:id', auth, adminOnly, async (req, res) => {
 
     console.log(`[import-rollback] batch=${req.params.id} deleted ${deleted.rowCount} raw logs`);
     res.json({ ok: true, deleted_logs: deleted.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /api/biometric/devices/:id/historical-sync ──────────────────────────
+//
+// Triggers a date-range-filtered historical attendance recovery for one device.
+// Uses the existing ZKTeco ADMS "GET ATTLOG Stamp=0" mechanism — no new device
+// connections, no production code path changes.
+//
+// Body: { from: "YYYY-MM-DD", to: "YYYY-MM-DD", dry_run?: false }
+//
+// • dry_run=true  → counts records but writes ZERO rows (safe preview)
+// • dry_run=false → inserts matching raw logs as source='historical_recovery'
+//   (processed=false; admin must run /reprocess-all afterward to build attendance)
+//
+// Returns { job_id, status: "running", ... }
+// Poll GET /api/biometric/historical-sync-jobs/:job_id for live progress.
+router.post('/devices/:id/historical-sync', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const { from, to, dry_run = false } = req.body;
+
+    // ── Input validation ───────────────────────────────────────────────────
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to are required (YYYY-MM-DD)' });
+    }
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRe.test(from) || !dateRe.test(to)) {
+      return res.status(400).json({ error: 'Invalid date format — use YYYY-MM-DD' });
+    }
+    if (new Date(from) > new Date(to)) {
+      return res.status(400).json({ error: 'from must be on or before to' });
+    }
+    const diffDays = (new Date(to) - new Date(from)) / 86_400_000;
+    if (diffDays > 366) {
+      return res.status(400).json({ error: 'Date range cannot exceed 366 days' });
+    }
+
+    // ── Look up device ─────────────────────────────────────────────────────
+    const devRes = await pool.query(
+      `SELECT id, serial_number, device_name
+       FROM biometric_devices WHERE id = $1 AND org_id = $2`,
+      [req.params.id, orgId]
+    );
+    if (!devRes.rows.length) return res.status(404).json({ error: 'Device not found' });
+    const device = devRes.rows[0];
+
+    // ── Prevent concurrent jobs ────────────────────────────────────────────
+    if (getActiveJobForSn(device.serial_number)) {
+      return res.status(409).json({
+        error: 'A historical sync is already running for this device — wait for it to complete.',
+      });
+    }
+    const conflictRes = await pool.query(
+      `SELECT id FROM biometric_historical_sync_jobs
+       WHERE device_id = $1 AND status IN ('pending','running') LIMIT 1`,
+      [device.id]
+    );
+    if (conflictRes.rows.length) {
+      return res.status(409).json({
+        error: 'A historical sync job is already pending/running for this device.',
+        existing_job_id: conflictRes.rows[0].id,
+      });
+    }
+
+    // ── Create DB job record ───────────────────────────────────────────────
+    const jobRes = await pool.query(
+      `INSERT INTO biometric_historical_sync_jobs
+         (org_id, device_id, serial_number, from_date, to_date, dry_run, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'running')
+       RETURNING id`,
+      [orgId, device.id, device.serial_number, from, to, dry_run]
+    );
+    const jobId = jobRes.rows[0].id;
+
+    // ── Activate in-memory job + trigger GET ATTLOG Stamp=0 ───────────────
+    await activateJob(device.serial_number, jobId, orgId, from, to, dry_run);
+    scheduleSyncForSn(device.serial_number); // existing heartbeat mechanism — unchanged
+
+    const mode = dry_run ? 'DRY RUN' : 'LIVE';
+    const msg = `[historical-sync] ${mode} job ${jobId} created for ${device.device_name} (${device.serial_number}) range=${from}→${to}`;
+    console.log(msg);
+    biometricEmitter.emit('log', { sn: device.serial_number, message: msg, timestamp: new Date().toISOString() });
+
+    res.json({
+      ok:         true,
+      job_id:     jobId,
+      device:     device.device_name,
+      serial:     device.serial_number,
+      from,
+      to,
+      dry_run,
+      status:     'running',
+      message: dry_run
+        ? `Dry-run preview started. Device will send all stored records on next heartbeat (~30–60 s). No data will be written.`
+        : `Historical sync started. Device will send all stored records on next heartbeat (~30–60 s). Matching records will be inserted as source='historical_recovery' (processed=false). Run /api/biometric/reprocess-all afterward to build attendance records.`,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── GET /api/biometric/historical-sync-jobs ──────────────────────────────────
+// List all historical sync jobs for this org (most recent first, max 50).
+router.get('/historical-sync-jobs', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `SELECT j.*, d.device_name
+       FROM biometric_historical_sync_jobs j
+       LEFT JOIN biometric_devices d ON d.id = j.device_id
+       WHERE j.org_id = $1
+       ORDER BY j.created_at DESC
+       LIMIT 50`,
+      [orgId]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── GET /api/biometric/historical-sync-jobs/:jobId ──────────────────────────
+// Single job status — includes live in-memory stats while status='running'.
+router.get('/historical-sync-jobs/:jobId', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `SELECT j.*, d.device_name
+       FROM biometric_historical_sync_jobs j
+       LEFT JOIN biometric_devices d ON d.id = j.device_id
+       WHERE j.id = $1 AND j.org_id = $2`,
+      [req.params.jobId, orgId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Job not found' });
+
+    const job = result.rows[0];
+
+    // Attach live stats if job is still running
+    const activeJob = getActiveJobForSn(job.serial_number);
+    if (activeJob && activeJob.jobId === job.id) {
+      job.live_stats = { ...activeJob.stats };
+    }
+
+    res.json(job);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
