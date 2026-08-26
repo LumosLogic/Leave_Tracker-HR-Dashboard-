@@ -14,6 +14,25 @@ function toCSV(rows, cols) {
   return [header, ...lines].join('\n');
 }
 
+// ── Deployment-aware joining date SQL expression ──────────────────────────────
+// LumosLogic platform DB: only has `date_of_joining` (hrms_full_migration.sql)
+// Relitrade DB: has `joining_date` (DATE, sanghavi_migration.sql) — this is where
+// actual data lives. Detect once at startup and cache; avoids per-request schema probing.
+let _joiningDateExpr = null;
+async function getJoiningDateExpr() {
+  if (_joiningDateExpr) return _joiningDateExpr;
+  const { rows } = await pool.query(`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'joining_date' LIMIT 1
+  `);
+  // If joining_date exists (Relitrade), prefer it — that's where data is stored.
+  // Fall back to date_of_joining, then created_at.
+  _joiningDateExpr = rows.length > 0
+    ? `COALESCE(u.joining_date::TEXT, u.date_of_joining, TO_CHAR(u.created_at, 'YYYY-MM-DD'))`
+    : `COALESCE(u.date_of_joining, TO_CHAR(u.created_at, 'YYYY-MM-DD'))`;
+  return _joiningDateExpr;
+}
+
 // Helper: convert "HH:MM" to minutes
 function toMins(t) { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
 // Current IST time as "HH:MM"
@@ -212,6 +231,8 @@ router.get('/employees', auth, adminOnly, async (req, res) => {
     const oId    = req.user.organization_id;
     const { format } = req.query;
 
+    const dateExpr = await getJoiningDateExpr();
+
     let result;
     if (isRoot) {
       // Cross-org: JOIN organizations to get org_name, no org filter.
@@ -223,9 +244,9 @@ router.get('/employees', auth, adminOnly, async (req, res) => {
           u.department,
           u.position,
           u.role,
-          COALESCE(u.employment_type, 'full_time')                          AS employment_type,
-          COALESCE(u.employee_status, 'active')                             AS employee_status,
-          COALESCE(u.date_of_joining, TO_CHAR(u.created_at, 'YYYY-MM-DD')) AS date_of_joining,
+          COALESCE(u.employment_type, 'full_time') AS employment_type,
+          COALESCE(u.employee_status, 'active')    AS employee_status,
+          ${dateExpr}                               AS date_of_joining,
           u.created_at,
           o.name AS org_name
         FROM users u
@@ -243,9 +264,9 @@ router.get('/employees', auth, adminOnly, async (req, res) => {
           u.department,
           u.position,
           u.role,
-          COALESCE(u.employment_type, 'full_time')                          AS employment_type,
-          COALESCE(u.employee_status, 'active')                             AS employee_status,
-          COALESCE(u.date_of_joining, TO_CHAR(u.created_at, 'YYYY-MM-DD')) AS date_of_joining,
+          COALESCE(u.employment_type, 'full_time') AS employment_type,
+          COALESCE(u.employee_status, 'active')    AS employee_status,
+          ${dateExpr}                               AS date_of_joining,
           u.created_at
         FROM users u
         WHERE u.role = 'employee'
