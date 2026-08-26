@@ -189,7 +189,7 @@ router.get('/headcount', auth, async (req, res) => {
     // BUG_117/BUG_068: exclude inactive/resigned/terminated from headcount stats
     // adapter's not_in wraps with (IS NULL OR NOT IN) so NULL-status employees included
     const { data: users } = await supabase.from('users')
-      .select('id, role, employee_status, department, date_of_joining, created_at')
+      .select('id, role, employee_status, department, joining_date, created_at')
       .eq('organization_id', oId)
       .in('role', roleFilter)
       .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
@@ -205,31 +205,61 @@ router.get('/headcount', auth, async (req, res) => {
 });
 
 // GET /api/reports/employees?format=csv (admin only — contains PII)
+// Root admin: cross-org view (all employees from all orgs, with org_name column)
+// Org admin:  scoped to their own organization_id
 router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res) => {
   try {
-    const oId = req.user.organization_id;
+    const oId     = req.user.organization_id;
+    const isRoot  = req.user.role === 'root_admin';
     const { format } = req.query;
-    const { data, error } = await supabase.from('users')
-      // BUG_128: exclude HR/admin — report shows employees only
-      // BUG_159: no status filter so all statuses included when "All" selected
-      // BUG_129: select employee_status (authoritative column) + employment_type for normalisation
-      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, date_of_joining, created_at')
-      .in('role', ['employee'])
-      .eq('organization_id', oId)
-      .order('name');
-    if (error) throw error;
 
-    // BUG_129: normalise employment_type (old migration stored 'full-time', app stores 'full_time')
-    // BUG_159: expose employee_status as employment_status for frontend field name consistency
-    const rows = (data || []).map(r => ({
-      ...r,
-      employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
-      employment_status: r.employee_status || null,
-      date_of_joining:   r.date_of_joining || (r.created_at ? r.created_at.split('T')[0] : null),
-    }));
+    let rows = [];
+
+    if (isRoot) {
+      // Cross-org query via raw SQL so we can JOIN organizations for org_name.
+      // Uses joining_date (canonical column — consistent with employees.routes.js).
+      const result = await pool.query(`
+        SELECT
+          u.id, u.name, u.email,
+          COALESCE(u.phone, '')              AS phone,
+          COALESCE(u.gender, '')             AS gender,
+          COALESCE(u.employee_id, '')        AS employee_id,
+          u.department, u.position, u.role,
+          COALESCE(u.employment_type, 'full_time') AS employment_type,
+          COALESCE(u.employee_status, 'active')    AS employee_status,
+          COALESCE(u.joining_date, TO_CHAR(u.created_at, 'YYYY-MM-DD')) AS joining_date,
+          u.created_at,
+          o.name AS org_name
+        FROM users u
+        LEFT JOIN organizations o ON o.id = u.organization_id
+        WHERE u.role = 'employee'
+        ORDER BY o.name, u.name
+      `);
+      rows = (result.rows || []).map(r => ({
+        ...r,
+        employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
+        employment_status: r.employee_status || null,
+        date_of_joining:   r.joining_date || null,
+      }));
+    } else {
+      // Org-scoped query. joining_date is the canonical column (not date_of_joining).
+      const { data, error } = await supabase.from('users')
+        .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, joining_date, created_at')
+        .in('role', ['employee'])
+        .eq('organization_id', oId)
+        .order('name');
+      if (error) throw error;
+      rows = (data || []).map(r => ({
+        ...r,
+        employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
+        employment_status: r.employee_status || null,
+        date_of_joining:   r.joining_date || (r.created_at ? r.created_at.split('T')[0] : null),
+      }));
+    }
 
     if (format === 'csv') {
-      const csv = toCSV(rows, [
+      const cols = [
+        ...(isRoot ? [{ key: 'org_name', label: 'Organization' }] : []),
         { key: 'employee_id', label: 'Employee ID' },
         { key: 'name', label: 'Name' },
         { key: 'email', label: 'Email' },
@@ -240,7 +270,8 @@ router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res
         { key: 'employment_type', label: 'Type' },
         { key: 'employment_status', label: 'Status' },
         { key: 'date_of_joining', label: 'Joining Date' },
-      ]);
+      ];
+      const csv = toCSV(rows, cols);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="employee_list.csv"');
       return res.send(csv);
