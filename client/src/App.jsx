@@ -243,6 +243,8 @@ function AppRoutes() {
         <Route path="/settings"           element={<Settings />} />
         <Route path="/profile"            element={<MyProfile />} />
         <Route path="/pending-approvals"  element={<PendingApprovals />} />
+        <Route path="/roles"                    element={<RoleManagement />} />
+        <Route path="/roles/:id/permissions"    element={<PermissionMatrix />} />
         <Route path="/branches"           element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
         <Route path="/biometric/devices"         element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/biometric/mapping"         element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />

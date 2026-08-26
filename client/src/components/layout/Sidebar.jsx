@@ -5,7 +5,7 @@ import {
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
   Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee, Radio,
-  PieChart, FileBarChart, ShieldCheck, ChevronDown, ChevronRight, History,
+  PieChart, FileBarChart, ShieldCheck, ChevronDown, ChevronRight, History, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { FeatureFlagContext, FeatureFlagsLoadedContext } from '@/context/FeatureFlagContext';
@@ -77,6 +77,7 @@ const COMMUNICATION_ITEMS = [
 
 const ADMIN_ITEMS = [
   { to: '/pending-approvals', label: 'Pending Approvals', Icon: ClipboardList, adminOnly: true },
+  { to: '/roles',             label: 'Role Management',   Icon: KeyRound,       rootAdminOnly: true },
   { to: '/settings', label: 'Settings', Icon: Settings },
   { to: '/profile',  label: 'Profile',  Icon: UserCircle },
 ];
