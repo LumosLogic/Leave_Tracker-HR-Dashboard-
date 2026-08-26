@@ -221,59 +221,32 @@ router.get('/headcount', auth, async (req, res) => {
 });
 
 // GET /api/reports/employees?format=csv
-// Root admin → cross-org view (all employees from all orgs, includes org_name column).
-// Org admin  → scoped to their organization_id.
-// Uses adminOnly (not hasPermission) to avoid any RBAC table dependency.
-// date_of_joining is the universally-present column (added by hrms_full_migration.sql).
+// Always scoped to the caller's organization_id — root_admin is per-org, not platform-wide.
+// Uses adminOnly (not hasPermission) to avoid RBAC table dependency causing 500s.
 router.get('/employees', auth, adminOnly, async (req, res) => {
   try {
-    const isRoot = req.user.role === 'root_admin';
     const oId    = req.user.organization_id;
     const { format } = req.query;
 
     const dateExpr = await getJoiningDateExpr();
 
-    let result;
-    if (isRoot) {
-      // Cross-org: JOIN organizations to get org_name, no org filter.
-      result = await pool.query(`
-        SELECT
-          u.id,
-          u.name,
-          u.email,
-          u.department,
-          u.position,
-          u.role,
-          COALESCE(u.employment_type, 'full_time') AS employment_type,
-          COALESCE(u.employee_status, 'active')    AS employee_status,
-          ${dateExpr}                               AS date_of_joining,
-          u.created_at,
-          o.name AS org_name
-        FROM users u
-        LEFT JOIN organizations o ON o.id = u.organization_id
-        WHERE u.role = 'employee'
-        ORDER BY o.name ASC, u.name ASC
-      `);
-    } else {
-      // Org-scoped.
-      result = await pool.query(`
-        SELECT
-          u.id,
-          u.name,
-          u.email,
-          u.department,
-          u.position,
-          u.role,
-          COALESCE(u.employment_type, 'full_time') AS employment_type,
-          COALESCE(u.employee_status, 'active')    AS employee_status,
-          ${dateExpr}                               AS date_of_joining,
-          u.created_at
-        FROM users u
-        WHERE u.role = 'employee'
-          AND u.organization_id = $1
-        ORDER BY u.name ASC
-      `, [oId]);
-    }
+    const result = await pool.query(`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.department,
+        u.position,
+        u.role,
+        COALESCE(u.employment_type, 'full_time') AS employment_type,
+        COALESCE(u.employee_status, 'active')    AS employee_status,
+        ${dateExpr}                               AS date_of_joining,
+        u.created_at
+      FROM users u
+      WHERE u.role = 'employee'
+        AND u.organization_id = $1
+      ORDER BY u.name ASC
+    `, [oId]);
 
     const rows = (result.rows || []).map(r => ({
       ...r,
@@ -282,8 +255,7 @@ router.get('/employees', auth, adminOnly, async (req, res) => {
     }));
 
     if (format === 'csv') {
-      const cols = [
-        ...(isRoot ? [{ key: 'org_name', label: 'Organization' }] : []),
+      const csv = toCSV(rows, [
         { key: 'name',              label: 'Name' },
         { key: 'email',             label: 'Email' },
         { key: 'department',        label: 'Department' },
@@ -291,8 +263,7 @@ router.get('/employees', auth, adminOnly, async (req, res) => {
         { key: 'employment_type',   label: 'Type' },
         { key: 'employment_status', label: 'Status' },
         { key: 'date_of_joining',   label: 'Joining Date' },
-      ];
-      const csv = toCSV(rows, cols);
+      ]);
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="employee_list.csv"');
       return res.send(csv);

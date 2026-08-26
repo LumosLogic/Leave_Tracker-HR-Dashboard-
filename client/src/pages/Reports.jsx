@@ -10,7 +10,6 @@ import { apiGet } from '@/lib/api';
 import { MONTHS } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
-import { useAuth } from '@/context/AuthContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function cn(...classes) { return classes.filter(Boolean).join(' '); }
@@ -229,7 +228,6 @@ function PunchLogRow({ employee_pin, user_id, date, name, colSpan }) {
 
 // ── Main Reports page ──────────────────────────────────────────────────────────
 export default function Reports() {
-  const { isRootAdmin } = useAuth();
   const now = new Date();
 
   // ── Filters & UI state ────────────────────────────────────────────────────────
@@ -249,7 +247,6 @@ export default function Reports() {
   // Biometric punch log expansion (Relitrade / first_in_last_out orgs only)
   // Use attendance record id as key — user_id can be null causing all rows to expand
   const [expandedRowId,   setExpandedRowId]   = useState(null);
-  const [orgFilter,       setOrgFilter]       = useState('');
 
   function handleTabChange(tab) {
     setActive(tab);
@@ -259,7 +256,6 @@ export default function Reports() {
     setLeaveTypeFilter('');
     setAttStatusFilter('');
     setEmpTypeFilter('');
-    setOrgFilter('');
     setPageSize(50);
     setSort(tab === 'employees' ? { col: 'name', dir: 'asc' } : { col: 'date', dir: 'desc' });
   }
@@ -332,20 +328,14 @@ export default function Reports() {
     return sortRows(rows, sort);
   }, [leaveRows, search, deptFilter, statusFilter, leaveTypeFilter, sort]);
 
-  const orgOptions = useMemo(() => {
-    if (!isRootAdmin) return [];
-    return [...new Set(empRows.map(r => r.org_name).filter(Boolean))].sort();
-  }, [isRootAdmin, empRows]);
-
   const filteredEmp = useMemo(() => {
     let rows = empRows;
     if (search)       rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()) || r.email?.toLowerCase().includes(search.toLowerCase()));
     if (deptFilter)   rows = rows.filter(r => r.department === deptFilter);
     if (statusFilter) rows = rows.filter(r => (r.employment_status || 'active') === statusFilter);
     if (empTypeFilter) rows = rows.filter(r => r.employment_type === empTypeFilter);
-    if (orgFilter)    rows = rows.filter(r => r.org_name === orgFilter);
     return sortRows(rows, sort);
-  }, [empRows, search, deptFilter, statusFilter, empTypeFilter, orgFilter, sort]);
+  }, [empRows, search, deptFilter, statusFilter, empTypeFilter, sort]);
 
   const activeRows = active === 'attendance' ? filteredAtt : active === 'leaves' ? filteredLeave : filteredEmp;
   const isLoading  = active === 'attendance' ? attLoading : active === 'leaves' ? lvLoading : empLoading;
@@ -442,7 +432,7 @@ export default function Reports() {
   }
 
   const periodLabel = viewMode === 'monthly' ? `${MONTHS[month - 1]} ${year}` : `${year}`;
-  const anyFilter   = search || deptFilter || statusFilter || leaveTypeFilter || attStatusFilter || empTypeFilter || orgFilter;
+  const anyFilter   = search || deptFilter || statusFilter || leaveTypeFilter || attStatusFilter || empTypeFilter;
 
   const LEAVE_TYPES = ['casual', 'sick', 'annual', 'emergency', 'wfh', 'other'];
   const ATT_STATUSES = ['present', 'absent', 'wfh', 'on_leave', 'half_day'];
@@ -577,13 +567,6 @@ export default function Reports() {
 
           {active === 'employees' && (
             <>
-              {isRootAdmin && orgOptions.length > 0 && (
-                <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)}
-                  className="form-control w-auto text-xs py-1.5">
-                  <option value="">All Organizations</option>
-                  {orgOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              )}
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                 className="form-control w-auto text-xs py-1.5">
                 <option value="">All Statuses</option>
@@ -598,7 +581,7 @@ export default function Reports() {
           )}
 
           {anyFilter && (
-            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); setAttStatusFilter(''); setEmpTypeFilter(''); setOrgFilter(''); }}
+            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); setAttStatusFilter(''); setEmpTypeFilter(''); }}
               className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
               <X size={12} /> Clear all
             </button>
@@ -878,7 +861,6 @@ export default function Reports() {
               <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] whitespace-nowrap uppercase tracking-wider">Employee</th>
-                  {isRootAdmin && <SortTh col="org_name" sort={sort} onSort={toggleSort}>Organization</SortTh>}
                   <SortTh col="email"             sort={sort} onSort={toggleSort}>Email</SortTh>
                   <SortTh col="department"        sort={sort} onSort={toggleSort}>Department</SortTh>
                   <SortTh col="position"          sort={sort} onSort={toggleSort}>Position</SortTh>
@@ -891,14 +873,14 @@ export default function Reports() {
                 {empLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: isRootAdmin ? 8 : 7 }).map((_, j) => (
+                      {Array.from({ length: 7 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-[#f0f3ff] rounded w-full" /></td>
                       ))}
                     </tr>
                   ))
                 ) : displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={isRootAdmin ? 8 : 7} className="py-14 text-center">
+                    <td colSpan={7} className="py-14 text-center">
                       <Users size={32} className="text-[#c7c4d8] mx-auto mb-2" />
                       <p className="text-sm font-semibold text-[#464555]">No employees found</p>
                       <p className="text-xs text-[#9ca3af] mt-1">{anyFilter ? 'Try adjusting your filters.' : 'No employee records available.'}</p>
@@ -915,13 +897,6 @@ export default function Reports() {
                         </div>
                       </div>
                     </td>
-                    {isRootAdmin && (
-                      <td className="px-4 py-3 text-xs">
-                        <span className="bg-[#f0f3ff] text-[#3525cd] font-semibold px-2 py-0.5 rounded-full text-[0.68rem] whitespace-nowrap">
-                          {r.org_name || '—'}
-                        </span>
-                      </td>
-                    )}
                     <td className="px-4 py-3 text-[#464555] text-xs">{r.email || '—'}</td>
                     <td className="px-4 py-3 text-[#464555] text-xs">{r.department || '—'}</td>
                     <td className="px-4 py-3 text-[#464555] text-xs">{r.position || '—'}</td>
