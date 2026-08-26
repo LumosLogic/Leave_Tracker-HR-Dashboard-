@@ -60,8 +60,8 @@ const NAV_SECTIONS = [
     { to: '/root/biometric/devices',  label: 'Devices',     Icon: Fingerprint, featureKey: 'biometric' },
     { to: '/root/biometric/mapping',  label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
     { to: '/root/biometric/logs',     label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
-    { to: '/root/biometric/settings',        label: 'Settings',        Icon: Settings, featureKey: 'biometric' },
     { to: '/root/biometric/historical-sync', label: 'Historical Sync', Icon: History,  featureKey: 'biometric' },
+    { to: '/root/biometric/settings',        label: 'Settings',        Icon: Settings, featureKey: 'biometric' },
   ]},
   // Finance is handled by RootFinanceSection — this sentinel keeps the position
   { id: 'tour-nav-finance', title: null, items: [] },
