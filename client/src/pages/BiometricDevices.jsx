@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2, History, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Plus, Fingerprint, Wifi, WifiOff, MapPin, Server, Eye, Trash2, History } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
@@ -97,280 +97,14 @@ function RegisterDeviceModal({ open, onClose, branches }) {
   );
 }
 
-// ── Historical Sync Modal ─────────────────────────────────────────────────────
-function HistoricalSyncModal({ device, open, onClose }) {
-  const toast = useToast();
-  const qc    = useQueryClient();
-
-  const prevMonthEnd   = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().slice(0, 10);
-  const prevMonthStart = prevMonthEnd.slice(0, 8) + '01';
-
-  const [form,  setForm]  = useState({ from: prevMonthStart, to: prevMonthEnd, dry_run: false });
-  const [jobId, setJobId] = useState(null);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const handleClose = () => {
-    setJobId(null);
-    setForm({ from: prevMonthStart, to: prevMonthEnd, dry_run: false });
-    onClose();
-  };
-
-  // ── Start sync ────────────────────────────────────────────────────────────
-  const startMut = useMutation({
-    mutationFn: () => apiPost(`/biometric/devices/${device.id}/historical-sync`, {
-      from:    form.from,
-      to:      form.to,
-      dry_run: form.dry_run,
-    }),
-    onSuccess: (res) => {
-      setJobId(res.job_id);
-      qc.invalidateQueries({ queryKey: ['biometric-devices'] });
-      toast(
-        form.dry_run
-          ? 'Preview started — no data will be written'
-          : 'Historical sync started — waiting for device heartbeat',
-        'success'
-      );
-    },
-    onError: e => toast(e.message || 'Failed to start sync', 'error'),
-  });
-
-  // ── Poll job status (every 3 s while running) ─────────────────────────────
-  const { data: job } = useQuery({
-    queryKey: ['historical-sync-job', jobId],
-    queryFn:  () => apiGet(`/biometric/historical-sync-jobs/${jobId}`),
-    enabled:  !!jobId,
-    refetchInterval: data =>
-      (data?.status === 'running' || data?.status === 'pending') ? 3000 : false,
-  });
-
-  const isRunning   = !job || job.status === 'running' || job.status === 'pending';
-  const isCompleted = job?.status === 'completed';
-  const isFailed    = job?.status === 'failed';
-
-  // While running, show live_stats from server; when done, show persisted stats
-  const stats = isRunning
-    ? (job?.live_stats || {})
-    : { received: job?.records_received, in_range: job?.records_in_range, inserted: job?.records_inserted, duplicate: job?.records_duplicate };
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  if (!device) return null;
-
-  return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title={form.dry_run && !jobId ? 'Historical Sync — Preview Mode' : 'Historical Sync'}
-      size="md"
-      footer={
-        <div className="flex justify-between gap-3">
-          <button
-            className="btn btn-ghost btn-sm text-[#777587] gap-1.5"
-            onClick={() => { handleClose(); navigate(`/biometric/historical-sync?device=${device.id}`); }}>
-            <History size={14} /> Full Workflow
-          </button>
-          <div className="flex gap-3">
-            {!jobId ? (
-              <>
-                <button className="btn btn-outline" onClick={handleClose}>Cancel</button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => startMut.mutate()}
-                  disabled={startMut.isPending || !form.from || !form.to || form.from > form.to}>
-                  {startMut.isPending
-                    ? <><span className="spinner w-4 h-4" />Starting…</>
-                    : form.dry_run ? 'Run Preview' : 'Start Historical Sync'}
-                </button>
-              </>
-            ) : (isCompleted || isFailed) ? (
-              <button className="btn btn-outline" onClick={handleClose}>Close</button>
-            ) : (
-              <button className="btn btn-outline" onClick={handleClose}>Close (sync continues in background)</button>
-            )}
-          </div>
-        </div>
-      }>
-
-      {/* ── Phase 1: Form ── */}
-      {!jobId ? (
-        <div className="space-y-4">
-          {/* Device banner */}
-          <div className="flex items-center gap-3 p-3 bg-[#f0f3ff] rounded-xl border border-[#d6d3f0]">
-            <div className="w-9 h-9 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
-              <Fingerprint size={18} className="text-[#3525cd]" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-[#151c27]">{device.device_name}</div>
-              <div className="text-xs font-mono text-[#777587]">{device.serial_number}</div>
-            </div>
-          </div>
-
-          {/* Date range */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">From Date <span className="text-rose-500">*</span></label>
-              <input
-                type="date"
-                className="form-control"
-                value={form.from}
-                max={today}
-                onChange={e => set('from', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="form-label">To Date <span className="text-rose-500">*</span></label>
-              <input
-                type="date"
-                className="form-control"
-                value={form.to}
-                max={today}
-                onChange={e => set('to', e.target.value)}
-              />
-            </div>
-          </div>
-          {form.from && form.to && form.from > form.to && (
-            <p className="text-xs text-rose-500">From date must be on or before To date.</p>
-          )}
-
-          {/* Dry run toggle */}
-          <label className="flex items-start gap-3 cursor-pointer p-3.5 rounded-xl border border-[#e8e8f0] hover:border-[#3525cd] hover:bg-[#f9f9ff] transition-colors">
-            <input
-              type="checkbox"
-              className="mt-0.5 w-4 h-4 rounded accent-[#3525cd]"
-              checked={form.dry_run}
-              onChange={e => set('dry_run', e.target.checked)}
-            />
-            <div>
-              <div className="text-sm font-semibold text-[#151c27]">Dry Run (Preview only)</div>
-              <div className="text-xs text-[#777587] mt-0.5">
-                Count matching records without writing anything to the database. Safe to run first.
-              </div>
-            </div>
-          </label>
-
-          {/* How it works */}
-          <div className="text-xs text-[#777587] bg-[#f9f9ff] rounded-lg p-3 border border-[#f0f3ff] space-y-1.5">
-            <p><span className="font-semibold text-[#464555]">How it works:</span> The device is instructed to resend all stored records on its next heartbeat (~30–60 s).</p>
-            <p>Only records within the selected date range are imported. Records already in HRMS are automatically skipped (no duplicates).</p>
-            <p>After sync completes, go to <span className="font-semibold">Biometric Logs → Reprocess All</span> to build attendance entries.</p>
-          </div>
-        </div>
-      ) : (
-        /* ── Phase 2: Job status ── */
-        <div className="space-y-4">
-
-          {/* Status banner */}
-          {isRunning && (
-            <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
-              <Loader size={20} className="text-blue-600 animate-spin flex-shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-blue-800">
-                  {job ? 'Receiving records from device…' : 'Waiting for device heartbeat…'}
-                </div>
-                <div className="text-xs text-blue-600 mt-0.5">
-                  Device responds within ~30–60 s. Stats update automatically.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isCompleted && !form.dry_run && (
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-              <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-emerald-800">Sync completed</div>
-                <div className="text-xs text-emerald-600 mt-0.5">
-                  {parseInt(stats?.inserted ?? 0) > 0
-                    ? `${stats.inserted} new record${stats.inserted !== 1 ? 's' : ''} imported. Run Reprocess All on Biometric Logs page to build attendance entries.`
-                    : 'No new records found in the selected range — all records already exist in HRMS.'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isCompleted && form.dry_run && (
-            <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
-              <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-amber-800">Preview complete — zero writes made</div>
-                <div className="text-xs text-amber-600 mt-0.5">
-                  Run again without Dry Run to import the records.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isFailed && (
-            <div className="flex items-center gap-3 p-4 bg-red-50 rounded-xl border border-red-100">
-              <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-red-800">Sync failed</div>
-                <div className="text-xs text-red-600 mt-0.5">{job?.error || 'Unknown error — check server logs'}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              {
-                label: 'Records Received',
-                value: stats?.records_received ?? stats?.received ?? '—',
-                sub:   'Total sent by device',
-                color: 'text-[#3525cd]',
-                bg:    'bg-[#f0f3ff]',
-              },
-              {
-                label: 'In Date Range',
-                value: stats?.records_in_range ?? stats?.in_range ?? '—',
-                sub:   `${form.from} → ${form.to}`,
-                color: 'text-[#3525cd]',
-                bg:    'bg-[#f0f3ff]',
-              },
-              {
-                label: form.dry_run ? 'Would Import' : 'Imported',
-                value: stats?.records_inserted ?? stats?.inserted ?? '—',
-                sub:   form.dry_run ? 'Not yet written' : 'New raw logs added',
-                color: 'text-emerald-600',
-                bg:    'bg-emerald-50',
-              },
-              {
-                label: 'Already Existed',
-                value: stats?.records_duplicate ?? stats?.duplicate ?? '—',
-                sub:   'Skipped (no duplicate)',
-                color: 'text-amber-600',
-                bg:    'bg-amber-50',
-              },
-            ].map(s => (
-              <div key={s.label} className={`${s.bg} rounded-xl p-3.5 border border-[#f0f0f5]`}>
-                <div className={`text-2xl font-black leading-none ${s.color}`}>{s.value}</div>
-                <div className="text-[0.7rem] font-bold uppercase tracking-wider text-[#777587] mt-1">{s.label}</div>
-                <div className="text-[0.65rem] text-[#a0a0b0] mt-0.5">{s.sub}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Job meta */}
-          <div className="text-center text-[0.68rem] text-[#a0a0b0] space-y-0.5">
-            <div>{device.device_name} · {device.serial_number}</div>
-            <div>{form.from} → {form.to} · {form.dry_run ? 'Dry run — no writes' : 'source: historical_recovery'}</div>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function BiometricDevices() {
   const { isAdmin } = useAuth();
   const toast       = useToast();
   const qc          = useQueryClient();
   const navigate    = useNavigate();
-  const [regOpen,       setRegOpen]       = useState(false);
-  const [deleteTarget,  setDeleteTarget]  = useState(null);
-  const [historicalDev, setHistoricalDev] = useState(null); // device for historical sync
+  const [regOpen,      setRegOpen]      = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const deleteMut = useMutation({
     mutationFn: id => apiDelete(`/biometric/devices/${id}`),
@@ -509,7 +243,7 @@ export default function BiometricDevices() {
                             Waiting for device…
                           </span>
                         )}
-{device.last_sync_status === 'syncing' && (
+                        {device.last_sync_status === 'syncing' && (
                           <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
                             Syncing…
@@ -528,21 +262,12 @@ export default function BiometricDevices() {
                     <Eye size={12} /> View Logs
                   </button>
                   {isAdmin && (
-                    <>
-                      <button
-                        onClick={() => setHistoricalDev(device)}
-                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] hover:bg-[#e7eefe] border border-transparent hover:border-[#c7c4d8] transition-colors"
-                        title="Recover historical attendance records from device">
-                        <History size={12} />
-                        Historical Sync
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(device)}
-                        className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
-                        title="Remove device">
-                        <Trash2 size={12} />
-                      </button>
-                    </>
+                    <button
+                      onClick={() => setDeleteTarget(device)}
+                      className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+                      title="Remove device">
+                      <Trash2 size={12} />
+                    </button>
                   )}
                 </div>
               </div>
@@ -563,12 +288,6 @@ export default function BiometricDevices() {
         variant="danger"
         onConfirm={() => deleteMut.mutate(deleteTarget.id)}
         onCancel={() => !deleteMut.isPending && setDeleteTarget(null)}
-      />
-
-      <HistoricalSyncModal
-        device={historicalDev}
-        open={!!historicalDev}
-        onClose={() => setHistoricalDev(null)}
       />
     </div>
   );

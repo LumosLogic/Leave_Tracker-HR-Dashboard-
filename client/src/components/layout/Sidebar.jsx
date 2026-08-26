@@ -42,8 +42,8 @@ const BIOMETRIC_ITEMS = [
   { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,       adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
-  { to: '/biometric/settings',         label: 'Settings',        Icon: Settings,  adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
   { to: '/biometric/historical-sync',  label: 'Historical Sync', Icon: History,   adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
+  { to: '/biometric/settings',         label: 'Settings',        Icon: Settings,  adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
 ];
 
 // Payroll sub-items (shown inside dropdown)

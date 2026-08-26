@@ -128,11 +128,11 @@ async function processHistoricalLine(line, sn, job) {
   try {
     const logRes = await pool.query(
       `INSERT INTO biometric_raw_logs
-         (org_id, device_serial, employee_pin, punch_time, punch_type, processed, source)
-       VALUES ($1, $2, $3, $4::timestamptz, $5, false, 'historical_recovery')
+         (org_id, device_serial, employee_pin, punch_time, punch_type, processed, source, historical_sync_job_id)
+       VALUES ($1, $2, $3, $4::timestamptz, $5, false, 'historical_recovery', $6)
        ON CONFLICT (device_serial, punch_time, employee_pin) DO NOTHING
        RETURNING id`,
-      [job.orgId, sn, pin, punchTime.toISOString(), punchType]
+      [job.orgId, sn, pin, punchTime.toISOString(), punchType, job.jobId]
     );
 
     if (logRes.rows.length > 0) job.stats.inserted++;

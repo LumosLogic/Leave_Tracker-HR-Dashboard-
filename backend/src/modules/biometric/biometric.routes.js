@@ -817,15 +817,15 @@ router.post('/historical-sync-jobs/:jobId/reprocess', auth, adminOnly, async (re
       [job.id]
     ).catch(() => {}); // column may not exist yet — graceful degradation
 
-    // Find all distinct PINs that have records in this job's date range and device
+    // Find only PINs inserted by THIS specific job (historical_sync_job_id = jobId).
+    // Falls back to device+date+source filter for records inserted before this column existed.
     const pinsRes = await pool.query(
       `SELECT DISTINCT employee_pin
        FROM biometric_raw_logs
-       WHERE device_serial = $1
-         AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
-         AND source = 'historical_recovery'
+       WHERE historical_sync_job_id = $1
+         AND processed = false
        ORDER BY employee_pin`,
-      [job.serial_number, job.from_date, job.to_date]
+      [job.id]
     );
 
     const pins = pinsRes.rows.map(r => r.employee_pin);
@@ -855,7 +855,9 @@ router.post('/historical-sync-jobs/:jobId/reprocess', auth, adminOnly, async (re
 
       for (const pin of pins) {
         try {
-          const r = await reprocessPinForDates(orgId, pin, job.from_date, job.to_date);
+          // Pass job.id so reprocessPinForDates filters strictly by historical_sync_job_id —
+          // records from previous syncs on the same device/date range are never touched.
+          const r = await reprocessPinForDates(orgId, pin, job.from_date, job.to_date, job.id);
           if (!r.noMapping) {
             totalLogs       += r.total;
             totalAttendance += r.attendance_updated;

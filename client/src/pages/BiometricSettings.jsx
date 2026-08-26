@@ -1,24 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Server, Copy, Info, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Server, Copy, Info } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 
 export default function BiometricSettings() {
   const toast = useToast();
-  const [reprocessing, setReprocessing] = useState(false);
-
-  async function handleReprocessAll() {
-    setReprocessing(true);
-    try {
-      await apiPost('/biometric/reprocess-all', {});
-      toast('Reprocess started — attendance records will be updated in the background.', 'success');
-    } catch (err) {
-      toast(err.message || 'Reprocess failed', 'error');
-    } finally {
-      setReprocessing(false);
-    }
-  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['biometric-config'],
@@ -103,35 +90,6 @@ export default function BiometricSettings() {
               This configuration is managed via environment variables on the server (<code className="bg-[#f0f3ff] px-1 rounded">ADMS_URL</code>).
               Contact your system administrator to update it.
             </span>
-          </div>
-
-          {/* Reprocess All card */}
-          <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#e7eefe] bg-[#f8f9fe]">
-              <div className="flex items-center gap-2">
-                <RefreshCw size={16} className="text-[#3525cd]" />
-                <h2 className="font-black text-[#151c27] text-sm">Reprocess Attendance</h2>
-              </div>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-[#464555]">
-                Converts all unprocessed biometric punch logs into attendance records. Run this after a historical sync or any time the Reports page shows fewer records than Punch Logs.
-              </p>
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                <AlertTriangle size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-700">
-                  Days already marked <strong>Present</strong> (including regularizations) will be recalculated from biometric data. Days marked <strong>On Leave</strong> or <strong>WFH</strong> are skipped.
-                </p>
-              </div>
-              <button
-                onClick={handleReprocessAll}
-                disabled={reprocessing}
-                className="flex items-center gap-2 bg-[#3525cd] hover:bg-[#2a1db5] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors"
-              >
-                <RefreshCw size={14} className={reprocessing ? 'animate-spin' : ''} />
-                {reprocessing ? 'Starting…' : 'Reprocess All'}
-              </button>
-            </div>
           </div>
         </div>
       )}

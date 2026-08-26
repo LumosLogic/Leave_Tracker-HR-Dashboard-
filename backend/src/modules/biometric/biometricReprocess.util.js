@@ -271,17 +271,21 @@ async function reprocessPin(orgId, employeePin) {
 }
 
 /**
- * Reprocess biometric_raw_logs for a specific employee PIN constrained to a date range.
- * Used by the Historical Sync workflow to process ONLY the dates that were just imported —
- * unrelated unprocessed logs outside the date range are NOT touched.
+ * Reprocess biometric_raw_logs for a specific employee PIN constrained to a date range
+ * AND optionally a specific historical sync job.
  *
- * Reuses applyFILODay() and all existing leave guards, attendance upsert logic, and
- * policy routing identically to reprocessPin() — no second attendance calculation exists.
+ * jobId (optional UUID): when supplied, ONLY records tagged with that job are used to
+ * identify which dates need processing. This guarantees strict isolation — records
+ * from previous syncs on the same device/date range are never touched.
+ *
+ * The attendance calculation itself still reads ALL logs for each affected date
+ * (processed + unprocessed) so FILO sees the complete picture for that day — identical
+ * to how reprocessPin() works. No second attendance calculation path exists.
  *
  * fromDate / toDate: 'YYYY-MM-DD' strings (inclusive, IST)
  * Returns { processed, total, noMapping, attendance_updated }
  */
-async function reprocessPinForDates(orgId, employeePin, fromDate, toDate) {
+async function reprocessPinForDates(orgId, employeePin, fromDate, toDate, jobId = null) {
   const [mapRes, policy] = await Promise.all([
     pool.query(
       `SELECT user_id FROM biometric_employee_map
@@ -305,15 +309,26 @@ async function reprocessPinForDates(orgId, employeePin, fromDate, toDate) {
     const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
     const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
 
-    // Only dates within the requested range that have unprocessed logs
-    const datesRes = await pool.query(
-      `SELECT DISTINCT punch_time::date AS d
-       FROM biometric_raw_logs
-       WHERE org_id = $1 AND employee_pin = $2 AND processed = false
-         AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
-       ORDER BY d`,
-      [orgId, String(employeePin), fromDate, toDate]
-    );
+    // Discover dates that have unprocessed logs belonging to this job.
+    // If jobId is supplied, filter strictly by historical_sync_job_id so records from
+    // previous syncs on the same device/date range are never mixed in.
+    // Falls back to date-range filter for legacy records that pre-date the job-tag column.
+    const datesQuery = jobId
+      ? `SELECT DISTINCT DATE(punch_time AT TIME ZONE 'Asia/Kolkata') AS d
+         FROM biometric_raw_logs
+         WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+           AND historical_sync_job_id = $3
+         ORDER BY d`
+      : `SELECT DISTINCT punch_time::date AS d
+         FROM biometric_raw_logs
+         WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+           AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
+         ORDER BY d`;
+    const datesParams = jobId
+      ? [orgId, String(employeePin), jobId]
+      : [orgId, String(employeePin), fromDate, toDate];
+
+    const datesRes = await pool.query(datesQuery, datesParams);
     if (!datesRes.rows.length) return { processed: 0, total: 0, noMapping: false, attendance_updated: 0 };
 
     let processed = 0;
@@ -365,13 +380,21 @@ async function reprocessPinForDates(orgId, employeePin, fromDate, toDate) {
   }
 
   // ── Standard mode — date-filtered variant of reprocessPin ───────────────────
-  const logsRes = await pool.query(
-    `SELECT * FROM biometric_raw_logs
-     WHERE org_id = $1 AND employee_pin = $2 AND processed = false
-       AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
-     ORDER BY punch_time`,
-    [orgId, String(employeePin), fromDate, toDate]
-  );
+  // When jobId is supplied, filter strictly by historical_sync_job_id.
+  const stdQuery = jobId
+    ? `SELECT * FROM biometric_raw_logs
+       WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+         AND historical_sync_job_id = $3
+       ORDER BY punch_time`
+    : `SELECT * FROM biometric_raw_logs
+       WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+         AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
+       ORDER BY punch_time`;
+  const stdParams = jobId
+    ? [orgId, String(employeePin), jobId]
+    : [orgId, String(employeePin), fromDate, toDate];
+
+  const logsRes = await pool.query(stdQuery, stdParams);
 
   let processed = 0;
   for (const log of logsRes.rows) {
