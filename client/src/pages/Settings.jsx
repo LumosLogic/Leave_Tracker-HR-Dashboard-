@@ -77,13 +77,13 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
     if (earlyMins !== null && lateMins !== null && endMins !== null &&
         (earlyMins <= lateMins || earlyMins >= endMins))
       errs.early_exit_threshold = 'Early Exit Threshold must be between Late Threshold and End time.';
-    // BUG_101/102: Half day threshold must be positive and <= total work hours
+    // BUG_101/102: Half day threshold must be positive and < total work hours
     if (isNaN(halfHours) || halfHours <= 0)
       errs.half_day_hours = 'Half Day Threshold must be a positive number.';
     else if (startMins !== null && endMins !== null) {
       const totalWorkHours = (endMins - startMins) / 60;
-      if (halfHours > totalWorkHours)
-        errs.half_day_hours = `Half Day Threshold cannot exceed total work hours (${totalWorkHours.toFixed(1)} hrs).`;
+      if (halfHours >= totalWorkHours)
+        errs.half_day_hours = `Half Day Threshold must be less than total work hours (${totalWorkHours.toFixed(1)} hrs).`;
     }
     // BUG_103: At least one working day required
     if (form.work_days.length === 0)
@@ -158,7 +158,8 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
           <label className="form-label">Half Day Threshold (hours)</label>
           <input type="number" className={`form-control ${scheduleErrors.half_day_hours ? 'border-rose-400' : ''}`} value={form.half_day_hours}
             step="0.5" min="0.5" disabled={!isAdmin}
-            onChange={e => set('half_day_hours', e.target.value)} />
+            onChange={e => set('half_day_hours', e.target.value)}
+            onWheel={e => e.target.blur()} />
           {scheduleErrors.half_day_hours
             ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.half_day_hours}</p>
             : <p className="form-hint">Work hours below this = Half Day</p>}

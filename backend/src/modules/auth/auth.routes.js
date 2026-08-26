@@ -96,14 +96,22 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
 router.get('/me', auth, async (req, res) => {
   try {
     const { data, error } = await supabase.from('users')
-      .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
+      .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at, employee_status')
       .eq('id', req.user.id).single();
     if (error) {
-      // avatar_url column may not yet exist on older deployments — retry without it
       const { data: fallback } = await supabase.from('users')
-        .select('id, name, email, role, department, position, avatar_color, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at')
+        .select('id, name, email, role, department, position, avatar_color, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at, employee_status')
         .eq('id', req.user.id).single();
-      return res.json(fallback || null);
+      if (!fallback) return res.status(401).json({ error: 'Account not found' });
+      // BUG_181: block inactive/resigned/terminated employees
+      if (fallback.role === 'employee' && ['inactive', 'resigned', 'terminated'].includes(fallback.employee_status)) {
+        return res.status(401).json({ error: 'Your account has been deactivated. Please contact HR.' });
+      }
+      return res.json(fallback);
+    }
+    // BUG_181: block inactive/resigned/terminated employees
+    if (data.role === 'employee' && ['inactive', 'resigned', 'terminated'].includes(data.employee_status)) {
+      return res.status(401).json({ error: 'Your account has been deactivated. Please contact HR.' });
     }
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -319,7 +319,11 @@ export default function Reports() {
     let rows = leaveRows;
     if (search)          rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()));
     if (deptFilter)      rows = rows.filter(r => r.department === deptFilter);
-    if (statusFilter)    rows = rows.filter(r => r.status === statusFilter);
+    if (statusFilter === 'all_pending') {
+      rows = rows.filter(r => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(r.status));
+    } else if (statusFilter) {
+      rows = rows.filter(r => r.status === statusFilter);
+    }
     if (leaveTypeFilter) rows = rows.filter(r => r.leave_type === leaveTypeFilter);
     return sortRows(rows, sort);
   }, [leaveRows, search, deptFilter, statusFilter, leaveTypeFilter, sort]);
@@ -363,7 +367,7 @@ export default function Reports() {
       const totalEffHrs   = completedRows.reduce((s, r) => s + (r.work_hours > 0 ? Number(r.work_hours) : Number(r.estimated_hours) || 0), 0);
       const avgHrs        = completedRows.length > 0 ? (totalEffHrs / completedRows.length).toFixed(1) : 0;
       return [
-        { label: 'Total Records',   value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,  accent: 'border-t-[#3525cd]' },
+        { label: 'Total Records',   value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,  accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setAttStatusFilter(''); } },
         // BUG_123: onClick uses 'productive' sentinel to filter present+wfh+half_day; BUG_124: clears other filters; isActive shows ring
         { label: 'Present / WFH',  value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,   accent: 'border-t-emerald-500', onClick: () => clearAndSetAttFilter('productive'), isActive: attStatusFilter === 'productive' },
         // BUG_124: clears other filters before setting absent filter
@@ -373,16 +377,16 @@ export default function Reports() {
     }
     if (active === 'leaves') {
       const approved   = leaveRows.filter(r => r.status === 'approved').length;
-      // BUG_126: count pending from raw leaveRows (all statuses returned by backend)
-      const pending    = leaveRows.filter(r => r.status === 'pending').length;
+      // BUG_126: count ALL pending variants (multi-level workflow)
+      const pending    = leaveRows.filter(r => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(r.status)).length;
       const rejected   = leaveRows.filter(r => r.status === 'rejected').length;
       // BUG_127: count cancelled leaves
       const cancelled  = leaveRows.filter(r => r.status === 'cancelled').length;
       return [
-        { label: 'Total Leaves', value: leaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]' },
+        { label: 'Total Leaves', value: leaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); } },
         // BUG_124: clears other filters before setting leave status filter; isActive shows ring
         { label: 'Approved',     value: approved,          icon: <CheckCircle2 size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500', onClick: () => clearAndSetLeaveFilter('approved'),   isActive: statusFilter === 'approved' },
-        { label: 'Pending',      value: pending,           icon: <Clock size={18} className="text-amber-500" />,          accent: 'border-t-amber-400',   onClick: () => clearAndSetLeaveFilter('pending'),    isActive: statusFilter === 'pending',    sub: pending > 0 ? 'Needs attention' : undefined },
+        { label: 'Pending',      value: pending,           icon: <Clock size={18} className="text-amber-500" />,          accent: 'border-t-amber-400',   onClick: () => clearAndSetLeaveFilter('all_pending'), isActive: statusFilter === 'all_pending', sub: pending > 0 ? 'Needs attention' : undefined },
         { label: 'Rejected',     value: rejected,          icon: <AlertCircle size={18} className="text-rose-500" />,     accent: 'border-t-rose-500',    onClick: () => clearAndSetLeaveFilter('rejected'),   isActive: statusFilter === 'rejected' },
         // BUG_127: new Cancelled KPI card
         { label: 'Cancelled',    value: cancelled,         icon: <X size={18} className="text-slate-500" />,              accent: 'border-t-slate-400',   onClick: () => clearAndSetLeaveFilter('cancelled'),  isActive: statusFilter === 'cancelled' },
@@ -393,7 +397,7 @@ export default function Reports() {
     const resigned     = empRows.filter(r => r.employment_status === 'resigned').length;
     const depts        = new Set(empRows.map(r => r.department).filter(Boolean)).size;
     return [
-      { label: 'Total Employees', value: headcount?.total ?? empRows.length, icon: <Users size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]' },
+      { label: 'Total Employees', value: empRows.length, icon: <Users size={18} className="text-[#3525cd]" />, accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setEmpTypeFilter(''); } },
       { label: 'Active',          value: active_count,                        icon: <TrendingUp size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500' },
       { label: 'Resigned',        value: resigned,                            icon: <AlertCircle size={18} className="text-rose-500" />,   accent: 'border-t-rose-500' },
       { label: 'Departments',     value: depts,                               icon: <Building2 size={18} className="text-[#712ae2]" />,    accent: 'border-t-[#712ae2]' },

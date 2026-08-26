@@ -152,7 +152,7 @@ export default function LeaveWorkflowSettings() {
         level_number:   i + 1,
         role_type:      l.role_type,
         role_reference: l.role_reference || null,
-        level_label:    l.level_label    || null,
+        level_label:    (l.level_label || '').trim() || null,
         is_required:    l.is_required    !== false,
       })),
     }),
@@ -368,6 +368,14 @@ export default function LeaveWorkflowSettings() {
                 const nameErr = validateWorkflowName(workflowName);
                 if (nameErr) { setWorkflowNameError(nameErr); return; }
                 setWorkflowNameError('');
+                // BUG_105: validate display labels — if provided, must contain a letter
+                for (const lvl of levels) {
+                  const lbl = (lvl.level_label || '').trim();
+                  if (lbl && !/[a-zA-Z]/.test(lbl)) {
+                    toast('Display labels must contain at least one letter.', 'error');
+                    return;
+                  }
+                }
                 saveMut.mutate();
               }}
               disabled={saveMut.isPending}

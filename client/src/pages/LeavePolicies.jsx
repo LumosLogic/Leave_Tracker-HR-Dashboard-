@@ -37,11 +37,34 @@ export default function LeavePolicies() {
     if (data.length) { setPolicies(data); setDirty(false); }
   }, [data]);
 
+  const [savedPolicies, setSavedPolicies] = useState([]);
+  useEffect(() => { if (data.length) setSavedPolicies(data); }, [data]);
+
   const saveMut = useMutation({
     mutationFn: () => apiPost('/leave-policies', { policies }),
-    onSuccess: () => { toast('Leave policies saved!', 'success'); setDirty(false); qc.invalidateQueries({ queryKey: ['leave-policies'] }); },
+    onSuccess: () => { toast('Leave policies saved!', 'success'); setDirty(false); setSavedPolicies(policies); qc.invalidateQueries({ queryKey: ['leave-policies'] }); },
     onError: e => toast(e.message, 'error'),
   });
+
+  function handleSave() {
+    // BUG_146: validate annual_quota >= 0
+    for (const p of policies) {
+      if (p.annual_quota < 0 || !Number.isInteger(p.annual_quota)) {
+        toast(`Annual quota for "${p.label}" must be a non-negative whole number.`, 'error');
+        return;
+      }
+    }
+    // BUG_149: warn if any quota is being reduced mid-year
+    const reduced = policies.filter(p => {
+      const saved = savedPolicies.find(s => s.leave_type === p.leave_type);
+      return saved && p.annual_quota < saved.annual_quota;
+    });
+    if (reduced.length > 0) {
+      const names = reduced.map(p => p.label).join(', ');
+      if (!window.confirm(`Reducing leave quota for ${names} may affect existing employee balances. Are you sure you want to continue?`)) return;
+    }
+    saveMut.mutate();
+  }
 
   function update(idx, field, value) {
     setPolicies(p => p.map((item, i) => i === idx ? { ...item, [field]: value } : item));
@@ -57,7 +80,7 @@ export default function LeavePolicies() {
           <div className="page-title">Leave Policies</div>
           <div className="page-subtitle">Configure quotas, carry-forward rules and approval settings for each leave type</div>
         </div>
-        <button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={!dirty || saveMut.isPending}>
+        <button className="btn btn-primary" onClick={() => handleSave()} disabled={!dirty || saveMut.isPending}>
           {saveMut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : <><Save size={15} />Save All</>}
         </button>
       </div>
@@ -157,7 +180,7 @@ export default function LeavePolicies() {
       {dirty && (
         <div className="fixed bottom-6 right-6 z-50 flex gap-3">
           <button className="btn btn-outline" onClick={() => { setPolicies(data); setDirty(false); }}><RefreshCw size={14} />Discard</button>
-          <button className="btn btn-primary shadow-lg" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+          <button className="btn btn-primary shadow-lg" onClick={() => handleSave()} disabled={saveMut.isPending}>
             <Save size={15} />Save Changes
           </button>
         </div>

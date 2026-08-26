@@ -15,17 +15,27 @@ router.get('/', auth, async (req, res) => {
       .order('name');
     if (error) throw error;
 
-    // Attach member counts from user_departments junction table
+    // Attach member counts — only active employees (exclude inactive/resigned/terminated)
     const deptIds = (data || []).map(d => d.id);
     let memberCounts = {};
     if (deptIds.length > 0) {
-      const { data: ud } = await supabase.from('user_departments')
-        .select('department_id')
-        .in('department_id', deptIds)
-        .eq('organization_id', oId);
-      (ud || []).forEach(r => {
-        memberCounts[r.department_id] = (memberCounts[r.department_id] || 0) + 1;
-      });
+      const { data: activeUsers } = await supabase.from('users')
+        .select('id')
+        .eq('organization_id', oId)
+        .eq('role', 'employee')
+        .not('employee_status', 'in', '("inactive","resigned","terminated")');
+      const activeIds = (activeUsers || []).map(u => u.id);
+
+      if (activeIds.length > 0) {
+        const { data: ud } = await supabase.from('user_departments')
+          .select('department_id, user_id')
+          .in('department_id', deptIds)
+          .in('user_id', activeIds)
+          .eq('organization_id', oId);
+        (ud || []).forEach(r => {
+          memberCounts[r.department_id] = (memberCounts[r.department_id] || 0) + 1;
+        });
+      }
     }
 
     res.json((data || []).map(d => ({ ...d, member_count: memberCounts[d.id] || 0 })));

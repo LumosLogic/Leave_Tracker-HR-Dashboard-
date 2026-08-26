@@ -41,6 +41,9 @@ router.post('/send', auth, adminOnly, async (req, res) => {
       const { data: users } = await supabase.from('users').select('id').eq('organization_id', oId);
       userIds = (users || []).map(u => u.id);
     }
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+      return res.status(503).json({ error: 'Push notifications are not configured. Please set VAPID keys in server settings.' });
+    }
     const sent = await sendPushToUsers(userIds, { title: title.trim(), body: body.trim(), url: url || '/' });
     try {
       await supabase.from('notifications_log').insert({
@@ -49,7 +52,8 @@ router.post('/send', auth, adminOnly, async (req, res) => {
         sent_by: req.user.id, sent_count: sent || 0,
       });
     } catch { /* log insert failure is non-fatal */ }
-    res.json({ success: true, sent: sent || 0 });
+    const targetCount = userIds.length;
+    res.json({ success: true, sent: sent || 0, targeted: targetCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -1,108 +1,15 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
-import { DollarSign, Plus, Play, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { DollarSign, Plus, Play, ChevronDown, ChevronUp, Layers } from 'lucide-react';
 import { MONTHS } from '@/lib/utils';
 
-const fmt  = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
-const fmtD = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-// ── Salary Structure Modal ────────────────────────────────────────────────────
-function StructureModal({ open, onClose, userId }) {
-  const toast = useToast();
-  const qc    = useQueryClient();
-  // Default effective_from to Jan 1 of current year so payslips for any month this year are found
-  const empty = { user_id: userId, effective_from: `${new Date().getFullYear()}-01-01`, basic: 0, hra: 0, da: 0, transport_allowance: 0, medical_allowance: 0, other_allowances: 0, pf_employee: 0, pf_employer: 0, esi_employee: 0, esi_employer: 0, professional_tax: 0, tds: 0 };
-  const [form, setForm] = useState(empty);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const gross      = ['basic','hra','da','transport_allowance','medical_allowance','other_allowances'].reduce((s, k) => s + Number(form[k] || 0), 0);
-  const empDed     = ['pf_employee','esi_employee','professional_tax','tds'].reduce((s, k) => s + Number(form[k] || 0), 0);
-  const empContrib = Number(form.pf_employer || 0) + Number(form.esi_employer || 0);
-
-  const mut = useMutation({
-    mutationFn: () => apiPost('/payroll/structure', form),
-    onSuccess: () => { toast('Salary structure saved!', 'success'); qc.invalidateQueries({ queryKey: ['payroll-structure'] }); onClose(); },
-    onError: e => toast(e.message, 'error'),
-  });
-
-  // BUG_130: validate that at least one earning component is > 0 before saving
-  function handleSave() {
-    if (gross <= 0) {
-      toast('Salary amount must be greater than ₹0. Please enter at least one earning component.', 'error');
-      return;
-    }
-    mut.mutate();
-  }
-
-  const row = (label, key) => (
-    <div key={key}>
-      <label className="form-label">{label}</label>
-      <input type="number" className="form-control" min={0} value={form[key] || 0} onChange={e => set(key, e.target.value)} />
-    </div>
-  );
-
-  return (
-    <Modal open={open} onClose={onClose} title="Set Salary Structure" size="lg"
-      footer={
-        <div className="flex justify-end gap-3">
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={mut.isPending}>
-            {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Save Structure'}
-          </button>
-        </div>
-      }>
-      <div className="space-y-5">
-        <div>
-          <label className="form-label">Effective From</label>
-          <input type="date" className="form-control w-auto" value={form.effective_from} onChange={e => set('effective_from', e.target.value)} />
-        </div>
-
-        <div>
-          <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587] mb-3">Earnings (₹ / month)</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {row('Basic','basic')}{row('HRA','hra')}{row('Dearness Allowance','da')}
-            {row('Transport Allowance','transport_allowance')}{row('Medical Allowance','medical_allowance')}{row('Other Allowances','other_allowances')}
-          </div>
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <TrendingUp size={14} className="text-emerald-500" />
-            <span className="text-sm font-black text-emerald-700">Gross Salary: {fmtD(gross)}</span>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587] mb-3">Employee Deductions (₹ / month)</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {row('PF (Employee)','pf_employee')}{row('ESI (Employee)','esi_employee')}
-            {row('Professional Tax','professional_tax')}{row('TDS','tds')}
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingDown size={14} className="text-rose-500" />
-              <span className="text-sm font-bold text-rose-600">Deductions: {fmtD(empDed)}</span>
-            </div>
-            <span className="text-sm font-black text-[#151c27]">Est. Net: {fmtD(gross - empDed)}</span>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587] mb-3">Employer Contributions (₹ / month)</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {row('PF (Employer)','pf_employer')}{row('ESI (Employer)','esi_employer')}
-          </div>
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <span className="text-sm font-bold text-blue-600">CTC / month: {fmtD(gross + empContrib)}</span>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
+const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
 
 // ── Generate Payslip Modal ────────────────────────────────────────────────────
 function GenerateModal({ open, onClose }) {
@@ -290,27 +197,22 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
 
 // ── Main Payroll Page ─────────────────────────────────────────────────────────
 export default function Payroll() {
-  const { isAdmin, isEmployee, user } = useAuth();
-  const location = useLocation();
+  const { isAdmin, user } = useAuth();
   const basePath = user?.role === 'root_admin' ? '/root' : '';
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
   const now   = new Date();
-  const [tab,      setTab]     = useState('payslips');
   const [genOpen,  setGenOpen] = useState(false);
-  const [strucEmp, setStrucEmp]= useState(null);
   const [filterY,  setFilterY] = useState(now.getFullYear());
   const [filterM,  setFilterM] = useState(now.getMonth() + 1);
 
-  const { data: _empData } = useQuery({ queryKey: ['employees'], queryFn: () => apiGet('/employees'), enabled: isAdmin });
   const { data: _psData, isLoading } = useQuery({
     queryKey: isAdmin ? ['payslips-all', filterM, filterY] : ['payslips-mine'],
     queryFn: () => isAdmin
       ? apiGet('/payroll/payslips/all', { month: String(filterM).padStart(2,'0'), year: filterY })
       : apiGet('/payroll/payslips'),
   });
-  const employees = Array.isArray(_empData) ? _empData : [];
   const payslips  = Array.isArray(_psData)  ? _psData  : [];
 
   const publishMut = useMutation({
@@ -330,9 +232,6 @@ export default function Payroll() {
         </div>
         {isAdmin && (
           <div className="flex gap-2 flex-wrap">
-            <button className="btn btn-outline" onClick={() => setTab(t => t === 'payslips' ? 'structure' : 'payslips')}>
-              {tab === 'payslips' ? 'Salary Structures' : '← Payslips'}
-            </button>
             <button className="btn btn-outline" onClick={() => setGenOpen(true)}>
               <Plus size={14} />Quick Payslip
             </button>
@@ -344,7 +243,7 @@ export default function Payroll() {
       </div>
 
       {/* Stats (admin) */}
-      {isAdmin && tab === 'payslips' && (
+      {isAdmin && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           {[
             { label: 'Total Payslips', value: payslips.length,                                       color: 'from-[#f0f3ff] to-[#e7eefe]',   top: '#3525cd', text: 'text-[#3525cd]' },
@@ -360,55 +259,27 @@ export default function Payroll() {
         </div>
       )}
 
-      {/* Salary Structure tab (admin) */}
-      {isAdmin && tab === 'structure' ? (
-        <div className="flex flex-col gap-3">
-          {employees.length === 0
-            ? <div className="empty-state"><DollarSign size={48} className="mx-auto mb-3 text-[#c7c4d8]" /><p className="text-[#464555]">No employees found</p></div>
-            : employees.map(emp => (
-              <div key={emp.id} className="card p-4 flex items-center gap-4 hover:shadow-card-hover transition-all">
-                <Avatar name={emp.name} color={emp.avatar_color} size={38} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-[#151c27]">{emp.name}</div>
-                  <div className="text-xs text-[#777587]">
-                    {emp.departments?.length > 0
-                      ? emp.departments.map(d => d.name).join(', ')
-                      : emp.department}
-                    {emp.position ? ` · ${emp.position}` : ''}
-                  </div>
-                </div>
-                <button className="btn btn-outline btn-sm" onClick={() => setStrucEmp(emp)}>
-                  <Plus size={12} />Set Salary
-                </button>
-              </div>
-            ))}
+      {/* Period filter (admin only) */}
+      {isAdmin && (
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <select className="form-control w-auto" value={filterM} onChange={e => setFilterM(Number(e.target.value))}>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-2 py-1.5">
+            <button onClick={() => setFilterY(y => y - 1)} className="w-7 h-7 flex items-center justify-center rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff]">‹</button>
+            <span className="font-black text-[#151c27] min-w-[3rem] text-center text-sm">{filterY}</span>
+            <button onClick={() => setFilterY(y => y + 1)} className="w-7 h-7 flex items-center justify-center rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff]">›</button>
+          </div>
         </div>
-      ) : (
-        <>
-          {/* Period filter (admin only) */}
-          {isAdmin && (
-            <div className="flex items-center gap-3 mb-5 flex-wrap">
-              <select className="form-control w-auto" value={filterM} onChange={e => setFilterM(Number(e.target.value))}>
-                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-              <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-2 py-1.5">
-                <button onClick={() => setFilterY(y => y - 1)} className="w-7 h-7 flex items-center justify-center rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff]">‹</button>
-                <span className="font-black text-[#151c27] min-w-[3rem] text-center text-sm">{filterY}</span>
-                <button onClick={() => setFilterY(y => y + 1)} className="w-7 h-7 flex items-center justify-center rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff]">›</button>
-              </div>
-            </div>
-          )}
-
-          {isLoading
-            ? <div className="loading"><div className="spinner" />Loading payslips…</div>
-            : payslips.length === 0
-              ? <div className="empty-state"><DollarSign size={48} className="mx-auto mb-3 text-[#c7c4d8]" /><p className="font-semibold text-[#464555] mb-1">No payslips yet</p><p className="text-sm">{isAdmin ? 'Generate payslips for your employees' : 'Your payslips will appear here once generated'}</p></div>
-              : <div className="flex flex-col gap-3">{payslips.map(ps => <PayslipCard key={ps.id} ps={ps} isAdmin={isAdmin} onPublish={id => publishMut.mutate(id)} />)}</div>}
-        </>
       )}
 
-      {genOpen   && <GenerateModal open onClose={() => setGenOpen(false)} />}
-      {strucEmp  && <StructureModal open onClose={() => setStrucEmp(null)} userId={strucEmp.id} />}
+      {isLoading
+        ? <div className="loading"><div className="spinner" />Loading payslips…</div>
+        : payslips.length === 0
+          ? <div className="empty-state"><DollarSign size={48} className="mx-auto mb-3 text-[#c7c4d8]" /><p className="font-semibold text-[#464555] mb-1">No payslips yet</p><p className="text-sm">{isAdmin ? 'Generate payslips for your employees' : 'Your payslips will appear here once generated'}</p></div>
+          : <div className="flex flex-col gap-3">{payslips.map(ps => <PayslipCard key={ps.id} ps={ps} isAdmin={isAdmin} onPublish={id => publishMut.mutate(id)} />)}</div>}
+
+      {genOpen && <GenerateModal open onClose={() => setGenOpen(false)} />}
     </div>
   );
 }

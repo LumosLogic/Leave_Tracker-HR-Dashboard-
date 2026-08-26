@@ -2439,18 +2439,12 @@ function PrivacySection() {
       {/* GDPR Controls */}
       <div className="bg-white rounded-xl border border-rose-200 shadow-sm p-5">
         <h2 className="text-sm font-black text-rose-700 uppercase tracking-wider flex items-center gap-2 mb-2">
-          <AlertTriangle size={15} className="text-rose-600" /> Account Controls &amp; Privacy (GDPR)
+          <AlertTriangle size={15} className="text-rose-600" /> Privacy (GDPR)
         </h2>
-        <p className="text-xs text-[#777587] mb-4">Manage your account deactivation or submit a GDPR Right to be Forgotten deletion request.</p>
-        <div className="flex gap-3 flex-wrap">
-          <button onClick={() => deactivate.mutate()} disabled={deactivate.isPending}
-            className="btn btn-outline btn-sm border-amber-300 text-amber-800 hover:bg-amber-50">
-            {deactivate.isPending ? 'Deactivating…' : 'Deactivate Account'}
-          </button>
-          <button onClick={() => setDelModal(true)} className="btn btn-danger btn-sm flex items-center gap-1.5">
-            <Trash2 size={13} /> Request Account Deletion (GDPR)
-          </button>
-        </div>
+        <p className="text-xs text-[#777587] mb-4">Submit a GDPR Right to be Forgotten request to permanently delete your profile data. HR will review your request.</p>
+        <button onClick={() => setDelModal(true)} className="btn btn-danger btn-sm flex items-center gap-1.5">
+          <Trash2 size={13} /> Request Account Deletion (GDPR)
+        </button>
       </div>
 
       <Modal open={delModal} onClose={() => setDelModal(false)} title="Request Account Deletion (GDPR)"

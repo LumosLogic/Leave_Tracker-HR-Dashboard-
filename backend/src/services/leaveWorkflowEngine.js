@@ -96,11 +96,26 @@ async function resolveApprover(level, employeeId, oId) {
     }
 
     case 'department_head': {
-      const empR = await pool.query(
-        `SELECT department_id FROM users WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+      // Try junction table first (primary), then fall back to users.department string
+      const junctR = await pool.query(
+        `SELECT ud.department_id FROM user_departments ud
+         WHERE ud.user_id = $1 AND ud.organization_id = $2
+         ORDER BY ud.created_at ASC LIMIT 1`,
         [employeeId, oId]
       );
-      const deptId = empR.rows[0]?.department_id;
+      let deptId = junctR.rows[0]?.department_id;
+
+      // Fallback: look up via users.department string name
+      if (!deptId) {
+        const nameR = await pool.query(
+          `SELECT d.id FROM users u
+           JOIN departments d ON d.name = u.department AND d.organization_id = u.organization_id
+           WHERE u.id = $1 AND u.organization_id = $2 LIMIT 1`,
+          [employeeId, oId]
+        );
+        deptId = nameR.rows[0]?.id;
+      }
+
       if (!deptId) return { userId: null, label };
       const deptR = await pool.query(
         `SELECT head_user_id FROM departments WHERE id = $1 AND organization_id = $2 LIMIT 1`,

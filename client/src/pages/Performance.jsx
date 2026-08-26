@@ -27,6 +27,7 @@ const REVIEW_STATUS_CFG = {
   pending:     { cls: 'badge-pending',   label: 'Pending',    strip: '#F59E0B' },
   in_progress: { cls: 'badge-pending',   label: 'In Progress',strip: '#3525cd' },
   completed:   { cls: 'badge-approved',  label: 'Completed',  strip: '#10B981' },
+  cancelled:   { cls: 'badge-cancelled', label: 'Cancelled',  strip: '#c7c4d8' },
 };
 
 function StarRating({ value, max = 5, onChange }) {
@@ -275,7 +276,8 @@ export default function Performance() {
   });
 
   const completedGoals = goals.filter(g => g.status === 'completed').length;
-  const avgProgress    = goals.length > 0 ? Math.min(100, Math.round(goals.reduce((s, g) => s + Math.min(100, Math.max(0, Number(g.progress) || 0)), 0) / goals.length)) : 0;
+  const activeGoals    = goals.filter(g => g.status !== 'cancelled');
+  const avgProgress    = activeGoals.length > 0 ? Math.min(100, Math.round(activeGoals.reduce((s, g) => s + Math.min(100, Math.max(0, Number(g.progress) || 0)), 0) / activeGoals.length)) : 0;
 
   return (
     <div className={wrap}>
@@ -343,11 +345,11 @@ export default function Performance() {
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 {isAdmin && <span className="text-xs text-[#777587]">{g.user_name}</span>}
-                                <span className="font-black text-[#151c27]">{g.title}</span>
+                                <span className="font-black text-[#151c27] break-words overflow-hidden max-w-[32rem] line-clamp-2">{g.title}</span>
                                 <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).cls}`}>{(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).label}</span>
                               </div>
-                              {g.description && <p className="text-xs text-[#777587] mt-1">{g.description}</p>}
+                              {g.description && <p className="text-xs text-[#777587] mt-1 break-words overflow-hidden line-clamp-3">{g.description}</p>}
                               {g.target_date && <p className="text-xs text-[#777587] mt-0.5">Target: <span className="font-semibold">{g.target_date}</span></p>}
                             </div>
                             <div className="flex gap-1 flex-shrink-0">

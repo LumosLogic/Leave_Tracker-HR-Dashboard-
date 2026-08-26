@@ -213,7 +213,7 @@ router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res
       // BUG_128: exclude HR/admin — report shows employees only
       // BUG_159: no status filter so all statuses included when "All" selected
       // BUG_129: select employee_status (authoritative column) + employment_type for normalisation
-      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, date_of_joining')
+      .select('employee_id, name, email, phone, gender, department, position, role, employment_type, employee_status, date_of_joining, created_at')
       .in('role', ['employee'])
       .eq('organization_id', oId)
       .order('name');
@@ -225,6 +225,7 @@ router.get('/employees', auth, hasPermission('reports', 'view'), async (req, res
       ...r,
       employment_type:   r.employment_type ? r.employment_type.replace(/-/g, '_').toLowerCase() : null,
       employment_status: r.employee_status || null,
+      date_of_joining:   r.date_of_joining || (r.created_at ? r.created_at.split('T')[0] : null),
     }));
 
     if (format === 'csv') {

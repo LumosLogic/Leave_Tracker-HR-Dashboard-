@@ -112,6 +112,7 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
             <span className={`text-[0.65rem] font-semibold ${contentLen > CONTENT_MAX ? 'text-rose-600' : 'text-[#777587]'}`}>{contentLen}/{CONTENT_MAX}</span>
           </div>
           <textarea className={`form-control ${errors.content ? 'border-rose-400' : ''}`} rows={4} placeholder="Write your announcement…" maxLength={CONTENT_MAX + 20} value={form.content} onChange={e => { set('content', e.target.value); if (errors.content) setErrors(p => ({ ...p, content: '' })); }} />
+          {errors.content && <p className="text-xs text-rose-500 mt-1">{errors.content}</p>}
         </div>
         <div>
           <label className="form-label">Type</label>
@@ -229,8 +230,8 @@ export default function AnnouncementsPage() {
 
   const today    = new Date().toISOString().split('T')[0];
   const filtered = filter === 'all' ? announcements : announcements.filter(a => a.type === filter);
-  const pinned   = filtered.filter(a => a.pinned);
-  const regular  = filtered.filter(a => !a.pinned);
+  const pinned   = filtered.filter(a => a.pinned && (!a.expires_at || a.expires_at >= today));
+  const regular  = filtered.filter(a => !a.pinned || (a.expires_at && a.expires_at < today));
 
   return (
     <div className={wrap}>
@@ -354,7 +355,7 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 flex-wrap">
                 {a.pinned && <Pin size={12} className="text-[#3525cd]" />}
-                <h3 className="font-black text-[#151c27]">{a.title}</h3>
+                <h3 className="font-black text-[#151c27] break-words overflow-hidden">{a.title}</h3>
                 <span className={`badge ${cfg.bg} ${cfg.text} ${cfg.border} border flex items-center gap-1`}>{cfg.icon}{cfg.label}</span>
                 {expired && <span className="badge badge-cancelled">Expired</span>}
               </div>
@@ -365,7 +366,7 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
                 </div>
               )}
             </div>
-            <p className="text-sm text-[#464555] whitespace-pre-wrap leading-relaxed mb-3">{a.content}</p>
+            <p className="text-sm text-[#464555] whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden max-h-48 overflow-y-auto">{a.content}</p>
 
             {/* Attached Poster or Document Display */}
             {a.file_url && (

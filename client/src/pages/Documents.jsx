@@ -9,6 +9,7 @@ import {
   ChevronDown, RotateCcw, FileCheck, UploadCloud,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
@@ -1538,7 +1539,9 @@ function VerificationQueueTab() {
 // ── Admin: Main Documents Page ────────────────────────────────────────────────
 function AdminDocumentsPage() {
   const qc = useQueryClient();
-  const [activeTab, setActiveTab]     = useState('shared');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'shared';
+  const [activeTab, setActiveTab]     = useState(initialTab);
   const [showUpload, setShowUpload]   = useState(false);
   const [showCreateReq, setShowCreateReq] = useState(false);
 

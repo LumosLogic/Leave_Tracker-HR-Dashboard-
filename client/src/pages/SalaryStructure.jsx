@@ -432,8 +432,9 @@ function ManualModal({ employee, onClose, onSaved }) {
       <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">{label}</label>
       <div className="relative">
         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
-        <input type="number" min={0} step="0.01" placeholder={placeholder} value={form[key]}
+        <input type="number" min={0} step="1" placeholder={placeholder} value={form[key]}
           onChange={e => set(key, e.target.value)}
+          onWheel={e => e.target.blur()}
           className="w-full border border-[#c7c4d8] rounded-lg pl-6 pr-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
         />
       </div>
@@ -483,6 +484,7 @@ function ManualModal({ employee, onClose, onSaved }) {
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
               <input type="number" min={0} step="1" placeholder="e.g. 50000" value={form.ctc_override}
                 onChange={e => set('ctc_override', e.target.value)}
+                onWheel={e => e.target.blur()}
                 className="w-full border border-[#c7c4d8] rounded-lg pl-6 pr-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
               />
             </div>

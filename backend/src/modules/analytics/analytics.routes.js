@@ -23,7 +23,7 @@ router.get('/', auth, adminOnly, async (req, res) => {
       supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
-      supabase.from('users').select('department, role, employment_type, position').eq('organization_id', orgId(req)).in('role', ['employee', 'admin']),
+      supabase.from('users').select('department, role, employment_type, position').eq('organization_id', orgId(req)).eq('role', 'employee').not('employee_status', 'in', '("inactive","resigned","terminated")'),
       supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from30).lte('date', today7),
       supabase.from('leave_policies').select('leave_type, annual_quota, label').eq('organization_id', orgId(req)).eq('active', true),
     ]);

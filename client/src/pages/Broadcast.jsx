@@ -119,7 +119,11 @@ export default function Broadcast() {
         url:            nUrl.trim() || '/',
         target_user_id: nTarget || null,
       });
-      toast(`Notification sent to ${res.sent} device${res.sent !== 1 ? 's' : ''}`, 'success');
+      if (res.sent === 0 && res.targeted > 0) {
+        toast(`Notification sent to ${res.targeted} employee${res.targeted !== 1 ? 's' : ''} (no active push subscriptions found — employees may need to enable notifications in Settings).`, 'warning');
+      } else {
+        toast(`Notification sent to ${res.sent} device${res.sent !== 1 ? 's' : ''} (${res.targeted ?? res.sent} employee${(res.targeted ?? res.sent) !== 1 ? 's' : ''} targeted).`, 'success');
+      }
       setNTitle(''); setNBody(''); setNUrl(''); setNTarget(''); setNErrors({});
     } catch (err) { toast(err.message, 'error'); }
     finally { setNSending(false); }

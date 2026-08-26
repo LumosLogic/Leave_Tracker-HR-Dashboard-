@@ -55,15 +55,19 @@ router.get('/overview', auth, async (req, res) => {
     if (rows.length === 0) return res.json([]);
 
     const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+    // BUG_158: exclude inactive/resigned/terminated employees from onboarding list
     const { data: users } = await supabase.from('users')
-      .select('id, name, avatar_color, department, date_of_joining').in('id', userIds);
+      .select('id, name, avatar_color, department, date_of_joining, employee_status')
+      .in('id', userIds)
+      .not('employee_status', 'in', '("inactive","resigned","terminated")');
     const uMap = {};
     (users || []).forEach(u => { uMap[u.id] = u; });
 
     const grouped = {};
     rows.forEach(task => {
       const uid = task.user_id;
-      if (!grouped[uid]) grouped[uid] = { user: uMap[uid] || { id: uid }, tasks: [], completed: 0, total: 0 };
+      if (!uMap[uid]) return; // skip inactive/terminated employees (not in uMap)
+      if (!grouped[uid]) grouped[uid] = { user: uMap[uid], tasks: [], completed: 0, total: 0 };
       grouped[uid].tasks.push(task);
       grouped[uid].total++;
       if (task.completed) grouped[uid].completed++;

@@ -169,6 +169,15 @@ router.put('/org/settings', auth, async (req, res) => {
       .select('id, name, slug, domain, logo_url, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status').single();
     if (error) throw new Error(error.message);
 
+    // BUG_147: sync annual leave policy quota when total_annual_leaves changes
+    if (update.total_annual_leaves) {
+      await supabase.from('leave_policies')
+        .update({ annual_quota: update.total_annual_leaves })
+        .eq('organization_id', targetOrgId)
+        .eq('leave_type', 'annual')
+        .eq('active', true);
+    }
+
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

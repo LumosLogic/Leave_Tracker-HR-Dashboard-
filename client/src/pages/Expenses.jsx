@@ -324,9 +324,9 @@ export default function ExpensesPage() {
     onError: e => toast(e.message, 'error'),
   });
 
-  const totalAmt   = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const pendingAmt = expenses.filter(e => ['pending','manager_approved'].includes(e.status)).reduce((s, e) => s + Number(e.amount || 0), 0);
-  const approvedAmt= expenses.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount || 0), 0);
+  const totalAmt   = allExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const pendingAmt = allExpenses.filter(e => ['pending','manager_approved'].includes(e.status)).reduce((s, e) => s + Number(e.amount || 0), 0);
+  const approvedAmt= allExpenses.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount || 0), 0);
 
   return (
     <div className={wrap}>

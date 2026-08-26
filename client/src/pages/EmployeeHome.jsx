@@ -454,7 +454,7 @@ export default function EmployeeHome() {
     .slice(0, 7);
 
   const pendingReg    = regularizations.filter(r => r.status === 'pending');
-  const pendingLeaves = myLeaves.filter(l => ['pending', 'pending_dept', 'pending_root'].includes(l.status) && !isWFHRecord(l));
+  const pendingLeaves = myLeaves.filter(l => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(l.status) && !isWFHRecord(l));
   const recentLeaves  = myLeaves.slice(0, 4);
   const upcomingLeaves = myLeaves
     .filter(l => l.status === 'approved' && l.start_date >= today && !isWFHRecord(l))
