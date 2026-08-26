@@ -56,12 +56,26 @@ router.get('/overview', auth, async (req, res) => {
 
     const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
     // BUG_158: exclude inactive/resigned/terminated employees from onboarding list
+    // joining_date (DATE, sanghavi_migration) exists on Relitrade; date_of_joining (TEXT,
+    // hrms_full_migration) exists on all deployments. Probe once and prefer joining_date.
+    const colCheck = await pool.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'users' AND column_name = 'joining_date' LIMIT 1
+    `);
+    const joinCol = colCheck.rows.length > 0 ? 'joining_date' : 'date_of_joining';
+
     const { data: users } = await supabase.from('users')
-      .select('id, name, avatar_color, department, date_of_joining, employee_status')
+      .select(`id, name, avatar_color, department, ${joinCol}, employee_status`)
       .in('id', userIds)
       .not('employee_status', 'in', '("inactive","resigned","terminated")');
     const uMap = {};
-    (users || []).forEach(u => { uMap[u.id] = u; });
+    (users || []).forEach(u => {
+      // Normalize to joining_date so the frontend field name is always consistent
+      if (joinCol === 'date_of_joining' && u.date_of_joining !== undefined) {
+        u.joining_date = u.date_of_joining;
+      }
+      uMap[u.id] = u;
+    });
 
     const grouped = {};
     rows.forEach(task => {
