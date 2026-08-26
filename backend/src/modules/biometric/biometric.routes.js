@@ -7,7 +7,7 @@ const { invalidateBiometricIpCache } = require('../../middleware/biometricIpGuar
 const { scheduleSyncForSn } = require('./biometricHeartbeat.handler');
 const { processAttlogLine } = require('./biometricPush.handler');
 const biometricEmitter = require('../../utils/biometricEmitter');
-const { reprocessPin } = require('./biometricReprocess.util');
+const { reprocessPin, reprocessPinForDates } = require('./biometricReprocess.util');
 const { importEasyWDMS, previewEasyWDMS } = require('./biometricEasyWDMSImport.handler');
 const { getOrgPolicy }   = require('../../utils/orgPolicy');
 const { activateJob, getActiveJobForSn } = require('./biometricHistoricalSync.handler');
@@ -780,6 +780,105 @@ router.get('/historical-sync-jobs/:jobId', auth, adminOnly, async (req, res) => 
     }
 
     res.json(job);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /api/biometric/historical-sync-jobs/:jobId/reprocess ───────────────
+// Scoped reprocess: re-runs attendance calculation for ONLY the employees+dates
+// affected by this historical sync job — unrelated unprocessed logs are untouched.
+//
+// Safety rules:
+//   • job must be dry_run=false and status='completed'
+//   • Uses reprocessPinForDates() which reuses applyFILODay() exactly
+//   • Idempotent: processed=true records are skipped (already processed)
+//   • Retry-safe: imported raw logs are NOT deleted if reprocess fails
+router.post('/historical-sync-jobs/:jobId/reprocess', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+
+    const jobRes = await pool.query(
+      `SELECT id, org_id, serial_number, from_date, to_date, dry_run, status,
+              records_inserted, reprocess_status
+       FROM biometric_historical_sync_jobs
+       WHERE id = $1 AND org_id = $2`,
+      [req.params.jobId, orgId]
+    );
+    if (!jobRes.rows.length) return res.status(404).json({ error: 'Job not found' });
+    const job = jobRes.rows[0];
+
+    if (job.dry_run) return res.status(400).json({ error: 'Cannot reprocess a dry-run job — run a real sync first.' });
+    if (job.status !== 'completed') return res.status(400).json({ error: `Job is not completed yet (status=${job.status})` });
+    if (job.reprocess_status === 'running') return res.status(409).json({ error: 'Reprocess already running for this job.' });
+
+    // Mark reprocess as started
+    await pool.query(
+      `UPDATE biometric_historical_sync_jobs SET reprocess_status = 'running', reprocess_started_at = NOW()
+       WHERE id = $1`,
+      [job.id]
+    ).catch(() => {}); // column may not exist yet — graceful degradation
+
+    // Find all distinct PINs that have records in this job's date range and device
+    const pinsRes = await pool.query(
+      `SELECT DISTINCT employee_pin
+       FROM biometric_raw_logs
+       WHERE device_serial = $1
+         AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $2 AND $3
+         AND source = 'historical_recovery'
+       ORDER BY employee_pin`,
+      [job.serial_number, job.from_date, job.to_date]
+    );
+
+    const pins = pinsRes.rows.map(r => r.employee_pin);
+    if (!pins.length) {
+      await pool.query(
+        `UPDATE biometric_historical_sync_jobs
+         SET reprocess_status = 'completed', reprocess_completed_at = NOW(),
+             employees_reprocessed = 0, attendance_records_updated = 0
+         WHERE id = $1`,
+        [job.id]
+      ).catch(() => {});
+      return res.json({ ok: true, employees_reprocessed: 0, total_logs: 0, attendance_updated: 0 });
+    }
+
+    // Respond immediately — scoped reprocess runs in background
+    res.json({
+      ok: true,
+      message: `Reprocessing ${pins.length} employee(s) for ${job.from_date} → ${job.to_date}`,
+      pins_count: pins.length,
+      job_id: job.id,
+    });
+
+    setImmediate(async () => {
+      let totalLogs = 0;
+      let totalAttendance = 0;
+      let errors = 0;
+
+      for (const pin of pins) {
+        try {
+          const r = await reprocessPinForDates(orgId, pin, job.from_date, job.to_date);
+          if (!r.noMapping) {
+            totalLogs       += r.total;
+            totalAttendance += r.attendance_updated;
+          }
+        } catch (err) {
+          errors++;
+          console.error(`[historical-reprocess] job=${job.id} PIN=${pin} error:`, err.message);
+        }
+      }
+
+      console.log(
+        `[historical-reprocess] job=${job.id} done — ` +
+        `pins=${pins.length} logs=${totalLogs} attendance=${totalAttendance} errors=${errors}`
+      );
+
+      await pool.query(
+        `UPDATE biometric_historical_sync_jobs
+         SET reprocess_status = $1, reprocess_completed_at = NOW(),
+             employees_reprocessed = $2, attendance_records_updated = $3
+         WHERE id = $4`,
+        [errors > 0 ? 'partial' : 'completed', pins.length, totalAttendance, job.id]
+      ).catch(() => {});
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

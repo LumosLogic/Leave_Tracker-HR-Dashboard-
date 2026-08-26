@@ -164,24 +164,31 @@ function HistoricalSyncModal({ device, open, onClose }) {
       title={form.dry_run && !jobId ? 'Historical Sync — Preview Mode' : 'Historical Sync'}
       size="md"
       footer={
-        <div className="flex justify-end gap-3">
-          {!jobId ? (
-            <>
-              <button className="btn btn-outline" onClick={handleClose}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => startMut.mutate()}
-                disabled={startMut.isPending || !form.from || !form.to || form.from > form.to}>
-                {startMut.isPending
-                  ? <><span className="spinner w-4 h-4" />Starting…</>
-                  : form.dry_run ? 'Run Preview' : 'Start Historical Sync'}
-              </button>
-            </>
-          ) : (isCompleted || isFailed) ? (
-            <button className="btn btn-outline" onClick={handleClose}>Close</button>
-          ) : (
-            <button className="btn btn-outline" onClick={handleClose}>Close (sync continues in background)</button>
-          )}
+        <div className="flex justify-between gap-3">
+          <button
+            className="btn btn-ghost btn-sm text-[#777587] gap-1.5"
+            onClick={() => { handleClose(); navigate(`/biometric/historical-sync?device=${device.id}`); }}>
+            <History size={14} /> Full Workflow
+          </button>
+          <div className="flex gap-3">
+            {!jobId ? (
+              <>
+                <button className="btn btn-outline" onClick={handleClose}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => startMut.mutate()}
+                  disabled={startMut.isPending || !form.from || !form.to || form.from > form.to}>
+                  {startMut.isPending
+                    ? <><span className="spinner w-4 h-4" />Starting…</>
+                    : form.dry_run ? 'Run Preview' : 'Start Historical Sync'}
+                </button>
+              </>
+            ) : (isCompleted || isFailed) ? (
+              <button className="btn btn-outline" onClick={handleClose}>Close</button>
+            ) : (
+              <button className="btn btn-outline" onClick={handleClose}>Close (sync continues in background)</button>
+            )}
+          </div>
         </div>
       }>
 

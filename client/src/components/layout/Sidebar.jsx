@@ -5,10 +5,10 @@ import {
   Building2, CalendarDays, Shield, ClipboardList, BarChart3, FolderOpen,
   DollarSign, Monitor, Receipt, Megaphone, Clock, Target, UserCheck, LogOut as Exit,
   Bell, Fingerprint, Link2, ScrollText, X, Search, Play, IndianRupee, Radio,
-  PieChart, FileBarChart, ShieldCheck, ChevronDown, ChevronRight,
+  PieChart, FileBarChart, ShieldCheck, ChevronDown, ChevronRight, History,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { FeatureFlagContext } from '@/context/FeatureFlagContext';
+import { FeatureFlagContext, FeatureFlagsLoadedContext } from '@/context/FeatureFlagContext';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api';
 import { initials, cn } from '@/lib/utils';
@@ -42,7 +42,8 @@ const BIOMETRIC_ITEMS = [
   { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
   { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,       adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
-  { to: '/biometric/settings',  label: 'Settings',    Icon: Settings,    adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
+  { to: '/biometric/settings',         label: 'Settings',        Icon: Settings,  adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
+  { to: '/biometric/historical-sync',  label: 'Historical Sync', Icon: History,   adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
 ];
 
 // Payroll sub-items (shown inside dropdown)
@@ -108,9 +109,10 @@ function NavItem({ to, label, Icon, badge, onClose }) {
 // ── Payroll dropdown group ───────────────────────────────────────────────────
 function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' }) {
   const featureFlags = useContext(FeatureFlagContext);
+  const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
   const location     = useLocation();
 
-  const payrollEnabled = featureKey in featureFlags ? featureFlags[featureKey] : true;
+  const payrollEnabled = !flagsLoaded ? false : (featureKey in featureFlags ? featureFlags[featureKey] : true);
   const payrollPaths   = ['/payroll', ...PAYROLL_SUB_ITEMS.map(i => i.to)];
   const isChildActive  = payrollPaths.some(p => location.pathname.startsWith(prefix + p));
 
@@ -173,11 +175,13 @@ function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' })
 // ── Generic NavSection ───────────────────────────────────────────────────────
 function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', unreadCount = 0 }) {
   const featureFlags = useContext(FeatureFlagContext);
+  const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
   const filtered = items.filter(i => {
     if (i.adminOnly && !isAdmin) return false;
     if (i.hideFromRootAdmin && isRootAdmin) return false;
     if (i.rootAdminOnly && !isRootAdmin) return false;
     if (i.featureKey) {
+      if (!flagsLoaded) return false; // hide until flags are loaded
       const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
       if (!enabled) return false;
     }
@@ -203,17 +207,19 @@ function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', 
 // ── Finance section: Payroll dropdown + other finance items ──────────────────
 function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
   const featureFlags = useContext(FeatureFlagContext);
+  const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
 
   const otherFiltered = OTHER_FINANCE_ITEMS.filter(i => {
     if (i.adminOnly && !isAdmin) return false;
     if (i.featureKey) {
+      if (!flagsLoaded) return false;
       const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
       if (!enabled) return false;
     }
     return true;
   });
 
-  const payrollEnabled = 'payroll' in featureFlags ? featureFlags['payroll'] : true;
+  const payrollEnabled = !flagsLoaded ? false : ('payroll' in featureFlags ? featureFlags['payroll'] : true);
 
   if (!payrollEnabled && !otherFiltered.length) return null;
 

@@ -270,4 +270,168 @@ async function reprocessPin(orgId, employeePin) {
   return { processed, total: logsRes.rows.length, noMapping: false };
 }
 
-module.exports = { reprocessPin, applyFILODay };
+/**
+ * Reprocess biometric_raw_logs for a specific employee PIN constrained to a date range.
+ * Used by the Historical Sync workflow to process ONLY the dates that were just imported —
+ * unrelated unprocessed logs outside the date range are NOT touched.
+ *
+ * Reuses applyFILODay() and all existing leave guards, attendance upsert logic, and
+ * policy routing identically to reprocessPin() — no second attendance calculation exists.
+ *
+ * fromDate / toDate: 'YYYY-MM-DD' strings (inclusive, IST)
+ * Returns { processed, total, noMapping, attendance_updated }
+ */
+async function reprocessPinForDates(orgId, employeePin, fromDate, toDate) {
+  const [mapRes, policy] = await Promise.all([
+    pool.query(
+      `SELECT user_id FROM biometric_employee_map
+       WHERE org_id = $1 AND employee_pin = $2 LIMIT 1`,
+      [orgId, String(employeePin)]
+    ),
+    getOrgPolicy(orgId),
+  ]);
+
+  if (!mapRes.rows.length) return { processed: 0, total: 0, noMapping: true, attendance_updated: 0 };
+  const userId = mapRes.rows[0].user_id;
+
+  let attendanceUpdated = 0;
+
+  // ── FILO mode ────────────────────────────────────────────────────────────────
+  if (policy === 'first_in_last_out') {
+    const wsRes = await pool.query(
+      `SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
+      [orgId]
+    );
+    const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+    const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
+
+    // Only dates within the requested range that have unprocessed logs
+    const datesRes = await pool.query(
+      `SELECT DISTINCT punch_time::date AS d
+       FROM biometric_raw_logs
+       WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+         AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
+       ORDER BY d`,
+      [orgId, String(employeePin), fromDate, toDate]
+    );
+    if (!datesRes.rows.length) return { processed: 0, total: 0, noMapping: false, attendance_updated: 0 };
+
+    let processed = 0;
+    for (const { d: date } of datesRes.rows) {
+      const allLogsRes = await pool.query(
+        `SELECT id, punch_time, punch_type, processed
+         FROM biometric_raw_logs
+         WHERE org_id = $1 AND employee_pin = $2
+           AND punch_time >= $3::date
+           AND punch_time <  $3::date + INTERVAL '1 day'
+         ORDER BY punch_time`,
+        [orgId, String(employeePin), date]
+      );
+      const dayLogs         = allLogsRes.rows;
+      const unprocessedLogs = dayLogs.filter(l => !l.processed);
+      if (!unprocessedLogs.length) continue;
+
+      // Leave guard — identical to reprocessPin (on_leave + wfh skip; half_day is NOT guarded)
+      const attRes = await pool.query(
+        `SELECT id, status FROM attendance WHERE user_id = $1 AND date = $2 LIMIT 1`,
+        [userId, date]
+      );
+      const att = attRes.rows[0] || null;
+
+      if (att && ['on_leave', 'wfh'].includes(att.status)) {
+        await pool.query(
+          `UPDATE biometric_raw_logs SET processed = true
+           WHERE org_id = $1 AND employee_pin = $2
+             AND punch_time::date = $3 AND processed = false`,
+          [orgId, String(employeePin), date]
+        );
+        processed += unprocessedLogs.length;
+        continue;
+      }
+
+      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime);
+      attendanceUpdated++;
+
+      await pool.query(
+        `UPDATE biometric_raw_logs SET processed = true
+         WHERE org_id = $1 AND employee_pin = $2
+           AND punch_time::date = $3 AND processed = false`,
+        [orgId, String(employeePin), date]
+      );
+      processed += unprocessedLogs.length;
+    }
+
+    return { processed, total: processed, noMapping: false, attendance_updated: attendanceUpdated };
+  }
+
+  // ── Standard mode — date-filtered variant of reprocessPin ───────────────────
+  const logsRes = await pool.query(
+    `SELECT * FROM biometric_raw_logs
+     WHERE org_id = $1 AND employee_pin = $2 AND processed = false
+       AND DATE(punch_time AT TIME ZONE 'Asia/Kolkata') BETWEEN $3 AND $4
+     ORDER BY punch_time`,
+    [orgId, String(employeePin), fromDate, toDate]
+  );
+
+  let processed = 0;
+  for (const log of logsRes.rows) {
+    const punchDate    = new Date(log.punch_time).toISOString().slice(0, 10);
+    const punchTimeStr = new Date(log.punch_time).toTimeString().slice(0, 8);
+
+    const attRes = await pool.query(
+      `SELECT id, status, check_in, total_break_minutes FROM attendance
+       WHERE user_id = $1 AND date = $2 LIMIT 1`,
+      [userId, punchDate]
+    );
+    const att = attRes.rows[0] || null;
+
+    if (att && ['on_leave', 'half_day', 'wfh'].includes(att.status)) {
+      await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [log.id]);
+      processed++;
+      continue;
+    }
+
+    if (log.punch_type === 0 || log.punch_type === '0') {
+      if (!att) {
+        await pool.query(
+          `INSERT INTO attendance (user_id, date, check_in, status, source, organization_id)
+           VALUES ($1, $2, $3, 'present', 'biometric', $4)
+           ON CONFLICT (user_id, date, organization_id) DO NOTHING`,
+          [userId, punchDate, punchTimeStr, orgId]
+        );
+        attendanceUpdated++;
+      }
+    } else if (log.punch_type === 1 || log.punch_type === '1') {
+      if (att && att.check_in) {
+        const checkInMs  = new Date(`${punchDate}T${att.check_in}`).getTime();
+        const checkOutMs = new Date(log.punch_time).getTime();
+        const grossHours = parseFloat(((checkOutMs - checkInMs) / 3600000).toFixed(2));
+        const breakMins  = att.total_break_minutes || 0;
+        const workHours  = parseFloat(Math.max(0, grossHours - breakMins / 60).toFixed(2));
+        await pool.query(
+          `UPDATE attendance
+           SET check_out = $1, gross_hours = $2, work_hours = $3, source = 'biometric'
+           WHERE id = $4`,
+          [punchTimeStr, grossHours, workHours, att.id]
+        );
+        attendanceUpdated++;
+      } else if (!att) {
+        await pool.query(
+          `INSERT INTO attendance (user_id, date, check_out, status, source, organization_id)
+           VALUES ($1, $2, $3, 'present', 'biometric', $4)
+           ON CONFLICT (user_id, date, organization_id) DO UPDATE
+             SET check_out = EXCLUDED.check_out, source = 'biometric'`,
+          [userId, punchDate, punchTimeStr, orgId]
+        );
+        attendanceUpdated++;
+      }
+    }
+
+    await pool.query(`UPDATE biometric_raw_logs SET processed = true WHERE id = $1`, [log.id]);
+    processed++;
+  }
+
+  return { processed, total: logsRes.rows.length, noMapping: false, attendance_updated: attendanceUpdated };
+}
+
+module.exports = { reprocessPin, applyFILODay, reprocessPinForDates };

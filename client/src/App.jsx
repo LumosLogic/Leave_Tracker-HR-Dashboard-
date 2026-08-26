@@ -58,7 +58,8 @@ import BiometricDevices      from '@/pages/BiometricDevices';
 import BiometricPinMapping   from '@/pages/BiometricPinMapping';
 import BiometricLogs         from '@/pages/BiometricLogs';
 import BiometricLiveLogs     from '@/pages/BiometricLiveLogs';
-import BiometricSettings     from '@/pages/BiometricSettings';
+import BiometricSettings        from '@/pages/BiometricSettings';
+import BiometricHistoricalSync  from '@/pages/BiometricHistoricalSync';
 import PendingApprovals      from '@/pages/PendingApprovals';
 import RoleManagement        from '@/pages/RoleManagement';
 import PermissionMatrix      from '@/pages/PermissionMatrix';
@@ -243,10 +244,11 @@ function AppRoutes() {
         <Route path="/profile"            element={<MyProfile />} />
         <Route path="/pending-approvals"  element={<PendingApprovals />} />
         <Route path="/branches"           element={<FeatureRoute featureKey="branches"><Branches /></FeatureRoute>} />
-        <Route path="/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
-        <Route path="/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
-        <Route path="/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
-        <Route path="/biometric/settings" element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
+        <Route path="/biometric/devices"         element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/biometric/mapping"         element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/biometric/logs"            element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/biometric/settings"        element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
+        <Route path="/biometric/historical-sync" element={<FeatureRoute featureKey="biometric"><BiometricHistoricalSync /></FeatureRoute>} />
       </Route>
 
       {/* ── Root Admin area (root_admin only) ── */}
@@ -291,10 +293,12 @@ function AppRoutes() {
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
         <Route path="/root/org-settings"    element={<OrgSettings />} />
-        <Route path="/root/biometric/devices" element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
-        <Route path="/root/biometric/mapping" element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
-        <Route path="/root/biometric/logs"    element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
-        <Route path="/root/biometric/live-logs" element={<FeatureRoute featureKey="biometric"><BiometricLiveLogs /></FeatureRoute>} />
+        <Route path="/root/biometric/devices"         element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
+        <Route path="/root/biometric/mapping"         element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
+        <Route path="/root/biometric/logs"            element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />
+        <Route path="/root/biometric/live-logs"       element={<FeatureRoute featureKey="biometric"><BiometricLiveLogs /></FeatureRoute>} />
+        <Route path="/root/biometric/settings"        element={<FeatureRoute featureKey="biometric"><BiometricSettings /></FeatureRoute>} />
+        <Route path="/root/biometric/historical-sync" element={<FeatureRoute featureKey="biometric"><BiometricHistoricalSync /></FeatureRoute>} />
       </Route>
 
       {/* ── Employee portal (employee only) ── */}

@@ -5,11 +5,11 @@ import {
   UserCircle, Bell, Building2, ClipboardList, CalendarDays, Shield, Clock,
   DollarSign, Receipt, Monitor, BarChart3, Target, FolderOpen, UserCheck, Megaphone,
   Radio, Fingerprint, Link2, ScrollText, Menu, X, Search, KeyRound, Terminal,
-  PieChart, Play, FileBarChart, IndianRupee, ShieldAlert,
+  PieChart, Play, FileBarChart, IndianRupee, ShieldAlert, History,
   ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { FeatureFlagContext } from '@/context/FeatureFlagContext';
+import { FeatureFlagContext, FeatureFlagsLoadedContext } from '@/context/FeatureFlagContext';
 import { Header } from './Header';
 import { initials, cn } from '@/lib/utils';
 import { useTour } from '@/hooks/useTour';
@@ -57,9 +57,11 @@ const NAV_SECTIONS = [
     { to: '/root/shifts',         label: 'Shifts & Roster', Icon: Clock },
   ]},
   { id: 'tour-nav-biometric', title: 'Biometric', items: [
-    { to: '/root/biometric/devices', label: 'Devices',     Icon: Fingerprint, featureKey: 'biometric' },
-    { to: '/root/biometric/mapping', label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
-    { to: '/root/biometric/logs',    label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
+    { to: '/root/biometric/devices',  label: 'Devices',     Icon: Fingerprint, featureKey: 'biometric' },
+    { to: '/root/biometric/mapping',  label: 'PIN Mapping', Icon: Link2,       featureKey: 'biometric' },
+    { to: '/root/biometric/logs',     label: 'Punch Logs',  Icon: ScrollText,  featureKey: 'biometric' },
+    { to: '/root/biometric/settings',        label: 'Settings',        Icon: Settings, featureKey: 'biometric' },
+    { to: '/root/biometric/historical-sync', label: 'Historical Sync', Icon: History,  featureKey: 'biometric' },
   ]},
   // Finance is handled by RootFinanceSection — this sentinel keeps the position
   { id: 'tour-nav-finance', title: null, items: [] },
@@ -93,8 +95,9 @@ const navLinkClass = ({ isActive }) => cn(
 function RootPayrollGroup({ onClose }) {
   const location      = useLocation();
   const featureFlags  = useContext(FeatureFlagContext);
+  const flagsLoaded   = useContext(FeatureFlagsLoadedContext);
 
-  const payrollEnabled = 'payroll' in featureFlags ? featureFlags['payroll'] : true;
+  const payrollEnabled = !flagsLoaded ? false : ('payroll' in featureFlags ? featureFlags['payroll'] : true);
   const payrollPaths   = ROOT_PAYROLL_SUB_ITEMS.map(i => i.to);
   const isChildActive  = payrollPaths.some(p => location.pathname.startsWith(p));
 
@@ -153,10 +156,12 @@ function RootPayrollGroup({ onClose }) {
 // ── Finance section: Payroll dropdown + other items ───────────────────────────
 function RootFinanceSection({ onClose, unread }) {
   const featureFlags  = useContext(FeatureFlagContext);
-  const payrollEnabled = 'payroll' in featureFlags ? featureFlags['payroll'] : true;
+  const flagsLoaded   = useContext(FeatureFlagsLoadedContext);
+  const payrollEnabled = !flagsLoaded ? false : ('payroll' in featureFlags ? featureFlags['payroll'] : true);
 
   const otherItems = ROOT_OTHER_FINANCE_ITEMS.filter(i => {
     if (!i.featureKey) return true;
+    if (!flagsLoaded) return false;
     return i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
   });
 
@@ -186,6 +191,7 @@ function RootFinanceSection({ onClose, unread }) {
 function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
   const { user, logout, organization } = useAuth();
   const featureFlags = useContext(FeatureFlagContext);
+  const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
   const navigate = useNavigate();
 
   const { data: countData } = useQuery({
@@ -238,6 +244,7 @@ function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
 
           const visibleItems = sec.items.filter(i => {
             if (!i.featureKey) return true;
+            if (!flagsLoaded) return false; // hide feature-gated items until flags load
             return i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
           });
           if (!visibleItems.length) return null;
