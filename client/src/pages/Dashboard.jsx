@@ -798,8 +798,8 @@ export default function Dashboard() {
     {
       label: 'WFH Today', value: wfh, hint: pct(wfh), hintGreen: false,
       icon: <Home size={18} />, iconBg: 'bg-sky-50', iconColor: 'text-sky-600',
-      // BUG_055: Navigate to WFH-specific filtered view
-      onClick: () => navigate(`/leaves?status=approved&filter=wfh&date=${todayStr()}`),
+      // BUG_055: Navigate to WFH tab filtered to today
+      onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`),
     },
     {
       label: 'Checked In', value: checked, hint: pct(checked), hintGreen: false,
@@ -810,7 +810,10 @@ export default function Dashboard() {
       label: 'Pending Approvals', value: pending,
       hint: pending === 0 ? 'No pending' : 'Needs attention', hintGreen: false, alert: pending > 0,
       icon: <ClipboardList size={18} />, iconBg: pending > 0 ? 'bg-rose-50' : 'bg-slate-50', iconColor: pending > 0 ? 'text-rose-500' : 'text-slate-400',
-      onClick: () => navigate('/pending-approvals'),
+      onClick: () => {
+        if (pending === 0) { toast('No pending approvals at this time.', 'info'); return; }
+        navigate('/pending-approvals');
+      },
     },
   ];
 

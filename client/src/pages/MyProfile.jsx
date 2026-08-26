@@ -445,7 +445,8 @@ export default function MyProfile() {
             </div>
             <div>
               <label className="form-label flex items-center gap-1.5"><Mail size={12} /> Email Address</label>
-              <input className="form-control" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+              <input className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]" type="email" value={email} readOnly />
+              <p className="text-[0.68rem] text-[#777587] mt-1">Login email cannot be changed here. Contact your administrator to update it.</p>
             </div>
           </div>
 

@@ -179,7 +179,11 @@ export default function NotificationCenter() {
                               return;
                             }
                             const link = TYPE_LINK[n.type];
-                            if (link) navigate(link);
+                            if (link) {
+                              // BUG_094: pass reference_id so target page can highlight the item
+                              const qs = n.reference_id ? `?highlight=${n.reference_id}` : '';
+                              navigate(`${link}${qs}`);
+                            }
                           }}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">

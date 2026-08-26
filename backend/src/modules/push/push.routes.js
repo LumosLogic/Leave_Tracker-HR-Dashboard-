@@ -5,6 +5,14 @@ const { auth, adminOnly } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendPushToUsers } = require('../../services/pushService');
 
+// ─── Push: VAPID status — let frontend know if push is server-configured ─────
+router.get('/vapid-status', auth, (req, res) => {
+  res.json({
+    configured: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY),
+    public_key: process.env.VAPID_PUBLIC_KEY || null,
+  });
+});
+
 // ─── Push: Subscribe ──────────────────────────────────────────────────────────
 router.post('/subscribe', auth, async (req, res) => {
   try {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Building2, Mail, Calendar, Bell, Shield, Save, Eye, EyeOff, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
@@ -92,12 +92,20 @@ export default function OrgSettings() {
   const isDirty = React.useMemo(() => {
     if (Object.keys(savedForm).length === 0) return false;
     return Object.keys(form).some(k => {
-      // Password/secret fields start blank; only dirty if user entered a value
+      if (k === 'name') return false; // company name is read-only
       const secretFields = ['google_client_secret', 'google_refresh_token', 'vapid_private_key'];
       if (secretFields.includes(k)) return (form[k] || '') !== '';
       return String(form[k] ?? '') !== String(savedForm[k] ?? '');
     });
   }, [form, savedForm]);
+
+  // BUG_150: warn on browser-level navigation (refresh, tab close, external link)
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // Sync loaded data into form once
   React.useEffect(() => {
@@ -237,7 +245,8 @@ export default function OrgSettings() {
       <Section icon={<Building2 size={18} />} title="Organization Profile" subtitle="Basic company information" defaultOpen>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Company Name">
-            <input className="form-control" value={form.name || ''} onChange={e => set('name', e.target.value)} placeholder="Acme Corp" />
+            <input className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]" value={form.name || ''} readOnly placeholder="Acme Corp" />
+            <p className="text-[0.68rem] text-[#777587] mt-1">Company name is a registered attribute. Contact your Platform Admin to request a name change.</p>
           </Field>
           <Field label="Company Domain" inlineHint="Used for email auto-detection">
             <input className={`form-control ${orgErrors.domain ? 'border-rose-400' : ''}`} value={form.domain || ''} onChange={e => { set('domain', e.target.value); setOrgErrors(p => ({ ...p, domain: undefined })); }} placeholder="acmecorp.com" />

@@ -446,7 +446,11 @@ export default function RoleManagement() {
     showToast(`Role "${updatedRole.name}" updated`, 'success');
   }
 
+  // BUG_25: Root Admin has all permissions by default; Employee uses self-service dashboard only.
+  // Only HR Admin and Department Head need configurable permission management.
   const systemRoles = roles.filter(r => r.is_system_role);
+  const configurableSystemRoles = systemRoles.filter(r => !['root_admin', 'employee'].includes(r.slug));
+  const lockedSystemRoles = systemRoles.filter(r => ['root_admin', 'employee'].includes(r.slug));
   const customRoles = roles.filter(r => !r.is_system_role);
 
   return (
@@ -501,15 +505,35 @@ export default function RoleManagement() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* System Roles */}
+          {/* Configurable System Roles — HR Admin & Department Head */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield size={14} className="text-[#3525cd]" />
+              <h2 className="text-xs font-black uppercase tracking-widest text-[#777587]">Configurable Roles</h2>
+              <span className="text-xs text-[#777587] font-medium">— manage permissions for these roles</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {configurableSystemRoles.map(role => (
+                <RoleCard
+                  key={role.id}
+                  role={role}
+                  onDelete={(id) => deleteMutation.mutateAsync(id)}
+                  onClick={handleRoleClick}
+                  onEdit={setEditRole}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Locked System Roles — Root Admin & Employee */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Lock size={14} className="text-[#777587]" />
-              <h2 className="text-xs font-black uppercase tracking-widest text-[#777587]">System Roles</h2>
-              <span className="text-xs text-[#777587] font-medium">— seeded automatically, cannot be deleted</span>
+              <h2 className="text-xs font-black uppercase tracking-widest text-[#777587]">Fixed System Roles</h2>
+              <span className="text-xs text-[#777587] font-medium">— predefined access, click to view</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {systemRoles.map(role => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {lockedSystemRoles.map(role => (
                 <RoleCard
                   key={role.id}
                   role={role}

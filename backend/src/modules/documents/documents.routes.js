@@ -119,7 +119,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/documents/upload
-router.post('/upload', auth, upload.single('file'), async (req, res) => {
+router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single('file'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });

@@ -35,7 +35,7 @@ const EMPLOYEE_ADMIN_COLS = EMPLOYEE_PUBLIC_COLS + ', aadhar_no, pan_number, uan
 // the Employees management page itself so HR can explicitly filter for them).
 const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
 
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, hasPermission('employees', 'view'), async (req, res) => {
   try {
     // root_admin sees all non-root users (HR admins + employees); others see only employees
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];

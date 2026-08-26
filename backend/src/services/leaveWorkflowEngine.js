@@ -170,7 +170,13 @@ async function checkCanApprove(leave, userId, userRole) {
 
   const workflow = await getOrgWorkflow(leave.organization_id);
   const currentLevel = workflow.levels.find(l => l.level_number === leave.current_level);
-  if (!currentLevel) return { can: false, level: null };
+
+  // BUG_169: if the workflow was updated after leave submission, current_level may not
+  // match any level — allow any admin as a fallback so the leave doesn't get stuck.
+  if (!currentLevel) {
+    const isAdmin = ['admin', 'root_admin'].includes(userRole);
+    return { can: isAdmin, level: null };
+  }
 
   const can = canUserApproveLevel(currentLevel, userId, userRole, leave.current_approver_id);
   return { can, level: currentLevel };

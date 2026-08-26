@@ -282,6 +282,9 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
   // Use directly-fetched members if role.members is not populated
   const effectiveMembers = (directMembers && directMembers.length > 0) ? directMembers : members;
 
+  const [removeError, setRemoveError] = useState('');
+  const [addError, setAddError] = useState('');
+
   // Remove a member from this role
   const removeMut = useMutation({
     mutationFn: userId => apiDelete(`/roles/${roleId}/members/${userId}`),
@@ -290,14 +293,15 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
       qc.invalidateQueries({ queryKey: ['role-members', roleId] });
       refetchMembers?.();
       onRefetch?.();
+      setRemoveError('');
     },
+    onError: (err) => setRemoveError(err.message || 'Failed to remove member'),
   });
 
-  // BUG_142 fix: use POST /:id/members (additive — does not touch other role assignments)
+  // BUG_142: assign to one role exclusively — PUT /roles/user/:userId replaces all existing roles
   const addMut = useMutation({
     mutationFn: async (user) => {
-      // POST /roles/:id/members — inserts with ON CONFLICT DO NOTHING (safe + additive)
-      await apiPost(`/roles/${roleId}/members`, { user_id: user.id });
+      await apiPut(`/roles/user/${user.id}`, { role_ids: [parseInt(roleId, 10)] });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
@@ -306,7 +310,9 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
       onRefetch?.();
       setShowPicker(false);
       setSearch('');
+      setAddError('');
     },
+    onError: (err) => setAddError(err.message || 'Failed to assign member'),
   });
 
   const memberIds  = new Set(effectiveMembers.map(m => m.id));
@@ -324,6 +330,8 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
       >
         <UserPlus size={13} /> Assign Member
       </button>
+      {addError && <p className="text-xs text-rose-600 px-1">{addError}</p>}
+      {removeError && <p className="text-xs text-rose-600 px-1">{removeError}</p>}
 
       {/* User picker */}
       {showPicker && (
@@ -381,7 +389,7 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
       ) : (
         <div className="space-y-1">
           {effectiveMembers.map(m => (
-            <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors group">
+            <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[0.65rem] font-black text-white flex-shrink-0"
                 style={{ background: m.avatar_color || '#3525cd' }}
@@ -393,10 +401,10 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
                 <p className="text-[0.65rem] text-[#777587] truncate">{m.department || m.email}</p>
               </div>
               <button
-                onClick={() => removeMut.mutate(m.id)}
+                onClick={() => { setRemoveError(''); removeMut.mutate(m.id); }}
                 disabled={removeMut.isPending}
                 title="Remove from role"
-                className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
+                className="w-5 h-5 rounded flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
               >
                 <X size={11} />
               </button>

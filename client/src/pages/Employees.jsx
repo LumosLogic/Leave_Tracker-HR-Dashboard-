@@ -1101,6 +1101,46 @@ function getDesignationsForDepts(selectedDeptNames = []) {
   return matched.size > 0 ? [...matched] : ALL_DESIGNATIONS;
 }
 
+// ── BUG_166: ComboInput — searchable dropdown that works after re-selection ────
+function ComboInput({ value, onChange, options, placeholder, className }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value || '');
+  const ref = useRef(null);
+
+  useEffect(() => { setQuery(value || ''); }, [value]);
+
+  useEffect(() => {
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter(o => !query || o.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className={className || 'form-control'}
+        value={query}
+        placeholder={placeholder}
+        onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 bg-white border border-[#c7c4d8] rounded-lg shadow-lg max-h-40 overflow-y-auto mt-0.5">
+          {filtered.map(o => (
+            <div key={o}
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-[#f0f3ff] text-[#151c27]"
+              onMouseDown={e => { e.preventDefault(); setQuery(o); onChange(o); setOpen(false); }}>
+              {o}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Add / Edit Employee Modal ─────────────────────────────────────────────────
 function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [], defaultRole = 'employee', initialTab = 'personal' }) {
   const isEdit            = !!employee;
@@ -1421,10 +1461,12 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                     <label className="form-label">Nationality</label>
-                    <input className="form-control" list="nationality-list" placeholder="e.g. Indian" value={form.nationality} onChange={e => set('nationality', e.target.value)} />
-                    <datalist id="nationality-list">
-                      {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Italian','Spanish','Russian','Brazilian','Pakistani','Bangladeshi','Sri Lankan','Nepali','Maldivian','Bhutanese','South African','Other'].map(n => <option key={n} value={n} />)}
-                    </datalist>
+                    <ComboInput
+                      value={form.nationality}
+                      onChange={v => set('nationality', v)}
+                      placeholder="e.g. Indian"
+                      options={['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Italian','Spanish','Russian','Brazilian','Pakistani','Bangladeshi','Sri Lankan','Nepali','Maldivian','Bhutanese','South African','Other']}
+                    />
                   </div>
                   <div>
                     <label className="form-label">Religion</label>
@@ -1444,10 +1486,12 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 </div>
                 <div>
                   <label className="form-label">Citizenship</label>
-                  <input className="form-control" list="citizenship-list" placeholder="e.g. Indian" value={form.citizenship} onChange={e => set('citizenship', e.target.value)} />
-                  <datalist id="citizenship-list">
-                    {['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Other'].map(n => <option key={n} value={n} />)}
-                  </datalist>
+                  <ComboInput
+                    value={form.citizenship}
+                    onChange={v => set('citizenship', v)}
+                    placeholder="e.g. Indian"
+                    options={['Indian','American','British','Canadian','Australian','Chinese','Japanese','South Korean','German','French','Other']}
+                  />
                 </div>
               </div>
 

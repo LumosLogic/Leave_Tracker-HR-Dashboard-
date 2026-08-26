@@ -131,7 +131,11 @@ function GoalModal({ open, onClose, goal, employees, isAdmin, currentCycle }) {
           </div>
           <div>
             <label className="form-label">Target Date</label>
-            <input type="date" className="form-control" min={new Date().toISOString().slice(0, 10)} value={form.target_date} onChange={e => set('target_date', e.target.value)} />
+            <input type="date" className="form-control" min={new Date().toISOString().slice(0, 10)} value={form.target_date} onChange={e => {
+              const val = e.target.value;
+              set('target_date', val);
+              if (val) set('review_cycle', val.substring(0, 4));
+            }} />
           </div>
         </div>
         <div>

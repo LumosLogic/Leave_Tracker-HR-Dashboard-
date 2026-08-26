@@ -100,7 +100,7 @@ function OffboardingTasks({ userId, isAdmin }) {
 
   if (!tasks.length) return (
     <div className="text-xs text-[#9ca3af] bg-[#f9f9ff] rounded-lg px-3 py-2 border border-[#f0f3ff]">
-      No offboarding tasks found. Run <code>phase_d_offboarding_checklists.sql</code> migration to enable.
+      No offboarding tasks configured for this employee yet.
     </div>
   );
 

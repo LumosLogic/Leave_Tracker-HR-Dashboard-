@@ -420,7 +420,15 @@ function NotificationRecipientsCard() {
 function PushNotificationsCard({ userId }) {
   const { permission, subscribed, requestAndSubscribe, unsubscribe, isSupported } = usePushNotification(userId);
   const toast = useToast();
-  const [showPushConfirm, setShowPushConfirm] = useState(false); // BUG_104
+  const [showPushConfirm, setShowPushConfirm] = useState(false);
+
+  // BUG_104: check if server VAPID keys are configured
+  const { data: vapidStatus } = useQuery({
+    queryKey: ['vapid-status'],
+    queryFn: () => apiGet('/push/vapid-status').catch(() => ({ configured: false })),
+    staleTime: 5 * 60 * 1000,
+  });
+  const serverConfigured = vapidStatus?.configured !== false;
 
   if (!isSupported) return null;
 
@@ -466,6 +474,11 @@ function PushNotificationsCard({ userId }) {
         {isEnabled ? <BellOff size={15} /> : <Bell size={15} />}
         {isEnabled ? 'Disable Push Notifications' : 'Enable Push Notifications'}
       </button>
+      {!serverConfigured && (
+        <p className="text-xs text-amber-600 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Push notifications are not configured on the server. Contact your platform administrator to set up VAPID keys.
+        </p>
+      )}
       {permission === 'denied' && (
         <p className="text-xs text-rose-500 mt-2">
           Notifications are blocked by your browser. Please update your browser settings to allow notifications for this site.

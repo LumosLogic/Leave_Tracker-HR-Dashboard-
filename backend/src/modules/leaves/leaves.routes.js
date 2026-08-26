@@ -138,10 +138,17 @@ router.put('/workflow-config', auth, hasPermission('settings', 'manage'), async 
     if (!Array.isArray(levels)) return res.status(400).json({ error: 'levels must be an array' });
 
     const VALID_TYPES = ['reporting_manager','department_head','hr_admin','root_admin','specific_user'];
+    const UNIQUE_TYPES = ['reporting_manager','department_head','hr_admin','root_admin'];
+    const seenTypes = new Set();
     for (const [i, l] of levels.entries()) {
       if (!VALID_TYPES.includes(l.role_type)) {
         return res.status(400).json({ error: `Level ${i + 1}: invalid role_type '${l.role_type}'` });
       }
+      // BUG_167: enforce uniqueness for non-specific_user types
+      if (UNIQUE_TYPES.includes(l.role_type) && seenTypes.has(l.role_type)) {
+        return res.status(400).json({ error: `Approver type '${l.role_type}' can only appear once in the workflow` });
+      }
+      if (UNIQUE_TYPES.includes(l.role_type)) seenTypes.add(l.role_type);
     }
 
     // Re-number levels sequentially to prevent gaps
@@ -420,13 +427,17 @@ router.get('/team-dashboard', auth, async (req, res) => {
       .eq('head_user_id', req.user.id).eq('organization_id', oId).maybeSingle();
     if (!dept) return res.json({ is_dept_head: false });
 
-    const { data: memberRows } = await supabase
-      .from('users')
-      .select('id, name, avatar_color, employee_status')
-      .eq('department_id', dept.id).eq('organization_id', oId)
-      .neq('id', req.user.id)
-      .in('employee_status', ['active', 'probation']);
-    const members   = memberRows || [];
+    // BUG_153: fall back to matching by department name if department_id FK not set
+    const memberRes = await pool.query(
+      `SELECT id, name, avatar_color, employee_status
+       FROM users
+       WHERE organization_id = $1
+         AND (department_id = $2 OR department = $3)
+         AND id != $4
+         AND employee_status IN ('active', 'probation')`,
+      [oId, dept.id, dept.name, req.user.id]
+    );
+    const members   = memberRes.rows || [];
     const memberIds = members.map(m => m.id);
 
     let attMap = {};
