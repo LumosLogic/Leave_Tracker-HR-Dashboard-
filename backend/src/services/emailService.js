@@ -509,63 +509,80 @@ function credentialsEmailHtml({ employee, tempPassword, orgName = '', orgEmail =
 function lateCheckinHtml(employee, { date, workStartTime, lateThreshold, checkInTime, lateMinutes }, orgName = '', orgEmail = '') {
   const hrs  = Math.floor(lateMinutes / 60);
   const mins = lateMinutes % 60;
-  const lateDuration = hrs > 0 ? `${hrs}h ${mins}m Late` : `${mins} Minutes Late`;
+  const lateDuration = hrs > 0 ? `${hrs}h ${mins}m late` : `${mins} minutes late`;
   return WRAP(
-    HEADER(orgName, 'Late Check-in Recorded', `You checked in after the late entry threshold`, '⏰') +
+    HEADER(orgName, 'Late Check-in Recorded', `You checked in after the scheduled start time`, '&#9888;') +
     BODY(`
       ${GREETING(employee.name)}
-      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
-        Our records indicate that you checked in <strong style="color:#f97316;">late</strong> today. Please ensure timely attendance going forward.
+      <p style="margin:0 0 16px;font-size:13px;color:#475569;line-height:1.6;">
+        Our records show that your check-in today was <strong style="color:#f97316;">late</strong>. Please ensure timely attendance going forward.
       </p>
       ${TABLE(
-        ROW('📅', 'Date',                  date) +
-        ROW('👤', 'Employee',              `<strong>${employee.name}</strong>`) +
-        ROW('🕘', 'Work Start Time',       workStartTime || '—') +
-        ROW('⚠️', 'Late Entry Threshold',  lateThreshold || '—') +
-        ROW('🕐', 'Actual Check-in',       `<strong style="color:#f97316;">${checkInTime}</strong>`) +
-        ROW('⏱️', 'Late Duration',         `<strong style="color:#ef4444;">${lateDuration}</strong>`)
+        ROW('&ndash;', 'Date',                 date) +
+        ROW('&ndash;', 'Scheduled Start',      workStartTime || '—') +
+        ROW('&ndash;', 'Late Entry After',      lateThreshold || '—') +
+        ROW('&ndash;', 'Actual Check-in',      `<strong style="color:#f97316;">${checkInTime}</strong>`) +
+        ROW('&ndash;', 'Late by',              `<strong style="color:#ef4444;">${lateDuration}</strong>`)
       )}
-      <div style="padding:13px 18px;background:#fff7ed;border-left:4px solid #f97316;border-radius:6px;font-size:13px;color:#7c2d12;margin-top:4px;">
-        ⚠️ Please ensure you check in on time. Repeated late arrivals may impact your attendance record.
+      <div style="padding:11px 15px;background:#fff7ed;border-left:3px solid #f97316;border-radius:6px;font-size:12px;color:#7c2d12;margin-top:4px;">
+        Please ensure you check in on time. Repeated late arrivals may impact your attendance record.
       </div>
     `) +
     FOOTER(orgEmail, orgName)
   );
 }
 
-// ── Attendance: Daily Summary — sent to the employee ─────────────────────────
-function dailyAttendanceSummaryHtml(employee, { date, checkIn, checkOut, workingHours, breakHours, totalDuration, lateMinutes, earlyExitMinutes, status }, orgName = '', orgEmail = '') {
-  function fmtMins(m) {
-    if (!m || m <= 0) return '0 Minutes';
+// ── Attendance: Daily Summary — sent to the employee only ────────────────────
+// Status row removed. Late/Early Exit rows shown only if applicable (> 0).
+// Compact 2-column grid layout replaces tall single-column table.
+function dailyAttendanceSummaryHtml(employee, { date, checkIn, checkOut, workingHours, breakHours, totalDuration, lateMinutes, earlyExitMinutes }, orgName = '', orgEmail = '') {
+  function fmtM(m) {
+    if (!m || m <= 0) return null;
     const h = Math.floor(m / 60), mn = m % 60;
-    return h > 0 ? `${h}h ${mn}m` : `${mn} Minutes`;
+    return h > 0 ? `${h}h ${mn}m` : `${mn} min`;
   }
-  const statusLabel = {
-    present:     '✅ Present',
-    early_leave: '⚠️ Early Leave',
-    half_day:    '⚡ Half Day',
-    on_leave:    '🏖️ On Leave',
-    wfh:         '🏠 Work From Home',
-    absent:      '❌ Absent',
-  }[status] || status || '—';
+
+  // Compact 2-column card row — no emoji, flat labels
+  const GR = (l1, v1, l2, v2) => `
+  <tr>
+    <td style="padding:10px 16px;border-bottom:1px solid #e8edf5;border-right:1px solid #e8edf5;width:50%;vertical-align:top;background:#f9faff;">
+      <div style="font-size:10px;font-weight:700;color:#8896a5;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:3px;">${l1}</div>
+      <div style="font-size:14px;font-weight:700;color:#1e293b;">${v1}</div>
+    </td>
+    <td style="padding:10px 16px;border-bottom:1px solid #e8edf5;width:50%;vertical-align:top;">
+      ${l2 != null ? `<div style="font-size:10px;font-weight:700;color:#8896a5;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:3px;">${l2}</div>
+      <div style="font-size:14px;font-weight:700;color:#1e293b;">${v2 != null ? v2 : '—'}</div>` : ''}
+    </td>
+  </tr>`;
+
+  const lateFmt  = fmtM(lateMinutes);
+  const earlyFmt = fmtM(earlyExitMinutes);
+
+  // Alert row — only rendered when at least one value is present
+  let alertRow = '';
+  if (lateFmt || earlyFmt) {
+    alertRow = GR(
+      lateFmt ? 'Late Duration' : 'Early Exit',
+      lateFmt
+        ? `<span style="color:#ef4444;font-weight:800;">${lateFmt}</span>`
+        : `<span style="color:#f97316;font-weight:800;">${earlyFmt}</span>`,
+      lateFmt && earlyFmt ? 'Early Exit' : null,
+      lateFmt && earlyFmt ? `<span style="color:#f97316;font-weight:800;">${earlyFmt}</span>` : null
+    );
+  }
 
   return WRAP(
-    HEADER(orgName, 'Your Attendance Summary', `Daily attendance report — ${date}`, '📊') +
+    HEADER(orgName, 'Attendance Summary', `Daily report — ${date}`, '&#9632;') +
     BODY(`
       ${GREETING(employee.name)}
-      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">Here is your attendance summary for today. Please review and contact HR if you notice any discrepancies.</p>
-      ${TABLE(
-        ROW('📅', 'Date',            date) +
-        ROW('🕘', 'Check-In',        checkIn  || '<span style="color:#94a3b8;">Not Available</span>') +
-        ROW('🕕', 'Check-Out',       checkOut || '<span style="color:#94a3b8;">Not Available</span>') +
-        ROW('⏱️', 'Working Hours',   workingHours  || '—') +
-        ROW('☕', 'Break / Non-Working', breakHours || '0 Minutes') +
-        ROW('🕐', 'Total Duration',  totalDuration || '—') +
-        ROW('⚠️', 'Late Duration',   lateMinutes > 0 ? fmtMins(lateMinutes) : '0 Minutes') +
-        ROW('🏃', 'Early Exit',      earlyExitMinutes > 0 ? fmtMins(earlyExitMinutes) : '0 Minutes') +
-        ROW('📋', 'Status',          `<strong>${statusLabel}</strong>`)
-      )}
-      <div style="padding:13px 18px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:6px;font-size:13px;color:#1e1456;margin-top:4px;">
+      <p style="margin:0 0 16px;font-size:13px;color:#475569;line-height:1.6;">Here is your attendance summary for today. Please contact HR if you notice any discrepancies.</p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e8edf5;border-radius:8px;overflow:hidden;margin-bottom:16px;font-family:Arial,sans-serif;">
+        ${GR('Date', date, 'Check-In', checkIn || '<span style="color:#94a3b8;">—</span>')}
+        ${GR('Check-Out', checkOut || '<span style="color:#94a3b8;">—</span>', 'Working Hours', workingHours || '—')}
+        ${GR('Break', breakHours || '—', 'Total Duration', totalDuration || '—')}
+        ${alertRow}
+      </table>
+      <div style="padding:11px 15px;background:#f0f3ff;border-left:3px solid #3525cd;border-radius:6px;font-size:12px;color:#1e1456;margin-bottom:16px;">
         If you believe any data is incorrect, please submit an attendance regularization request.
       </div>
       ${BTN('https://hrms.lumoslogic.com/portal/attendance', 'View My Attendance')}

@@ -537,12 +537,20 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
   });
   const expMut = useMutation({
     mutationFn: (body) => expModal?.id ? apiPut(`/profile/${empId}/experience/${expModal.id}`, body) : apiPost(`/profile/${empId}/experience`, body),
-    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-experience', empId] }); setExpModal(null); },
+    onSuccess: () => {
+      toast('Saved', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-experience', empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',   empId] });
+      setExpModal(null);
+    },
     onError: e => toast(e.message, 'error'),
   });
   const delExpMut = useMutation({
     mutationFn: (id) => apiDelete(`/profile/${empId}/experience/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['epv2-experience', empId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['epv2-experience', empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',   empId] });
+    },
     onError: e => toast(e.message, 'error'),
   });
 
@@ -689,7 +697,20 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
 
       {/* Experience Modal */}
       <Modal open={expModal !== null} onClose={() => setExpModal(null)} title={expModal?.id ? 'Edit Experience' : 'Add Experience'} size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setExpModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => expMut.mutate(form)} disabled={expMut.isPending}>{expMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setExpModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => {
+          const errs = [];
+          if (!form.company_name?.trim()) { errs.push('Company Name is required.'); }
+          else if (!/[a-zA-Z]/.test(form.company_name)) { errs.push('Company Name must contain at least one letter.'); }
+          if (form.designation && !/[a-zA-Z]/.test(form.designation)) { errs.push('Designation must contain at least one letter.'); }
+          if (form.industry && !/[a-zA-Z]/.test(form.industry)) { errs.push('Industry must contain at least one letter.'); }
+          if (form.manager_name && !/[a-zA-Z]/.test(form.manager_name)) { errs.push('Manager Name must contain at least one letter.'); }
+          if (form.reason_leaving && !/[a-zA-Z]/.test(form.reason_leaving)) { errs.push('Reason for Leaving must contain at least one letter.'); }
+          if (form.last_salary && (isNaN(Number(form.last_salary)) || Number(form.last_salary) < 0)) { errs.push('Salary must be a positive number.'); }
+          if (!form.start_date) { errs.push('Start Date is required.'); }
+          if (form.start_date && form.end_date && form.end_date < form.start_date) { errs.push('End Date cannot be before Start Date.'); }
+          if (errs.length > 0) { toast(errs[0], 'error'); return; }
+          expMut.mutate(form);
+        }} disabled={expMut.isPending}>{expMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
           {[['company_name','Company Name *'],['designation','Designation'],['industry','Industry'],['department','Department'],['employment_type','Employment Type'],['start_date','Start Date','date'],['end_date','End Date','date'],['last_salary','Last Salary','number'],['manager_name','Manager Name'],['reason_leaving','Reason for Leaving']].map(([k,l,t])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
@@ -807,7 +828,22 @@ function EducationTab({ empId, isAdmin }) {
 
       {/* Education Modal */}
       <Modal open={eduModal !== null} onClose={() => setEduModal(null)} title={eduModal?.id ? 'Edit Qualification' : 'Add Qualification'} size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEduModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => eduMut.mutate(form)} disabled={eduMut.isPending || !form.institution}>{eduMut.isPending ? 'Saving…' : 'Save Qualification'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEduModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => {
+          const errs = [];
+          if (!form.institution?.trim()) { errs.push('Institution name is required.'); }
+          else if (!/[a-zA-Z]/.test(form.institution)) { errs.push('Institution name must contain at least one letter.'); }
+          if (form.board_university && !/[a-zA-Z]/.test(form.board_university)) { errs.push('Board / University must contain at least one letter.'); }
+          if (form.specialization && !/[a-zA-Z]/.test(form.specialization)) { errs.push('Specialization must contain at least one letter.'); }
+          const curYear = new Date().getFullYear();
+          if (form.from_year && form.to_year && Number(form.to_year) < Number(form.from_year)) { errs.push('To Year cannot be before From Year.'); }
+          if (form.from_year && (Number(form.from_year) < 1950 || Number(form.from_year) > curYear + 5)) { errs.push('From Year is out of valid range.'); }
+          if (form.to_year && (Number(form.to_year) < 1950 || Number(form.to_year) > curYear + 5)) { errs.push('To Year is out of valid range.'); }
+          if (form.year_of_passing && (Number(form.year_of_passing) < 1950 || Number(form.year_of_passing) > curYear + 5)) { errs.push('Year of Passing is out of valid range.'); }
+          if (form.result_type === 'percentage' && form.percentage !== '' && (Number(form.percentage) < 0 || Number(form.percentage) > 100)) { errs.push('Percentage must be between 0 and 100.'); }
+          if (form.result_type === 'cgpa' && form.cgpa !== '' && (Number(form.cgpa) < 0 || Number(form.cgpa) > 10)) { errs.push('CGPA must be between 0 and 10.'); }
+          if (errs.length > 0) { toast(errs[0], 'error'); return; }
+          eduMut.mutate(form);
+        }} disabled={eduMut.isPending}>{eduMut.isPending ? 'Saving…' : 'Save Qualification'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
           {/* Degree Level */}
           <div><label className="form-label">Degree Level</label>

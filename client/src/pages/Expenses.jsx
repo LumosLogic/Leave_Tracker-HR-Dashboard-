@@ -27,10 +27,11 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
   const qc     = useQueryClient();
   const isEdit = !!expense;
   const fileRef  = useRef();
-  const [uploading,    setUploading]    = useState(false);
-  const [pendingFile,  setPendingFile]  = useState(null);
-  const [amountErr,    setAmountErr]    = useState('');
-  const [dupWarned,    setDupWarned]    = useState(false);
+  const [uploading,         setUploading]         = useState(false);
+  const [pendingFile,       setPendingFile]       = useState(null);
+  const [amountErr,         setAmountErr]         = useState('');
+  const [dupWarned,         setDupWarned]         = useState(false);
+  const [dupReceiptWarned,  setDupReceiptWarned]  = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState(() => isEdit
@@ -53,7 +54,7 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
     const ok = ['application/pdf','image/jpeg','image/png','image/jpg'].includes(file.type);
     if (!ok) { toast('Unsupported file format. Please upload a PDF, JPG, or PNG file.', 'error'); return; }
     if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
-    // BUG_026: Warn if same receipt filename already used in another claim
+    // BUG_026: Block upload if same receipt filename already used; require explicit second attempt
     if (allExpenses.length > 0) {
       const nameStem = file.name.toLowerCase().replace(/\.[^.]+$/, '');
       const dupClaim = allExpenses.find(exp => {
@@ -64,10 +65,14 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
           return urlPath.split('/').pop().toLowerCase().includes(nameStem);
         } catch { return false; }
       });
-      if (dupClaim) {
-        toast(`Warning: "${file.name}" appears already used in claim "${dupClaim.title}". Please verify this is a different receipt.`, 'warning');
+      if (dupClaim && !dupReceiptWarned) {
+        setDupReceiptWarned(true);
+        toast(`Duplicate receipt: "${file.name}" is already attached to claim "${dupClaim.title}". Select the file again to upload anyway.`, 'warning');
+        if (fileRef.current) fileRef.current.value = '';
+        return;
       }
     }
+    setDupReceiptWarned(false);
     setPendingFile(file);
     setUploading(true);
     try {

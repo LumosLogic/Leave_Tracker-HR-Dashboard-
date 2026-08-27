@@ -36,8 +36,8 @@ router.post('/goals', auth, hasPermission('performance', 'create'), async (req, 
     const { title, description, category, target_date, review_cycle, user_id, progress } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
     // BUG_082: enforce title max length
-    if (title.length > 100) return res.status(400).json({ error: 'Goal Title must be 100 characters or less.' });
-    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
+    if (title.length > 150) return res.status(400).json({ error: 'Goal Title must be 150 characters or less.' });
+    if (description && description.length > 1000) return res.status(400).json({ error: 'Description must be 1000 characters or less.' });
     if (target_date) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       if (new Date(target_date) < today) return res.status(400).json({ error: 'Target date cannot be in the past.' });
@@ -63,11 +63,11 @@ router.post('/goals', auth, hasPermission('performance', 'create'), async (req, 
 router.put('/goals/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { title, description, category, target_date, progress, status } = req.body;
+    const { title, description, category, target_date, review_cycle, progress, status } = req.body;
 
     // BUG_082: enforce title max length on update
-    if (title && title.length > 100) return res.status(400).json({ error: 'Goal Title must be 100 characters or less.' });
-    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less.' });
+    if (title && title.length > 150) return res.status(400).json({ error: 'Goal Title must be 150 characters or less.' });
+    if (description && description.length > 1000) return res.status(400).json({ error: 'Description must be 1000 characters or less.' });
 
     // Fetch goal first to enforce ownership for employees
     const { data: goal } = await db.from('performance_goals')
@@ -83,12 +83,10 @@ router.put('/goals/:id', auth, async (req, res) => {
     const autoStatus = cappedProgress >= 100 ? 'completed' : (status || 'active');
 
     let updatePayload;
-    if (isAdmin(req.user.role)) {
-      updatePayload = { title, description, category, target_date, progress: cappedProgress, status: autoStatus };
-    } else {
-      // Employees can update all their own goal fields (BUG_033 fix)
-      updatePayload = { title, description, category, target_date, progress: cappedProgress, status: autoStatus };
-    }
+    // BUG_084: include review_cycle so editing target_date also updates the cycle
+    const cycle = review_cycle || (target_date ? target_date.substring(0, 4) : undefined);
+    updatePayload = { title, description, category, target_date, progress: cappedProgress, status: autoStatus };
+    if (cycle) updatePayload.review_cycle = cycle;
 
     const { data, error } = await db.from('performance_goals')
       .update(updatePayload)

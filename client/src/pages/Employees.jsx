@@ -1898,7 +1898,7 @@ function AdminPhotoUpload({ employeeId, currentUrl, name, color, email, onUpload
     try {
       const fd    = new FormData();
       fd.append('file', file);
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('lt_token') || sessionStorage.getItem('lt_token');
       const url   = employeeId ? `/api/employees/${employeeId}/avatar` : '/api/auth/upload-avatar';
       const res   = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
       const data  = await res.json();
@@ -2181,7 +2181,7 @@ export default function Employees() {
     if (statusFilter && statusFilter.size > 0) {
       rows = rows.filter(e => statusFilter.has(e.employee_status || 'active'));
     }
-    if (typeFilter)   rows = rows.filter(e => e.employment_type === typeFilter);
+    if (typeFilter)   rows = rows.filter(e => (e.employment_type || '').toLowerCase().replace(/[\s\-]/g, '_') === typeFilter);
     if (joinedYmParam) {
       const [yr, mo] = joinedYmParam.split('-').map(Number);
       rows = rows.filter(e => {

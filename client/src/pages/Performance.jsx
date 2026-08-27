@@ -21,7 +21,7 @@ const CATEGORY_CFG = {
   team:       { cls: 'bg-amber-100 text-amber-700',   label: 'Team'       },
 };
 
-const TITLE_MAX = 100;
+const TITLE_MAX = 150;
 
 const REVIEW_STATUS_CFG = {
   pending:     { cls: 'badge-pending',   label: 'Pending',    strip: '#F59E0B' },
@@ -60,7 +60,7 @@ function GoalModal({ open, onClose, goal, employees, isAdmin, currentCycle }) {
 
   const hasValidTitle = /[a-zA-Z0-9]/.test(form.title.trim());
   const titleTooLong  = form.title.length > TITLE_MAX;
-  const DESC_MAX = 500;
+  const DESC_MAX = 1000;
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/performance/goals/${goal.id}`, form) : apiPost('/performance/goals', form),
@@ -348,12 +348,12 @@ export default function Performance() {
                           <div className="flex items-start justify-between gap-3 mb-2">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                {isAdmin && <span className="text-xs text-[#777587]">{g.user_name}</span>}
-                                <span className="font-black text-[#151c27] break-words overflow-hidden max-w-[32rem] line-clamp-2">{g.title}</span>
-                                <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).cls}`}>{(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).label}</span>
+                                {isAdmin && <span className="text-xs text-[#777587] flex-shrink-0">{g.user_name}</span>}
+                                <span className="font-black text-[#151c27] break-all line-clamp-2 min-w-0">{g.title}</span>
+                                <span className={`badge ${cfg.cls} flex-shrink-0`}>{cfg.label}</span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).cls}`}>{(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).label}</span>
                               </div>
-                              {g.description && <p className="text-xs text-[#777587] mt-1 break-words overflow-hidden line-clamp-3">{g.description}</p>}
+                              {g.description && <p className="text-xs text-[#777587] mt-1 break-all line-clamp-3">{g.description}</p>}
                               {g.target_date && <p className="text-xs text-[#777587] mt-0.5">Target: <span className="font-semibold">{g.target_date}</span></p>}
                             </div>
                             <div className="flex gap-1 flex-shrink-0">

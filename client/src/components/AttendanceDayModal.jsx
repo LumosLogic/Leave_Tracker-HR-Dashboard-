@@ -83,7 +83,7 @@ function EditAttSubModal({ record, onClose, onRefresh }) {
 }
 
 // Self-contained attendance day-view modal — renders on any page without navigation
-export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
+export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose, onRefresh }) {
   const { user, isAdmin } = useAuth();
   const toast = useToast();
   const qc = useQueryClient();
@@ -167,7 +167,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
     try {
       await apiPost('/attendance/mark-absent', { user_id: emp.id, date: dateStr });
       toast('Marked absent', 'success');
-      refetchAtt();
+      handleAttRefresh();
     } catch (err) { toast(err.message, 'error'); }
     setConfirmAbsent(null);
   }
@@ -175,7 +175,9 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
   function handleAttRefresh() {
     refetchAtt();
     qc.invalidateQueries({ queryKey: ['root-dashboard'] });
-    qc.invalidateQueries({ queryKey: ['dashboard'] }); // HR admin dashboard
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['calendar'] }); // BUG_072: refresh calendar grid
+    onRefresh?.();
   }
 
   const filterTabs = isFutureDay

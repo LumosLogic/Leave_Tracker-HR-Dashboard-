@@ -792,14 +792,12 @@ export default function Dashboard() {
     {
       label: 'On Leave', value: onLeave, hint: pct(onLeave), hintGreen: false,
       icon: <Umbrella size={18} />, iconBg: 'bg-amber-50', iconColor: 'text-amber-600',
-      // BUG_055: Navigate to leave list filtered to today's on-leave employees
-      onClick: () => navigate(`/leaves?status=approved&date=${todayStr()}`),
+      onClick: () => setAttModal({ date: todayStr(), filter: 'on_leave' }),
     },
     {
       label: 'WFH Today', value: wfh, hint: pct(wfh), hintGreen: false,
       icon: <Home size={18} />, iconBg: 'bg-sky-50', iconColor: 'text-sky-600',
-      // BUG_055: Navigate to WFH tab filtered to today
-      onClick: () => navigate(`/leaves?tab=wfh&date=${todayStr()}`),
+      onClick: () => setAttModal({ date: todayStr(), filter: 'wfh' }),
     },
     {
       label: 'Checked In', value: checked, hint: pct(checked), hintGreen: false,

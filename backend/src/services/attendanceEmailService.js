@@ -143,13 +143,13 @@ async function processDailySummaryEmails(oId, settings, schedule, { orgName, org
   const lateThreshold  = schedule?.late_threshold       || null;
   const earlyThreshold = schedule?.early_exit_threshold || null;
 
-  // Fetch all active employees for this org
+  // Fetch active employees only — HR/Root Admin are excluded from personal daily summaries
   const empRes = await pool.query(
     `SELECT u.id, u.name, u.email
        FROM users u
       WHERE u.organization_id = $1
         AND u.email IS NOT NULL AND u.email <> ''
-        AND u.role IN ('employee','admin','root_admin')
+        AND u.role = 'employee'
         AND COALESCE(u.employee_status,'active') NOT IN ('inactive','resigned','terminated')`,
     [oId]
   );
@@ -168,6 +168,12 @@ async function processDailySummaryEmails(oId, settings, schedule, { orgName, org
         [emp.id, oId, today]
       );
       const att = attRes.rows[0] || null;
+
+      // Skip if employee has no check-in record today — nothing to summarize
+      if (!att || !att.check_in) {
+        await logEmail(oId, emp.id, 'daily_summary', today, 'skipped');
+        continue;
+      }
 
       // Check approved leave
       const leaveRes = await pool.query(
@@ -274,7 +280,7 @@ async function processAppreciationEmails(oId, settings, schedule, { orgName, org
 
       await sendMail({
         to:      row.email,
-        subject: `Great Work Today, ${row.name}! ⭐`,
+        subject: `Well Done Today, ${row.name} — ${today}`,
         html,
       });
 
