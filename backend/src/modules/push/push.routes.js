@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendPushToUsers } = require('../../services/pushService');
@@ -18,7 +18,7 @@ router.post('/subscribe', auth, async (req, res) => {
   try {
     const { subscription, endpoint, userAgent } = req.body;
     if (!subscription || !endpoint) return res.status(400).json({ error: 'Subscription and endpoint required' });
-    await supabase.from('push_subscriptions').upsert(
+    await db.from('push_subscriptions').upsert(
       { user_id: req.user.id, endpoint, subscription, user_agent: userAgent || null, organization_id: orgId(req) },
       { onConflict: 'user_id' }
     );
@@ -29,7 +29,7 @@ router.post('/subscribe', auth, async (req, res) => {
 // ─── Push: Unsubscribe ────────────────────────────────────────────────────────
 router.delete('/unsubscribe', auth, async (req, res) => {
   try {
-    await supabase.from('push_subscriptions').delete().eq('user_id', req.user.id);
+    await db.from('push_subscriptions').delete().eq('user_id', req.user.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -42,11 +42,11 @@ router.post('/send', auth, adminOnly, async (req, res) => {
     const oId = orgId(req);
     let userIds;
     if (target_user_id) {
-      const { data: u } = await supabase.from('users').select('id').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
+      const { data: u } = await db.from('users').select('id').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
       if (!u) return res.status(404).json({ error: 'User not found' });
       userIds = [u.id];
     } else {
-      const { data: users } = await supabase.from('users').select('id').eq('organization_id', oId);
+      const { data: users } = await db.from('users').select('id').eq('organization_id', oId);
       userIds = (users || []).map(u => u.id);
     }
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
@@ -54,7 +54,7 @@ router.post('/send', auth, adminOnly, async (req, res) => {
     }
     const sent = await sendPushToUsers(userIds, { title: title.trim(), body: body.trim(), url: url || '/' });
     try {
-      await supabase.from('notifications_log').insert({
+      await db.from('notifications_log').insert({
         title: title.trim(), body: body.trim(), url: url || null,
         target_user_id: target_user_id ? parseInt(target_user_id) : null,
         sent_by: req.user.id, sent_count: sent || 0,

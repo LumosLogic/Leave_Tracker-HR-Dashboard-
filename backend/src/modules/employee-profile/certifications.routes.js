@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }                       = require('../../config/db');
+const { db }                       = require('../../config/db');
 const { auth, adminOnly, isAdminRole }   = require('../../middleware/auth');
 const { orgId }                          = require('../../utils/helpers');
 
@@ -11,7 +11,7 @@ router.get('/:id/certifications', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('employee_certifications')
       .select('*')
       .eq('employee_id', empId)
@@ -35,7 +35,7 @@ router.post('/:id/certifications', auth, adminOnly, async (req, res) => {
     if (!certification_name)
       return res.status(400).json({ error: 'certification_name is required' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('employee_certifications')
       .insert({
         employee_id:          empId,
@@ -69,7 +69,7 @@ router.put('/:id/certifications/:recordId', auth, adminOnly, async (req, res) =>
       expiry_date, certification_number, file_url, is_lifetime,
     } = req.body;
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('employee_certifications')
       .update({
         certification_name,
@@ -99,7 +99,7 @@ router.delete('/:id/certifications/:recordId', auth, adminOnly, async (req, res)
   try {
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
-    const { error } = await supabase
+    const { error } = await db
       .from('employee_certifications')
       .delete()
       .eq('id', recordId)

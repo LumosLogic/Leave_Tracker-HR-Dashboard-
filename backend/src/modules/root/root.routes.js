@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, adminOnly, rootAdminOnly } = require('../../middleware/auth');
 const { flat, orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml } = require('../../services/emailService');
@@ -17,11 +17,11 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
 
     let recipients;
     if (target_user_id) {
-      const { data: u } = await supabase.from('users').select('email').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
+      const { data: u } = await db.from('users').select('email').eq('id', parseInt(target_user_id)).eq('organization_id', oId).maybeSingle();
       if (!u) return res.status(404).json({ error: 'User not found in your organization' });
       recipients = [u.email];
     } else {
-      const { data: users } = await supabase.from('users').select('email').eq('organization_id', oId).neq('role', 'root_admin');
+      const { data: users } = await db.from('users').select('email').eq('organization_id', oId).neq('role', 'root_admin');
       recipients = (users || []).map(u => u.email).filter(Boolean);
     }
 
@@ -89,10 +89,10 @@ router.get('/stats', auth, rootAdminOnly, async (req, res) => {
       { count: pendingLeaves },
       { count: presentToday },
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', orgId(req)),
-      supabase.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', orgId(req)),
-      supabase.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('organization_id', orgId(req)).in('status', ['present', 'half_day', 'wfh']),
+      db.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
+      db.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', orgId(req)),
+      db.from('leaves').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('organization_id', orgId(req)),
+      db.from('attendance').select('*', { count: 'exact', head: true }).eq('date', today).eq('organization_id', orgId(req)).in('status', ['present', 'half_day', 'wfh']),
     ]);
 
     const [
@@ -101,18 +101,18 @@ router.get('/stats', auth, rootAdminOnly, async (req, res) => {
       { data: todayAttendance },
       { data: yearLeaves },
     ] = await Promise.all([
-      supabase.from('leaves')
+      db.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(8),
-      supabase.from('leaves')
+      db.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', orgId(req)).eq('status', 'pending')
         .order('created_at', { ascending: false }).limit(15),
-      supabase.from('attendance')
+      db.from('attendance')
         .select('status')
         .eq('date', today).eq('organization_id', orgId(req)),
-      supabase.from('leaves')
+      db.from('leaves')
         .select('leave_type, leave_time')
         .eq('organization_id', orgId(req)).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
@@ -144,7 +144,7 @@ router.get('/stats', auth, rootAdminOnly, async (req, res) => {
 // ─── Root Admin: List Organizations ──────────────────────────────────────────
 router.get('/organizations', auth, rootAdminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('organizations').select('id, name, slug').order('name', { ascending: true });
+    const { data } = await db.from('organizations').select('id, name, slug').order('name', { ascending: true });
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -178,32 +178,32 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
       { count: totalDepartments },
     ] = await Promise.all([
       // BUG_117: fetch employee_status so resigned/terminated can be excluded from active count
-      supabase.from('users')
+      db.from('users')
         .select('id, name, department, position, avatar_color, created_at, role, date_of_birth, joining_date, employee_status')
         .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
+      db.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
       // BUG_116: count pending leaves (WFH included as they share the leaves table)
-      supabase.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root']).eq('organization_id', oid),
-      supabase.from('leaves')
+      db.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root']).eq('organization_id', oid),
+      db.from('leaves')
         .select('id, user_id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
-      supabase.from('leaves')
+      db.from('leaves')
         .select('id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).in('status', ['pending', 'pending_root']).order('created_at', { ascending: false }).limit(15),
-      supabase.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
-      supabase.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
+      db.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
+      db.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),
-      supabase.from('attendance').select('date, user_id, status').eq('organization_id', oid)
+      db.from('attendance').select('date, user_id, status').eq('organization_id', oid)
         .gte('date', fromDate).lte('date', today),
-      supabase.from('holidays').select('id, name, date, type').eq('organization_id', oid)
+      db.from('holidays').select('id, name, date, type').eq('organization_id', oid)
         .gte('date', today).order('date', { ascending: true }).limit(5),
-      supabase.from('events').select('id, title, date').eq('organization_id', oid)
+      db.from('events').select('id, title, date').eq('organization_id', oid)
         .gte('date', today).order('date', { ascending: true }).limit(5),
-      supabase.from('attendance_regularization').select('*', { count: 'exact', head: true })
+      db.from('attendance_regularization').select('*', { count: 'exact', head: true })
         .eq('status', 'pending').eq('organization_id', oid),
-      supabase.from('expenses').select('*', { count: 'exact', head: true })
+      db.from('expenses').select('*', { count: 'exact', head: true })
         .eq('status', 'pending').eq('organization_id', oid),
-      supabase.from('departments').select('*', { count: 'exact', head: true })
+      db.from('departments').select('*', { count: 'exact', head: true })
         .eq('organization_id', oid),
     ]);
 
@@ -259,7 +259,7 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     const empIdList = activeEmployees.map(e => e.id);
 
     // Fetch only this org's departments
-    const { data: orgDepts } = await supabase.from('departments')
+    const { data: orgDepts } = await db.from('departments')
       .select('id, name')
       .eq('organization_id', oid);
 
@@ -278,7 +278,7 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
     // Primary: junction table assignments filtered by org
     let userDeptRows = [];
     if (empIdList.length > 0) {
-      const { data: ud } = await supabase.from('user_departments')
+      const { data: ud } = await db.from('user_departments')
         .select('user_id, department_id')
         .in('user_id', empIdList)
         .eq('organization_id', oid);
@@ -399,15 +399,15 @@ router.get('/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
     // Get total leaves from org settings (default 18)
-    const { data: orgRow } = await supabase.from('organizations').select('total_annual_leaves').eq('id', orgId(req)).single();
+    const { data: orgRow } = await db.from('organizations').select('total_annual_leaves').eq('id', orgId(req)).single();
     const TOTAL_LEAVES = orgRow?.total_annual_leaves || 18;
 
     const [{ data: employees }, { data: leaves }] = await Promise.all([
-      supabase.from('users')
+      db.from('users')
         .select('id, name, department, position, avatar_color')
         .eq('role', 'employee').eq('organization_id', orgId(req))
         .order('name'),
-      supabase.from('leaves')
+      db.from('leaves')
         .select('user_id, start_date, end_date, leave_type, leave_time, status')
         .eq('status', 'approved').eq('organization_id', orgId(req))
         .lte('start_date', `${year}-12-31`)
@@ -468,7 +468,7 @@ router.get('/yearly-leaves', auth, rootAdminOnly, async (req, res) => {
 // ─── Root Admin: List HR Admins ───────────────────────────────────────────────
 router.get('/hr', auth, rootAdminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('users')
+    const { data } = await db.from('users')
       .select('id, name, email, department, position, avatar_color, status, created_at')
       .eq('role', 'admin').eq('organization_id', orgId(req)).order('name');
     res.json(data || []);
@@ -481,17 +481,17 @@ router.post('/hr', auth, rootAdminOnly, async (req, res) => {
     const { name, email, password, department, position, avatar_color } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required' });
     const hashed = bcrypt.hashSync(password, 10);
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .insert({ name, email: email.toLowerCase(), password: hashed, role: 'admin', department: department||'Human Resources', position: position||'HR Manager', avatar_color: avatar_color||'#3525cd', force_password_change: true, organization_id: orgId(req) })
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already exists' });
     if (error) throw new Error(error.message);
     sendMail({ to: email, subject: 'Welcome to Lumens HR — Your HR Admin Account', html: welcomeEmployeeHtml({ name, email, department: department||'Human Resources', position: position||'HR Manager' }, password) });
     // Assign hr_admin RBAC role (fire-and-forget; harmless if RBAC tables not yet migrated)
-    supabase.from('roles').select('id').eq('org_id', orgId(req)).eq('slug', 'hr_admin').maybeSingle()
+    db.from('roles').select('id').eq('org_id', orgId(req)).eq('slug', 'hr_admin').maybeSingle()
       .then(({ data: sysRole }) => {
         if (sysRole?.id) {
-          return supabase.from('user_roles').insert({ user_id: data.id, role_id: sysRole.id, org_id: orgId(req), assigned_by: req.user.id });
+          return db.from('user_roles').insert({ user_id: data.id, role_id: sysRole.id, org_id: orgId(req), assigned_by: req.user.id });
         }
       }).catch(() => {});
     res.json(data);
@@ -505,7 +505,7 @@ router.put('/hr/:id', auth, rootAdminOnly, async (req, res) => {
     const update = { name, department, position, avatar_color };
     if (email) update.email = email.toLowerCase();
     if (password) update.password = bcrypt.hashSync(password, 10);
-    const { data, error } = await supabase.from('users').update(update)
+    const { data, error } = await db.from('users').update(update)
       .eq('id', req.params.id).eq('organization_id', orgId(req))
       .select('id, name, email, role, department, position, avatar_color').single();
     if (error) throw new Error(error.message);
@@ -516,7 +516,7 @@ router.put('/hr/:id', auth, rootAdminOnly, async (req, res) => {
 // ─── Root Admin: Reactivate Deactivated HR Admin ──────────────────────────────
 router.put('/hr/:id/reactivate', auth, rootAdminOnly, async (req, res) => {
   try {
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('id, name, status')
       .eq('id', parseInt(req.params.id))
       .eq('role', 'admin')
@@ -524,7 +524,7 @@ router.put('/hr/:id/reactivate', auth, rootAdminOnly, async (req, res) => {
       .maybeSingle();
     if (!user) return res.status(404).json({ error: 'HR admin not found' });
     if (user.status !== 'inactive') return res.status(400).json({ error: 'Account is already active' });
-    await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
+    await db.from('users').update({ status: 'active' }).eq('id', user.id);
     res.json({ success: true, message: `${user.name}'s account has been reactivated` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -533,7 +533,7 @@ router.put('/hr/:id/reactivate', auth, rootAdminOnly, async (req, res) => {
 router.delete('/hr/:id', auth, rootAdminOnly, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
-    await supabase.from('users').delete().eq('id', req.params.id).eq('role', 'admin').eq('organization_id', orgId(req));
+    await db.from('users').delete().eq('id', req.params.id).eq('role', 'admin').eq('organization_id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -541,7 +541,7 @@ router.delete('/hr/:id', auth, rootAdminOnly, async (req, res) => {
 // ─── Root Admin: List Root Admins ─────────────────────────────────────────────
 router.get('/root-admins', auth, rootAdminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('users')
+    const { data } = await db.from('users')
       .select('id, name, email, department, position, avatar_color, created_at')
       .eq('role', 'root_admin').eq('organization_id', orgId(req)).order('name');
     res.json(data || []);
@@ -561,7 +561,7 @@ router.delete('/root-admins/:id', auth, rootAdminOnly, async (req, res) => {
     }
 
     // Count active root admins in this org
-    const { data: rootAdmins, error: cntErr } = await supabase
+    const { data: rootAdmins, error: cntErr } = await db
       .from('users').select('id')
       .eq('role', 'root_admin').eq('organization_id', oid);
     if (cntErr) throw cntErr;
@@ -578,7 +578,7 @@ router.delete('/root-admins/:id', auth, rootAdminOnly, async (req, res) => {
     }
 
     // Soft delete: demote role + deactivate
-    const { error: updErr } = await supabase.from('users')
+    const { error: updErr } = await db.from('users')
       .update({ role: 'employee', employee_status: 'inactive' })
       .eq('id', targetId).eq('organization_id', oid);
     if (updErr) throw updErr;
@@ -595,10 +595,10 @@ router.put('/root-admins/:id/password', auth, rootAdminOnly, async (req, res) =>
     if (targetId === req.user.id) return res.status(400).json({ error: 'Use your profile page to change your own password.' });
     const { password } = req.body;
     if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-    const { data: target } = await supabase.from('users').select('id').eq('id', targetId).eq('role', 'root_admin').eq('organization_id', oid).maybeSingle();
+    const { data: target } = await db.from('users').select('id').eq('id', targetId).eq('role', 'root_admin').eq('organization_id', oid).maybeSingle();
     if (!target) return res.status(404).json({ error: 'Root admin not found in this organisation.' });
     const hashed = bcrypt.hashSync(password, 10);
-    await supabase.from('users').update({ password: hashed }).eq('id', targetId);
+    await db.from('users').update({ password: hashed }).eq('id', targetId);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -606,7 +606,7 @@ router.put('/root-admins/:id/password', auth, rootAdminOnly, async (req, res) =>
 // ─── Notification Recipients (Root Admin) ─────────────────────────────────────
 router.get('/notify-recipients', auth, rootAdminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('notification_recipients')
+    const { data } = await db.from('notification_recipients')
       .select('*').eq('organization_id', orgId(req)).order('created_at', { ascending: true });
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -616,7 +616,7 @@ router.post('/notify-recipients', auth, rootAdminOnly, async (req, res) => {
   try {
     const { email, name } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
-    const { data, error } = await supabase.from('notification_recipients')
+    const { data, error } = await db.from('notification_recipients')
       .insert({ email: email.toLowerCase().trim(), name: name || '', organization_id: orgId(req) })
       .select().single();
     if (error?.code === '23505') return res.status(400).json({ error: 'Email already in the list' });
@@ -628,7 +628,7 @@ router.post('/notify-recipients', auth, rootAdminOnly, async (req, res) => {
 router.put('/notify-recipients/:id', auth, rootAdminOnly, async (req, res) => {
   try {
     const { active, name } = req.body;
-    const { data, error } = await supabase.from('notification_recipients')
+    const { data, error } = await db.from('notification_recipients')
       .update({ ...(active !== undefined && { active }), ...(name !== undefined && { name }) })
       .eq('id', req.params.id).eq('organization_id', orgId(req)).select().single();
     if (error) throw new Error(error.message);
@@ -638,7 +638,7 @@ router.put('/notify-recipients/:id', auth, rootAdminOnly, async (req, res) => {
 
 router.delete('/notify-recipients/:id', auth, rootAdminOnly, async (req, res) => {
   try {
-    await supabase.from('notification_recipients').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
+    await db.from('notification_recipients').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

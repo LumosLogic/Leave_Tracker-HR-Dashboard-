@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { orgId, getSettings, isWorkingDay } = require('../../utils/helpers');
 
@@ -19,13 +19,13 @@ router.get('/', auth, adminOnly, async (req, res) => {
     const from30 = d30ago.toISOString().split('T')[0];
 
     const [{ data: allLeaves }, { data: monthAtt }, { data: last7Att }, { count: totalEmps }, { data: allEmps }, { data: last30Att }, { data: leavePolicies }] = await Promise.all([
-      supabase.from('leaves').select('status, leave_type, leave_time').eq('organization_id', orgId(req)),
-      supabase.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
-      supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
-      supabase.from('users').select('department, role, employment_type, position').eq('organization_id', orgId(req)).eq('role', 'employee').not('employee_status', 'in', '("inactive","resigned","terminated")'),
-      supabase.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from30).lte('date', today7),
-      supabase.from('leave_policies').select('leave_type, annual_quota, label').eq('organization_id', orgId(req)).eq('active', true),
+      db.from('leaves').select('status, leave_type, leave_time').eq('organization_id', orgId(req)),
+      db.from('attendance').select('status').eq('organization_id', orgId(req)).like('date', `${ym}-%`),
+      db.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from7).lte('date', today7),
+      db.from('users').select('*', { count: 'exact', head: true }).eq('role', 'employee').eq('organization_id', orgId(req)),
+      db.from('users').select('department, role, employment_type, position').eq('organization_id', orgId(req)).eq('role', 'employee').not('employee_status', 'in', '("inactive","resigned","terminated")'),
+      db.from('attendance').select('date, status').eq('organization_id', orgId(req)).gte('date', from30).lte('date', today7),
+      db.from('leave_policies').select('leave_type, annual_quota, label').eq('organization_id', orgId(req)).eq('active', true),
     ]);
 
     const leaveByStatus = { approved: 0, pending: 0, rejected: 0, cancelled: 0 };
@@ -135,7 +135,7 @@ router.get('/leave-balance', auth, async (req, res) => {
       ? parseInt(req.query.userId)
       : req.user.id;
 
-    const { data: approvedLeaves } = await supabase.from('leaves')
+    const { data: approvedLeaves } = await db.from('leaves')
       .select('start_date, end_date, leave_time, leave_type')
       .eq('user_id', userId).eq('organization_id', orgId(req))
       .eq('status', 'approved')
@@ -143,14 +143,14 @@ router.get('/leave-balance', auth, async (req, res) => {
       .lte('end_date',   `${year}-12-31`);
 
     // Fetch actual holidays for this org and year
-    const { data: orgHolidays, count: totalHolidays } = await supabase.from('holidays')
+    const { data: orgHolidays, count: totalHolidays } = await db.from('holidays')
       .select('date', { count: 'exact' })
       .eq('organization_id', orgId(req))
       .like('date', `${year}-%`);
     const holidaySet = new Set((orgHolidays || []).map(h => h.date));
 
     // Fetch total annual leave quota from org settings (HIGH-01: remove hardcoded 18)
-    const { data: orgData } = await supabase.from('organizations')
+    const { data: orgData } = await db.from('organizations')
       .select('total_annual_leaves').eq('id', orgId(req)).maybeSingle();
     const totalAnnualLeaves = orgData?.total_annual_leaves || 18;
 
@@ -189,8 +189,8 @@ router.get('/my-stats', auth, async (req, res) => {
     const month = now.getMonth() + 1;
     const ym    = `${year}-${String(month).padStart(2, '0')}`;
     const [{ data: att }, { data: lvs }] = await Promise.all([
-      supabase.from('attendance').select('status, is_late').eq('user_id', req.user.id).eq('organization_id', orgId(req)).like('date', `${ym}-%`),
-      supabase.from('leaves').select('id, leave_time').eq('user_id', req.user.id).eq('organization_id', orgId(req)).eq('status', 'approved')
+      db.from('attendance').select('status, is_late').eq('user_id', req.user.id).eq('organization_id', orgId(req)).like('date', `${ym}-%`),
+      db.from('leaves').select('id, leave_time').eq('user_id', req.user.id).eq('organization_id', orgId(req)).eq('status', 'approved')
         .lte('start_date', `${ym}-31`).gte('end_date', `${ym}-01`),
     ]);
     const presentCount = (att || []).filter(r => ['present','half_day','wfh'].includes(r.status)).length;
@@ -206,7 +206,7 @@ router.get('/my-stats', auth, async (req, res) => {
 router.get('/new-joiners', auth, async (req, res) => {
   try {
     const _7dAgo = new Date(); _7dAgo.setDate(_7dAgo.getDate() - 7);
-    const { data } = await supabase.from('users')
+    const { data } = await db.from('users')
       .select('id, name, department, avatar_color, created_at, position')
       .eq('organization_id', orgId(req))
       .in('role', ['employee', 'admin'])

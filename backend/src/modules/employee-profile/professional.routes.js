@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -12,7 +12,7 @@ router.get('/:id/professional', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && !isSelf)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('users').select(`
+    const { data, error } = await db.from('users').select(`
       id, employee_id, department, position, grade, pay_cadre, cost_centre,
       division, sub_division, location, employment_type, work_mode,
       employee_status, joining_date, confirmation_date,
@@ -29,15 +29,15 @@ router.get('/:id/professional', auth, async (req, res) => {
     // Resolve readable names for FK fields
     const [managerRes, hodRes, branchRes, deptRes] = await Promise.all([
       data.reporting_to
-        ? supabase.from('users').select('id, name, position').eq('id', data.reporting_to).maybeSingle()
+        ? db.from('users').select('id, name, position').eq('id', data.reporting_to).maybeSingle()
         : Promise.resolve({ data: null }),
       data.hod_id
-        ? supabase.from('users').select('id, name, position').eq('id', data.hod_id).maybeSingle()
+        ? db.from('users').select('id, name, position').eq('id', data.hod_id).maybeSingle()
         : Promise.resolve({ data: null }),
       data.branch_id
-        ? supabase.from('branches').select('id, name').eq('id', data.branch_id).maybeSingle()
+        ? db.from('branches').select('id, name').eq('id', data.branch_id).maybeSingle()
         : Promise.resolve({ data: null }),
-      supabase.from('user_departments')
+      db.from('user_departments')
         .select('departments(id, name)')
         .eq('user_id', empId),
     ]);
@@ -89,15 +89,15 @@ router.put('/:id/professional', auth, adminOnly, async (req, res) => {
       updated_by: req.user.id,
     };
 
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .update(update).eq('id', empId).eq('organization_id', orgId(req)).select().single();
     if (error) throw error;
 
     // Sync multi-department assignments if provided
     if (Array.isArray(department_ids)) {
-      await supabase.from('user_departments').delete().eq('user_id', empId);
+      await db.from('user_departments').delete().eq('user_id', empId);
       if (department_ids.length > 0) {
-        await supabase.from('user_departments').insert(
+        await db.from('user_departments').insert(
           department_ids.map(did => ({ user_id: empId, department_id: did, organization_id: orgId(req) }))
         );
       }

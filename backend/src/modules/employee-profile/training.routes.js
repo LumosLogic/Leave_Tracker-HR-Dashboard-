@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -13,7 +13,7 @@ router.get('/:id/training', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_training')
+    const { data, error } = await db.from('employee_training')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('start_date', { ascending: false });
     if (error) throw error;
@@ -33,7 +33,7 @@ router.post('/:id/training', auth, adminOnly, async (req, res) => {
     } = req.body;
     if (!training_name) return res.status(400).json({ error: 'training_name is required' });
 
-    const { data, error } = await supabase.from('employee_training').insert({
+    const { data, error } = await db.from('employee_training').insert({
       employee_id: empId, organization_id: orgId(req),
       training_name, training_type: training_type || 'other',
       training_provider: training_provider || null,
@@ -59,7 +59,7 @@ router.put('/:id/training/:recordId', auth, adminOnly, async (req, res) => {
       duration_hours, completion_status, score, certificate_url, remarks,
     } = req.body;
 
-    const { data, error } = await supabase.from('employee_training').update({
+    const { data, error } = await db.from('employee_training').update({
       training_name, training_type, training_provider: training_provider || null,
       start_date: start_date || null, end_date: end_date || null,
       duration_hours: duration_hours || null,
@@ -79,7 +79,7 @@ router.put('/:id/training/:recordId', auth, adminOnly, async (req, res) => {
 // DELETE /api/profile/:id/training/:recordId
 router.delete('/:id/training/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_training')
+    const { error } = await db.from('employee_training')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
     if (error) throw error;
@@ -98,7 +98,7 @@ router.get('/:id/certifications', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_certifications')
+    const { data, error } = await db.from('employee_certifications')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('issue_date', { ascending: false });
     if (error) throw error;
@@ -115,7 +115,7 @@ router.post('/:id/certifications', auth, adminOnly, async (req, res) => {
     const { certification_name, issuing_authority, issue_date, expiry_date, certification_number, file_url, is_lifetime } = req.body;
     if (!certification_name) return res.status(400).json({ error: 'certification_name is required' });
 
-    const { data, error } = await supabase.from('employee_certifications').insert({
+    const { data, error } = await db.from('employee_certifications').insert({
       employee_id: empId, organization_id: orgId(req),
       certification_name, issuing_authority: issuing_authority || null,
       issue_date: issue_date || null,
@@ -136,7 +136,7 @@ router.put('/:id/certifications/:recordId', auth, adminOnly, async (req, res) =>
   try {
     const { certification_name, issuing_authority, issue_date, expiry_date, certification_number, file_url, is_lifetime } = req.body;
 
-    const { data, error } = await supabase.from('employee_certifications').update({
+    const { data, error } = await db.from('employee_certifications').update({
       certification_name, issuing_authority: issuing_authority || null,
       issue_date: issue_date || null,
       expiry_date: is_lifetime ? null : (expiry_date || null),
@@ -156,7 +156,7 @@ router.put('/:id/certifications/:recordId', auth, adminOnly, async (req, res) =>
 // DELETE /api/profile/:id/certifications/:recordId
 router.delete('/:id/certifications/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_certifications')
+    const { error } = await db.from('employee_certifications')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
     if (error) throw error;

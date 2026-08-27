@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -11,7 +11,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const uid = req.user.id;
-    let q = supabase.from('attendance_regularization')
+    let q = db.from('attendance_regularization')
       .select('*')
       .eq('organization_id', oId)
       .order('created_at', { ascending: false });
@@ -27,7 +27,7 @@ router.get('/', auth, async (req, res) => {
     const reviewerIds = [...new Set(rows.map(r => r.reviewed_by).filter(Boolean))];
     const allIds      = [...new Set([...userIds, ...reviewerIds])];
 
-    const { data: users } = await supabase.from('users')
+    const { data: users } = await db.from('users')
       .select('id, name, avatar_color, department, position')
       .in('id', allIds);
     const userMap = {};
@@ -50,7 +50,7 @@ router.post('/', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { date, requested_check_in, requested_check_out, reason } = req.body;
     if (!date || !reason) return res.status(400).json({ error: 'date and reason are required' });
-    const { data, error } = await supabase.from('attendance_regularization')
+    const { data, error } = await db.from('attendance_regularization')
       .insert({ user_id: req.user.id, date, requested_check_in: requested_check_in || null, requested_check_out: requested_check_out || null, reason, organization_id: oId })
       .select().single();
     if (error) {
@@ -61,10 +61,10 @@ router.post('/', auth, async (req, res) => {
     }
 
     // Notify admins
-    const { data: admins } = await supabase.from('users')
+    const { data: admins } = await db.from('users')
       .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
     if (admins?.length) {
-      await supabase.from('notifications').insert(admins.map(a => ({
+      await db.from('notifications').insert(admins.map(a => ({
         user_id: a.id,
         title: 'Regularization Request',
         message: `${req.user.name} requested attendance correction for ${date}`,
@@ -184,7 +184,7 @@ router.put('/:id/review', auth, hasPermission('attendance', 'approve_regularizat
   }
 
   // Fire-and-forget notification (after COMMIT — failure doesn't affect data)
-  supabase.from('notifications').insert({
+  db.from('notifications').insert({
     user_id: finalReg.user_id,
     title:   `Regularization ${status === 'approved' ? 'Approved' : 'Rejected'}`,
     message: `Your attendance correction for ${finalReg.date} was ${status}.${reviewer_notes ? ` Note: ${reviewer_notes}` : ''}`,
@@ -201,7 +201,7 @@ router.delete('/:id', auth, async (req, res) => {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
     const oId = req.user.organization_id;
 
-    const { data: reg } = await supabase.from('attendance_regularization')
+    const { data: reg } = await db.from('attendance_regularization')
       .select('id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!reg) return res.status(404).json({ error: 'Request not found' });
 
@@ -210,7 +210,7 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'HR admin can only delete pending requests' });
     }
 
-    const { error } = await supabase.from('attendance_regularization')
+    const { error } = await db.from('attendance_regularization')
       .delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
 

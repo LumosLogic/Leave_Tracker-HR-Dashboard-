@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -12,7 +12,7 @@ function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data, error } = await supabase.from('shifts').select('*').eq('organization_id', oId).order('name');
+    const { data, error } = await db.from('shifts').select('*').eq('organization_id', oId).order('name');
     if (error) throw error;
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -26,10 +26,10 @@ router.post('/', auth, hasPermission('shifts', 'manage'), async (req, res) => {
     const { name, start_time, end_time, color, description, days_of_week } = req.body;
     if (!name || !start_time || !end_time) return res.status(400).json({ error: 'name, start_time and end_time required' });
     // BUG_075: Duplicate shift check — same name (case-insensitive) in same org
-    const { data: existing } = await supabase.from('shifts')
+    const { data: existing } = await db.from('shifts')
       .select('id').eq('organization_id', oId).ilike('name', name.trim()).maybeSingle();
     if (existing) return res.status(400).json({ error: 'A shift with this name already exists. Please use a different name.' });
-    const { data, error } = await supabase.from('shifts')
+    const { data, error } = await db.from('shifts')
       .insert({ name: name.trim(), start_time, end_time, color: color || '#3525cd', description: description || '', days_of_week: days_of_week || null, organization_id: oId })
       .select().single();
     if (error) throw error;
@@ -43,7 +43,7 @@ router.put('/:id', auth, hasPermission('shifts', 'manage'), async (req, res) => 
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
     const { name, start_time, end_time, color, description, days_of_week } = req.body;
-    const { data, error } = await supabase.from('shifts')
+    const { data, error } = await db.from('shifts')
       .update({ name, start_time, end_time, color, description: description || '', days_of_week: days_of_week || null })
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
@@ -56,7 +56,7 @@ router.delete('/:id', auth, hasPermission('shifts', 'manage'), async (req, res) 
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { error } = await supabase.from('shifts').delete().eq('id', req.params.id).eq('organization_id', oId);
+    const { error } = await db.from('shifts').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -69,7 +69,7 @@ router.get('/assignments', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { month, userId } = req.query;
-    let q = supabase.from('shift_assignments')
+    let q = db.from('shift_assignments')
       .select('*, shift:shifts(id, name, start_time, end_time, color), user:users!shift_assignments_user_id_fkey(id, name, avatar_color, department)')
       .eq('organization_id', oId)
       .order('date');
@@ -129,7 +129,7 @@ router.post('/assignments/range', auth, hasPermission('shifts', 'manage'), async
       return res.status(400).json({ error: 'No valid dates in selected range for the chosen days' });
 
     // ── Conflict check: employees already on a DIFFERENT shift on these dates ─
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('shift_assignments')
       .select('user_id, date, shift_id, shifts!inner(name)')
       .eq('organization_id', oId)
@@ -156,7 +156,7 @@ router.post('/assignments/range', auth, hasPermission('shifts', 'manage'), async
       )
     );
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('shift_assignments')
       .upsert(rows, { onConflict: 'user_id,date,organization_id' })
       .select();
@@ -174,7 +174,7 @@ router.post('/assignments/bulk', auth, hasPermission('shifts', 'manage'), async 
     const { assignments } = req.body;
     if (!Array.isArray(assignments)) return res.status(400).json({ error: 'assignments array required' });
     const rows = assignments.map(a => ({ ...a, organization_id: oId }));
-    const { data, error } = await supabase.from('shift_assignments')
+    const { data, error } = await db.from('shift_assignments')
       .upsert(rows, { onConflict: 'user_id,date,organization_id' }).select();
     if (error) throw error;
     res.json(data);
@@ -185,7 +185,7 @@ router.post('/assignments/bulk', auth, hasPermission('shifts', 'manage'), async 
 router.delete('/assignments/:id', auth, hasPermission('shifts', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
-    const { error } = await supabase.from('shift_assignments').delete().eq('id', req.params.id);
+    const { error } = await db.from('shift_assignments').delete().eq('id', req.params.id);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

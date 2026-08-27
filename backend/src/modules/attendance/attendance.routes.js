@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { localDateStr, localTimeStr, flat, orgId, toMinutes, getSettings, isWorkingDay } = require('../../utils/helpers');
@@ -10,7 +10,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const { year, month, date, userId } = req.query;
 
-    let query = supabase.from('attendance')
+    let query = db.from('attendance')
       .select('*, users!inner(name, email, avatar_color, department, position)')
       .eq('organization_id', orgId(req))
       .order('date', { ascending: true });
@@ -44,7 +44,7 @@ router.get('/', auth, async (req, res) => {
 // ─── Attendance: Today (current user) ─────────────────────────────────────────
 router.get('/today', auth, async (req, res) => {
   try {
-    const { data } = await supabase.from('attendance')
+    const { data } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', localDateStr()).maybeSingle();
     res.json(data || null);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -54,7 +54,7 @@ router.get('/today', auth, async (req, res) => {
 // Returns null when no shift assignment applies today.
 async function getActiveShiftTimes(userId, today) {
   try {
-    const { data } = await supabase
+    const { data } = await db
       .from('shift_assignments')
       .select('shift:shifts(start_time, end_time)')
       .eq('user_id', userId)
@@ -74,7 +74,7 @@ router.post('/checkin', auth, async (req, res) => {
     const timeStr = localTimeStr();
     const settings = await getSettings(orgId(req));
 
-    const { data: existing } = await supabase.from('attendance')
+    const { data: existing } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
     if (existing?.check_in && !existing?.check_out) return res.status(400).json({ error: 'Already checked in today' });
@@ -87,12 +87,12 @@ router.post('/checkin', auth, async (req, res) => {
 
     let record;
     if (existing) {
-      const { data } = await supabase.from('attendance')
+      const { data } = await db.from('attendance')
         .update({ check_in: timeStr, status: 'present', is_late, organization_id: orgId(req) })
         .eq('id', existing.id).select().single();
       record = data;
     } else {
-      const { data } = await supabase.from('attendance')
+      const { data } = await db.from('attendance')
         .insert({ user_id: req.user.id, date: today, check_in: timeStr, status: 'present', is_late, organization_id: orgId(req) })
         .select().single();
       record = data;
@@ -109,7 +109,7 @@ router.post('/checkout', auth, async (req, res) => {
     const timeStr = localTimeStr();
     const settings = await getSettings(orgId(req));
 
-    const { data: record } = await supabase.from('attendance')
+    const { data: record } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
     if (!record?.check_in) return res.status(400).json({ error: 'You have not checked in today' });
@@ -144,7 +144,7 @@ router.post('/checkout', auth, async (req, res) => {
       status = 'present';
     }
 
-    const { data: updated } = await supabase.from('attendance')
+    const { data: updated } = await db.from('attendance')
       .update({ check_out: timeStr, gross_hours: Math.round(grossHours * 100) / 100, work_hours: Math.round(effectiveHours * 100) / 100, status, is_early_exit, ...breakUpdateFields })
       .eq('id', record.id).select().single();
 
@@ -161,12 +161,12 @@ router.post('/break-in', auth, async (req, res) => {
   try {
     const today   = localDateStr();
     const timeStr = localTimeStr();
-    const { data: record } = await supabase.from('attendance')
+    const { data: record } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
     if (!record?.check_in)                           return res.status(400).json({ error: 'You have not checked in today' });
     if (record.check_out)                            return res.status(400).json({ error: 'You have already checked out today' });
     if (record.break_start && !record.break_end)     return res.status(400).json({ error: 'You are already on a break' });
-    const { data: updated } = await supabase.from('attendance')
+    const { data: updated } = await db.from('attendance')
       .update({ break_start: timeStr, break_end: null })
       .eq('id', record.id).select().single();
     res.json({ record: updated, message: 'Break started' });
@@ -179,13 +179,13 @@ router.post('/break-out', auth, async (req, res) => {
   try {
     const today   = localDateStr();
     const timeStr = localTimeStr();
-    const { data: record } = await supabase.from('attendance')
+    const { data: record } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
     if (!record?.check_in)                    return res.status(400).json({ error: 'You have not checked in today' });
     if (!record.break_start || record.break_end) return res.status(400).json({ error: 'No active break found' });
     const breakMins = Math.max(0, toMinutes(timeStr) - toMinutes(record.break_start));
     const newTotalBreakMins = (record.total_break_minutes || 0) + breakMins;
-    const { data: updated } = await supabase.from('attendance')
+    const { data: updated } = await db.from('attendance')
       .update({ break_end: timeStr, total_break_minutes: newTotalBreakMins })
       .eq('id', record.id).select().single();
     const hrs = Math.floor(breakMins / 60), mins = breakMins % 60;
@@ -203,7 +203,7 @@ router.put('/:id', auth, hasPermission('attendance', 'edit'), async (req, res) =
       ? Math.max(0, (toMinutes(check_out) - toMinutes(check_in)) / 60) : 0;
     // When admin overrides times, reset break minutes to 0 — breaks are unknown for manual edits
     const work_hours = gross_hours;
-    const { data } = await supabase.from('attendance')
+    const { data } = await db.from('attendance')
       .update({
         check_in, check_out, status,
         is_late: !!is_late, is_early_exit: !!is_early_exit,
@@ -222,7 +222,7 @@ router.post('/mark-absent', auth, hasPermission('attendance', 'edit'), async (re
   try {
     const { user_id, date } = req.body;
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
-    const { error } = await supabase.from('attendance')
+    const { error } = await db.from('attendance')
       .upsert(
         { user_id: parseInt(user_id), date, status: 'absent', organization_id: orgId(req) },
         { onConflict: 'user_id,date,organization_id' }
@@ -240,7 +240,7 @@ router.post('/admin-edit', auth, hasPermission('attendance', 'edit'), async (req
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date required' });
     const gross_hours = check_in && check_out
       ? Math.max(0, (toMinutes(check_out) - toMinutes(check_in)) / 60) : 0;
-    const { data, error } = await supabase.from('attendance')
+    const { data, error } = await db.from('attendance')
       .upsert({
         user_id: parseInt(user_id), date,
         check_in:            check_in      || null,
@@ -268,7 +268,7 @@ router.post('/late-early', auth, hasPermission('attendance', 'edit'), async (req
     if (!user_id || !date) return res.status(400).json({ error: 'user_id and date are required' });
 
     // Fetch existing record for the day
-    const { data: existing } = await supabase.from('attendance')
+    const { data: existing } = await db.from('attendance')
       .select('*').eq('user_id', user_id).eq('date', date).maybeSingle();
 
     const updates = {};
@@ -286,10 +286,10 @@ router.post('/late-early', auth, hasPermission('attendance', 'edit'), async (req
     }
 
     if (existing) {
-      await supabase.from('attendance').update(updates).eq('id', existing.id);
+      await db.from('attendance').update(updates).eq('id', existing.id);
     } else {
       // No record yet — create one with status present
-      await supabase.from('attendance').insert({
+      await db.from('attendance').insert({
         user_id, date,
         status: 'present',
         is_late:       updates.is_late      ?? false,
@@ -309,11 +309,11 @@ router.get('/late-early', auth, async (req, res) => {
   try {
     const oid = orgId(req);
     // Scope to employees only within this org
-    const { data: empRows } = await supabase.from('users').select('id')
+    const { data: empRows } = await db.from('users').select('id')
       .eq('role', 'employee').eq('organization_id', oid);
     const empIds = (empRows || []).map(e => e.id);
 
-    let query = supabase.from('attendance')
+    let query = db.from('attendance')
       .select('*, users(name, email, avatar_color, department)')
       .eq('organization_id', oid)
       .or('is_late.eq.true,is_early_exit.eq.true')
@@ -340,7 +340,7 @@ router.put('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (
   try {
     const { late_come, late_come_time, early_exit, early_exit_time } = req.body;
 
-    const { data: existing, error: fetchErr } = await supabase.from('attendance')
+    const { data: existing, error: fetchErr } = await db.from('attendance')
       .select('*').eq('id', req.params.id).single();
     if (fetchErr || !existing) return res.status(404).json({ error: 'Record not found' });
 
@@ -354,7 +354,7 @@ router.put('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (
     const co = updates.check_out ?? existing.check_out;
     if (ci && co) updates.work_hours = Math.round(Math.max(0, (toMinutes(co) - toMinutes(ci)) / 60) * 100) / 100;
 
-    await supabase.from('attendance').update(updates).eq('id', req.params.id);
+    await db.from('attendance').update(updates).eq('id', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -363,11 +363,11 @@ router.put('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (
 // Clear late/early flags from an attendance record
 router.delete('/late-early/:id', auth, hasPermission('attendance', 'edit'), async (req, res) => {
   try {
-    const { data: existing } = await supabase.from('attendance')
+    const { data: existing } = await db.from('attendance')
       .select('*').eq('id', req.params.id).single();
     if (!existing) return res.status(404).json({ error: 'Record not found' });
 
-    await supabase.from('attendance')
+    await db.from('attendance')
       .update({ is_late: false, is_early_exit: false, check_in: null, check_out: null })
       .eq('id', req.params.id);
     res.json({ success: true });
@@ -380,14 +380,14 @@ router.post('/cleanup-orphaned', auth, async (req, res) => {
   try {
     const oid = orgId(req);
 
-    const { data: leaveAttendance } = await supabase.from('attendance')
+    const { data: leaveAttendance } = await db.from('attendance')
       .select('id, user_id, date, status')
       .eq('organization_id', oid)
       .in('status', ['on_leave', 'half_day', 'wfh']);
 
     if (!leaveAttendance?.length) return res.json({ removed: 0 });
 
-    const { data: approvedLeaves } = await supabase.from('leaves')
+    const { data: approvedLeaves } = await db.from('leaves')
       .select('user_id, start_date, end_date, leave_time')
       .eq('organization_id', oid)
       .eq('status', 'approved');
@@ -410,7 +410,7 @@ router.post('/cleanup-orphaned', auth, async (req, res) => {
       if (!hasLeave) toDelete.push(att.id);
     }
 
-    if (toDelete.length) await supabase.from('attendance').delete().eq('organization_id', oid).in('id', toDelete);
+    if (toDelete.length) await db.from('attendance').delete().eq('organization_id', oid).in('id', toDelete);
     res.json({ removed: toDelete.length, success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

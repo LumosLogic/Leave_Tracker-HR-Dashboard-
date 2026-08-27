@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole, selfOrAdmin } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -16,7 +16,7 @@ router.get('/:id/health', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_health')
+    const { data, error } = await db.from('employee_health')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req)).maybeSingle();
     if (error) throw error;
     res.json(data || {});
@@ -52,7 +52,7 @@ router.put('/:id/health', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) => 
       record.health_insurance_expiry    = health_insurance_expiry    || null;
     }
 
-    const { data, error } = await supabase.from('employee_health')
+    const { data, error } = await db.from('employee_health')
       .upsert(record, { onConflict: 'employee_id,organization_id' }).select().single();
     if (error) throw error;
     res.json(data);

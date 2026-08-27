@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
@@ -15,7 +15,7 @@ router.get('/', auth, async (req, res) => {
     const oId = orgId(req);
     const { userId } = req.query;
 
-    let query = supabase
+    let query = db
       .from('offboarding_checklists')
       .select('*, users!offboarding_checklists_user_id_fkey(id, name, avatar_color, position)')
       .eq('organization_id', oId)
@@ -37,7 +37,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/overview', auth, hasPermission('exit', 'manage'), async (req, res) => {
   try {
     const oId = orgId(req);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('offboarding_checklists')
       .select('*, users!offboarding_checklists_user_id_fkey(id, name, avatar_color, position, department)')
       .eq('organization_id', oId)
@@ -74,7 +74,7 @@ router.put('/:id/complete', auth, async (req, res) => {
     const { completed } = req.body;
     const taskId    = parseInt(req.params.id, 10);
 
-    const { data: task, error: fetchErr } = await supabase
+    const { data: task, error: fetchErr } = await db
       .from('offboarding_checklists')
       .select('user_id, assigned_to')
       .eq('id', taskId)
@@ -89,7 +89,7 @@ router.put('/:id/complete', auth, async (req, res) => {
       if (task.assigned_to !== 'employee') return res.status(403).json({ error: 'Only HR can complete this task' });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('offboarding_checklists')
       .update({
         completed:    !!completed,

@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./auth');
-const { supabase } = require('../config/db');
+const { db } = require('../config/db');
 
 const FEATURE_ROUTE_MAP = {
   '/payroll':               'payroll',
@@ -25,7 +25,7 @@ const FEATURE_ROUTE_MAP = {
 async function isFeatureEnabled(organizationId, featureKey) {
   if (!organizationId || !featureKey) return true;
   try {
-    const { data } = await supabase.from('organization_features')
+    const { data } = await db.from('organization_features')
       .select('enabled').eq('organization_id', organizationId).eq('feature_key', featureKey).maybeSingle();
     return data ? data.enabled : true;
   } catch { return true; }

@@ -1,5 +1,5 @@
 const webpush = require('web-push');
-const { supabase } = require('../config/db');
+const { db } = require('../config/db');
 
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
@@ -15,7 +15,7 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 async function sendPushToUsers(userIds, payload) {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return 0;
-  let query = supabase.from('push_subscriptions').select('user_id, endpoint, subscription');
+  let query = db.from('push_subscriptions').select('user_id, endpoint, subscription');
   if (userIds && userIds.length > 0) query = query.in('user_id', userIds);
   const { data: subs } = await query;
   if (!subs?.length) return 0;
@@ -27,7 +27,7 @@ async function sendPushToUsers(userIds, payload) {
       sent++;
     } catch (err) {
       if (err.statusCode === 410 || err.statusCode === 404) {
-        try { await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint); } catch { }
+        try { await db.from('push_subscriptions').delete().eq('endpoint', s.endpoint); } catch { }
       }
     }
   }));

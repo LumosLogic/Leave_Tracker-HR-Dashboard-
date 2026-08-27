@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }                      = require('../../config/db');
+const { db }                      = require('../../config/db');
 const { auth, isAdminRole, selfOrAdmin } = require('../../middleware/auth');
 const { orgId }                         = require('../../utils/helpers');
 
@@ -21,7 +21,7 @@ router.get('/:id/personal', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && !isSelf)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('users').select(`
+    const { data, error } = await db.from('users').select(`
       id, salutation, name, middle_name, surname, email, personal_email,
       phone, gender, date_of_birth, blood_group, marital_status,
       nationality, religion, citizenship, height, weight,
@@ -62,7 +62,7 @@ router.put('/:id/personal', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) =
     update.updated_at = new Date().toISOString();
     update.updated_by = req.user.id;
 
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .update(update).eq('id', empId).eq('organization_id', orgId(req)).select().single();
 
     if (error) throw error;

@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth }   = require('../../middleware/auth');
 const cloudinary = require('cloudinary').v2;
 const multer     = require('multer');
@@ -28,7 +28,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
 
-    let query = supabase
+    let query = db
       .from('document_requirements')
       .select('*')
       .eq('organization_id', oId)
@@ -44,7 +44,7 @@ router.get('/', auth, async (req, res) => {
     if (!reqIds.length) return res.json([]);
 
     if (isAdmin(req.user.role)) {
-      const { data: subs } = await supabase
+      const { data: subs } = await db
         .from('employee_doc_submissions')
         .select('requirement_id, status')
         .in('requirement_id', reqIds)
@@ -61,7 +61,7 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Employee: attach their own submission
-    const { data: mySubs } = await supabase
+    const { data: mySubs } = await db
       .from('employee_doc_submissions')
       .select('*, reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
       .eq('user_id', req.user.id)
@@ -71,7 +71,75 @@ router.get('/', auth, async (req, res) => {
     const subMap = {};
     (mySubs || []).forEach(s => { subMap[s.requirement_id] = s; });
 
-    res.json((requirements || []).map(r => ({ ...r, _submission: subMap[r.id] || null })));
+    // Filter by assigned_employee_ids if set (NULL = visible to all, backward compatible)
+    const visible = (requirements || []).filter(r =>
+      !r.assigned_employee_ids ||
+      r.assigned_employee_ids.length === 0 ||
+      r.assigned_employee_ids.includes(req.user.id)
+    );
+
+    res.json(visible.map(r => ({ ...r, _submission: subMap[r.id] || null })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/doc-requirements/analytics — real compliance metrics for admin
+router.get('/analytics', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const oId = req.user.organization_id;
+
+    const [{ data: requirements }, { data: subs }, { data: employees }] = await Promise.all([
+      db.from('document_requirements').select('id, name, is_required, is_active').eq('organization_id', oId),
+      db.from('employee_doc_submissions').select('id, status, uploaded_at, requirement_id, user_id, expiry_date').eq('organization_id', oId),
+      db.from('users').select('id').eq('organization_id', oId).eq('role', 'employee').eq('status', 'active'),
+    ]);
+
+    const reqList  = requirements || [];
+    const subsList = subs        || [];
+    const empList  = employees   || [];
+
+    const totalRequirements = reqList.length;
+    const activeRequired    = reqList.filter(r => r.is_required && r.is_active).length;
+    const totalEmployees    = empList.length;
+
+    const statusCounts = { approved: 0, hr_approved: 0, under_review: 0, rejected: 0, re_upload_requested: 0 };
+    subsList.forEach(s => { if (s.status in statusCounts) statusCounts[s.status]++; });
+
+    const today = new Date().toISOString().split('T')[0];
+    const soon  = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+    const expiringCount = subsList.filter(s => s.status === 'approved' && s.expiry_date && s.expiry_date >= today && s.expiry_date <= soon).length;
+
+    const maxPossible      = activeRequired * totalEmployees;
+    const compliancePercent = maxPossible > 0 ? Math.round((statusCounts.approved / maxPossible) * 100) : 0;
+
+    // Per-requirement breakdown
+    const reqMap = {};
+    reqList.forEach(r => { reqMap[r.id] = { ...r, total: 0, approved: 0, under_review: 0, rejected: 0 }; });
+    subsList.forEach(s => {
+      if (reqMap[s.requirement_id]) {
+        reqMap[s.requirement_id].total++;
+        if (['approved','under_review','rejected'].includes(s.status))
+          reqMap[s.requirement_id][s.status]++;
+      }
+    });
+
+    // Weekly upload trend (last 8 weeks)
+    const weeklyTrend = [];
+    for (let i = 7; i >= 0; i--) {
+      const wStart = new Date(Date.now() - (i + 1) * 7 * 864e5);
+      const wEnd   = new Date(Date.now() - i       * 7 * 864e5);
+      const count  = subsList.filter(s => { const d = new Date(s.uploaded_at); return d >= wStart && d < wEnd; }).length;
+      weeklyTrend.push({ week: wStart.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }), count });
+    }
+
+    res.json({
+      totalRequirements, activeRequired, totalEmployees,
+      compliancePercent, expiringCount,
+      totalSubmissions: subsList.length,
+      ...statusCounts,
+      requirementStats: Object.values(reqMap),
+      weeklyTrend,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -79,7 +147,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/my-activity', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('doc_submission_activity')
       .select('*, requirement:document_requirements!doc_submission_activity_requirement_id_fkey(name)')
       .eq('user_id', req.user.id)
@@ -98,7 +166,7 @@ router.get('/verification-queue', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { status } = req.query; // optional filter: under_review | approved | rejected | re_upload_requested
 
-    let query = supabase
+    let query = db
       .from('employee_doc_submissions')
       .select('*, employee:users(id, name, email, avatar_color, department, position), requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(id, name, description, category), reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
       .eq('organization_id', oId)
@@ -127,7 +195,7 @@ router.post('/', auth, async (req, res) => {
 
     if (!name?.trim()) return res.status(400).json({ error: 'Document name is required' });
 
-    const { data, error } = await supabase.from('document_requirements').insert({
+    const { data, error } = await db.from('document_requirements').insert({
       organization_id:      oId,
       name:                 name.trim(),
       description:          description?.trim() || null,
@@ -165,7 +233,7 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
     if (action === 'approved' && req.user.role !== 'root_admin')
       return res.status(403).json({ error: 'Only Root Admin can give final document approval. Use "HR Approve" to forward for Root Admin review.' });
 
-    const { data: sub } = await supabase
+    const { data: sub } = await db
       .from('employee_doc_submissions')
       .select('*, requirement:document_requirements!employee_doc_submissions_requirement_id_fkey(name)')
       .eq('id', req.params.id)
@@ -181,7 +249,7 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
     };
     updates.rejection_reason = (action === 'approved' || action === 'hr_approved') ? null : (reason?.trim() || null);
 
-    const { data, error } = await supabase.from('employee_doc_submissions')
+    const { data, error } = await db.from('employee_doc_submissions')
       .update(updates)
       .eq('id', req.params.id)
       .eq('organization_id', oId)
@@ -196,7 +264,7 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
       re_upload_requested: `"${sub.requirement?.name}" re-upload requested: ${reason || ''}`,
     }[action] || `"${sub.requirement?.name}" ${action}`;
 
-    await supabase.from('doc_submission_activity').insert({
+    await db.from('doc_submission_activity').insert({
       requirement_id:  sub.requirement_id,
       user_id:         sub.user_id,
       organization_id: oId,
@@ -219,19 +287,19 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
       re_upload_requested: `Please re-upload "${sub.requirement?.name}". Reason: ${reason}`,
     }[action];
 
-    await supabase.from('notifications').insert({
+    await db.from('notifications').insert({
       user_id: sub.user_id, title: notifTitle, message: notifMsg,
       type: 'document', organization_id: oId,
     });
 
     // If HR approved, also notify root_admins to give final approval
     if (action === 'hr_approved') {
-      const { data: rootAdmins } = await supabase.from('users')
+      const { data: rootAdmins } = await db.from('users')
         .select('id')
         .eq('organization_id', oId)
         .eq('role', 'root_admin');
       if (rootAdmins?.length) {
-        await supabase.from('notifications').insert(
+        await db.from('notifications').insert(
           rootAdmins.map(a => ({
             user_id:         a.id,
             title:           'Document Awaiting Final Approval',
@@ -243,6 +311,31 @@ router.patch('/submissions/:id/review', auth, async (req, res) => {
       }
     }
 
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/doc-requirements/:id/assign — assign to specific employees or all (admin only)
+// employee_ids = null/[] means "all employees" (clears assignment). Array of numbers = specific employees only.
+// Structured for easy extension: future support for dept/designation/location would add more fields.
+router.post('/:id/assign', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const oId = req.user.organization_id;
+    const { employee_ids } = req.body;
+
+    const assignedIds = (Array.isArray(employee_ids) && employee_ids.length > 0)
+      ? employee_ids.map(Number)
+      : null;
+
+    const { data, error } = await db.from('document_requirements')
+      .update({ assigned_employee_ids: assignedIds, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .eq('organization_id', oId)
+      .select().single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Requirement not found' });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -274,7 +367,7 @@ router.patch('/:id', auth, async (req, res) => {
     if (display_order !== undefined)        updates.display_order = display_order;
     if (is_active !== undefined)            updates.is_active = is_active;
 
-    const { data, error } = await supabase.from('document_requirements')
+    const { data, error } = await db.from('document_requirements')
       .update(updates)
       .eq('id', req.params.id)
       .eq('organization_id', oId)
@@ -288,7 +381,7 @@ router.patch('/:id', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
-    const { error } = await supabase.from('document_requirements')
+    const { error } = await db.from('document_requirements')
       .delete()
       .eq('id', req.params.id)
       .eq('organization_id', req.user.organization_id);
@@ -307,12 +400,23 @@ router.post('/:id/submit', auth, upload.single('file'), async (req, res) => {
     if (!ALLOWED_MIMES.includes(req.file.mimetype))
       return res.status(400).json({ error: 'Invalid file type. Only PDF, Images, and Word documents are allowed.' });
 
-    const { data: requirement } = await supabase.from('document_requirements')
+    const { data: requirement } = await db.from('document_requirements')
       .select('*').eq('id', reqId).eq('organization_id', oId).single();
     if (!requirement)          return res.status(404).json({ error: 'Requirement not found' });
     if (!requirement.is_active) return res.status(400).json({ error: 'This document requirement is no longer active' });
 
-    const { data: existing } = await supabase.from('employee_doc_submissions')
+    // Server-side per-requirement file size enforcement (before Cloudinary upload)
+    const maxBytes = (requirement.max_file_size_mb || 10) * 1024 * 1024;
+    if (req.file.size > maxBytes) {
+      return res.status(400).json({
+        error: `File size (${(req.file.size / 1048576).toFixed(1)} MB) exceeds the ${requirement.max_file_size_mb || 10} MB limit for "${requirement.name}".`
+      });
+    }
+    if (req.file.size === 0) {
+      return res.status(400).json({ error: 'Empty files are not allowed.' });
+    }
+
+    const { data: existing } = await db.from('employee_doc_submissions')
       .select('*').eq('requirement_id', reqId).eq('user_id', req.user.id).maybeSingle();
 
     // Upload to Cloudinary
@@ -332,7 +436,7 @@ router.post('/:id/submit', auth, upload.single('file'), async (req, res) => {
     let submission;
 
     if (existing) {
-      const { data, error } = await supabase.from('employee_doc_submissions')
+      const { data, error } = await db.from('employee_doc_submissions')
         .update({
           file_url:            result.secure_url,
           file_type:           req.file.mimetype,
@@ -353,12 +457,12 @@ router.post('/:id/submit', auth, upload.single('file'), async (req, res) => {
       if (error) throw error;
       submission = data;
 
-      await supabase.from('doc_submission_activity').insert({
+      await db.from('doc_submission_activity').insert({
         requirement_id: reqId, user_id: req.user.id, organization_id: oId,
         action: 're_uploaded', details: `Re-uploaded "${requirement.name}"`, actor_id: req.user.id,
       });
     } else {
-      const { data, error } = await supabase.from('employee_doc_submissions').insert({
+      const { data, error } = await db.from('employee_doc_submissions').insert({
         requirement_id:      reqId,
         user_id:             req.user.id,
         organization_id:     oId,
@@ -374,18 +478,18 @@ router.post('/:id/submit', auth, upload.single('file'), async (req, res) => {
       if (error) throw error;
       submission = data;
 
-      await supabase.from('doc_submission_activity').insert({
+      await db.from('doc_submission_activity').insert({
         requirement_id: reqId, user_id: req.user.id, organization_id: oId,
         action: 'uploaded', details: `Uploaded "${requirement.name}"`, actor_id: req.user.id,
       });
     }
 
     // Notify HR admins
-    supabase.from('users').select('id')
+    db.from('users').select('id')
       .eq('organization_id', oId).in('role', ['admin', 'root_admin'])
       .then(({ data: admins }) => {
         if (!admins?.length) return;
-        return supabase.from('notifications').insert(admins.map(a => ({
+        return db.from('notifications').insert(admins.map(a => ({
           user_id: a.id,
           title:   'Document Uploaded for Review',
           message: `${req.user.name} uploaded "${requirement.name}". Review in Verification Queue.`,

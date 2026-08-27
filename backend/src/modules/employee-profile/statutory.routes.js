@@ -1,13 +1,13 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }          = require('../../config/db');
+const { db }          = require('../../config/db');
 const { auth, adminOnly }   = require('../../middleware/auth');
 const { orgId }             = require('../../utils/helpers');
 
 // GET /api/profile/:id/statutory  — admin only (sensitive)
 router.get('/:id/statutory', auth, adminOnly, async (req, res) => {
   try {
-    const { data, error } = await supabase.from('users').select(`
+    const { data, error } = await db.from('users').select(`
       aadhar_no, pan_number, pan_name, uan_no, voter_id,
       pf_applicable, pf_no, vpf_applicable, vpf_percentage, max_pf_amount, pran, is_pf_on_gross,
       esi_applicable, esi_no, esi_dispensary, esi_office,
@@ -40,7 +40,7 @@ router.put('/:id/statutory', auth, adminOnly, async (req, res) => {
       salary_slip_format, max_weekoff_in_month, special_allowance,
     } = req.body;
 
-    const { data, error } = await supabase.from('users').update({
+    const { data, error } = await db.from('users').update({
       aadhar_no: aadhar_no || null,
       pan_number: pan_number || null, pan_name: pan_name || null,
       uan_no: uan_no || null, voter_id: voter_id || null,

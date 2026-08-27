@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const cloudinary = require('cloudinary').v2;
@@ -24,7 +24,7 @@ async function attachUserInfo(docs, oId) {
     ...docs.map(d => d.uploaded_by),
   ].filter(Boolean))];
   if (!userIds.length) return docs;
-  const { data: users } = await supabase
+  const { data: users } = await db
     .from('users')
     .select('id, name, avatar_color')
     .in('id', userIds)
@@ -44,7 +44,7 @@ async function attachUserInfo(docs, oId) {
 async function attachShares(docs, oId) {
   if (!docs || !docs.length) return docs;
   const ids = docs.map(d => d.id);
-  const { data: shares } = await supabase
+  const { data: shares } = await db
     .from('document_shares')
     .select('document_id, shared_with_user_id')
     .in('document_id', ids)
@@ -61,7 +61,7 @@ async function attachShares(docs, oId) {
 router.get('/colleagues', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('users')
       .select('id, name, avatar_color, department')
       .eq('organization_id', oId)
@@ -80,7 +80,7 @@ router.get('/', auth, async (req, res) => {
     const { userId } = req.query;
 
     if (isAdmin(req.user.role)) {
-      let query = supabase
+      let query = db
         .from('employee_documents')
         .select('*')
         .eq('organization_id', oId)
@@ -95,7 +95,7 @@ router.get('/', auth, async (req, res) => {
     // Employee: own docs + visibility='all' + specifically shared docs
     const myId = req.user.id;
 
-    const { data: myShares } = await supabase
+    const { data: myShares } = await db
       .from('document_shares')
       .select('document_id')
       .eq('shared_with_user_id', myId)
@@ -105,7 +105,7 @@ router.get('/', auth, async (req, res) => {
     const orFilters = [`user_id.eq.${myId}`, 'visibility.eq.all'];
     if (sharedIds.length > 0) orFilters.push(`id.in.(${sharedIds.join(',')})`);
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('employee_documents')
       .select('*')
       .eq('organization_id', oId)
@@ -136,7 +136,7 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
     const targetId = isAdmin(req.user.role) && userId ? Number(userId) : req.user.id;
 
     // Check for duplicate document (same name + category for same user)
-    const { data: dupDoc } = await supabase.from('employee_documents')
+    const { data: dupDoc } = await db.from('employee_documents')
       .select('id').eq('organization_id', oId).eq('user_id', targetId)
       .eq('name', name || req.file.originalname).eq('category', category || 'other').maybeSingle();
     if (dupDoc) {
@@ -158,7 +158,7 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
       ).end(req.file.buffer);
     });
 
-    const { data: doc, error } = await supabase.from('employee_documents').insert({
+    const { data: doc, error } = await db.from('employee_documents').insert({
       user_id:         targetId,
       name:            name || req.file.originalname,
       category:        category || 'other',
@@ -174,10 +174,10 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
 
     // Notify HR admins when a non-admin employee uploads a document (pre-onboarding or regular)
     if (!isAdmin(req.user.role)) {
-      supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
+      db.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
         .then(({ data: admins }) => {
           if (!admins?.length) return;
-          return supabase.from('notifications').insert(admins.map(a => ({
+          return db.from('notifications').insert(admins.map(a => ({
             user_id: a.id,
             title:   'Employee Document Uploaded',
             message: `${req.user.name} uploaded "${doc.name}" (${doc.category}). Please review in the Documents section.`,
@@ -191,7 +191,7 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
       let userIds = [];
       try { userIds = JSON.parse(shared_with); } catch { userIds = []; }
       if (userIds.length > 0) {
-        await supabase.from('document_shares').insert(
+        await db.from('document_shares').insert(
           userIds.map(uid => ({
             document_id:         doc.id,
             shared_with_user_id: Number(uid),
@@ -215,17 +215,17 @@ router.patch('/:id/shares', auth, hasPermission('documents', 'manage'), async (r
     if (!['self', 'all', 'specific', 'admin_only'].includes(visibility))
       return res.status(400).json({ error: 'Invalid visibility value' });
 
-    const { error: upErr } = await supabase.from('employee_documents')
+    const { error: upErr } = await db.from('employee_documents')
       .update({ visibility })
       .eq('id', req.params.id)
       .eq('organization_id', oId);
     if (upErr) throw upErr;
 
     // Replace all existing shares
-    await supabase.from('document_shares').delete().eq('document_id', Number(req.params.id));
+    await db.from('document_shares').delete().eq('document_id', Number(req.params.id));
 
     if (visibility === 'specific' && Array.isArray(shared_with) && shared_with.length > 0) {
-      await supabase.from('document_shares').insert(
+      await db.from('document_shares').insert(
         shared_with.map(uid => ({
           document_id:         Number(req.params.id),
           shared_with_user_id: Number(uid),
@@ -245,7 +245,7 @@ router.patch('/:id/status', auth, hasPermission('documents', 'manage'), async (r
     const { status } = req.body;
     if (!['pending_review', 'verified', 'rejected'].includes(status))
       return res.status(400).json({ error: 'Invalid status' });
-    const { data, error } = await supabase.from('employee_documents')
+    const { data, error } = await db.from('employee_documents')
       .update({ status })
       .eq('id', req.params.id)
       .eq('organization_id', req.user.organization_id)
@@ -260,7 +260,7 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
 
-    const { data: doc } = await supabase.from('employee_documents')
+    const { data: doc } = await db.from('employee_documents')
       .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
@@ -317,7 +317,7 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
     }
 
     // ── Update document row ─────────────────────────────────────────────────────
-    const { data: updated, error } = await supabase.from('employee_documents')
+    const { data: updated, error } = await db.from('employee_documents')
       .update(updates)
       .eq('id', req.params.id)
       .eq('organization_id', oId)
@@ -326,13 +326,13 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
 
     // ── Update shares when visibility changed ───────────────────────────────────
     if (newVisibility === 'specific' || doc.visibility === 'specific') {
-      await supabase.from('document_shares').delete().eq('document_id', Number(req.params.id));
+      await db.from('document_shares').delete().eq('document_id', Number(req.params.id));
 
       if (newVisibility === 'specific' && shared_with) {
         let userIds = [];
         try { userIds = JSON.parse(shared_with); } catch { userIds = []; }
         if (userIds.length > 0) {
-          await supabase.from('document_shares').insert(
+          await db.from('document_shares').insert(
             userIds.map(uid => ({
               document_id:         Number(req.params.id),
               shared_with_user_id: Number(uid),
@@ -358,7 +358,7 @@ router.post('/:id/request-delete', auth, async (req, res) => {
     if (req.user.role === 'root_admin')
       return res.status(400).json({ error: 'Root Admin can delete directly. Use the delete action instead.' });
 
-    const { data: doc } = await supabase.from('employee_documents')
+    const { data: doc } = await db.from('employee_documents')
       .select('id, name, category')
       .eq('id', req.params.id)
       .eq('organization_id', oId)
@@ -369,14 +369,24 @@ router.post('/:id/request-delete', auth, async (req, res) => {
     if (!reason?.trim())
       return res.status(400).json({ error: 'Reason is required for a deletion request.' });
 
+    // Prevent duplicate pending requests for the same document
+    const { data: existingReq } = await db.from('document_delete_requests')
+      .select('id')
+      .eq('document_id', Number(req.params.id))
+      .eq('organization_id', oId)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (existingReq)
+      return res.status(409).json({ error: 'A deletion request for this document is already pending approval.' });
+
     // Notify all root_admins in the org
-    const { data: rootAdmins } = await supabase.from('users')
+    const { data: rootAdmins } = await db.from('users')
       .select('id')
       .eq('organization_id', oId)
       .eq('role', 'root_admin');
 
     if (rootAdmins?.length) {
-      await supabase.from('notifications').insert(
+      await db.from('notifications').insert(
         rootAdmins.map(a => ({
           user_id:         a.id,
           title:           'Document Deletion Request',
@@ -387,6 +397,116 @@ router.post('/:id/request-delete', auth, async (req, res) => {
       );
     }
 
+    // Persist the delete request so Root Admin has an actionable inbox
+    await db.from('document_delete_requests').insert({
+      document_id:     Number(req.params.id),
+      requested_by:    req.user.id,
+      organization_id: oId,
+      reason:          reason.trim(),
+      status:          'pending',
+    });
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/documents/delete-requests — Root Admin inbox of pending HR delete requests
+router.get('/delete-requests', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'root_admin')
+      return res.status(403).json({ error: 'Forbidden' });
+    const oId = req.user.organization_id;
+    const { status } = req.query; // optional: pending | approved | rejected
+
+    let query = db
+      .from('document_delete_requests')
+      .select('*, requester:users!document_delete_requests_requested_by_fkey(id, name, avatar_color)')
+      .eq('organization_id', oId)
+      .order('created_at', { ascending: false });
+
+    if (status && ['pending','approved','rejected'].includes(status))
+      query = query.eq('status', status);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Attach document info (document may have been deleted by the time request is viewed)
+    const docIds = [...new Set((data || []).map(r => r.document_id).filter(Boolean))];
+    let docMap = {};
+    if (docIds.length) {
+      const { data: docs } = await db
+        .from('employee_documents')
+        .select('id, name, category, file_url, file_type, file_size')
+        .in('id', docIds);
+      (docs || []).forEach(d => { docMap[d.id] = d; });
+    }
+
+    res.json((data || []).map(r => ({ ...r, document: docMap[r.document_id] || null })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/documents/delete-requests/:id/action — Root Admin approves or rejects a delete request
+router.patch('/delete-requests/:id/action', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'root_admin')
+      return res.status(403).json({ error: 'Only Root Admin can action delete requests.' });
+
+    const oId = req.user.organization_id;
+    const { action, reason } = req.body;
+
+    if (!['approved', 'rejected'].includes(action))
+      return res.status(400).json({ error: 'Action must be "approved" or "rejected".' });
+
+    const { data: delReq } = await db
+      .from('document_delete_requests')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('organization_id', oId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!delReq) return res.status(404).json({ error: 'Delete request not found or already actioned.' });
+
+    // Fetch the document before potentially deleting it
+    const { data: doc } = await db
+      .from('employee_documents')
+      .select('*')
+      .eq('id', delReq.document_id)
+      .eq('organization_id', oId)
+      .single();
+
+    // Update request status
+    await db.from('document_delete_requests').update({
+      status:          action,
+      actioned_by:     req.user.id,
+      actioned_at:     new Date().toISOString(),
+      actioned_reason: reason?.trim() || null,
+      updated_at:      new Date().toISOString(),
+    }).eq('id', req.params.id);
+
+    if (action === 'approved' && doc) {
+      // Delete file from Cloudinary
+      const publicId = doc.file_url.split('/').slice(-2).join('/').replace(/\.[^.]+$/, '');
+      try { await cloudinary.uploader.destroy(publicId); } catch {}
+      // Delete shares and document row
+      await db.from('document_shares').delete().eq('document_id', doc.id);
+      await db.from('employee_documents').delete().eq('id', doc.id);
+    }
+
+    // Notify the requester
+    const docName = doc?.name || 'the document';
+    const notifMsg = action === 'approved'
+      ? `Your request to delete "${docName}" was approved. The document has been permanently deleted.`
+      : `Your request to delete "${docName}" was rejected${reason?.trim() ? `. Reason: ${reason.trim()}` : ''}.`;
+
+    await db.from('notifications').insert({
+      user_id:         delReq.requested_by,
+      title:           action === 'approved' ? 'Delete Request Approved' : 'Delete Request Rejected',
+      message:         notifMsg,
+      type:            'document',
+      organization_id: oId,
+    });
+
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -395,7 +515,7 @@ router.post('/:id/request-delete', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data: doc } = await supabase.from('employee_documents')
+    const { data: doc } = await db.from('employee_documents')
       .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
@@ -415,17 +535,17 @@ router.delete('/:id', auth, async (req, res) => {
     try { await cloudinary.uploader.destroy(publicId); } catch { /* already gone */ }
 
     // Delete dependent rows first to avoid FK constraint violations
-    await supabase.from('document_shares').delete().eq('document_id', req.params.id);
+    await db.from('document_shares').delete().eq('document_id', req.params.id);
 
-    const { error } = await supabase.from('employee_documents').delete().eq('id', req.params.id);
+    const { error } = await db.from('employee_documents').delete().eq('id', req.params.id);
     if (error) throw error;
 
     // Audit log — notify all admins of deletion with reason
     if (reason?.trim()) {
-      supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
+      db.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
         .then(({ data: admins }) => {
           if (!admins?.length) return;
-          return supabase.from('notifications').insert(admins.map(a => ({
+          return db.from('notifications').insert(admins.map(a => ({
             user_id:         a.id,
             title:           'Document Deleted',
             message:         `Document "${doc.name}" was deleted by ${req.user.name}. Reason: ${reason.trim()}`,

@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, isAdminRole }     = require('../../middleware/auth');
 const { orgId, localDateStr }   = require('../../utils/helpers');
 
@@ -16,7 +16,7 @@ router.get('/:id/overview', auth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
 
     // Core user row
-    const { data: emp, error } = await supabase.from('users')
+    const { data: emp, error } = await db.from('users')
       .select(`
         id, name, email, phone, role, employee_id, device_enrollment_id,
         salutation, middle_name, surname,
@@ -33,7 +33,7 @@ router.get('/:id/overview', auth, async (req, res) => {
     // Manager name (single lookup, not a join chain)
     let manager = null;
     if (emp.reporting_to) {
-      const { data: mgr } = await supabase.from('users')
+      const { data: mgr } = await db.from('users')
         .select('id, name, avatar_color, position')
         .eq('id', emp.reporting_to).maybeSingle();
       manager = mgr;
@@ -42,14 +42,14 @@ router.get('/:id/overview', auth, async (req, res) => {
     // Branch name
     let branch = null;
     if (emp.branch_id) {
-      const { data: br } = await supabase.from('branches')
+      const { data: br } = await db.from('branches')
         .select('id, name').eq('id', emp.branch_id).maybeSingle();
       branch = br;
     }
 
     // Today's attendance (for status indicator)
     const today = localDateStr();
-    const { data: todayAtt } = await supabase.from('attendance')
+    const { data: todayAtt } = await db.from('attendance')
       .select('status, check_in, check_out')
       .eq('user_id', empId).eq('date', today).eq('organization_id', oId).maybeSingle();
 
@@ -62,12 +62,12 @@ router.get('/:id/overview', auth, async (req, res) => {
       { count: bankCount },
       { count: docCount },
     ] = await Promise.all([
-      supabase.from('employee_family_members').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
-      supabase.from('employee_qualifications').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
-      supabase.from('employee_experiences').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
-      supabase.from('employee_skills').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
-      supabase.from('employee_bank_accounts').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
-      supabase.from('employee_documents').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
+      db.from('employee_family_members').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
+      db.from('employee_qualifications').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
+      db.from('employee_experiences').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
+      db.from('employee_skills').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
+      db.from('employee_bank_accounts').select('id', { count: 'exact', head: true }).eq('employee_id', empId).eq('organization_id', oId),
+      db.from('employee_documents').select('id', { count: 'exact', head: true }).eq('user_id', empId).eq('organization_id', oId),
     ]);
 
     // Completion score: 8 sections, each worth ~12.5%

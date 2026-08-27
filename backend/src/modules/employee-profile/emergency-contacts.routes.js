@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole, selfOrAdmin } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -13,7 +13,7 @@ router.get('/:id/emergency-contacts', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_emergency_contacts')
+    const { data, error } = await db.from('employee_emergency_contacts')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('is_primary', { ascending: false }).order('created_at');
     if (error) throw error;
@@ -32,11 +32,11 @@ router.post('/:id/emergency-contacts', auth, selfOrAdmin(SELF_EDITABLE), async (
 
     // If marking as primary, unset existing primary first
     if (is_primary) {
-      await supabase.from('employee_emergency_contacts')
+      await db.from('employee_emergency_contacts')
         .update({ is_primary: false }).eq('employee_id', empId).eq('organization_id', orgId(req));
     }
 
-    const { data, error } = await supabase.from('employee_emergency_contacts').insert({
+    const { data, error } = await db.from('employee_emergency_contacts').insert({
       employee_id: empId, organization_id: orgId(req),
       contact_name, relationship, mobile_number,
       alternate_number: alternate_number || null,
@@ -59,11 +59,11 @@ router.put('/:id/emergency-contacts/:recordId', auth, selfOrAdmin(SELF_EDITABLE)
     const { contact_name, relationship, mobile_number, alternate_number, email, address, is_primary } = req.body;
 
     if (is_primary) {
-      await supabase.from('employee_emergency_contacts')
+      await db.from('employee_emergency_contacts')
         .update({ is_primary: false }).eq('employee_id', empId).eq('organization_id', orgId(req));
     }
 
-    const { data, error } = await supabase.from('employee_emergency_contacts').update({
+    const { data, error } = await db.from('employee_emergency_contacts').update({
       contact_name, relationship, mobile_number,
       alternate_number: alternate_number || null,
       email: email || null, address: address || null,
@@ -80,7 +80,7 @@ router.put('/:id/emergency-contacts/:recordId', auth, selfOrAdmin(SELF_EDITABLE)
 // DELETE /api/profile/:id/emergency-contacts/:recordId
 router.delete('/:id/emergency-contacts/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_emergency_contacts')
+    const { error } = await db.from('employee_emergency_contacts')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
     if (error) throw error;

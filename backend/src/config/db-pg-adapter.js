@@ -473,8 +473,7 @@ function from(table) {
   return builder;
 }
 
-// ── Supabase-compatible wrapper ────────────────────────────────────────────────
-// Exposed as `supabase = { from }` so routes work without changes.
-const supabaseCompat = { from };
+// PostgreSQL query builder — exported as `db` for use in all routes.
+const db = { from };
 
-module.exports = { from, pool, supabase: supabaseCompat };
+module.exports = { from, pool, db };

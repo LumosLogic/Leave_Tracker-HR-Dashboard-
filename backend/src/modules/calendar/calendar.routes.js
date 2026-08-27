@@ -1,13 +1,13 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const gcal = require('../../services/googleCalendar');
 
 // ─── Holidays CRUD ────────────────────────────────────────────────────────────
 router.get('/holidays', auth, async (req, res) => {
-  const { data } = await supabase.from('holidays').select('*').eq('organization_id', orgId(req)).order('date');
+  const { data } = await db.from('holidays').select('*').eq('organization_id', orgId(req)).order('date');
   res.json(data || []);
 });
 
@@ -15,10 +15,10 @@ router.post('/holidays', auth, adminOnly, async (req, res) => {
   try {
     const { name, date, type, description, specific_msg } = req.body;
     if (!name || !date) return res.status(400).json({ error: 'Name and date required' });
-    const { data, error } = await supabase.from('holidays').insert({ name, date, type: type||'public', description: description||'', specific_msg: specific_msg||null, organization_id: orgId(req) }).select().single();
+    const { data, error } = await db.from('holidays').insert({ name, date, type: type||'public', description: description||'', specific_msg: specific_msg||null, organization_id: orgId(req) }).select().single();
     if (error) throw new Error(error.message);
     const gcalId = await gcal.createHolidayEvent(data);
-    if (gcalId) await supabase.from('holidays').update({ google_event_id: gcalId }).eq('id', data.id);
+    if (gcalId) await db.from('holidays').update({ google_event_id: gcalId }).eq('id', data.id);
     res.json({ ...data, google_event_id: gcalId || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -26,8 +26,8 @@ router.post('/holidays', auth, adminOnly, async (req, res) => {
 router.put('/holidays/:id', auth, adminOnly, async (req, res) => {
   try {
     const { name, date, type, description, specific_msg } = req.body;
-    const { data: existing } = await supabase.from('holidays').select('google_event_id').eq('id', req.params.id).maybeSingle();
-    const { data } = await supabase.from('holidays').update({ name, date, type, description, specific_msg: specific_msg||null }).eq('id', req.params.id).select().single();
+    const { data: existing } = await db.from('holidays').select('google_event_id').eq('id', req.params.id).maybeSingle();
+    const { data } = await db.from('holidays').update({ name, date, type, description, specific_msg: specific_msg||null }).eq('id', req.params.id).select().single();
     if (existing?.google_event_id) gcal.updateHolidayEvent(existing.google_event_id, data);
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -35,16 +35,16 @@ router.put('/holidays/:id', auth, adminOnly, async (req, res) => {
 
 router.delete('/holidays/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { data: existing } = await supabase.from('holidays').select('google_event_id').eq('id', req.params.id).maybeSingle();
+    const { data: existing } = await db.from('holidays').select('google_event_id').eq('id', req.params.id).maybeSingle();
     if (existing?.google_event_id) gcal.deleteHolidayEvent(existing.google_event_id);
-    await supabase.from('holidays').delete().eq('id', req.params.id);
+    await db.from('holidays').delete().eq('id', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Events CRUD ──────────────────────────────────────────────────────────────
 router.get('/events', auth, async (req, res) => {
-  const { data } = await supabase.from('events').select('*').eq('organization_id', orgId(req)).order('date');
+  const { data } = await db.from('events').select('*').eq('organization_id', orgId(req)).order('date');
   res.json(data || []);
 });
 
@@ -52,10 +52,10 @@ router.post('/events', auth, adminOnly, async (req, res) => {
   try {
     const { title, date, end_date, description } = req.body;
     if (!title || !date) return res.status(400).json({ error: 'Title and date required' });
-    const { data, error } = await supabase.from('events').insert({ title, date, end_date: end_date||null, description: description||'', created_by: req.user.id, organization_id: orgId(req) }).select().single();
+    const { data, error } = await db.from('events').insert({ title, date, end_date: end_date||null, description: description||'', created_by: req.user.id, organization_id: orgId(req) }).select().single();
     if (error) throw new Error(error.message);
     const gcalId = await gcal.createCompanyEvent(data);
-    if (gcalId) await supabase.from('events').update({ google_event_id: gcalId }).eq('id', data.id);
+    if (gcalId) await db.from('events').update({ google_event_id: gcalId }).eq('id', data.id);
     res.json({ ...data, google_event_id: gcalId || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -63,8 +63,8 @@ router.post('/events', auth, adminOnly, async (req, res) => {
 router.put('/events/:id', auth, adminOnly, async (req, res) => {
   try {
     const { title, date, end_date, description } = req.body;
-    const { data: existing } = await supabase.from('events').select('google_event_id').eq('id', req.params.id).maybeSingle();
-    const { data } = await supabase.from('events').update({ title, date, end_date: end_date||null, description }).eq('id', req.params.id).select().single();
+    const { data: existing } = await db.from('events').select('google_event_id').eq('id', req.params.id).maybeSingle();
+    const { data } = await db.from('events').update({ title, date, end_date: end_date||null, description }).eq('id', req.params.id).select().single();
     if (existing?.google_event_id) gcal.updateCompanyEvent(existing.google_event_id, data);
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -72,9 +72,9 @@ router.put('/events/:id', auth, adminOnly, async (req, res) => {
 
 router.delete('/events/:id', auth, adminOnly, async (req, res) => {
   try {
-    const { data: existing } = await supabase.from('events').select('google_event_id').eq('id', req.params.id).maybeSingle();
+    const { data: existing } = await db.from('events').select('google_event_id').eq('id', req.params.id).maybeSingle();
     if (existing?.google_event_id) gcal.deleteCompanyEvent(existing.google_event_id);
-    await supabase.from('events').delete().eq('id', req.params.id);
+    await db.from('events').delete().eq('id', req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -92,7 +92,7 @@ router.get('/culture', auth, async (req, res) => {
 
     // BUG_059 / BUG_068: Birthdays from active employees only — exclude
     // inactive/resigned/terminated so they don't appear in the culture feed.
-    const { data: users } = await supabase.from('users')
+    const { data: users } = await db.from('users')
       .select('id, name, avatar_color, department, date_of_birth')
       .eq('role', 'employee')
       .eq('organization_id', orgId(req))
@@ -112,8 +112,8 @@ router.get('/culture', auth, async (req, res) => {
 
     // Next upcoming holidays (no hard upper limit — show whatever is next)
     const [{ data: holidays }, { data: events }] = await Promise.all([
-      supabase.from('holidays').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
-      supabase.from('events').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
+      db.from('holidays').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
+      db.from('events').select('*').eq('organization_id', orgId(req)).gte('date', today).order('date').limit(10),
     ]);
 
     res.json({ birthdaysToday: birthdaysToday || [], upcomingBirthdays, holidays: holidays || [], events: events || [] });

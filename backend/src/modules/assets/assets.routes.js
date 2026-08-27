@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -11,7 +11,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId, status } = req.query;
-    let q = supabase.from('assets')
+    let q = db.from('assets')
       .select('*, assigned_user:users!assets_assigned_to_fkey(id, name, avatar_color, department)')
       .eq('organization_id', oId)
       .order('created_at', { ascending: false });
@@ -33,7 +33,7 @@ router.post('/', auth, hasPermission('assets', 'create'), async (req, res) => {
     // BUG_134: serial_number is bigint in DB — send null if empty string to avoid type error
     if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
     if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
-    const { data, error } = await supabase.from('assets').insert(body).select().single();
+    const { data, error } = await db.from('assets').insert(body).select().single();
     if (error) throw error;
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -49,14 +49,14 @@ router.put('/:id', auth, hasPermission('assets', 'manage'), async (req, res) => 
     // BUG_134: sanitize bigint/numeric fields
     if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
     if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
-    const { data, error } = await supabase.from('assets')
+    const { data, error } = await db.from('assets')
       .update(body).eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
     if (error) throw error;
 
     // Notify employee if assigned
     if (body.assigned_to && body.status === 'assigned') {
-      await supabase.from('notifications').insert({
+      await db.from('notifications').insert({
         user_id: body.assigned_to,
         title: 'Asset Assigned',
         message: `${body.name || 'An asset'} (${body.asset_tag || ''}) has been assigned to you.`,
@@ -72,7 +72,7 @@ router.delete('/:id', auth, hasPermission('assets', 'manage'), async (req, res) 
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { error } = await supabase.from('assets').delete().eq('id', req.params.id).eq('organization_id', oId);
+    const { error } = await db.from('assets').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

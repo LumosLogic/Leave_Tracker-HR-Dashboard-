@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -14,7 +14,7 @@ router.get('/:id/family', auth, async (req, res) => {
     const empId = parseInt(req.params.id);
     if (!checkAccess(req, empId)) return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_family_members')
+    const { data, error } = await db.from('employee_family_members')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('relationship').order('created_at');
     if (error) throw error;
@@ -39,12 +39,12 @@ router.post('/:id/family', auth, async (req, res) => {
     }
 
     // BUG_051: Prevent duplicate family members (same name + relationship, case-insensitive)
-    const { data: dup } = await supabase.from('employee_family_members')
+    const { data: dup } = await db.from('employee_family_members')
       .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
       .eq('relationship', relationship).ilike('name', name.trim()).maybeSingle();
     if (dup) return res.status(409).json({ error: 'A family member with this name and relationship already exists.' });
 
-    const { data, error } = await supabase.from('employee_family_members').insert({
+    const { data, error } = await db.from('employee_family_members').insert({
       employee_id: empId, organization_id: orgId(req),
       relationship, name, date_of_birth: date_of_birth || null,
       gender, occupation, contact_number, dependent: dependent || false,
@@ -71,7 +71,7 @@ router.put('/:id/family/:recordId', auth, async (req, res) => {
     if (date_of_birth && new Date(date_of_birth) > new Date())
       return res.status(400).json({ error: 'Date of birth cannot be a future date.' });
 
-    const { data, error } = await supabase.from('employee_family_members').update({
+    const { data, error } = await db.from('employee_family_members').update({
       relationship, name, date_of_birth: date_of_birth || null,
       gender, occupation, contact_number, dependent,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
@@ -90,7 +90,7 @@ router.delete('/:id/family/:recordId', auth, async (req, res) => {
     const recordId = parseInt(req.params.recordId);
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
-    const { error } = await supabase.from('employee_family_members')
+    const { error } = await db.from('employee_family_members')
       .delete().eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;
     res.json({ success: true });

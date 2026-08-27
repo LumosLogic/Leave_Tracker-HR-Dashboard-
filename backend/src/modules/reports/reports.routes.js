@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth, adminOnly } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { getOrgPolicy } = require('../../utils/orgPolicy');
@@ -49,9 +49,11 @@ router.get('/attendance', auth, async (req, res) => {
     const oId    = req.user.organization_id;
     const policy = await getOrgPolicy(oId);
     const { year, month, userId, format } = req.query;
-    let q = supabase.from('attendance')
+    const today = todayIST();
+    let q = db.from('attendance')
       .select('*, users(name, department, position, device_enrollment_id)')
       .eq('organization_id', oId)
+      .lte('date', today)          // never surface future attendance records
       .order('date', { ascending: false });
     if (year && month) {
       q = q.gte('date', `${year}-${String(month).padStart(2,'0')}-01`)
@@ -63,7 +65,6 @@ router.get('/attendance', auth, async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
 
-    const today   = todayIST();
     const timeNow = nowIST();
 
     const rows = (data || []).map(r => {
@@ -151,7 +152,7 @@ router.get('/leaves', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { year, month, format, status } = req.query;
-    let q = supabase.from('leaves')
+    let q = db.from('leaves')
       .select('*, users!leaves_user_id_fkey(name, department), approver:users!leaves_approved_by_fkey(name)')
       .eq('organization_id', oId)
       .order('start_date', { ascending: false });
@@ -204,7 +205,7 @@ router.get('/headcount', auth, async (req, res) => {
     // root_admin sees HR admins + employees; HR admin sees employees only
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     // BUG_117/BUG_068: exclude inactive/resigned/terminated from headcount stats
-    const { data: users } = await supabase.from('users')
+    const { data: users } = await db.from('users')
       .select('id, role, employee_status, department, date_of_joining, created_at')
       .eq('organization_id', oId)
       .in('role', roleFilter)

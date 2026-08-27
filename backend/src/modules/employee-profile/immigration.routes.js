@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -11,7 +11,7 @@ router.get('/:id/immigration', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_immigration')
+    const { data, error } = await db.from('employee_immigration')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -30,7 +30,7 @@ router.post('/:id/immigration', auth, adminOnly, async (req, res) => {
       visa_type, issue_date, expiry_date, country, file_url, remarks,
     } = req.body;
 
-    const { data, error } = await supabase.from('employee_immigration').insert({
+    const { data, error } = await db.from('employee_immigration').insert({
       employee_id: empId, organization_id: orgId(req),
       citizenship, immigration_type, immigration_no: immigration_no || null,
       passport_number: passport_number || null, visa_type: visa_type || null,
@@ -54,7 +54,7 @@ router.put('/:id/immigration/:recordId', auth, adminOnly, async (req, res) => {
       visa_type, issue_date, expiry_date, country, file_url, remarks,
     } = req.body;
 
-    const { data, error } = await supabase.from('employee_immigration').update({
+    const { data, error } = await db.from('employee_immigration').update({
       citizenship, immigration_type, immigration_no: immigration_no || null,
       passport_number: passport_number || null, visa_type: visa_type || null,
       issue_date: issue_date || null, expiry_date: expiry_date || null,
@@ -74,7 +74,7 @@ router.put('/:id/immigration/:recordId', auth, adminOnly, async (req, res) => {
 // DELETE /api/profile/:id/immigration/:recordId
 router.delete('/:id/immigration/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_immigration')
+    const { error } = await db.from('employee_immigration')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
     if (error) throw error;

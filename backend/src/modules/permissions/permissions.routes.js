@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
@@ -12,7 +12,7 @@ const { resolvePermissions } = require('../../services/permissionService');
 // Admin-only: employees never need to browse the permission catalog.
 router.get('/', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('permissions')
       .select('id, module_key, action, label, description')
       .order('module_key')

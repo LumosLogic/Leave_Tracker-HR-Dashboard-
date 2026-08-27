@@ -1,4 +1,4 @@
-const { supabase } = require('../config/db');
+const { db } = require('../config/db');
 const { localDateStr, getRecipients, getOrgContext } = require('./helpers');
 const { sendMail, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml } = require('../services/emailService');
 const { sendPushToUsers } = require('../services/pushService');
@@ -24,12 +24,12 @@ async function runDailyNotifications() {
   const tmrStr   = localDateStr(tmr);
   const tomorrowMD = tmrStr.slice(5);
 
-  const { data: orgs } = await supabase.from('organizations').select('id, name').eq('status', 'active');
+  const { data: orgs } = await db.from('organizations').select('id, name').eq('status', 'active');
 
   for (const org of orgs || []) {
     const oId = org.id;
     const { orgName, orgEmail } = await getOrgContext(oId);
-    const { data: employees } = await supabase.from('users')
+    const { data: employees } = await db.from('users')
       .select('id, name, email, department, date_of_birth, joining_date')
       .eq('role', 'employee').eq('organization_id', oId);
 
@@ -45,7 +45,7 @@ async function runDailyNotifications() {
       e.joining_date && e.joining_date.slice(5) === todayMD && e.joining_date.slice(0, 4) !== today.slice(0, 4)
     );
     if (anniversariesToday.length > 0) {
-      const { data: hrAdmins } = await supabase.from('users')
+      const { data: hrAdmins } = await db.from('users')
         .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
       const hrIds = (hrAdmins || []).map(a => a.id);
 
@@ -54,7 +54,7 @@ async function runDailyNotifications() {
         const yearsLabel = `${years} year${years !== 1 ? 's' : ''}`;
 
         // Notify the employee
-        supabase.from('notifications').insert({
+        db.from('notifications').insert({
           user_id: emp.id, title: '🎉 Happy Work Anniversary!',
           message: `Congratulations on ${yearsLabel} with us! Your contributions make a real difference.`,
           type: 'general', organization_id: oId,
@@ -67,7 +67,7 @@ async function runDailyNotifications() {
 
         // Notify HR admins
         if (hrIds.length) {
-          await supabase.from('notifications').insert(hrIds.map(id => ({
+          await db.from('notifications').insert(hrIds.map(id => ({
             user_id: id, title: `Work Anniversary — ${emp.name}`,
             message: `${emp.name} completes ${yearsLabel} today. Consider recognising their contribution.`,
             type: 'general', organization_id: oId,
@@ -82,7 +82,7 @@ async function runDailyNotifications() {
       if (hrList.length) sendMail({ to: hrList, subject: `Birthday Reminder — ${birthdaysTmr.map(e => e.name).join(', ')}`, html: birthdayReminderHtml(birthdaysTmr, orgName, orgEmail) });
     }
 
-    const { data: tmrHolidays } = await supabase.from('holidays').select('*').eq('date', tmrStr).eq('organization_id', oId);
+    const { data: tmrHolidays } = await db.from('holidays').select('*').eq('date', tmrStr).eq('organization_id', oId);
     if (tmrHolidays?.length) {
       const allEmails  = (employees || []).map(e => e.email).filter(Boolean);
       const hrEmails   = await getRecipients(oId);
@@ -107,13 +107,13 @@ async function runAutoMarkAbsent() {
   const today = localDateStr();
   // Determine if today was a working day for each org (skip weekends by default)
   const dayOfWeek = new Date().getDay(); // 0=Sun, 6=Sat
-  const { data: orgs } = await supabase.from('organizations').select('id').eq('status', 'active');
+  const { data: orgs } = await db.from('organizations').select('id').eq('status', 'active');
 
   for (const org of (orgs || [])) {
     const oId = org.id;
     try {
       // Fetch org work schedule to know working days
-      const { data: sched } = await supabase.from('organization_settings')
+      const { data: sched } = await db.from('organization_settings')
         .select('work_days').eq('organization_id', oId).maybeSingle();
       const workDays = sched?.work_days
         ? sched.work_days.split(',').map(Number)
@@ -121,7 +121,7 @@ async function runAutoMarkAbsent() {
       if (!workDays.includes(dayOfWeek)) continue; // not a working day, skip
 
       // Fetch all active employees
-      const { data: employees } = await supabase.from('users')
+      const { data: employees } = await db.from('users')
         .select('id').eq('organization_id', oId)
         .in('role', ['employee', 'admin'])
         .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
@@ -130,20 +130,20 @@ async function runAutoMarkAbsent() {
       const empIds = employees.map(e => e.id);
 
       // Find employees who checked in today
-      const { data: checkedIn } = await supabase.from('attendance')
+      const { data: checkedIn } = await db.from('attendance')
         .select('user_id').eq('organization_id', oId).eq('date', today)
         .in('user_id', empIds);
       const checkedInIds = new Set((checkedIn || []).map(r => r.user_id));
 
       // Find employees with approved leave or WFH today
-      const { data: onLeave } = await supabase.from('leaves')
+      const { data: onLeave } = await db.from('leaves')
         .select('user_id').eq('organization_id', oId)
         .lte('start_date', today).gte('end_date', today)
         .in('status', ['approved']).in('user_id', empIds);
       const onLeaveIds = new Set((onLeave || []).map(r => r.user_id));
 
       // Find employees with a holiday today
-      const { data: holidays } = await supabase.from('holidays')
+      const { data: holidays } = await db.from('holidays')
         .select('id').eq('organization_id', oId).eq('date', today).limit(1);
       if (holidays?.length) continue; // org-wide holiday, skip absent marking
 
@@ -156,7 +156,7 @@ async function runAutoMarkAbsent() {
         user_id: uid, organization_id: oId, date: today, status: 'absent',
         check_in: null, check_out: null,
       }));
-      await supabase.from('attendance').upsert(absentRecords, { onConflict: 'user_id,date', ignoreDuplicates: true });
+      await db.from('attendance').upsert(absentRecords, { onConflict: 'user_id,date', ignoreDuplicates: true });
       console.log(`[AutoAbsent] Marked ${absentIds.length} absent for org ${oId} on ${today}`);
     } catch (err) {
       console.error(`[AutoAbsent] Error for org ${oId}:`, err.message);

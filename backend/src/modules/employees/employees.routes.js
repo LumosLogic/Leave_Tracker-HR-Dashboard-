@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId, getOrgContext } = require('../../utils/helpers');
@@ -40,7 +40,7 @@ router.get('/', auth, hasPermission('employees', 'view'), async (req, res) => {
     // root_admin sees all non-root users (HR admins + employees); others see only employees
     const roleFilter = req.user.role === 'root_admin' ? ['admin', 'employee'] : ['employee'];
     const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;
-    let query = supabase.from('users')
+    let query = db.from('users')
       .select(cols)
       .eq('organization_id', orgId(req))
       .in('role', roleFilter)
@@ -60,7 +60,7 @@ router.get('/', auth, hasPermission('employees', 'view'), async (req, res) => {
     const ids = (users || []).map(u => u.id);
     let deptMap = {};
     if (ids.length > 0) {
-      const { data: ud } = await supabase.from('user_departments')
+      const { data: ud } = await db.from('user_departments')
         .select('user_id, department_id, role_in_dept, departments(id, name)')
         .in('user_id', ids);
       (ud || []).forEach(r => {
@@ -86,11 +86,11 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     }
 
     // Global email uniqueness — no two users across any org may share an email
-    const { data: dupEmail } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
+    const { data: dupEmail } = await db.from('users').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
     if (dupEmail) return res.status(400).json({ error: 'This email is already registered on the platform. Each user must have a unique email address.' });
 
     // BUG_051: duplicate employee name within same org
-    const { data: dupName } = await supabase.from('users')
+    const { data: dupName } = await db.from('users')
       .select('id').eq('organization_id', orgId(req)).ilike('name', name.trim()).maybeSingle();
     if (dupName) return res.status(400).json({ error: 'An employee with this name already exists in your organisation.' });
 
@@ -150,7 +150,7 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     getOrgContext(orgId(req)).then(({ orgName, orgEmail }) => {
       sendMail({ to: email, subject: `Welcome to ${orgName || 'the Team'} — Your Account Details`, html: welcomeEmployeeHtml({ name, email, department: department||'General', position: position||'Staff' }, password, orgName, orgEmail) });
     });
-    supabase.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
+    db.from('platform_activity').insert({ event_type: 'member_added', organization_id: orgId(req), description: `Member added: ${name} (${email})`, metadata: { name, email, role: role||'employee', org_id: orgId(req) } }).then(() => {});
 
     // Auto-initialize onboarding checklist (fire-and-forget)
     if ((role || 'employee') === 'employee') {
@@ -159,7 +159,7 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
       // Pre-onboarding document request email — ask the new employee to upload
       // their joining documents before the onboarding checklist begins.
       if (email) {
-        const { data: org } = await supabase.from('organizations')
+        const { data: org } = await db.from('organizations')
           .select('name').eq('id', orgId(req)).maybeSingle().catch(() => ({ data: null }));
         const portalUrl = `${process.env.FRONTEND_URL || 'https://hrms.lumoslogic.com'}/portal/documents`;
         sendMail({
@@ -174,14 +174,14 @@ router.post('/', auth, hasPermission('employees', 'create'), async (req, res) =>
     const rbacSlugMap = { employee: 'employee', admin: 'hr_admin', root_admin: 'root_admin' };
     const rbacSlug = rbacSlugMap[role || 'employee'];
     if (rbacSlug) {
-      supabase.from('roles')
+      db.from('roles')
         .select('id')
         .eq('org_id', orgId(req))
         .eq('slug', rbacSlug)
         .maybeSingle()
         .then(({ data: sysRole }) => {
           if (sysRole?.id) {
-            return supabase.from('user_roles').insert({
+            return db.from('user_roles').insert({
               user_id:     newUser.id,
               role_id:     sysRole.id,
               org_id:      orgId(req),
@@ -216,7 +216,7 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
 
     // If email is being changed, verify it's not already taken by another user anywhere on the platform
     if (email) {
-      const { data: dupEmail } = await supabase.from('users')
+      const { data: dupEmail } = await db.from('users')
         .select('id').eq('email', email.toLowerCase().trim()).neq('id', parseInt(req.params.id)).maybeSingle();
       if (dupEmail) return res.status(400).json({ error: 'This email is already registered on the platform. Each user must have a unique email address.' });
     }
@@ -316,7 +316,7 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
     } else {
       // No department change — plain user update
       const cols = isAdminRole(req.user.role) ? EMPLOYEE_ADMIN_COLS : EMPLOYEE_PUBLIC_COLS;
-      const { data: updated, error } = await supabase.from('users').update(update)
+      const { data: updated, error } = await db.from('users').update(update)
         .eq('id', empId).eq('organization_id', orgId(req))
         .select(cols).single();
       if (error) throw new Error(error.message);
@@ -383,7 +383,7 @@ router.put('/:id/statutory', auth, hasPermission('employees', 'edit'), async (re
       return res.status(400).json({ error: 'No statutory fields provided' });
     }
 
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .update(update)
       .eq('id', req.params.id)
       .eq('organization_id', orgId(req))
@@ -399,12 +399,12 @@ router.delete('/:id', auth, hasPermission('employees', 'delete'), async (req, re
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
     // Org-scoped pre-fetch prevents reading PII from another org's employee for the audit log
-    const { data: emp } = await supabase.from('users').select('name, email').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
-    await supabase.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
+    const { data: emp } = await db.from('users').select('name, email').eq('id', req.params.id).eq('organization_id', orgId(req)).maybeSingle();
+    await db.from('users').delete().eq('id', req.params.id).eq('organization_id', orgId(req));
     // Log member removed event
     if (emp) {
       Promise.resolve(
-        supabase.from('platform_activity').insert({ event_type: 'member_removed', organization_id: orgId(req), description: `Member removed: ${emp.name} (${emp.email})`, metadata: { name: emp.name, email: emp.email, org_id: orgId(req) } })
+        db.from('platform_activity').insert({ event_type: 'member_removed', organization_id: orgId(req), description: `Member removed: ${emp.name} (${emp.email})`, metadata: { name: emp.name, email: emp.email, org_id: orgId(req) } })
       ).catch(() => {});
     }
     res.json({ success: true });
@@ -425,7 +425,7 @@ router.post('/:id/avatar', auth, isAdminRole, upload.single('file'), async (req,
         (err, r) => err ? reject(err) : resolve(r)
       ).end(req.file.buffer);
     });
-    const { error } = await supabase.from('users')
+    const { error } = await db.from('users')
       .update({ avatar_url: result.secure_url })
       .eq('id', req.params.id)
       .eq('organization_id', orgId(req));
@@ -448,7 +448,7 @@ router.post('/me/avatar', auth, upload.single('file'), async (req, res) => {
         (err, r) => err ? reject(err) : resolve(r)
       ).end(req.file.buffer);
     });
-    const { error } = await supabase.from('users')
+    const { error } = await db.from('users')
       .update({ avatar_url: result.secure_url })
       .eq('id', req.user.id);
     if (error) throw new Error(error.message);
@@ -469,7 +469,7 @@ router.post('/:id/send-credentials', auth, async (req, res) => {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_credentials_sent_at TIMESTAMPTZ`).catch(() => {});
 
     // Fetch employee — must belong to this org
-    const { data: emp } = await supabase.from('users')
+    const { data: emp } = await db.from('users')
       .select('id, name, email, department, position, role, status')
       .eq('id', empId)
       .eq('organization_id', oId)
@@ -488,14 +488,14 @@ router.post('/:id/send-credentials', auth, async (req, res) => {
     const sentAt    = new Date().toISOString();
 
     // Update password + force change flag + timestamp (atomic)
-    await supabase.from('users').update({
+    await db.from('users').update({
       password:                 hashed,
       force_password_change:    true,
       last_credentials_sent_at: sentAt,
     }).eq('id', empId).eq('organization_id', oId);
 
     // Audit log (fire-and-forget)
-    supabase.from('platform_activity').insert({
+    db.from('platform_activity').insert({
       event_type:      'credentials_sent',
       organization_id: oId,
       description:     `Login credentials sent to ${emp.name} (${emp.email}) by ${req.user.name}`,

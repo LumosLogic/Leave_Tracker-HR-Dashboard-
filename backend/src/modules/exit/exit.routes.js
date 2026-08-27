@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { initOffboarding } = require('../offboarding/offboardingService');
@@ -12,7 +12,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
     const { userId } = req.query;
-    let q = supabase.from('exit_requests').select('*').eq('organization_id', oId).order('created_at', { ascending: false });
+    let q = db.from('exit_requests').select('*').eq('organization_id', oId).order('created_at', { ascending: false });
     if (!isAdmin(req.user.role)) q = q.eq('user_id', req.user.id);
     else if (userId) q = q.eq('user_id', parseInt(userId));
     const { data, error } = await q;
@@ -22,7 +22,7 @@ router.get('/', auth, async (req, res) => {
     if (rows.length === 0) return res.json([]);
 
     const allIds = [...new Set([...rows.map(r => r.user_id), ...rows.map(r => r.reviewed_by)].filter(Boolean))];
-    const { data: users } = await supabase.from('users').select('id, name, avatar_color, department, position').in('id', allIds);
+    const { data: users } = await db.from('users').select('id, name, avatar_color, department, position').in('id', allIds);
     const uMap = {};
     (users || []).forEach(u => { uMap[u.id] = u; });
 
@@ -51,7 +51,7 @@ router.post('/', auth, async (req, res) => {
 
     if (isAdmin(req.user.role) && user_id) {
       // Validate that the target user belongs to this org — prevents cross-org IDOR.
-      const { data: targetUser } = await supabase.from('users')
+      const { data: targetUser } = await db.from('users')
         .select('id, name').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
       if (!targetUser) return res.status(400).json({ error: 'Employee not found in your organization.' });
       targetUserId = targetUser.id;
@@ -59,7 +59,7 @@ router.post('/', auth, async (req, res) => {
     }
 
     // Prevent a duplicate open resignation for the same employee.
-    const { data: existing } = await supabase.from('exit_requests')
+    const { data: existing } = await db.from('exit_requests')
       .select('id, status').eq('user_id', targetUserId).eq('organization_id', oId)
       .in('status', ['pending', 'approved']).maybeSingle();
     if (existing) return res.status(400).json({ error: 'An active resignation request already exists for this employee.' });
@@ -68,7 +68,7 @@ router.post('/', auth, async (req, res) => {
     const lwd   = new Date(rDate);
     lwd.setDate(lwd.getDate() + (Number(notice_period_days) || 30));
 
-    const { data, error } = await supabase.from('exit_requests')
+    const { data, error } = await db.from('exit_requests')
       .insert({
         user_id: targetUserId, resignation_date,
         reason: reason || '', notice_period_days: Number(notice_period_days) || 30,
@@ -79,9 +79,9 @@ router.post('/', auth, async (req, res) => {
     if (error) throw error;
 
     // Notify all HR admins and root admins with the correct employee name.
-    const { data: admins } = await supabase.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
+    const { data: admins } = await db.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
     if (admins?.length) {
-      await supabase.from('notifications').insert(admins.map(a => ({
+      await db.from('notifications').insert(admins.map(a => ({
         user_id: a.id, title: 'Resignation Submitted',
         message: `${targetName} submitted a resignation. Last working day: ${lwd.toISOString().split('T')[0]}`,
         type: 'exit', organization_id: oId,
@@ -91,14 +91,14 @@ router.post('/', auth, async (req, res) => {
     // Notify the employee's department head — they need to plan for the departure (fire-and-forget)
     ;(async () => {
       try {
-        const { data: emp } = await supabase.from('users')
+        const { data: emp } = await db.from('users')
           .select('department_id').eq('id', targetUserId).maybeSingle();
         if (!emp?.department_id) return;
-        const { data: dept } = await supabase.from('departments')
+        const { data: dept } = await db.from('departments')
           .select('head_user_id').eq('id', emp.department_id).maybeSingle();
         const dhId = dept?.head_user_id;
         if (!dhId || dhId === targetUserId) return;
-        await supabase.from('notifications').insert({
+        await db.from('notifications').insert({
           user_id: dhId, title: 'Team Member Resignation',
           message: `${targetName} has submitted a resignation. Last working day: ${lwd.toISOString().split('T')[0]}. Please plan for handover.`,
           type: 'exit', organization_id: oId,
@@ -132,12 +132,12 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
 
     if (isStatusChange) {
       // Fetch current state to enforce idempotency — prevent double-approval
-      const { data: current } = await supabase.from('exit_requests')
+      const { data: current } = await db.from('exit_requests')
         .select('id, status, user_id').eq('id', req.params.id).eq('organization_id', oId).single();
       if (!current) return res.status(404).json({ error: 'Exit request not found' });
       if (current.status === updates.status) {
         // Already in the target status — return current record idempotently
-        const { data: existing } = await supabase.from('exit_requests').select('*').eq('id', req.params.id).single();
+        const { data: existing } = await db.from('exit_requests').select('*').eq('id', req.params.id).single();
         return res.json(existing);
       }
       if (current.status === 'approved' || current.status === 'rejected') {
@@ -150,14 +150,14 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
       updates.reviewed_at = new Date().toISOString();
     }
 
-    const { data, error } = await supabase.from('exit_requests')
+    const { data, error } = await db.from('exit_requests')
       .update(updates).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
 
     // Fire-and-forget side effects after successful update
     if (isStatusChange) {
       // Notify the employee
-      supabase.from('notifications').insert({
+      db.from('notifications').insert({
         user_id: data.user_id,
         title:   `Exit Request ${updates.status === 'approved' ? 'Accepted' : 'Reviewed'}`,
         message: `Your resignation has been ${updates.status}.`,
@@ -166,26 +166,26 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
 
       // On approval: mark employee inactive + broadcast to all admins for IT/asset/payroll action
       if (updates.status === 'approved') {
-        supabase.from('users')
+        db.from('users')
           .update({ employee_status: 'inactive' })
           .eq('id', current.user_id)
           .eq('organization_id', oId)
           .then(() => {});
 
         // Look up the departing employee's name for the notification message
-        supabase.from('users').select('name').eq('id', current.user_id).maybeSingle()
+        db.from('users').select('name').eq('id', current.user_id).maybeSingle()
           .then(({ data: emp }) => {
             const empName = emp?.name || 'An employee';
-            return supabase.from('users').select('id')
+            return db.from('users').select('id')
               .in('role', ['admin', 'root_admin']).eq('organization_id', oId);
           })
           .then(({ data: admins }) => {
             if (!admins?.length) return;
             // Fetch name again for the message (chain is separate from above)
-            return supabase.from('users').select('name').eq('id', current.user_id).maybeSingle()
+            return db.from('users').select('name').eq('id', current.user_id).maybeSingle()
               .then(({ data: emp }) => {
                 const empName = emp?.name || 'An employee';
-                return supabase.from('notifications').insert(
+                return db.from('notifications').insert(
                   admins.map(a => ({
                     user_id: a.id,
                     title:   'Exit Approved — Action Required',
@@ -210,7 +210,7 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data: req_ } = await supabase.from('exit_requests')
+    const { data: req_ } = await db.from('exit_requests')
       .select('id, user_id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!req_) return res.status(404).json({ error: 'Exit request not found' });
 
@@ -222,7 +222,7 @@ router.delete('/:id', auth, async (req, res) => {
     if (req_.status !== 'pending')
       return res.status(400).json({ error: `Cannot withdraw a ${req_.status} resignation. Contact HR.` });
 
-    const { error } = await supabase.from('exit_requests').delete().eq('id', req.params.id).eq('organization_id', oId);
+    const { error } = await db.from('exit_requests').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true, message: 'Resignation withdrawn successfully.' });
   } catch (err) { res.status(500).json({ error: err.message }); }

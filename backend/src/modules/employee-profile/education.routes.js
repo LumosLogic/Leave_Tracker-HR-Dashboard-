@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -11,7 +11,7 @@ router.get('/:id/education', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_qualifications')
+    const { data, error } = await db.from('employee_qualifications')
       .select('*').eq('user_id', empId).eq('organization_id', orgId(req))
       .order('year_of_passing', { ascending: false });
     if (error) throw error;
@@ -45,7 +45,7 @@ router.post('/:id/education', auth, async (req, res) => {
       return res.status(400).json({ error: 'CGPA must be between 0 and 10.' });
     }
 
-    const { data, error } = await supabase.from('employee_qualifications').insert({
+    const { data, error } = await db.from('employee_qualifications').insert({
       user_id: empId, organization_id: orgId(req),
       degree_level, institution, board_university, specialization,
       year_of_passing: year_of_passing || null,
@@ -84,7 +84,7 @@ router.put('/:id/education/:recordId', auth, async (req, res) => {
     if (cgpa != null && cgpa !== '' && (cgpa < 0 || cgpa > 10))
       return res.status(400).json({ error: 'CGPA must be between 0 and 10.' });
 
-    const { data, error } = await supabase.from('employee_qualifications').update({
+    const { data, error } = await db.from('employee_qualifications').update({
       degree_level, institution, board_university, specialization,
       year_of_passing: year_of_passing || null,
       percentage: percentage || null,
@@ -105,7 +105,7 @@ router.delete('/:id/education/:recordId', auth, async (req, res) => {
     const empId = parseInt(req.params.id);
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
-    const { error } = await supabase.from('employee_qualifications')
+    const { error } = await db.from('employee_qualifications')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('user_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;

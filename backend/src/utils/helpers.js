@@ -1,4 +1,4 @@
-const { supabase } = require('../config/db');
+const { db } = require('../config/db');
 
 function localDateStr(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
@@ -31,14 +31,14 @@ function flatOne(record, joinKey = 'users') {
 }
 
 async function getSettings(orgId) {
-  let q = supabase.from('work_schedule').select('*').limit(1);
+  let q = db.from('work_schedule').select('*').limit(1);
   if (orgId) q = q.eq('organization_id', orgId);
   try {
     const { data } = await q.single();
     if (data) return data;
   } catch { }
   try {
-    const { data: fallback } = await supabase.from('work_schedule').select('*').limit(1).single();
+    const { data: fallback } = await db.from('work_schedule').select('*').limit(1).single();
     return fallback || null;
   } catch { return null; }
 }
@@ -57,13 +57,13 @@ function isWorkingDay(dateStr, settings) {
 
 async function getRecipients(oId) {
   try {
-    let q = supabase.from('notification_recipients').select('email').eq('active', true);
+    let q = db.from('notification_recipients').select('email').eq('active', true);
     if (oId) q = q.eq('organization_id', oId);
     const { data } = await q;
     if (data && data.length > 0) return data.map(r => r.email).filter(Boolean);
   } catch { }
   try {
-    let adminQuery = supabase.from('users').select('email').in('role', ['admin', 'root_admin']);
+    let adminQuery = db.from('users').select('email').in('role', ['admin', 'root_admin']);
     if (oId) adminQuery = adminQuery.eq('organization_id', oId);
     const { data: admins } = await adminQuery;
     if (admins && admins.length > 0) return admins.map(a => a.email).filter(Boolean);
@@ -77,7 +77,7 @@ async function generateUniqueSlug(companyName) {
   const base = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
   const taken = async (slug) => {
-    const { data } = await supabase.from('organizations').select('id').eq('slug', slug).maybeSingle();
+    const { data } = await db.from('organizations').select('id').eq('slug', slug).maybeSingle();
     return !!data;
   };
 
@@ -99,8 +99,8 @@ async function generateUniqueSlug(companyName) {
 async function getOrgContext(oId) {
   try {
     const [orgRes, hrRes] = await Promise.all([
-      supabase.from('organizations').select('name').eq('id', oId).maybeSingle(),
-      supabase.from('users')
+      db.from('organizations').select('name').eq('id', oId).maybeSingle(),
+      db.from('users')
         .select('email')
         .eq('organization_id', oId)
         .eq('role', 'admin')

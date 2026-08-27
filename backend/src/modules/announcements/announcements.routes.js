@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth }   = require('../../middleware/auth');
 const { sendMail, announcementHtml } = require('../../services/emailService');
 const { getOrgContext } = require('../../utils/helpers');
@@ -32,7 +32,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const oId = resolveOrgId(req, { fromQuery: true });
     const today = new Date().toISOString().split('T')[0];
-    let q = supabase.from('announcements').select('*').eq('organization_id', oId)
+    let q = db.from('announcements').select('*').eq('organization_id', oId)
       .order('pinned', { ascending: false }).order('created_at', { ascending: false });
     if (!isAdmin(req.user.role)) {
       q = q.in('target_audience', ['all', 'employees']);
@@ -49,7 +49,7 @@ router.get('/', auth, async (req, res) => {
     const creatorIds = [...new Set(rows.map(r => r.created_by).filter(Boolean))];
     let creatorMap = {};
     if (creatorIds.length) {
-      const { data: creators } = await supabase.from('users').select('id, name').in('id', creatorIds);
+      const { data: creators } = await db.from('users').select('id, name').in('id', creatorIds);
       (creators || []).forEach(u => { creatorMap[u.id] = u.name; });
     }
 
@@ -92,7 +92,7 @@ router.post('/', auth, async (req, res) => {
 
     // BUG_090: Duplicate check — same title by same creator within last 24 hours
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: existing } = await supabase.from('announcements')
+    const { data: existing } = await db.from('announcements')
       .select('id').eq('organization_id', oId).eq('created_by', req.user.id)
       .eq('title', title.trim()).gte('created_at', since24h).limit(1);
     if (existing && existing.length > 0)
@@ -115,15 +115,15 @@ router.post('/', auth, async (req, res) => {
     if (file_name !== undefined) payload.file_name = file_name;
     if (file_type !== undefined) payload.file_type = file_type;
 
-    const { data, error } = await supabase.from('announcements')
+    const { data, error } = await db.from('announcements')
       .insert(payload)
       .select().single();
     if (error) throw error;
 
-    const { data: users } = await supabase.from('users').select('id, email, name, role').eq('organization_id', oId);
+    const { data: users } = await db.from('users').select('id, email, name, role').eq('organization_id', oId);
     if (users?.length) {
       // In-app notifications — all org users regardless of target_audience
-      await supabase.from('notifications').insert(users.map(u => ({
+      await db.from('notifications').insert(users.map(u => ({
         user_id:         u.id,
         title:           `📢 ${title}`,
         message:         content.length > 100 ? content.substring(0, 100) + '…' : content,
@@ -168,7 +168,7 @@ router.put('/:id', auth, async (req, res) => {
     if (file_name !== undefined) payload.file_name = file_name;
     if (file_type !== undefined) payload.file_type = file_type;
 
-    let q = supabase.from('announcements').update(payload).eq('id', req.params.id);
+    let q = db.from('announcements').update(payload).eq('id', req.params.id);
     // Regular admins are restricted to their own org; root_admin can edit any org's announcement
     if (req.user.role !== 'root_admin') q = q.eq('organization_id', req.user.organization_id);
     const { data, error } = await q.select().single();
@@ -183,7 +183,7 @@ router.delete('/:id', auth, async (req, res) => {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
 
     // Fetch the announcement first to get title, org, and file info
-    let fetchQ = supabase.from('announcements').select('id, title, file_url, organization_id').eq('id', req.params.id);
+    let fetchQ = db.from('announcements').select('id, title, file_url, organization_id').eq('id', req.params.id);
     if (req.user.role !== 'root_admin') fetchQ = fetchQ.eq('organization_id', req.user.organization_id);
     const { data: ann } = await fetchQ.maybeSingle();
     if (!ann) return res.status(404).json({ error: 'Announcement not found' });
@@ -192,7 +192,7 @@ router.delete('/:id', auth, async (req, res) => {
 
     // Delete related notifications using reference_id (accurate) with title fallback
     // for legacy notifications created before reference_id was added.
-    const notifDelete = supabase.from('notifications')
+    const notifDelete = db.from('notifications')
       .delete()
       .eq('organization_id', oId)
       .eq('type', 'announcement');
@@ -200,7 +200,7 @@ router.delete('/:id', auth, async (req, res) => {
     await notifDelete.eq('reference_id', ann.id)
       .then(() => {})
       .catch(() =>
-        supabase.from('notifications')
+        db.from('notifications')
           .delete()
           .eq('organization_id', oId)
           .eq('type', 'announcement')
@@ -219,7 +219,7 @@ router.delete('/:id', auth, async (req, res) => {
       } catch { /* ignore Cloudinary errors — proceed with DB delete */ }
     }
 
-    const { error } = await supabase.from('announcements').delete().eq('id', req.params.id).eq('organization_id', oId);
+    const { error } = await db.from('announcements').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

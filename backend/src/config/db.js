@@ -1,11 +1,10 @@
 /**
  * db.js — PostgreSQL database client (via pg adapter)
- * Exports { supabase, pool, seed } where `supabase` is a Supabase-compatible
- * query builder backed by PostgreSQL.
+ * Exports { db, pool, seed } where `db` is a query builder backed by PostgreSQL.
  */
 
-const { supabase, pool } = require('./db-pg-adapter');
+const { db, pool } = require('./db-pg-adapter');
 
 async function seed() { /* no-op — run migrations separately */ }
 
-module.exports = { supabase, pool, seed };
+module.exports = { db, pool, seed };

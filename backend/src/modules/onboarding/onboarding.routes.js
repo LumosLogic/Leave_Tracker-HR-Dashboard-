@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -35,7 +35,7 @@ router.get('/', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { userId } = req.query;
     const targetId = isAdmin(req.user.role) && userId ? userId : req.user.id;
-    const { data, error } = await supabase.from('onboarding_checklists')
+    const { data, error } = await db.from('onboarding_checklists')
       .select('*').eq('user_id', targetId).eq('organization_id', oId).order('order_index');
     if (error) throw error;
     res.json(data || []);
@@ -47,7 +47,7 @@ router.get('/overview', auth, async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { data, error } = await supabase.from('onboarding_checklists')
+    const { data, error } = await db.from('onboarding_checklists')
       .select('*').eq('organization_id', oId).order('created_at', { ascending: false });
     if (error) throw error;
 
@@ -64,7 +64,7 @@ router.get('/overview', auth, async (req, res) => {
     `);
     const joinCol = colCheck.rows.length > 0 ? 'joining_date' : 'date_of_joining';
 
-    const { data: users } = await supabase.from('users')
+    const { data: users } = await db.from('users')
       .select(`id, name, avatar_color, department, ${joinCol}, employee_status`)
       .in('id', userIds)
       .not('employee_status', 'in', '("inactive","resigned","terminated")');
@@ -145,7 +145,7 @@ router.post('/init/:userId', auth, hasPermission('onboarding', 'manage'), async 
   }
 
   // Fire-and-forget notification after COMMIT
-  supabase.from('notifications').insert({
+  db.from('notifications').insert({
     user_id: uid,
     title:   'Welcome! Your Onboarding Checklist is Ready',
     message: 'Please complete the onboarding tasks assigned to you.',
@@ -162,7 +162,7 @@ router.post('/', auth, hasPermission('onboarding', 'manage'), async (req, res) =
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
     const { user_id, title, description, due_date, assigned_to, order_index } = req.body;
-    const { data, error } = await supabase.from('onboarding_checklists')
+    const { data, error } = await db.from('onboarding_checklists')
       .insert({ user_id, title, description: description || '', due_date: due_date || null, assigned_to: assigned_to || 'employee', order_index: order_index || 99, organization_id: oId })
       .select().single();
     if (error) throw error;
@@ -178,7 +178,7 @@ router.put('/:id/complete', auth, async (req, res) => {
     const { completed } = req.body;
 
     // Always fetch the task first so we can enforce ownership
-    const { data: task, error: fetchErr } = await supabase
+    const { data: task, error: fetchErr } = await db
       .from('onboarding_checklists')
       .select('user_id, assigned_to')
       .eq('id', req.params.id)
@@ -193,7 +193,7 @@ router.put('/:id/complete', auth, async (req, res) => {
       if (task.assigned_to !== 'employee') return res.status(403).json({ error: 'Only HR or manager can complete this task' });
     }
 
-    const { data, error } = await supabase.from('onboarding_checklists')
+    const { data, error } = await db.from('onboarding_checklists')
       .update({ completed: !!completed, completed_at: completed ? new Date().toISOString() : null })
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
@@ -202,7 +202,7 @@ router.put('/:id/complete', auth, async (req, res) => {
     // Fire-and-forget: notify next task assignee when a task is completed
     if (completed) {
       try {
-        const { data: nextTask } = await supabase
+        const { data: nextTask } = await db
           .from('onboarding_checklists')
           .select('id, title, assigned_to')
           .eq('user_id', task.user_id).eq('organization_id', oId)
@@ -212,17 +212,17 @@ router.put('/:id/complete', auth, async (req, res) => {
         if (nextTask) {
           if (nextTask.assigned_to === 'employee') {
             // Notify the employee their next task is ready
-            supabase.from('notifications').insert({
+            db.from('notifications').insert({
               user_id: task.user_id, title: 'Onboarding: Next Step Ready',
               message: `"${nextTask.title}" is your next onboarding task.`,
               type: 'onboarding', organization_id: oId,
             }).then(() => {});
           } else {
             // Notify HR admins that an HR/IT/manager onboarding task needs attention
-            const { data: admins } = await supabase.from('users')
+            const { data: admins } = await db.from('users')
               .select('id').in('role', ['admin', 'root_admin']).eq('organization_id', oId);
             if (admins?.length) {
-              supabase.from('notifications').insert(
+              db.from('notifications').insert(
                 admins.map(a => ({
                   user_id: a.id, title: 'Onboarding Task Ready',
                   message: `Onboarding: "${nextTask.title}" requires ${nextTask.assigned_to} action.`,
@@ -242,7 +242,7 @@ router.delete('/:id', auth, hasPermission('onboarding', 'manage'), async (req, r
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const { error } = await supabase.from('onboarding_checklists').delete().eq('id', req.params.id).eq('organization_id', oId);
+    const { error } = await db.from('onboarding_checklists').delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

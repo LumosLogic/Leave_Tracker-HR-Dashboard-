@@ -7,7 +7,7 @@ const multer    = require('multer');
 const cloudinary = require('cloudinary').v2;
 const { authenticator } = require('otplib');
 const qrcode = require('qrcode');
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { JWT_SECRET, auth } = require('../../middleware/auth');
 const { orgId, getRecipients } = require('../../utils/helpers');
 const { sendMail, passwordResetHtml } = require('../../services/emailService');
@@ -27,7 +27,7 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('*, organizations(id, name, slug, logo_url)')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
@@ -39,7 +39,7 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
     if (!bcrypt.compareSync(password, user.password)) {
       // BUG_115: Record failed login attempt (fire and forget, same response either way)
-      supabase.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'failed' }).then(() => {});
+      db.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'failed' }).then(() => {});
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -60,8 +60,8 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
     }
 
     // Record successful login (fire and forget)
-    supabase.from('users').update({ last_login_at: new Date().toISOString(), last_login_ip: clientIp, last_login_ua: userAgent }).eq('id', user.id).then(() => {});
-    supabase.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'success' }).then(() => {});
+    db.from('users').update({ last_login_at: new Date().toISOString(), last_login_ip: clientIp, last_login_ua: userAgent }).eq('id', user.id).then(() => {});
+    db.from('login_history').insert({ user_id: user.id, organization_id: user.organization_id, ip_address: clientIp, user_agent: userAgent, status: 'success' }).then(() => {});
 
     // If TOTP is enabled, return a short-lived totp-pending session
     if (user.totp_enabled) {
@@ -95,11 +95,11 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
 // ─── Auth: Get Current User ───────────────────────────────────────────────────
 router.get('/me', auth, async (req, res) => {
   try {
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .select('id, name, email, role, department, position, avatar_color, avatar_url, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at, employee_status')
       .eq('id', req.user.id).single();
     if (error) {
-      const { data: fallback } = await supabase.from('users')
+      const { data: fallback } = await db.from('users')
         .select('id, name, email, role, department, position, avatar_color, email_verified, employee_id, totp_enabled, last_login_at, password_changed_at, created_at, employee_status')
         .eq('id', req.user.id).single();
       if (!fallback) return res.status(401).json({ error: 'Account not found' });
@@ -131,13 +131,13 @@ router.put('/profile', auth, async (req, res) => {
     }
     if (email) {
       const norm = email.toLowerCase().trim();
-      const { data: dup } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
+      const { data: dup } = await db.from('users').select('id').eq('email', norm).maybeSingle();
       if (dup && dup.id !== req.user.id) return res.status(400).json({ error: 'Email already in use by another account' });
       update.email = norm;
     }
     // SELECT without avatar_url so it works even before the migration column is added.
     // The upload-avatar endpoint handles avatar_url separately once the column exists.
-    const { data, error } = await supabase.from('users')
+    const { data, error } = await db.from('users')
       .update(update)
       .eq('id', req.user.id)
       .select('id, name, email, role, department, position, avatar_color').single();
@@ -158,7 +158,7 @@ router.post('/upload-avatar', auth, upload.single('file'), async (req, res) => {
         (err, r) => err ? reject(err) : resolve(r)
       ).end(req.file.buffer);
     });
-    await supabase.from('users').update({ avatar_url: result.secure_url }).eq('id', req.user.id);
+    await db.from('users').update({ avatar_url: result.secure_url }).eq('id', req.user.id);
     res.json({ avatar_url: result.secure_url });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -166,7 +166,7 @@ router.post('/upload-avatar', auth, upload.single('file'), async (req, res) => {
 // ─── Auth: Remove Avatar Photo (BUG_110) ─────────────────────
 router.delete("/remove-avatar", auth, async (req, res) => {
   try {
-    await supabase.from("users").update({ avatar_url: null }).eq("id", req.user.id);
+    await db.from("users").update({ avatar_url: null }).eq("id", req.user.id);
     res.json({ success: true, avatar_url: null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -178,7 +178,7 @@ router.put('/change-password', auth, async (req, res) => {
     if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
     if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('password, password_history').eq('id', req.user.id).single();
 
     if (!bcrypt.compareSync(currentPassword, user.password))
@@ -196,7 +196,7 @@ router.put('/change-password', auth, async (req, res) => {
     const newHash = bcrypt.hashSync(newPassword, 10);
     const newHistory = [user.password, ...history].slice(0, 5);
 
-    const { error: pwErr } = await supabase.from('users').update({
+    const { error: pwErr } = await db.from('users').update({
       password: newHash,
       force_password_change: false,
       password_changed_at: new Date().toISOString(),
@@ -214,7 +214,7 @@ router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req,
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('id, name, email, organization_id, organizations(name)')
       .eq('email', email.toLowerCase().trim())
       .maybeSingle();
@@ -225,7 +225,7 @@ router.post('/forgot-password', rateLimiter(LIMITS.FORGOT_PASSWORD), async (req,
     const token   = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
 
-    await supabase.from('users').update({
+    await db.from('users').update({
       password_reset_token:   token,
       password_reset_expires: expires,
     }).eq('id', user.id);
@@ -254,7 +254,7 @@ router.post('/reset-password', rateLimiter(LIMITS.RESET_PASSWORD), async (req, r
     if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('id, password_reset_token, password_reset_expires')
       .eq('password_reset_token', token)
       .maybeSingle();
@@ -263,7 +263,7 @@ router.post('/reset-password', rateLimiter(LIMITS.RESET_PASSWORD), async (req, r
     if (new Date(user.password_reset_expires) < new Date())
       return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
 
-    await supabase.from('users').update({
+    await db.from('users').update({
       password:               bcrypt.hashSync(password, 10),
       password_reset_token:   null,
       password_reset_expires: null,
@@ -279,7 +279,7 @@ router.post('/send-verification', auth, rateLimiter(LIMITS.SEND_VERIFICATION), a
   try {
     const code    = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30-minute expiry
-    await supabase.from('users').update({
+    await db.from('users').update({
       email_verify_code:         code,
       email_verify_code_expires: expires,
     }).eq('id', req.user.id);
@@ -296,7 +296,7 @@ router.post('/send-verification', auth, rateLimiter(LIMITS.SEND_VERIFICATION), a
 router.post('/verify-email', auth, async (req, res) => {
   try {
     const { code } = req.body;
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('email_verify_code, email_verify_code_expires')
       .eq('id', req.user.id).single();
     if (!code || user?.email_verify_code !== code) {
@@ -306,7 +306,7 @@ router.post('/verify-email', auth, async (req, res) => {
     if (user.email_verify_code_expires && new Date(user.email_verify_code_expires) < new Date()) {
       return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
     }
-    await supabase.from('users').update({
+    await db.from('users').update({
       email_verified:            true,
       email_verify_code:         null,
       email_verify_code_expires: null,
@@ -325,7 +325,7 @@ router.post('/deactivate', auth, async (req, res) => {
 
     // HR admin: block if they are the only active admin in the org
     if (req.user.role === 'admin') {
-      const { data: otherAdmins } = await supabase.from('users')
+      const { data: otherAdmins } = await db.from('users')
         .select('id')
         .eq('organization_id', req.user.organization_id)
         .in('role', ['admin', 'root_admin'])
@@ -339,7 +339,7 @@ router.post('/deactivate', auth, async (req, res) => {
       }
     }
 
-    await supabase.from('users').update({ status: 'inactive' }).eq('id', req.user.id);
+    await db.from('users').update({ status: 'inactive' }).eq('id', req.user.id);
     res.json({ success: true, message: 'Account deactivated successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -361,13 +361,13 @@ router.post('/request-deletion', auth, async (req, res) => {
 // ─── 2FA: Setup (generate QR + secret) ──────────────────────────────────────
 router.post('/totp/setup', auth, async (req, res) => {
   try {
-    const { data: user } = await supabase.from('users').select('email, totp_enabled').eq('id', req.user.id).single();
+    const { data: user } = await db.from('users').select('email, totp_enabled').eq('id', req.user.id).single();
     if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
     const secret = authenticator.generateSecret();
     const otpauthUrl = authenticator.keyuri(user.email, 'Lumos Logic HRMS', secret);
     const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
     // Store secret temporarily (not yet enabled)
-    await supabase.from('users').update({ totp_secret: secret }).eq('id', req.user.id);
+    await db.from('users').update({ totp_secret: secret }).eq('id', req.user.id);
     res.json({ secret, qrDataUrl });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -377,11 +377,11 @@ router.post('/totp/enable', auth, async (req, res) => {
   try {
     const { token: totpToken } = req.body;
     if (!totpToken) return res.status(400).json({ error: 'TOTP code required' });
-    const { data: user } = await supabase.from('users').select('totp_secret').eq('id', req.user.id).single();
+    const { data: user } = await db.from('users').select('totp_secret').eq('id', req.user.id).single();
     if (!user.totp_secret) return res.status(400).json({ error: 'Run /totp/setup first' });
     if (!authenticator.check(totpToken, user.totp_secret))
       return res.status(400).json({ error: 'Invalid code. Please try again.' });
-    await supabase.from('users').update({ totp_enabled: true }).eq('id', req.user.id);
+    await db.from('users').update({ totp_enabled: true }).eq('id', req.user.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -391,10 +391,10 @@ router.post('/totp/disable', auth, async (req, res) => {
   try {
     const { password: currentPassword } = req.body;
     if (!currentPassword) return res.status(400).json({ error: 'Password required to disable 2FA' });
-    const { data: user } = await supabase.from('users').select('password').eq('id', req.user.id).single();
+    const { data: user } = await db.from('users').select('password').eq('id', req.user.id).single();
     if (!bcrypt.compareSync(currentPassword, user.password))
       return res.status(400).json({ error: 'Incorrect password' });
-    await supabase.from('users').update({ totp_enabled: false, totp_secret: null }).eq('id', req.user.id);
+    await db.from('users').update({ totp_enabled: false, totp_secret: null }).eq('id', req.user.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -409,7 +409,7 @@ router.post('/totp/verify-login', rateLimiter(LIMITS.TOTP_VERIFY), async (req, r
     catch { return res.status(401).json({ error: 'TOTP session expired. Please login again.' }); }
     if (decoded.purpose !== 'totp-pending') return res.status(401).json({ error: 'Invalid session' });
 
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('*, organizations(id, name, slug, logo_url)')
       .eq('id', decoded.user_id).maybeSingle();
     if (!user) return res.status(401).json({ error: 'User not found' });
@@ -441,7 +441,7 @@ router.post('/totp/verify-login', rateLimiter(LIMITS.TOTP_VERIFY), async (req, r
 // ─── Login History ────────────────────────────────────────────────────────────
 router.get('/login-history', auth, async (req, res) => {
   try {
-    const { data } = await supabase.from('login_history')
+    const { data } = await db.from('login_history')
       .select('id, ip_address, user_agent, status, logged_in_at')
       .eq('user_id', req.user.id)
       .order('logged_in_at', { ascending: false })
@@ -453,12 +453,12 @@ router.get('/login-history', auth, async (req, res) => {
 // ─── Download My Data (GDPR) ──────────────────────────────────────────────────
 router.get('/download-data', auth, async (req, res) => {
   try {
-    const { data: user } = await supabase.from('users')
+    const { data: user } = await db.from('users')
       .select('id, name, email, role, department, position, avatar_color, employee_id, created_at, last_login_at, email_verified')
       .eq('id', req.user.id).single();
-    const { data: leaves } = await supabase.from('leaves').select('*').eq('user_id', req.user.id);
-    const { data: attendance } = await supabase.from('attendance').select('date, check_in, check_out, status, work_hours').eq('user_id', req.user.id).limit(365);
-    const { data: history } = await supabase.from('login_history').select('ip_address, user_agent, logged_in_at, status').eq('user_id', req.user.id).limit(50);
+    const { data: leaves } = await db.from('leaves').select('*').eq('user_id', req.user.id);
+    const { data: attendance } = await db.from('attendance').select('date, check_in, check_out, status, work_hours').eq('user_id', req.user.id).limit(365);
+    const { data: history } = await db.from('login_history').select('ip_address, user_agent, logged_in_at, status').eq('user_id', req.user.id).limit(50);
 
     const exportData = {
       exported_at: new Date().toISOString(),

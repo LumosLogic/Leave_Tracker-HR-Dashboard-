@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -8,7 +8,7 @@ const { hasPermission } = require('../../middleware/permissions');
 router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('departments')
       .select('*, users!departments_head_user_id_fkey(id, name)')
       .eq('organization_id', oId)
@@ -19,7 +19,7 @@ router.get('/', auth, async (req, res) => {
     const deptIds = (data || []).map(d => d.id);
     let memberCounts = {};
     if (deptIds.length > 0) {
-      const { data: activeUsers } = await supabase.from('users')
+      const { data: activeUsers } = await db.from('users')
         .select('id')
         .eq('organization_id', oId)
         .eq('role', 'employee')
@@ -27,7 +27,7 @@ router.get('/', auth, async (req, res) => {
       const activeIds = (activeUsers || []).map(u => u.id);
 
       if (activeIds.length > 0) {
-        const { data: ud } = await supabase.from('user_departments')
+        const { data: ud } = await db.from('user_departments')
           .select('department_id, user_id')
           .in('department_id', deptIds)
           .in('user_id', activeIds)
@@ -50,7 +50,7 @@ router.post('/', auth, hasPermission('departments', 'create'), async (req, res) 
     if (!name || !name.trim()) return res.status(400).json({ error: 'Department name is required' });
     if (name.trim().length < 2) return res.status(400).json({ error: 'Department name must be at least 2 characters.' });
     if (name.trim().length > 100) return res.status(400).json({ error: 'Department name cannot exceed 100 characters.' });
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('departments')
       .insert({ name: name.trim(), description: description || '', head_user_id: head_user_id || null, organization_id: oId })
       .select()
@@ -73,10 +73,10 @@ router.put('/:id', auth, hasPermission('departments', 'edit'), async (req, res) 
     const { name, description, head_user_id } = req.body;
 
     // Fetch old name before update so we can sync the users.department string
-    const { data: oldDept } = await supabase.from('departments')
+    const { data: oldDept } = await db.from('departments')
       .select('name').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('departments')
       .update({ name: name?.trim() || name, description: description || '', head_user_id: head_user_id || null })
       .eq('id', req.params.id).eq('organization_id', oId)
@@ -91,7 +91,7 @@ router.put('/:id', auth, hasPermission('departments', 'edit'), async (req, res) 
     // Keep users.department string in sync when the department is renamed.
     // This is a denormalized field used in reports and filters.
     if (oldDept && name && oldDept.name !== name) {
-      await supabase.from('users')
+      await db.from('users')
         .update({ department: name })
         .eq('department', oldDept.name)
         .eq('organization_id', oId);
@@ -105,7 +105,7 @@ router.put('/:id', auth, hasPermission('departments', 'edit'), async (req, res) 
 router.delete('/:id', auth, hasPermission('departments', 'delete'), async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { error } = await supabase.from('departments')
+    const { error } = await db.from('departments')
       .delete().eq('id', req.params.id).eq('organization_id', oId);
     if (error) throw error;
     res.json({ ok: true });

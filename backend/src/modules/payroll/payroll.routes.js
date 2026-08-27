@@ -1,6 +1,6 @@
 const express    = require('express');
 const router     = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission, hasAnyPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
@@ -88,7 +88,7 @@ const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);
 router.get('/settings', auth, hasPermission('payroll', 'view'), async (req, res) => {
   try {
     const oId = orgId(req);
-    const { data, error } = await supabase.from('payroll_settings')
+    const { data, error } = await db.from('payroll_settings')
       .select('*').eq('organization_id', oId).maybeSingle();
     if (error) throw error;
     res.json(data || { ...SETTINGS_DEFAULTS, organization_id: oId });
@@ -109,17 +109,17 @@ router.put('/settings', auth, hasPermission('payroll', 'manage_settings'), async
     payload.updated_at = new Date().toISOString();
     payload.updated_by = req.user.id;
 
-    const { data: existing } = await supabase.from('payroll_settings')
+    const { data: existing } = await db.from('payroll_settings')
       .select('*').eq('organization_id', oId).maybeSingle();
 
     let result;
     if (existing) {
-      const { data, error } = await supabase.from('payroll_settings')
+      const { data, error } = await db.from('payroll_settings')
         .update(payload).eq('organization_id', oId).select('*').single();
       if (error) throw error;
       result = data;
     } else {
-      const { data, error } = await supabase.from('payroll_settings')
+      const { data, error } = await db.from('payroll_settings')
         .insert({ ...payload, organization_id: oId }).select('*').single();
       if (error) throw error;
       result = data;
@@ -192,7 +192,7 @@ router.get('/salary-structures', auth, hasPermission('payroll', 'manage_structur
     const oId = orgId(req);
     const { userId } = req.query;
 
-    let query = supabase.from('employee_salary_structures')
+    let query = db.from('employee_salary_structures')
       .select('*, users!employee_salary_structures_user_id_fkey(id, name, email, department, position, avatar_color, employee_id)')
       .eq('organization_id', oId)
       .is('effective_to', null)
@@ -224,11 +224,11 @@ router.get('/salary-structures/history/:userId', auth, hasPermission('payroll', 
     if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
 
     // Verify employee belongs to this org
-    const { data: emp } = await supabase.from('users')
+    const { data: emp } = await db.from('users')
       .select('id').eq('id', userId).eq('organization_id', oId).maybeSingle();
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
-    const { data, error } = await supabase.from('employee_salary_structures')
+    const { data, error } = await db.from('employee_salary_structures')
       .select('*, creator:users!employee_salary_structures_created_by_fkey(name)')
       .eq('organization_id', oId)
       .eq('user_id', userId)
@@ -250,7 +250,7 @@ router.get('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
     const id  = parseInt(req.params.id);
     if (!id) return res.status(400).json({ error: 'Invalid ID' });
 
-    const { data, error } = await supabase.from('employee_salary_structures')
+    const { data, error } = await db.from('employee_salary_structures')
       .select('*, users!employee_salary_structures_user_id_fkey(id, name, department, position)')
       .eq('id', id).eq('organization_id', oId).maybeSingle();
     if (error) throw error;
@@ -280,7 +280,7 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
     if (!effective_from) return res.status(400).json({ error: 'effective_from is required' });
 
     // Verify employee belongs to this org
-    const { data: employee } = await supabase.from('users')
+    const { data: employee } = await db.from('users')
       .select('id, name').eq('id', user_id).eq('organization_id', oId).maybeSingle();
     if (!employee) return res.status(404).json({ error: 'Employee not found in this organization' });
 
@@ -373,7 +373,7 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
     });
 
     // Notify the employee their compensation has changed (fire-and-forget)
-    supabase.from('notifications').insert({
+    db.from('notifications').insert({
       user_id:         parseInt(user_id),
       title:           oldRecord ? 'Your Salary Structure Has Been Updated' : 'Your Salary Structure Has Been Set',
       message:         `Your ${oldRecord ? 'updated ' : ''}salary structure is effective from ${effective_from}. Gross pay: ₹${gross_salary.toLocaleString('en-IN')}.`,
@@ -403,7 +403,7 @@ router.get('/structure', auth, async (req, res) => {
         return res.status(403).json({ error: 'Permission denied. Required: payroll.manage_structures' });
       }
     }
-    const { data, error } = await supabase.from('payroll_structures')
+    const { data, error } = await db.from('payroll_structures')
       .select('*').eq('user_id', targetId).eq('organization_id', oId)
       .order('effective_from', { ascending: false });
     if (error) throw error;
@@ -425,7 +425,7 @@ router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), a
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
     if (user_id) {
-      const { data: emp } = await supabase.from('users')
+      const { data: emp } = await db.from('users')
         .select('id').eq('id', parseInt(user_id)).eq('organization_id', oId).maybeSingle();
       if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
     }
@@ -448,7 +448,7 @@ router.post('/structure', auth, hasPermission('payroll', 'manage_structures'), a
     const professional_tax = Number(body.professional_tax || 0);
     const tds              = Number(body.tds              || 0);
 
-    const { data, error } = await supabase.from('payroll_structures').insert({
+    const { data, error } = await db.from('payroll_structures').insert({
       user_id, effective_from,
       basic, hra, da,
       transport_allowance, medical_allowance, other_allowances,
@@ -470,7 +470,7 @@ router.put('/structure/:id', auth, hasPermission('payroll', 'manage_structures')
     const b    = req.body;
 
     if (b.user_id !== undefined) {
-      const { data: emp } = await supabase.from('users')
+      const { data: emp } = await db.from('users')
         .select('id').eq('id', parseInt(b.user_id)).eq('organization_id', oId).maybeSingle();
       if (!emp) return res.status(404).json({ error: 'Employee not found in this organisation' });
     }
@@ -499,7 +499,7 @@ router.put('/structure/:id', auth, hasPermission('payroll', 'manage_structures')
     if (b.esi_employee !== undefined || b.employee_esi !== undefined) patch.esi_employee = Number(b.esi_employee ?? b.employee_esi ?? 0);
     if (b.esi_employer !== undefined || b.employer_esi !== undefined) patch.esi_employer = Number(b.esi_employer ?? b.employer_esi ?? 0);
 
-    const { data, error } = await supabase.from('payroll_structures')
+    const { data, error } = await db.from('payroll_structures')
       .update(patch).eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);
@@ -514,7 +514,7 @@ router.get('/payslips', auth, async (req, res) => {
     const oId = req.user.organization_id;
     const { userId, year } = req.query;
     const targetId = isAdmin(req.user.role) && userId ? userId : req.user.id;
-    let q = supabase.from('payslips')
+    let q = db.from('payslips')
       .select('*, users!user_id(name, department, position)')
       .eq('organization_id', oId)
       .eq('user_id', targetId)
@@ -589,14 +589,14 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
 
     // 2. Fallback: legacy payroll_structures table
     if (!structure) {
-      let { data: structures } = await supabase.from('payroll_structures')
+      let { data: structures } = await db.from('payroll_structures')
         .select('*').eq('user_id', user_id).eq('organization_id', oId)
         .lte('effective_from', periodStart)
         .order('effective_from', { ascending: false })
         .order('id', { ascending: false })
         .limit(1);
       if (!structures?.length) {
-        const { data: fallback } = await supabase.from('payroll_structures')
+        const { data: fallback } = await db.from('payroll_structures')
           .select('*').eq('user_id', user_id).eq('organization_id', oId)
           .order('effective_from', { ascending: false })
           .order('id', { ascending: false })
@@ -633,13 +633,13 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
 
     // FIX: use actual last day of the month (not hardcoded 31 — breaks February)
     const lastDay = new Date(Number(year), Number(month), 0).getDate();
-    const { data: att } = await supabase.from('attendance')
+    const { data: att } = await db.from('attendance')
       .select('status, date').eq('user_id', user_id).eq('organization_id', oId)
       .gte('date', `${year}-${String(month).padStart(2,'0')}-01`)
       .lte('date', `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`);
 
     // Count working days in the month based on org work schedule
-    const { data: ws } = await supabase.from('work_schedule').select('work_days').eq('organization_id', oId).limit(1).maybeSingle();
+    const { data: ws } = await db.from('work_schedule').select('work_days').eq('organization_id', oId).limit(1).maybeSingle();
     const workDays = (ws?.work_days || '1,2,3,4,5').split(',').map(Number);
     let totalWorkingDays = 0;
     const d = new Date(Number(year), Number(month) - 1, 1);
@@ -737,7 +737,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
     }
 
     // Fire-and-forget notification after COMMIT
-    supabase.from('notifications').insert({
+    db.from('notifications').insert({
       user_id, title: 'Payslip Generated',
       message: `Your payslip for ${String(month).padStart(2,'0')}/${year} has been generated. Net pay: ₹${netSalary.toFixed(2)}`,
       type: 'payroll', organization_id: oId,
@@ -840,7 +840,7 @@ router.post('/lock/:id', auth, hasPermission('payroll', 'lock'), async (req, res
       [runId, oId]
     ).then(({ rows }) => {
       if (!rows.length) return;
-      return supabase.from('notifications').insert(
+      return db.from('notifications').insert(
         rows.map(r => ({
           user_id:         r.user_id,
           title:           'Your Payslip is Ready',

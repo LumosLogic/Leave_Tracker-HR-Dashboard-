@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 
@@ -18,7 +18,7 @@ const DEFAULT_POLICIES = [
 router.get('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { data, error } = await supabase.from('leave_policies')
+    const { data, error } = await db.from('leave_policies')
       .select('*').eq('organization_id', oId).order('leave_type');
 
     // Return defaults if table missing or no rows yet
@@ -72,7 +72,7 @@ router.put('/:id', auth, hasPermission('settings', 'manage'), async (req, res) =
     const oId = req.user.organization_id;
     const fields = req.body;
     delete fields.id; delete fields.organization_id; delete fields.created_at;
-    const { data, error } = await supabase.from('leave_policies')
+    const { data, error } = await db.from('leave_policies')
       .update(fields).eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
     if (error) throw error;

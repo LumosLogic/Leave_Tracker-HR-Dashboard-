@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { orgId } = require('../../utils/helpers');
 const { sendMail, orgRequestReceivedHtml } = require('../../services/emailService');
@@ -62,34 +62,34 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
       return res.status(400).json({ error: 'Invalid GST number format. Expected format: 22AAAAA0000A1Z5' });
 
     // ── 2. Block duplicate contact email ─────────────────────────────────────
-    const { data: dupEmail } = await supabase.from('org_registration_requests')
+    const { data: dupEmail } = await db.from('org_registration_requests')
       .select('id').eq('email', norm).in('status', ['pending', 'approved']).maybeSingle();
     if (dupEmail) return res.status(400).json({ error: 'A registration request with this email is already pending or approved.' });
 
     // ── 3. Block duplicate company name (case-insensitive) across requests ───
-    const { data: dupName } = await supabase.from('org_registration_requests')
+    const { data: dupName } = await db.from('org_registration_requests')
       .select('id').ilike('company_name', companyTrim).in('status', ['pending', 'approved']).maybeSingle();
     if (dupName) return res.status(400).json({ error: 'This organization is already registered or has a pending request. Please contact support if you believe this is incorrect.' });
 
     // ── 4. Block duplicate company name against live organizations ───────────
-    const { data: existingOrg } = await supabase.from('organizations')
+    const { data: existingOrg } = await db.from('organizations')
       .select('id').ilike('name', companyTrim).maybeSingle();
     if (existingOrg) return res.status(400).json({ error: 'This organization is already registered. Please contact support if you believe this is incorrect.' });
 
     // ── 5. Block if admin email already has a user account ───────────────────
-    const { data: existingUser } = await supabase.from('users').select('id').eq('email', norm).maybeSingle();
+    const { data: existingUser } = await db.from('users').select('id').eq('email', norm).maybeSingle();
     if (existingUser) return res.status(400).json({ error: 'An account with this email already exists on the platform.' });
 
     // ── 6. Unique GST check across pending/approved requests ─────────────────
     if (gstNorm) {
-      const { data: dupGst } = await supabase.from('org_registration_requests')
+      const { data: dupGst } = await db.from('org_registration_requests')
         .select('id').eq('gst_number', gstNorm).in('status', ['pending', 'approved']).maybeSingle();
       if (dupGst) return res.status(400).json({ error: 'A registration request with this GST number already exists.' });
     }
 
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
 
-    const { data: request, error: reqErr } = await supabase.from('org_registration_requests')
+    const { data: request, error: reqErr } = await db.from('org_registration_requests')
       .insert({
         company_name: companyTrim, contact_name: nameTrim, email: norm,
         phone:        phoneTrim    || null,
@@ -104,7 +104,7 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
     if (reqErr) throw new Error(reqErr.message);
 
     // Log activity
-    await supabase.from('platform_activity').insert({
+    await db.from('platform_activity').insert({
       event_type: 'org_request_submitted',
       description: `New registration request from ${nameTrim} (${companyTrim})`,
       metadata: { request_id: request.id, email: norm, company: company_name.trim() },
@@ -127,7 +127,7 @@ router.get('/org/settings', auth, async (req, res) => {
     if (req.user.role === 'root_admin' && req.query.org_id) {
       targetOrgId = Number(req.query.org_id);
     }
-    const { data, error } = await supabase.from('organizations')
+    const { data, error } = await db.from('organizations')
       .select('id, name, slug, domain, logo_url, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status, created_at')
       .eq('id', targetOrgId).maybeSingle();
     if (error) throw new Error(error.message);
@@ -164,14 +164,14 @@ router.put('/org/settings', auth, async (req, res) => {
 
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'No fields to update' });
 
-    const { data, error } = await supabase.from('organizations')
+    const { data, error } = await db.from('organizations')
       .update(update).eq('id', targetOrgId)
       .select('id, name, slug, domain, logo_url, google_client_id, google_calendar_id, vapid_public_key, total_annual_leaves, plan, status').single();
     if (error) throw new Error(error.message);
 
     // BUG_147: sync annual leave policy quota when total_annual_leaves changes
     if (update.total_annual_leaves) {
-      await supabase.from('leave_policies')
+      await db.from('leave_policies')
         .update({ annual_quota: update.total_annual_leaves })
         .eq('organization_id', targetOrgId)
         .eq('leave_type', 'annual')
@@ -185,7 +185,7 @@ router.put('/org/settings', auth, async (req, res) => {
 // ─── Organization HR Contact ──────────────────────────────────────────────────
 router.get('/org/hr-contact', auth, async (req, res) => {
   try {
-    const { data } = await supabase.from('users')
+    const { data } = await db.from('users')
       .select('email, name')
       .eq('organization_id', orgId(req))
       .eq('role', 'admin')
@@ -203,8 +203,8 @@ router.get('/features', auth, async (req, res) => {
   try {
     const oId = orgId(req);
     const [{ data: orgRow }, { data: featureRows }] = await Promise.all([
-      supabase.from('organizations').select('plan').eq('id', oId).maybeSingle(),
-      supabase.from('organization_features').select('feature_key, enabled').eq('organization_id', oId),
+      db.from('organizations').select('plan').eq('id', oId).maybeSingle(),
+      db.from('organization_features').select('feature_key, enabled').eq('organization_id', oId),
     ]);
     const plan = (orgRow?.plan || 'free').toLowerCase();
     const flags = {};

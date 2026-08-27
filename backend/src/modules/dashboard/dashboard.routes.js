@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { localDateStr, flat, orgId, getSettings } = require('../../utils/helpers');
 
@@ -16,7 +16,7 @@ router.get('/', auth, async (req, res) => {
     _step = 'employees';
     // BUG_117: exclude inactive/resigned/terminated from dashboard KPI counts
     // adapter's not_in wraps with (IS NULL OR NOT IN) so NULL-status = active employees included
-    const { data: allEmployees } = await supabase.from('users')
+    const { data: allEmployees } = await db.from('users')
       .select('id, name, avatar_color, department, created_at')
       .eq('role', 'employee').eq('organization_id', orgId(req))
       .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
@@ -27,7 +27,7 @@ router.get('/', auth, async (req, res) => {
     _step = 'attendance';
     let todayRecords = [];
     if (empIds.length > 0) {
-      const { data: todayRaw } = await supabase.from('attendance')
+      const { data: todayRaw } = await db.from('attendance')
         .select('*, users(name, avatar_color, department)')
         .eq('date', today).eq('organization_id', orgId(req))
         .in('user_id', empIds);
@@ -40,7 +40,7 @@ router.get('/', auth, async (req, res) => {
     // Fetch today's approved leaves to fill in missing attendance records
     let todayApprovedLeaves = [];
     if (empIds.length > 0) {
-      const { data: tal } = await supabase.from('leaves')
+      const { data: tal } = await db.from('leaves')
         .select('user_id, leave_type, leave_time')
         .eq('organization_id', orgId(req))
         .eq('status', 'approved')
@@ -91,7 +91,7 @@ router.get('/', auth, async (req, res) => {
     _step = 'leaves';
     // BUG_054/056/070: Count ALL pending statuses including pending_approval
     const ALL_PENDING = ['pending', 'pending_root', 'pending_dept', 'pending_approval'];
-    const { count: pendingLeaves } = await supabase.from('leaves')
+    const { count: pendingLeaves } = await db.from('leaves')
       .select('*', { count: 'exact', head: true })
       .in('status', ALL_PENDING)
       .eq('organization_id', orgId(req));
@@ -99,20 +99,20 @@ router.get('/', auth, async (req, res) => {
     let pendingLeaveList;
     if (isAdminRole(req.user.role)) {
       // BUG_070: Include all pending statuses so widget shows actual pending requests
-      const { data: plRaw } = await supabase.from('leaves')
+      const { data: plRaw } = await db.from('leaves')
         .select('*, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .in('status', ALL_PENDING).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     } else {
-      const { data: plRaw } = await supabase.from('leaves')
+      const { data: plRaw } = await db.from('leaves')
         .select('*, users!leaves_user_id_fkey(name)').eq('user_id', req.user.id).eq('organization_id', orgId(req))
         .order('created_at', { ascending: false }).limit(5);
       pendingLeaveList = flat(plRaw);
     }
 
     _step = 'myToday';
-    const { data: myToday } = await supabase.from('attendance')
+    const { data: myToday } = await db.from('attendance')
       .select('*').eq('user_id', req.user.id).eq('date', today).maybeSingle();
 
     res.json({ totalEmployees, presentToday, onLeaveToday, lateToday, earlyExitToday, halfDayToday, wfhToday, checkedInToday, newThisMonth, pendingLeaves, recentActivity, pendingLeaveList, myToday, today, isToday, newJoiners });

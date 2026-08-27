@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }                      = require('../../config/db');
+const { db }                      = require('../../config/db');
 const { auth, adminOnly, isAdminRole, selfOrAdmin } = require('../../middleware/auth');
 const { orgId }                         = require('../../utils/helpers');
 
@@ -16,7 +16,7 @@ router.get('/:id/banking', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_bank_accounts')
+    const { data, error } = await db.from('employee_bank_accounts')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req)).eq('is_active', true)
       .order('is_primary', { ascending: false }).order('created_at');
     if (error) throw error;
@@ -37,21 +37,21 @@ router.post('/:id/banking', auth, selfOrAdmin(SELF_EDITABLE), async (req, res) =
     if (!bank_name || !account_number) return res.status(400).json({ error: 'bank_name and account_number are required' });
 
     // BUG_045: Duplicate account number check for same employee
-    const { data: dupAcc } = await supabase.from('employee_bank_accounts')
+    const { data: dupAcc } = await db.from('employee_bank_accounts')
       .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
       .eq('account_number', account_number).eq('is_active', true).maybeSingle();
     if (dupAcc) return res.status(409).json({ error: 'This account number is already added for this employee.' });
 
     // Unset primary if this one is primary
     if (is_primary) {
-      await supabase.from('employee_bank_accounts')
+      await db.from('employee_bank_accounts')
         .update({ is_primary: false }).eq('employee_id', empId).eq('organization_id', orgId(req));
     }
 
     // Admin-added accounts are auto-verified; employee-added require HR review
     const isAdmin = isAdminRole(req.user.role);
 
-    const { data, error } = await supabase.from('employee_bank_accounts').insert({
+    const { data, error } = await db.from('employee_bank_accounts').insert({
       employee_id: empId, organization_id: orgId(req),
       bank_name, branch_name, branch_code, account_number,
       account_holder_name: account_holder_name || null,
@@ -84,11 +84,11 @@ router.put('/:id/banking/:recordId', auth, selfOrAdmin(SELF_EDITABLE), async (re
     } = req.body;
 
     if (is_primary) {
-      await supabase.from('employee_bank_accounts')
+      await db.from('employee_bank_accounts')
         .update({ is_primary: false }).eq('employee_id', empId).eq('organization_id', orgId(req));
     }
 
-    const { data, error } = await supabase.from('employee_bank_accounts').update({
+    const { data, error } = await db.from('employee_bank_accounts').update({
       bank_name, branch_name, branch_code, account_number,
       account_holder_name: account_holder_name || null,
       account_type, ifsc_code, swift_code: swift_code || null,
@@ -108,7 +108,7 @@ router.put('/:id/banking/:recordId/verify', auth, adminOnly, async (req, res) =>
     const empId    = parseInt(req.params.id);
     const recordId = parseInt(req.params.recordId);
 
-    const { data, error } = await supabase.from('employee_bank_accounts').update({
+    const { data, error } = await db.from('employee_bank_accounts').update({
       hr_verified: true,
       hr_verified_by: req.user.id,
       hr_verified_at: new Date().toISOString(),
@@ -124,7 +124,7 @@ router.put('/:id/banking/:recordId/verify', auth, adminOnly, async (req, res) =>
 // DELETE /api/profile/:id/banking/:recordId  — soft delete (admin only)
 router.delete('/:id/banking/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_bank_accounts')
+    const { error } = await db.from('employee_bank_accounts')
       .update({ is_active: false, updated_at: new Date().toISOString(), updated_by: req.user.id })
       .eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));

@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -11,7 +11,7 @@ router.get('/:id/skills', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_skills')
+    const { data, error } = await db.from('employee_skills')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('skill_category').order('skill_name');
     if (error) throw error;
@@ -31,12 +31,12 @@ router.post('/:id/skills', auth, async (req, res) => {
     if (!skill_name) return res.status(400).json({ error: 'skill_name is required' });
 
     // BUG_047: Case-insensitive duplicate skill check
-    const { data: existing } = await supabase.from('employee_skills')
+    const { data: existing } = await db.from('employee_skills')
       .select('id').eq('employee_id', empId).eq('organization_id', orgId(req))
       .ilike('skill_name', skill_name.trim()).maybeSingle();
     if (existing) return res.status(409).json({ error: `Skill "${skill_name}" already exists. Skill names are case-insensitive.` });
 
-    const { data, error } = await supabase.from('employee_skills').insert({
+    const { data, error } = await db.from('employee_skills').insert({
       employee_id: empId, organization_id: orgId(req),
       skill_name, skill_category: skill_category || 'technical',
       proficiency_level: proficiency_level || 'intermediate',
@@ -63,7 +63,7 @@ router.put('/:id/skills/:recordId', auth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
 
-    const { data, error } = await supabase.from('employee_skills').update({
+    const { data, error } = await db.from('employee_skills').update({
       skill_name, skill_category, proficiency_level,
       years_of_experience: years_of_experience || null,
       can_read, can_write, can_speak,
@@ -82,7 +82,7 @@ router.delete('/:id/skills/:recordId', auth, async (req, res) => {
     const empId = parseInt(req.params.id);
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
-    const { error } = await supabase.from('employee_skills')
+    const { error } = await db.from('employee_skills')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;

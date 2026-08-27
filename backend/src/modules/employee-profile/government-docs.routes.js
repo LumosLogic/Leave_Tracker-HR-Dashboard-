@@ -1,7 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, adminOnly, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -27,7 +27,7 @@ router.get('/:id/government-docs', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_government_documents')
+    const { data, error } = await db.from('employee_government_documents')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('document_type');
     if (error) throw error;
@@ -46,7 +46,7 @@ router.post('/:id/government-docs', auth, adminOnly, upload.single('file'), asyn
 
     const file_url = req.file ? await uploadFile(req.file, empId, orgId(req)) : null;
 
-    const { data, error } = await supabase.from('employee_government_documents').insert({
+    const { data, error } = await db.from('employee_government_documents').insert({
       employee_id: empId, organization_id: orgId(req),
       document_type, document_number: document_number || null,
       issue_date: issue_date || null, expiry_date: expiry_date || null,
@@ -82,7 +82,7 @@ router.put('/:id/government-docs/:recordId', auth, adminOnly, upload.single('fil
     };
     if (file_url !== undefined) update.file_url = file_url;
 
-    const { data, error } = await supabase.from('employee_government_documents')
+    const { data, error } = await db.from('employee_government_documents')
       .update(update).eq('id', recordId).eq('employee_id', empId)
       .eq('organization_id', orgId(req)).select().single();
     if (error) throw error;
@@ -99,7 +99,7 @@ router.patch('/:id/government-docs/:recordId/verify', auth, adminOnly, async (re
     if (!['pending','verified','rejected'].includes(verification_status))
       return res.status(400).json({ error: 'Invalid status' });
 
-    const { data, error } = await supabase.from('employee_government_documents').update({
+    const { data, error } = await db.from('employee_government_documents').update({
       verification_status,
       verified_by: req.user.id,
       verified_at: new Date().toISOString(),
@@ -117,7 +117,7 @@ router.patch('/:id/government-docs/:recordId/verify', auth, adminOnly, async (re
 // DELETE /api/profile/:id/government-docs/:recordId
 router.delete('/:id/government-docs/:recordId', auth, adminOnly, async (req, res) => {
   try {
-    const { error } = await supabase.from('employee_government_documents')
+    const { error } = await db.from('employee_government_documents')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', parseInt(req.params.id)).eq('organization_id', orgId(req));
     if (error) throw error;

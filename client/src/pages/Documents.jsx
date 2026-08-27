@@ -6,7 +6,7 @@ import {
   Share2, Edit2, RefreshCw, CreditCard, Landmark, Camera, GraduationCap,
   Briefcase, ScanLine, User, Home, Plus, ShieldCheck, ClipboardList,
   Clock, CheckCircle, XCircle, AlertTriangle, BarChart2, Search,
-  ChevronDown, RotateCcw, FileCheck, UploadCloud,
+  ChevronDown, RotateCcw, FileCheck, UploadCloud, Settings, UserPlus, Calendar,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -99,6 +99,25 @@ function StatusBadge({ status }) {
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
       {cfg.label}
     </span>
+  );
+}
+
+function ExpiryBadge({ expiryDate }) {
+  if (!expiryDate) return <span className="text-[#9ca3af] text-[0.65rem]">—</span>;
+  const dl = daysLeft(expiryDate);
+  if (dl === null) return null;
+  if (dl < 0) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+      <AlertTriangle size={10} /> Expired
+    </span>
+  );
+  if (dl <= 30) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+      <Clock size={10} /> {dl}d left
+    </span>
+  );
+  return (
+    <span className="text-[0.65rem] text-[#777587]">{fmtDate(expiryDate)}</span>
   );
 }
 
@@ -336,6 +355,7 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
   const [uploading, setUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
   const [form, setForm] = useState(INIT_FORM);
   const [shareSearch, setShareSearch] = useState('');
   const fileRef = useRef();
@@ -399,18 +419,21 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
         }} />
       {!pendingFile ? (
         <div
-          className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-[#3525cd]/30 rounded-xl cursor-pointer hover:bg-[#f0f3ff] transition-colors"
+          className={`flex flex-col items-center justify-center py-8 border-2 border-dashed rounded-xl cursor-pointer transition-all ${dragActive ? 'border-[#3525cd] bg-[#f0f3ff] scale-[1.01]' : 'border-[#3525cd]/30 hover:bg-[#f0f3ff] hover:border-[#3525cd]/60'}`}
           onClick={() => fileRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+          onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+          onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
           onDrop={e => {
-            e.preventDefault(); e.stopPropagation();
+            e.preventDefault(); e.stopPropagation(); setDragActive(false);
             const f = e.dataTransfer.files?.[0];
             if (!f) return;
+            if (f.size === 0) { toast('Empty files are not allowed.', 'error'); return; }
             if (f.size > 10 * 1024 * 1024) { toast('File size must not exceed 10 MB.', 'error'); return; }
             setPendingFile(f); set('name', f.name.replace(/\.[^.]+$/, ''));
           }}>
-          <UploadCloud size={32} className="text-[#3525cd] mb-2" />
-          <p className="text-sm font-bold text-[#151c27]">Click or drag a file here</p>
+          <UploadCloud size={32} className={`mb-2 transition-colors ${dragActive ? 'text-[#3525cd]' : 'text-[#3525cd]/70'}`} />
+          <p className="text-sm font-bold text-[#151c27]">{dragActive ? 'Release to upload' : 'Click or drag a file here'}</p>
           <p className="text-xs text-[#777587] mt-1">PDF, JPG, PNG, WEBP, DOC, DOCX · Max 10 MB</p>
         </div>
       ) : (
@@ -1096,16 +1119,150 @@ function RequirementModal({ req, onClose, onSaved, existingRequirements = [] }) 
   );
 }
 
+// ── Requirement Assignment Modal ─────────────────────────────────────────────
+function RequirementAssignModal({ requirement, employees, onClose, onSaved }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [mode, setMode]     = useState(requirement.assigned_employee_ids?.length ? 'specific' : 'all');
+  const [selected, setSelected] = useState((requirement.assigned_employee_ids || []).map(String));
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return employees;
+    const q = search.toLowerCase();
+    return employees.filter(e => e.name?.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q));
+  }, [employees, search]);
+
+  function toggleEmp(id) {
+    const sid = String(id);
+    setSelected(prev => prev.includes(sid) ? prev.filter(x => x !== sid) : [...prev, sid]);
+  }
+
+  async function handleSave() {
+    if (mode === 'specific' && selected.length === 0) { toast('Select at least one employee', 'error'); return; }
+    setSaving(true);
+    try {
+      await apiPost(`/doc-requirements/${requirement.id}/assign`, {
+        employee_ids: mode === 'all' ? null : selected.map(Number),
+      });
+      toast('Assignment saved!', 'success');
+      qc.invalidateQueries({ queryKey: ['doc-requirements'] });
+      onSaved();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.6)', backdropFilter: 'blur(8px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[#f0f3ff] flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] flex items-center justify-center"><UserPlus size={16} className="text-[#3525cd]" /></div>
+          <div className="flex-1">
+            <p className="font-black text-[#151c27] text-sm">Assign Requirement</p>
+            <p className="text-xs text-[#777587] truncate">{requirement.name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg text-[#777587] hover:bg-[#f0f3ff]"><X size={18} /></button>
+        </div>
+
+        <div className="p-5 flex-1 overflow-y-auto space-y-4">
+          <div>
+            <label className="form-label mb-2">Assign To</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { v: 'all',      label: 'All Employees',      desc: 'Visible to everyone in the organization', Icon: Globe },
+                { v: 'specific', label: 'Specific Employees', desc: 'Only visible to selected employees',      Icon: Users },
+              ].map(opt => (
+                <label key={opt.v} className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${mode === opt.v ? 'border-[#3525cd] bg-[#f0f3ff]' : 'border-[#e7eefe] hover:border-[#c7c4d8]'}`}>
+                  <input type="radio" name="assign-mode" value={opt.v} checked={mode === opt.v} onChange={() => setMode(opt.v)} className="mt-0.5 text-[#3525cd]" />
+                  <div>
+                    <p className="text-xs font-bold text-[#151c27]">{opt.label}</p>
+                    <p className="text-[0.6rem] text-[#9ca3af] leading-tight">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {mode === 'all' && (
+            <div className="p-3 rounded-xl bg-[#f0f3ff] border border-[#3525cd]/20">
+              <p className="text-xs text-[#3525cd] font-semibold flex items-center gap-2">
+                <Globe size={13} /> Visible to all {employees.length} active employees.
+              </p>
+            </div>
+          )}
+
+          {mode === 'specific' && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="form-label mb-0">Select Employees</label>
+                {selected.length > 0 && <span className="text-xs font-bold text-[#3525cd]">{selected.length} selected</span>}
+              </div>
+              {selected.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selected.map(sid => {
+                    const emp = employees.find(e => String(e.id) === sid);
+                    return emp ? (
+                      <span key={sid} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold bg-[#3525cd]/10 text-[#3525cd] border border-[#3525cd]/20">
+                        {emp.name}
+                        <button onClick={() => toggleEmp(sid)} className="ml-0.5 hover:text-rose-500 transition-colors"><X size={10} /></button>
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              <div className="relative mb-2">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+                <input className="form-control pl-8 text-xs" placeholder="Search employees…" value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              <div className="border border-[#e7eefe] rounded-xl max-h-52 overflow-y-auto">
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-center text-[#9ca3af] py-6">No employees found</p>
+                ) : filtered.map(emp => (
+                  <label key={emp.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#fafaff] cursor-pointer transition-colors border-b border-[#f0f3ff] last:border-0">
+                    <input type="checkbox" checked={selected.includes(String(emp.id))} onChange={() => toggleEmp(emp.id)} className="text-[#3525cd] rounded flex-shrink-0" />
+                    <Avatar name={emp.name} color={emp.avatar_color} size={24} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#151c27] truncate">{emp.name}</p>
+                      {emp.department && <p className="text-[0.6rem] text-[#9ca3af]">{emp.department}</p>}
+                    </div>
+                    {selected.includes(String(emp.id)) && <CheckCircle2 size={13} className="text-[#3525cd] flex-shrink-0" />}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-[#f0f3ff] flex gap-3 flex-shrink-0">
+          <button className="btn btn-outline flex-1" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary flex-1" onClick={handleSave} disabled={saving}>
+            {saving ? <><span className="spinner w-4 h-4" /> Saving…</> : <><CheckCircle2 size={14} /> Save Assignment</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin: Employee Requirements Tab ─────────────────────────────────────────
 function EmployeeRequirementsTab() {
   const toast = useToast();
   const qc = useQueryClient();
-  const [modal, setModal]       = useState(null); // null | 'create' | requirement object
+  const [modal, setModal]           = useState(null);
+  const [assignModal, setAssignModal] = useState(null); // requirement object
   const [confirmDel, setConfirmDel] = useState(null);
 
   const { data: requirements = [], isLoading } = useQuery({
     queryKey: ['doc-requirements'],
     queryFn:  () => apiGet('/doc-requirements'),
+  });
+
+  const { data: allEmployees = [] } = useQuery({
+    queryKey: ['employees-list-docs'],
+    queryFn:  async () => { const all = await apiGet('/employees'); return all.filter(e => e.role === 'employee' && e.status === 'active'); },
   });
 
   const delMut = useMutation({
@@ -1119,6 +1276,15 @@ function EmployeeRequirementsTab() {
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['doc-requirements'] }),
     onError:    e  => toast(e.message, 'error'),
   });
+
+  function getAssignedLabel(req) {
+    if (!req.assigned_employee_ids?.length) return <span className="text-[#9ca3af]">All</span>;
+    return (
+      <span className="flex items-center gap-1 text-[#3525cd] font-bold">
+        <Users size={10} /> {req.assigned_employee_ids.length}
+      </span>
+    );
+  }
 
   return (
     <div>
@@ -1146,8 +1312,8 @@ function EmployeeRequirementsTab() {
           <table className="w-full text-left text-xs">
             <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
               <tr>
-                {['DOCUMENT', 'CATEGORY', 'TYPE', 'FORMATS', 'SUBMISSIONS', 'STATUS', 'ACTIONS'].map(h => (
-                  <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide">{h}</th>
+                {['DOCUMENT', 'CATEGORY', 'TYPE', 'FORMATS', 'ASSIGNED TO', 'SUBMISSIONS', 'STATUS', 'ACTIONS'].map(h => (
+                  <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1158,7 +1324,7 @@ function EmployeeRequirementsTab() {
                   <tr key={req.id} className="hover:bg-[#fafaff] transition-colors">
                     <td className="px-4 py-3.5">
                       <p className="font-bold text-[#151c27]">{req.name}</p>
-                      {req.description && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5 truncate max-w-[200px]">{req.description}</p>}
+                      {req.description && <p className="text-[0.65rem] text-[#9ca3af] mt-0.5 truncate max-w-[180px]">{req.description}</p>}
                     </td>
                     <td className="px-4 py-3.5">
                       <span className="px-2.5 py-1 rounded-full text-[0.65rem] font-bold bg-[#f0f3ff] text-[#464555] border border-[#c7c4d8]">
@@ -1177,11 +1343,12 @@ function EmployeeRequirementsTab() {
                         ))}
                       </div>
                     </td>
+                    <td className="px-4 py-3.5">{getAssignedLabel(req)}</td>
                     <td className="px-4 py-3.5">
                       <div className="space-y-0.5">
                         <p className="text-[0.65rem] text-[#151c27] font-bold">{stats.total || 0} total</p>
                         <p className="text-[0.6rem] text-emerald-600">{stats.approved || 0} approved</p>
-                        <p className="text-[0.6rem] text-amber-600">{stats.under_review || 0} reviewing</p>
+                        <p className="text-[0.6rem] text-amber-600">{(stats.under_review || 0) + (stats.hr_approved || 0)} reviewing</p>
                         {(stats.rejected || 0) > 0 && <p className="text-[0.6rem] text-rose-600">{stats.rejected} rejected</p>}
                       </div>
                     </td>
@@ -1193,6 +1360,7 @@ function EmployeeRequirementsTab() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1">
                         <button title="Edit" onClick={() => setModal(req)} className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><Edit2 size={13} /></button>
+                        <button title="Assign to Employees" onClick={() => setAssignModal(req)} className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"><UserPlus size={13} /></button>
                         <button title={req.is_active ? 'Disable' : 'Enable'}
                           onClick={() => toggleMut.mutate({ id: req.id, is_active: !req.is_active })}
                           className="p-1.5 rounded-lg text-[#777587] hover:text-amber-600 hover:bg-amber-50 transition-colors">
@@ -1210,6 +1378,7 @@ function EmployeeRequirementsTab() {
       )}
 
       {modal && <RequirementModal req={modal === 'create' ? null : modal} existingRequirements={requirements} onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
+      {assignModal && <RequirementAssignModal requirement={assignModal} employees={allEmployees} onClose={() => setAssignModal(null)} onSaved={() => setAssignModal(null)} />}
       <ConfirmModal open={!!confirmDel} title="Delete Requirement"
         message={<>Delete requirement <strong>"{confirmDel?.name}"</strong>? All employee submissions for this requirement will also be deleted.</>}
         confirmLabel="Delete" onConfirm={() => delMut.mutate(confirmDel.id)} onCancel={() => setConfirmDel(null)} />
@@ -1536,13 +1705,322 @@ function VerificationQueueTab() {
   );
 }
 
+// ── Admin: Analytics Tab ─────────────────────────────────────────────────────
+function AnalyticsTab() {
+  const { data: a, isLoading } = useQuery({
+    queryKey: ['doc-analytics'],
+    queryFn:  () => apiGet('/doc-requirements/analytics'),
+    staleTime: 60000,
+  });
+
+  if (isLoading) return <div className="loading"><div className="spinner" /> Loading analytics…</div>;
+  if (!a) return null;
+
+  const statCards = [
+    { label: 'Total Requirements', num: a.totalRequirements, bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]' },
+    { label: 'Approved',           num: a.approved,          bg: 'bg-emerald-50',  text: 'text-emerald-700' },
+    { label: 'Pending Review',     num: a.under_review,      bg: 'bg-amber-50',    text: 'text-amber-700' },
+    { label: 'HR Approved',        num: a.hr_approved,       bg: 'bg-yellow-50',   text: 'text-yellow-700' },
+    { label: 'Rejected',           num: a.rejected,          bg: 'bg-rose-50',     text: 'text-rose-700' },
+    { label: 'Re-upload Req.',     num: a.re_upload_requested, bg: 'bg-orange-50', text: 'text-orange-700' },
+    { label: 'Expiring Soon',      num: a.expiringCount,     bg: 'bg-slate-50',    text: 'text-slate-700' },
+    { label: 'Compliance %',       num: `${a.compliancePercent}%`, bg: a.compliancePercent >= 70 ? 'bg-emerald-50' : 'bg-rose-50', text: a.compliancePercent >= 70 ? 'text-emerald-700' : 'text-rose-700' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {statCards.map(s => (
+          <div key={s.label} className={`rounded-xl border border-[#c7c4d8] p-4 ${s.bg}`}>
+            <p className={`text-2xl font-black ${s.text}`}>{s.num}</p>
+            <p className="text-xs font-bold text-[#464555] mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Weekly upload trend */}
+      {(a.weeklyTrend || []).length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] p-5">
+          <p className="text-sm font-black text-[#151c27] mb-4">Weekly Submissions (last 8 weeks)</p>
+          <div className="flex items-end gap-2 h-28">
+            {a.weeklyTrend.map((w, i) => {
+              const max = Math.max(...a.weeklyTrend.map(x => x.count), 1);
+              const pct = Math.round((w.count / max) * 100);
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <span className="text-[0.6rem] text-[#777587] font-bold">{w.count}</span>
+                  <div className="w-full rounded-t-md bg-[#3525cd]/15 flex items-end" style={{ height: 80 }}>
+                    <div className="w-full rounded-t-md bg-[#3525cd] transition-all duration-500" style={{ height: `${Math.max(pct, w.count > 0 ? 4 : 0)}%` }} />
+                  </div>
+                  <span className="text-[0.55rem] text-[#9ca3af] text-center leading-tight">{w.week}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Per-requirement compliance */}
+      {(a.requirementStats || []).filter(r => r.is_active).length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#f0f3ff]">
+            <p className="text-sm font-black text-[#151c27]">Requirement Compliance</p>
+          </div>
+          <div className="divide-y divide-[#f0f3ff]">
+            {a.requirementStats.filter(r => r.is_active).map(r => {
+              const pct = a.totalEmployees > 0 ? Math.round((r.approved / a.totalEmployees) * 100) : 0;
+              return (
+                <div key={r.id} className="px-5 py-3.5 flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <p className="text-xs font-bold text-[#151c27] truncate">{r.name}</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[0.6rem] font-bold border flex-shrink-0 ${r.is_required ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]'}`}>
+                        {r.is_required ? 'Required' : 'Optional'}
+                      </span>
+                    </div>
+                    <div className="w-full bg-[#f0f3ff] rounded-full h-1.5">
+                      <div className="bg-[#3525cd] h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 w-24">
+                    <p className="text-xs font-black text-[#151c27]">{pct}%</p>
+                    <p className="text-[0.6rem] text-[#9ca3af]">{r.approved}/{a.totalEmployees} approved</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Admin: Delete Requests Tab (Root Admin only) ──────────────────────────────
+function DeleteRequestsTab() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [filter, setFilter]       = useState('pending');
+  const [actionModal, setActionModal] = useState(null); // { req, action }
+  const [actionReason, setActionReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const { data: requests = [], isLoading } = useQuery({
+    queryKey: ['doc-delete-requests', filter],
+    queryFn:  () => apiGet(`/documents/delete-requests${filter !== 'all' ? `?status=${filter}` : ''}`),
+  });
+
+  async function handleAction() {
+    if (!actionModal) return;
+    setSaving(true);
+    try {
+      await apiPatch(`/documents/delete-requests/${actionModal.req.id}/action`, {
+        action: actionModal.action,
+        reason: actionReason.trim() || undefined,
+      });
+      toast(actionModal.action === 'approved' ? 'Document deleted successfully.' : 'Delete request rejected.', 'success');
+      qc.invalidateQueries({ queryKey: ['doc-delete-requests'] });
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      setActionModal(null);
+      setActionReason('');
+    } catch (err) { toast(err.message, 'error'); }
+    finally { setSaving(false); }
+  }
+
+  const FILTER_TABS = [
+    { key: 'pending',  label: 'Pending',  cls: 'text-amber-700' },
+    { key: 'approved', label: 'Approved', cls: 'text-emerald-700' },
+    { key: 'rejected', label: 'Rejected', cls: 'text-rose-700' },
+    { key: 'all',      label: 'All',      cls: 'text-[#464555]' },
+  ];
+
+  return (
+    <div>
+      <div className="mb-5">
+        <p className="text-sm font-black text-[#151c27]">Delete Requests</p>
+        <p className="text-xs text-[#777587]">Review and action HR Admin document deletion requests.</p>
+      </div>
+
+      <div className="flex items-center gap-1 mb-4 border-b border-[#c7c4d8]">
+        {FILTER_TABS.map(t => (
+          <button key={t.key} onClick={() => setFilter(t.key)}
+            className={`px-3.5 py-2 text-xs font-bold border-b-2 transition-all -mb-px ${filter === t.key ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="loading"><div className="spinner" /> Loading requests…</div>
+      ) : requests.length === 0 ? (
+        <div className="empty-state">
+          <Trash2 size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
+          <p>No {filter !== 'all' ? filter : ''} delete requests</p>
+          <p className="text-sm text-[#9ca3af] mt-1">HR Admin deletion requests will appear here for your review.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
+              <tr>
+                {['DOCUMENT', 'REQUESTED BY', 'REASON', 'REQUESTED ON', 'STATUS', 'ACTIONS'].map(h => (
+                  <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#f0f3ff]">
+              {requests.map(r => (
+                <tr key={r.id} className="hover:bg-[#fafaff] transition-colors">
+                  <td className="px-4 py-3.5">
+                    {r.document ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">{fileIcon(r.document.file_type, 13)}</div>
+                        <div>
+                          <p className="font-bold text-[#151c27] truncate max-w-[140px]">{r.document.name}</p>
+                          <p className="text-[0.6rem] text-[#9ca3af]">{r.document.category}</p>
+                        </div>
+                      </div>
+                    ) : <span className="text-[#9ca3af] italic">Document deleted</span>}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <Avatar name={r.requester?.name} color={r.requester?.avatar_color} size={24} />
+                      <p className="font-semibold text-[#151c27] truncate max-w-[100px]">{r.requester?.name || '—'}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <p className="text-[#464555] max-w-[180px] truncate" title={r.reason}>{r.reason}</p>
+                  </td>
+                  <td className="px-4 py-3.5 text-[#777587] whitespace-nowrap">{fmtDateTime(r.created_at)}</td>
+                  <td className="px-4 py-3.5">
+                    <span className={`px-2.5 py-1 rounded-full text-[0.65rem] font-bold border ${
+                      r.status === 'pending'  ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>{r.status.charAt(0).toUpperCase() + r.status.slice(1)}</span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {r.status === 'pending' ? (
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => { setActionModal({ req: r, action: 'approved' }); setActionReason(''); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-500 hover:bg-rose-600 transition-colors">
+                          Delete
+                        </button>
+                        <button onClick={() => { setActionModal({ req: r, action: 'rejected' }); setActionReason(''); }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#464555] border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-colors">
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[0.65rem] text-[#9ca3af]">
+                        {r.actioned_at ? fmtDate(r.actioned_at.slice(0, 10)) : '—'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Action confirmation modal */}
+      {actionModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setActionModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-[#c7c4d8] w-full max-w-sm p-6">
+            <button onClick={() => setActionModal(null)} className="absolute top-4 right-4 text-[#777587] hover:text-[#151c27] p-1 rounded-lg hover:bg-[#f0f3ff]"><X size={18} /></button>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 ${actionModal.action === 'approved' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
+              <Trash2 size={22} />
+            </div>
+            <h3 className="text-base font-black text-[#151c27] text-center mb-1">
+              {actionModal.action === 'approved' ? 'Approve & Delete Document' : 'Reject Delete Request'}
+            </h3>
+            <p className="text-xs text-[#777587] text-center mb-4">
+              {actionModal.action === 'approved'
+                ? `"${actionModal.req.document?.name || 'This document'}" will be permanently deleted. This cannot be undone.`
+                : 'The HR Admin will be notified that their request was rejected.'}
+            </p>
+            {actionModal.action === 'rejected' && (
+              <div className="mb-4">
+                <label className="form-label">Reason <span className="text-[#9ca3af] font-normal">(optional)</span></label>
+                <textarea className="form-control" rows={2} placeholder="Reason for rejection…" value={actionReason} onChange={e => setActionReason(e.target.value)} />
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setActionModal(null)} className="flex-1 btn btn-outline" disabled={saving}>Cancel</button>
+              <button onClick={handleAction} disabled={saving}
+                className={`flex-1 px-4 py-2 rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50 ${actionModal.action === 'approved' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+                {saving ? <><span className="spinner w-4 h-4" /> Processing…</> : actionModal.action === 'approved' ? 'Confirm Delete' : 'Reject Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Admin: Settings Tab (Root Admin only) ────────────────────────────────────
+function SettingsTab() {
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-xl border border-[#c7c4d8] p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] flex items-center justify-center"><Settings size={16} className="text-[#3525cd]" /></div>
+          <div>
+            <p className="text-sm font-black text-[#151c27]">Document Settings</p>
+            <p className="text-xs text-[#777587]">Organization-level document configuration</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
+            <p className="text-xs font-black text-[#151c27] mb-1">Accepted File Types</p>
+            <p className="text-[0.65rem] text-[#777587] mb-2">Default formats for new requirements</p>
+            <div className="flex flex-wrap gap-1.5">
+              {['PDF', 'JPG', 'PNG', 'DOC', 'DOCX'].map(f => (
+                <span key={f} className="px-2.5 py-1 rounded-full text-[0.65rem] font-bold bg-[#3525cd]/10 text-[#3525cd] border border-[#3525cd]/20">{f}</span>
+              ))}
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
+            <p className="text-xs font-black text-[#151c27] mb-1">Default File Size Limit</p>
+            <p className="text-[0.65rem] text-[#777587] mb-2">Applied to new requirements unless overridden</p>
+            <p className="text-lg font-black text-[#3525cd]">10 MB</p>
+          </div>
+          <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
+            <p className="text-xs font-black text-[#151c27] mb-1">Verification Workflow</p>
+            <p className="text-[0.65rem] text-[#777587] mb-2">Two-stage: HR Approve → Root Admin Final Approve</p>
+            <span className="px-2.5 py-1 rounded-full text-[0.65rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>
+          </div>
+          <div className="p-4 rounded-xl bg-[#f9f9ff] border border-[#e7eefe]">
+            <p className="text-xs font-black text-[#151c27] mb-1">Expiry Reminder</p>
+            <p className="text-[0.65rem] text-[#777587] mb-2">Default reminder before document expiry</p>
+            <p className="text-lg font-black text-[#3525cd]">30 days</p>
+          </div>
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border border-[#c7c4d8] p-5">
+        <p className="text-sm font-black text-[#151c27] mb-1">Multi-Organization Isolation</p>
+        <p className="text-xs text-[#777587] mb-4">All documents, requirements, submissions, and settings are fully isolated per organization.</p>
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+          <CheckCircle size={14} className="text-emerald-600 flex-shrink-0" />
+          <p className="text-xs text-emerald-700 font-semibold">Organization isolation is enforced at the database level on every query.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin: Main Documents Page ────────────────────────────────────────────────
 function AdminDocumentsPage() {
   const qc = useQueryClient();
+  const { isRootAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'shared';
-  const [activeTab, setActiveTab]     = useState(initialTab);
-  const [showUpload, setShowUpload]   = useState(false);
+  const [activeTab, setActiveTab]         = useState(initialTab);
+  const [showUpload, setShowUpload]       = useState(false);
   const [showCreateReq, setShowCreateReq] = useState(false);
 
   const { data: allEmployees = [] } = useQuery({
@@ -1550,12 +2028,40 @@ function AdminDocumentsPage() {
     queryFn:  async () => { const all = await apiGet('/employees'); return all.filter(e => e.role === 'employee'); },
   });
 
+  // Pending delete request count badge for Root Admin
+  const { data: pendingDelReqs = [] } = useQuery({
+    queryKey: ['doc-delete-requests', 'pending'],
+    queryFn:  () => apiGet('/documents/delete-requests?status=pending'),
+    enabled:  isRootAdmin,
+    staleTime: 30000,
+  });
+
   const tabs = [
-    { id: 'shared',       label: 'Shared Documents',     Icon: FolderOpen },
-    { id: 'requirements', label: 'Employee Requirements', Icon: ClipboardList },
-    { id: 'verification', label: 'Verification Queue',   Icon: ShieldCheck },
-    { id: 'analytics',    label: 'Analytics',            Icon: BarChart2 },
-  ];
+    { id: 'shared',          label: 'Shared Documents',     Icon: FolderOpen,    show: true },
+    { id: 'requirements',    label: 'Requirements',          Icon: ClipboardList, show: true },
+    { id: 'verification',    label: 'Verification Queue',   Icon: ShieldCheck,   show: true },
+    { id: 'delete_requests', label: 'Delete Requests',      Icon: Trash2,        show: isRootAdmin, badge: pendingDelReqs.length },
+    { id: 'analytics',       label: 'Analytics',            Icon: BarChart2,     show: true },
+    { id: 'settings',        label: 'Settings',             Icon: Settings,      show: isRootAdmin },
+  ].filter(t => t.show);
+
+  // Tab-aware header action — only show relevant button per tab
+  const headerAction = {
+    shared:          <button className="btn btn-outline" onClick={() => { setShowUpload(true); setShowCreateReq(false); }}><Upload size={14} /> Upload Document</button>,
+    requirements:    <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); }}><Plus size={14} /> Create Requirement</button>,
+    verification:    null,
+    delete_requests: null,
+    analytics:       null,
+    settings:        null,
+  }[activeTab];
+
+  function switchTab(id) {
+    setActiveTab(id);
+    if (id !== 'shared')       setShowUpload(false);
+    if (id !== 'requirements') setShowCreateReq(false);
+    // searchParams tab override (for deep links)
+    window.history.replaceState(null, '', `?tab=${id}`);
+  }
 
   return (
     <div>
@@ -1570,17 +2076,10 @@ function AdminDocumentsPage() {
             <p className="page-subtitle">Manage organization documents and employee compliance.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="btn btn-outline" onClick={() => { setShowUpload(true); setShowCreateReq(false); setActiveTab('shared'); }}>
-            <Upload size={14} /> Upload Document
-          </button>
-          <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); setActiveTab('requirements'); }}>
-            <Plus size={14} /> Create Requirement
-          </button>
-        </div>
+        {headerAction && <div className="flex items-center gap-3">{headerAction}</div>}
       </div>
 
-      {/* Upload Panel */}
+      {/* Upload Panel — only when on shared tab */}
       {showUpload && activeTab === 'shared' && (
         <UploadSharedDocPanel allEmployees={allEmployees} colleagues={[]} onCancel={() => setShowUpload(false)}
           onUploaded={() => { setShowUpload(false); qc.invalidateQueries({ queryKey: ['documents'] }); }} />
@@ -1589,27 +2088,27 @@ function AdminDocumentsPage() {
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 border-b border-[#c7c4d8]">
         {tabs.map(tab => (
-          <button key={tab.id} onClick={() => { setActiveTab(tab.id); if (tab.id !== 'shared') setShowUpload(false); }}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all -mb-px ${activeTab === tab.id ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
+          <button key={tab.id} onClick={() => switchTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-all -mb-px whitespace-nowrap ${activeTab === tab.id ? 'border-[#3525cd] text-[#3525cd]' : 'border-transparent text-[#777587] hover:text-[#464555]'}`}>
             <tab.Icon size={14} /> {tab.label}
+            {tab.badge > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[0.6rem] font-black bg-rose-500 text-white">{tab.badge}</span>
+            )}
           </button>
         ))}
       </div>
 
-      {activeTab === 'shared'       && <SharedDocumentsTab onUploadClick={() => setShowUpload(true)} />}
-      {activeTab === 'requirements' && (
+      {activeTab === 'shared'          && <SharedDocumentsTab onUploadClick={() => setShowUpload(true)} />}
+      {activeTab === 'requirements'    && (
         <>
           {showCreateReq && <RequirementModal onClose={() => setShowCreateReq(false)} onSaved={() => setShowCreateReq(false)} />}
           <EmployeeRequirementsTab />
         </>
       )}
-      {activeTab === 'verification' && <VerificationQueueTab />}
-      {activeTab === 'analytics'    && (
-        <div className="empty-state">
-          <BarChart2 size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
-          <p>Analytics coming soon</p>
-        </div>
-      )}
+      {activeTab === 'verification'    && <VerificationQueueTab />}
+      {activeTab === 'delete_requests' && <DeleteRequestsTab />}
+      {activeTab === 'analytics'       && <AnalyticsTab />}
+      {activeTab === 'settings'        && <SettingsTab />}
     </div>
   );
 }
@@ -1617,10 +2116,20 @@ function AdminDocumentsPage() {
 // ── Employee: Upload Document Modal ───────────────────────────────────────────
 function EmployeeUploadModal({ requirement, onClose, onUploaded }) {
   const toast = useToast();
-  const [file, setFile]         = useState(null);
-  const [expiryDate, setExpiry] = useState('');
+  const [file, setFile]           = useState(null);
+  const [expiryDate, setExpiry]   = useState('');
   const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const fileRef = useRef();
+
+  const maxMB = requirement.max_file_size_mb || 10;
+
+  function validateAndSet(f) {
+    if (!f) return;
+    if (f.size === 0) { toast('Empty files are not allowed.', 'error'); return; }
+    if (f.size > maxMB * 1024 * 1024) { toast(`File size must not exceed ${maxMB} MB.`, 'error'); return; }
+    setFile(f);
+  }
 
   async function handleSubmit() {
     if (!file) { toast('Please select a file', 'error'); return; }
@@ -1670,7 +2179,7 @@ function EmployeeUploadModal({ requirement, onClose, onUploaded }) {
           <div>
             <label className="form-label">Select File <span className="text-rose-500">*</span></label>
             <input type="file" ref={fileRef} className="hidden" accept={acceptStr}
-              onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); e.target.value = ''; }} />
+              onChange={e => { if (e.target.files?.[0]) validateAndSet(e.target.files[0]); e.target.value = ''; }} />
             {file ? (
               <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
                 {fileIcon(file.type, 16)}
@@ -1681,9 +2190,20 @@ function EmployeeUploadModal({ requirement, onClose, onUploaded }) {
                 <button onClick={() => setFile(null)} className="p-1 rounded text-emerald-600 hover:bg-emerald-100 transition-colors"><X size={14} /></button>
               </div>
             ) : (
-              <div onClick={() => fileRef.current?.click()} className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#c7c4d8] rounded-xl cursor-pointer hover:border-[#3525cd]/50 hover:bg-[#f0f3ff] transition-colors">
-                <UploadCloud size={24} className="text-[#3525cd] mb-1.5" />
-                <p className="text-xs font-bold text-[#151c27]">Click to select file</p>
+              <div
+                onClick={() => fileRef.current?.click()}
+                onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation(); setDragActive(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) validateAndSet(f);
+                }}
+                className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all ${dragActive ? 'border-[#3525cd] bg-[#f0f3ff] scale-[1.01]' : 'border-[#c7c4d8] hover:border-[#3525cd]/50 hover:bg-[#f0f3ff]'}`}>
+                <UploadCloud size={24} className={`mb-1.5 ${dragActive ? 'text-[#3525cd]' : 'text-[#3525cd]/70'}`} />
+                <p className="text-xs font-bold text-[#151c27]">{dragActive ? 'Release to upload' : 'Click or drag file here'}</p>
+                <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">Max {maxMB} MB</p>
               </div>
             )}
           </div>
@@ -1905,18 +2425,18 @@ function EmployeeDocumentsDashboard() {
         </div>
       )}
 
-      {/* My Uploaded Documents */}
+      {/* My Submitted Documents */}
       {uploadedDocs.length > 0 && (
         <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
-          <div className="px-5 py-4 border-b border-[#f0f3ff]">
-            <p className="text-sm font-black text-[#151c27]">My Uploaded Documents</p>
+          <div className="px-5 py-4 border-b border-[#f0f3ff] flex items-center justify-between">
+            <p className="text-sm font-black text-[#151c27]">My Submitted Documents ({uploadedDocs.length})</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#f9f9ff] border-b border-[#c7c4d8]">
                 <tr>
-                  {['DOCUMENT', 'UPLOADED ON', 'STATUS', 'REVIEWED BY', 'ACTIONS'].map(h => (
-                    <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide">{h}</th>
+                  {['DOCUMENT', 'UPLOADED ON', 'EXPIRY', 'VERSION', 'STATUS', 'REVIEWED BY', 'ACTIONS'].map(h => (
+                    <th key={h} className="px-4 py-3 font-black text-[#464555] text-[0.65rem] tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1930,13 +2450,22 @@ function EmployeeDocumentsDashboard() {
                           <div className="w-8 h-8 rounded-lg bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">{fileIcon(sub.file_type, 14)}</div>
                           <div>
                             <p className="font-bold text-[#151c27]">{req.name}</p>
-                            {req.description && <p className="text-[0.65rem] text-[#9ca3af]">{req.description}</p>}
+                            <p className="text-[0.6rem] text-[#9ca3af]">{fmtBytes(sub.file_size)}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-[#777587]">{fmtDate(sub.uploaded_at?.slice(0, 10))}</td>
+                      <td className="px-4 py-3.5 text-[#777587] whitespace-nowrap">{fmtDate(sub.uploaded_at?.slice(0, 10))}</td>
+                      <td className="px-4 py-3.5"><ExpiryBadge expiryDate={sub.expiry_date} /></td>
+                      <td className="px-4 py-3.5">
+                        {sub.version > 1
+                          ? <span className="px-2 py-0.5 rounded-full text-[0.6rem] font-bold bg-[#f0f3ff] text-[#3525cd] border border-[#3525cd]/20">v{sub.version}</span>
+                          : <span className="text-[#9ca3af]">v1</span>}
+                      </td>
                       <td className="px-4 py-3.5">
                         {sub.status ? <StatusBadge status={sub.status} /> : <span className="text-[#9ca3af]">—</span>}
+                        {sub.rejection_reason && (
+                          <p className="text-[0.6rem] text-rose-500 mt-0.5 max-w-[140px] truncate" title={sub.rejection_reason}>{sub.rejection_reason}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 text-[#777587]">{sub.reviewer?.name || '—'}</td>
                       <td className="px-4 py-3.5">
@@ -1960,6 +2489,48 @@ function EmployeeDocumentsDashboard() {
           <FileCheck size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
           <p>No document requirements yet</p>
           <p className="text-sm text-[#9ca3af] mt-1">Your HR team will add required documents. Check back soon.</p>
+        </div>
+      )}
+
+      {/* Optional Documents — always visible, never hidden */}
+      {requirements.filter(r => !r.is_required).length > 0 && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-[#f0f3ff]">
+            <Info size={16} className="text-[#3525cd]" />
+            <p className="text-sm font-black text-[#151c27]">
+              Optional Documents ({requirements.filter(r => !r.is_required).length})
+            </p>
+            <span className="text-xs text-[#777587] ml-1">— Upload if available</span>
+          </div>
+          <div className="divide-y divide-[#f0f3ff]">
+            {requirements.filter(r => !r.is_required).map(req => {
+              const sub = req._submission;
+              return (
+                <div key={req.id} className="flex items-center gap-4 px-5 py-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
+                    {fileIcon(sub?.file_type || '', 18)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-[#151c27] text-sm">{req.name}</p>
+                      <span className="px-2 py-0.5 rounded-full text-[0.65rem] font-bold border bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]">Optional</span>
+                      {sub && <StatusBadge status={sub.status} />}
+                    </div>
+                    {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
+                    {!sub && <p className="text-xs text-[#9ca3af] mt-0.5">Not uploaded yet</p>}
+                    {sub?.status === 'rejected' && sub.rejection_reason && (
+                      <p className="text-xs text-rose-600 mt-1"><span className="font-bold">Reason:</span> {sub.rejection_reason}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setUploadFor(req)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border bg-white text-[#3525cd] border-[#3525cd]/40 hover:bg-[#f0f3ff] transition-all flex-shrink-0">
+                    <Upload size={12} /> {sub ? 'Re-upload' : 'Upload'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -2000,39 +2571,7 @@ function EmployeeDocumentsDashboard() {
         </div>
       )}
 
-      {/* Optional Documents (Bug #10 — not required, not yet uploaded) */}
-      {optionalPending.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-[#f0f3ff]">
-            <Info size={16} className="text-[#3525cd]" />
-            <p className="text-sm font-black text-[#151c27]">Optional Documents ({optionalPending.length})</p>
-            <span className="text-xs text-[#777587] ml-1">— Upload if available</span>
-          </div>
-          <div className="divide-y divide-[#f0f3ff]">
-            {optionalPending.map(req => (
-              <div key={req.id} className="flex items-center gap-4 px-5 py-4">
-                <div className="w-10 h-10 rounded-xl bg-[#f0f3ff] flex items-center justify-center flex-shrink-0">
-                  {fileIcon('', 18)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-[#151c27] text-sm">{req.name}</p>
-                    <span className="px-2 py-0.5 rounded-full text-[0.65rem] font-bold border bg-[#f0f3ff] text-[#464555] border-[#c7c4d8]">Optional</span>
-                  </div>
-                  {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
-                  <p className="text-xs text-[#9ca3af] mt-0.5">Not uploaded yet</p>
-                </div>
-                <button onClick={() => setUploadFor(req)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border bg-white text-[#3525cd] border-[#3525cd]/40 hover:bg-[#f0f3ff] transition-all flex-shrink-0">
-                  <Upload size={12} /> Upload
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Shared Documents from HR/Admin (Bug #3) */}
+      {/* Shared Documents from HR/Admin */}
       {sharedDocs.length > 0 && (
         <div className="bg-white rounded-xl border border-[#c7c4d8] mb-5">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-[#f0f3ff]">

@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { supabase }              = require('../../config/db');
+const { db }              = require('../../config/db');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { orgId }                 = require('../../utils/helpers');
 
@@ -11,7 +11,7 @@ router.get('/:id/nominees', auth, async (req, res) => {
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
 
-    const { data, error } = await supabase.from('employee_nominees')
+    const { data, error } = await db.from('employee_nominees')
       .select('*').eq('employee_id', empId).eq('organization_id', orgId(req))
       .order('is_primary', { ascending: false }).order('created_at');
     if (error) throw error;
@@ -32,14 +32,14 @@ router.post('/:id/nominees', auth, async (req, res) => {
 
     // Validate total percentage won't exceed 100
     if (percentage_share) {
-      const { data: existing } = await supabase.from('employee_nominees')
+      const { data: existing } = await db.from('employee_nominees')
         .select('percentage_share').eq('employee_id', empId).eq('organization_id', orgId(req));
       const total = (existing || []).reduce((s, r) => s + (r.percentage_share || 0), 0);
       if (total + parseFloat(percentage_share) > 100)
         return res.status(400).json({ error: `Total nominee share would exceed 100% (current: ${total}%)` });
     }
 
-    const { data, error } = await supabase.from('employee_nominees').insert({
+    const { data, error } = await db.from('employee_nominees').insert({
       employee_id: empId, organization_id: orgId(req),
       nominee_name, relationship, date_of_birth: date_of_birth || null,
       percentage_share: percentage_share || null,
@@ -62,7 +62,7 @@ router.put('/:id/nominees/:recordId', auth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     const { nominee_name, relationship, date_of_birth, percentage_share, address, contact_number, is_primary } = req.body;
 
-    const { data, error } = await supabase.from('employee_nominees').update({
+    const { data, error } = await db.from('employee_nominees').update({
       nominee_name, relationship, date_of_birth: date_of_birth || null,
       percentage_share: percentage_share || null,
       address, contact_number, is_primary,
@@ -81,7 +81,7 @@ router.delete('/:id/nominees/:recordId', auth, async (req, res) => {
     const empId = parseInt(req.params.id);
     if (!isAdminRole(req.user.role) && parseInt(req.user.id) !== empId)
       return res.status(403).json({ error: 'Access denied' });
-    const { error } = await supabase.from('employee_nominees')
+    const { error } = await db.from('employee_nominees')
       .delete().eq('id', parseInt(req.params.recordId))
       .eq('employee_id', empId).eq('organization_id', orgId(req));
     if (error) throw error;

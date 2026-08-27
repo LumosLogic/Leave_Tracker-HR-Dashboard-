@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
-const { supabase } = require('../../config/db');
+const { db } = require('../../config/db');
 const { pool }     = require('../../config/db-pg-adapter');
 const { JWT_SECRET, platformAdminAuth } = require('../../middleware/auth');
 const { sendMail, orgApprovedHtml, orgRejectedHtml } = require('../../services/emailService');
@@ -37,7 +37,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const { data: admin } = await supabase.from('platform_admins')
+    const { data: admin } = await db.from('platform_admins')
       .select('*').eq('email', email.toLowerCase().trim()).maybeSingle();
     if (!admin || !bcrypt.compareSync(password, admin.password))
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -59,20 +59,20 @@ router.get('/stats', platformAdminAuth, async (req, res) => {
       { count: totalUsers },
       { count: approvedOrgs },
     ] = await Promise.all([
-      supabase.from('organizations').select('id', { count: 'exact', head: true }),
-      supabase.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('users').select('id', { count: 'exact', head: true }),
-      supabase.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+      db.from('organizations').select('id', { count: 'exact', head: true }),
+      db.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      db.from('users').select('id', { count: 'exact', head: true }),
+      db.from('org_registration_requests').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
     ]);
 
-    const { data: recentOrgs } = await supabase.from('organizations')
+    const { data: recentOrgs } = await db.from('organizations')
       .select('id, name, slug, status, plan, created_at').order('created_at', { ascending: false }).limit(5);
 
-    const { data: recentRequests } = await supabase.from('org_registration_requests')
+    const { data: recentRequests } = await db.from('org_registration_requests')
       .select('id, company_name, contact_name, email, status, created_at').order('created_at', { ascending: false }).limit(5);
 
     // Plan distribution
-    const { data: allOrgs } = await supabase.from('organizations').select('plan, status, created_at');
+    const { data: allOrgs } = await db.from('organizations').select('plan, status, created_at');
     const planDist = {};
     const statusDist = {};
     (allOrgs || []).forEach(o => {
@@ -110,11 +110,11 @@ router.get('/stats', platformAdminAuth, async (req, res) => {
 // ─── Platform Admin: All Organizations ───────────────────────────────────────
 router.get('/organizations', platformAdminAuth, async (req, res) => {
   try {
-    const { data: orgs } = await supabase.from('organizations')
+    const { data: orgs } = await db.from('organizations')
       .select('id, name, slug, domain, status, plan, created_at').order('created_at', { ascending: false });
 
     const orgsWithCounts = await Promise.all((orgs || []).map(async org => {
-      const { count: userCount } = await supabase.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', org.id);
+      const { count: userCount } = await db.from('users').select('id', { count: 'exact', head: true }).eq('organization_id', org.id);
       return { ...org, userCount: userCount || 0 };
     }));
 
@@ -126,21 +126,21 @@ router.get('/organizations', platformAdminAuth, async (req, res) => {
 router.get('/organizations/:id/members', platformAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: org } = await supabase.from('organizations')
+    const { data: org } = await db.from('organizations')
       .select('id, name, slug, domain, status, plan, created_at, google_calendar_id, total_annual_leaves')
       .eq('id', id).single();
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const { data: members } = await supabase.from('users')
+    const { data: members } = await db.from('users')
       .select('id, name, email, role, department, position, avatar_color, created_at')
       .eq('organization_id', id)
       .order('role', { ascending: true })
       .order('name', { ascending: true });
 
-    const { count: leaveCount } = await supabase.from('leaves')
+    const { count: leaveCount } = await db.from('leaves')
       .select('id', { count: 'exact', head: true }).eq('organization_id', id);
 
-    const { count: attendanceCount } = await supabase.from('attendance')
+    const { count: attendanceCount } = await db.from('attendance')
       .select('id', { count: 'exact', head: true }).eq('organization_id', id);
 
     res.json({ org, members: members || [], stats: { leaveCount: leaveCount || 0, attendanceCount: attendanceCount || 0 } });
@@ -152,8 +152,8 @@ router.get('/organizations/:id/features', platformAdminAuth, async (req, res) =>
   try {
     const orgId = parseInt(req.params.id);
     const [{ data: orgRow }, { data: featureRows }] = await Promise.all([
-      supabase.from('organizations').select('plan').eq('id', orgId).maybeSingle(),
-      supabase.from('organization_features').select('feature_key, enabled').eq('organization_id', orgId),
+      db.from('organizations').select('plan').eq('id', orgId).maybeSingle(),
+      db.from('organization_features').select('feature_key, enabled').eq('organization_id', orgId),
     ]);
     const plan = (orgRow?.plan || 'free').toLowerCase();
     const map = {};
@@ -187,7 +187,7 @@ router.put('/organizations/:id/features', platformAdminAuth, async (req, res) =>
         updated_at: new Date().toISOString(),
       }));
     if (upserts.length) {
-      await supabase.from('organization_features')
+      await db.from('organization_features')
         .upsert(upserts, { onConflict: 'organization_id,feature_key' });
     }
     res.json({ success: true, updated: upserts.length });
@@ -201,12 +201,12 @@ router.patch('/organizations/:id/plan', platformAdminAuth, async (req, res) => {
     const { plan } = req.body;
     const planKey = (plan || '').toLowerCase();
     if (!PLAN_FEATURES[planKey]) return res.status(400).json({ error: 'Invalid plan. Use free, gold, or platinum.' });
-    await supabase.from('organizations').update({ plan }).eq('id', orgId);
+    await db.from('organizations').update({ plan }).eq('id', orgId);
     const featureMap = PLAN_FEATURES[planKey];
     const upserts = Object.entries(featureMap).map(([feature_key, enabled]) => ({
       organization_id: orgId, feature_key, enabled, updated_at: new Date().toISOString(),
     }));
-    await supabase.from('organization_features').upsert(upserts, { onConflict: 'organization_id,feature_key' });
+    await db.from('organization_features').upsert(upserts, { onConflict: 'organization_id,feature_key' });
     res.json({ success: true, plan, featuresApplied: upserts.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -216,11 +216,11 @@ router.get('/requests', platformAdminAuth, async (req, res) => {
   try {
     // Auto-delete rejected requests older than 7 days
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('org_registration_requests')
+    await db.from('org_registration_requests')
       .delete().eq('status', 'rejected').lt('reviewed_at', cutoff);
 
     const status = req.query.status || 'pending';
-    let q = supabase.from('org_registration_requests').select('*').order('created_at', { ascending: false });
+    let q = db.from('org_registration_requests').select('*').order('created_at', { ascending: false });
     if (status !== 'all') q = q.eq('status', status);
     const { data } = await q;
     res.json(data || []);
@@ -232,13 +232,13 @@ router.get('/requests', platformAdminAuth, async (req, res) => {
 router.delete('/requests/:id', platformAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data: request } = await supabase.from('org_registration_requests')
+    const { data: request } = await db.from('org_registration_requests')
       .select('id, status, company_name').eq('id', id).maybeSingle();
     if (!request) return res.status(404).json({ error: 'Request not found' });
     if (request.status === 'approved') {
       return res.status(400).json({ error: 'Approved requests cannot be deleted — they have an active organization linked to them.' });
     }
-    await supabase.from('org_registration_requests').delete().eq('id', id);
+    await db.from('org_registration_requests').delete().eq('id', id);
     res.json({ ok: true, deleted: request.company_name });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -249,7 +249,7 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
     const { id } = req.params;
     const { notes } = req.body;
 
-    const { data: request } = await supabase.from('org_registration_requests').select('*').eq('id', id).single();
+    const { data: request } = await db.from('org_registration_requests').select('*').eq('id', id).single();
     if (!request) return res.status(404).json({ error: 'Request not found' });
     if (request.status !== 'pending') return res.status(400).json({ error: `Request is already ${request.status}` });
 
@@ -257,7 +257,7 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
     const slug = await generateUniqueSlug(request.company_name);
 
     // Create organization
-    const { data: org, error: orgErr } = await supabase.from('organizations')
+    const { data: org, error: orgErr } = await db.from('organizations')
       .insert({ name: request.company_name, slug, status: 'active', plan: 'free' })
       .select().single();
     if (orgErr) throw new Error(orgErr.message);
@@ -267,7 +267,7 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
     const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const hashed = bcrypt.hashSync(tempPassword, 10);
 
-    const { data: user, error: userErr } = await supabase.from('users')
+    const { data: user, error: userErr } = await db.from('users')
       .insert({
         name: request.contact_name, email: request.email, password: hashed,
         role: 'root_admin', organization_id: org.id,
@@ -276,12 +276,12 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
       })
       .select('id, name, email, role').single();
     if (userErr) {
-      await supabase.from('organizations').delete().eq('id', org.id);
+      await db.from('organizations').delete().eq('id', org.id);
       throw new Error(userErr.message);
     }
 
     // Create default work schedule
-    await supabase.from('work_schedule').insert({
+    await db.from('work_schedule').insert({
       organization_id: org.id,
       start_time: '09:00', end_time: '18:00',
       late_threshold: '09:30', early_exit_threshold: '17:00',
@@ -300,17 +300,17 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
       enabled: !BIOMETRIC_FEATURES.includes(key), // biometric/branches/statutory = false
       updated_at: new Date().toISOString(),
     }));
-    await supabase.from('organization_features')
+    await db.from('organization_features')
       .upsert(defaultFeatureFlags, { onConflict: 'organization_id,feature_key' });
 
     // Update request status
-    await supabase.from('org_registration_requests').update({
+    await db.from('org_registration_requests').update({
       status: 'approved', reviewed_at: new Date().toISOString(),
       reviewer_notes: notes || null, organization_id: org.id,
     }).eq('id', id);
 
     // Log activity
-    await supabase.from('platform_activity').insert({
+    await db.from('platform_activity').insert({
       event_type: 'org_approved',
       description: `Organization "${request.company_name}" approved by platform admin`,
       metadata: { request_id: Number(id), org_id: org.id, email: request.email },
@@ -333,15 +333,15 @@ router.post('/requests/:id/reject', platformAdminAuth, async (req, res) => {
     const { id } = req.params;
     const { notes } = req.body;
 
-    const { data: request } = await supabase.from('org_registration_requests').select('*').eq('id', id).single();
+    const { data: request } = await db.from('org_registration_requests').select('*').eq('id', id).single();
     if (!request) return res.status(404).json({ error: 'Request not found' });
     if (request.status !== 'pending') return res.status(400).json({ error: `Request is already ${request.status}` });
 
-    await supabase.from('org_registration_requests').update({
+    await db.from('org_registration_requests').update({
       status: 'rejected', reviewed_at: new Date().toISOString(), reviewer_notes: notes || null,
     }).eq('id', id);
 
-    await supabase.from('platform_activity').insert({
+    await db.from('platform_activity').insert({
       event_type: 'org_rejected',
       description: `Organization request from "${request.company_name}" rejected`,
       metadata: { request_id: Number(id), email: request.email, notes: notes || '' },
@@ -374,13 +374,13 @@ router.patch('/organizations/:id', platformAdminAuth, async (req, res) => {
         return res.status(400).json({ error: 'Slug may only contain lowercase letters, numbers, and hyphens' });
       }
       // Uniqueness check
-      const { data: existing } = await supabase.from('organizations')
+      const { data: existing } = await db.from('organizations')
         .select('id').eq('slug', cleanSlug).neq('id', orgId).maybeSingle();
       if (existing) return res.status(409).json({ error: `Slug "${cleanSlug}" is already in use` });
       updates.slug = cleanSlug;
     }
 
-    const { data: updated, error } = await supabase.from('organizations')
+    const { data: updated, error } = await db.from('organizations')
       .update(updates).eq('id', orgId).select('id, name, slug, plan, status').single();
     if (error) throw new Error(error.message);
 
@@ -394,7 +394,7 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
   const orgId = parseInt(req.params.id);
   if (isNaN(orgId)) return res.status(400).json({ error: 'Invalid organization ID' });
 
-  const { data: org } = await supabase.from('organizations')
+  const { data: org } = await db.from('organizations')
     .select('id, name, slug').eq('id', orgId).maybeSingle();
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   if (PROTECTED_ORG_SLUGS.includes(org.slug)) {
@@ -506,7 +506,7 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await client.query('COMMIT');
 
     // Log (fire-and-forget — not part of transaction)
-    supabase.from('platform_activity').insert({
+    db.from('platform_activity').insert({
       event_type:  'org_deleted',
       description: `Organization "${org.name}" (ID: ${orgId}) permanently deleted by platform admin`,
       metadata:    { org_id: orgId, org_name: org.name, org_slug: org.slug },
@@ -527,7 +527,7 @@ router.get('/activity', platformAdminAuth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const orgId  = req.query.orgId ? parseInt(req.query.orgId) : null;
-    let query = supabase.from('platform_activity').select('*').order('created_at', { ascending: false }).limit(limit);
+    let query = db.from('platform_activity').select('*').order('created_at', { ascending: false }).limit(limit);
     if (orgId) query = query.eq('organization_id', orgId);
     const { data } = await query;
     res.json(data || []);

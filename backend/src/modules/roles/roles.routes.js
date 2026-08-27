@@ -22,7 +22,7 @@
 
 const express = require('express');
 const router  = express.Router();
-const { supabase, pool } = require('../../config/db');
+const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId } = require('../../utils/helpers');
@@ -66,7 +66,7 @@ router.get('/', auth, hasPermission('roles', 'view'), async (req, res) => {
   try {
     const oId = orgId(req);
 
-    const { data: roles, error } = await supabase
+    const { data: roles, error } = await db
       .from('roles')
       .select('id, name, slug, description, is_system_role, created_at')
       .eq('org_id', oId)
@@ -118,7 +118,7 @@ router.get('/user/:userId', auth, hasPermission('roles', 'view'), async (req, re
     const userId = parseId(req.params.userId);
     if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('user_roles')
       .select('role_id, assigned_at, roles(id, name, slug, is_system_role, description)')
       .eq('user_id', userId)
@@ -148,7 +148,7 @@ router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, 
     const safeRoleIds = role_ids.map(id => parseInt(id, 10));
 
     // Ensure the target user exists in this org
-    const { data: targetUser } = await supabase
+    const { data: targetUser } = await db
       .from('users')
       .select('id, name')
       .eq('id', userId)
@@ -158,7 +158,7 @@ router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, 
 
     // Ensure all provided roles belong to this org
     if (safeRoleIds.length > 0) {
-      const { count } = await supabase
+      const { count } = await db
         .from('roles')
         .select('id', { count: 'exact', head: true })
         .in('id', safeRoleIds)
@@ -200,7 +200,7 @@ router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, 
     clearUserCache(userId, oId);
 
     // Return updated role list
-    const { data } = await supabase
+    const { data } = await db
       .from('user_roles')
       .select('role_id, assigned_at, roles(id, name, slug, is_system_role, description)')
       .eq('user_id', userId)
@@ -228,7 +228,7 @@ router.post('/', auth, hasPermission('roles', 'manage'), async (req, res) => {
 
     const slug = slugify(trimmedName) + '_' + Date.now();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('roles')
       .insert({
         org_id:         oId,
@@ -261,7 +261,7 @@ router.get('/:id', auth, hasPermission('roles', 'view'), async (req, res) => {
     const roleId = parseId(req.params.id);
     if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
 
-    const { data: role, error } = await supabase
+    const { data: role, error } = await db
       .from('roles')
       .select('id, name, slug, description, is_system_role, created_at')
       .eq('id', roleId)
@@ -272,7 +272,7 @@ router.get('/:id', auth, hasPermission('roles', 'view'), async (req, res) => {
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
     // Permission IDs for this role
-    const { data: rp, error: rpErr } = await supabase
+    const { data: rp, error: rpErr } = await db
       .from('role_permissions')
       .select('permission_id')
       .eq('role_id', roleId);
@@ -281,7 +281,7 @@ router.get('/:id', auth, hasPermission('roles', 'view'), async (req, res) => {
     const permissionIds = (rp || []).map(r => r.permission_id);
 
     // Members of this role — scoped to org via user_roles.org_id
-    const { data: members, error: memErr } = await supabase
+    const { data: members, error: memErr } = await db
       .from('user_roles')
       .select('user_id, assigned_at, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, role)')
       .eq('role_id', roleId)
@@ -310,7 +310,7 @@ router.put('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
 
     const { name, description } = req.body;
 
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('roles')
       .select('id, is_system_role')
       .eq('id', roleId)
@@ -335,7 +335,7 @@ router.put('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
       return res.status(400).json({ error: 'Nothing to update' });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('roles')
       .update(update)
       .eq('id', roleId)
@@ -364,7 +364,7 @@ router.delete('/:id', auth, hasPermission('roles', 'manage'), async (req, res) =
     const roleId = parseId(req.params.id);
     if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
 
-    const { data: role } = await supabase
+    const { data: role } = await db
       .from('roles')
       .select('id, name, is_system_role')
       .eq('id', roleId)
@@ -431,7 +431,7 @@ router.get('/:id/permissions', auth, hasPermission('roles', 'view'), async (req,
     if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
 
     // Verify role belongs to this org before revealing its permissions
-    const { data: role } = await supabase
+    const { data: role } = await db
       .from('roles')
       .select('id')
       .eq('id', roleId)
@@ -440,7 +440,7 @@ router.get('/:id/permissions', auth, hasPermission('roles', 'view'), async (req,
 
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('role_permissions')
       .select('permission_id, permissions(id, module_key, action, label)')
       .eq('role_id', roleId);
@@ -468,7 +468,7 @@ router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (re
     const safeIds = permission_ids.map(id => parseInt(id, 10));
 
     // Verify role belongs to this org
-    const { data: role } = await supabase
+    const { data: role } = await db
       .from('roles')
       .select('id, name, slug')
       .eq('id', roleId)
@@ -510,7 +510,7 @@ router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (re
     clearOrgCache(oId);
 
     // Return updated permission list
-    const { data } = await supabase
+    const { data } = await db
       .from('role_permissions')
       .select('permission_id, permissions(id, module_key, action, label)')
       .eq('role_id', roleId);
@@ -529,7 +529,7 @@ router.get('/:id/members', auth, hasPermission('roles', 'view'), async (req, res
     if (!roleId) return res.status(400).json({ error: 'Invalid role ID' });
 
     // Verify role belongs to this org
-    const { data: role } = await supabase
+    const { data: role } = await db
       .from('roles')
       .select('id')
       .eq('id', roleId)
@@ -538,7 +538,7 @@ router.get('/:id/members', auth, hasPermission('roles', 'view'), async (req, res
 
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('user_roles')
       .select('user_id, assigned_at, assigned_by, users!user_roles_user_id_fkey(id, name, email, avatar_color, department, position, role)')
       .eq('role_id', roleId)
@@ -568,7 +568,7 @@ router.post('/:id/members', auth, hasPermission('roles', 'manage'), async (req, 
     if (!userId) return res.status(400).json({ error: 'user_id must be a positive integer' });
 
     // Verify role belongs to this org
-    const { data: role } = await supabase
+    const { data: role } = await db
       .from('roles')
       .select('id, name')
       .eq('id', roleId)
@@ -578,7 +578,7 @@ router.post('/:id/members', auth, hasPermission('roles', 'manage'), async (req, 
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
     // Verify target user belongs to this org
-    const { data: user } = await supabase
+    const { data: user } = await db
       .from('users')
       .select('id, name, email')
       .eq('id', userId)
@@ -587,7 +587,7 @@ router.post('/:id/members', auth, hasPermission('roles', 'manage'), async (req, 
 
     if (!user) return res.status(404).json({ error: 'User not found in this organization' });
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('user_roles')
       .insert({ user_id: userId, role_id: roleId, org_id: oId, assigned_by: req.user.id })
       .select()
@@ -619,7 +619,7 @@ router.delete('/:id/members/:userId', auth, hasPermission('roles', 'manage'), as
     // Prevent root admin from removing themselves from the Root Admin role
     // Fix: include org_id filter so we're only reading our org's role
     if (userId === req.user.id) {
-      const { data: role } = await supabase
+      const { data: role } = await db
         .from('roles')
         .select('slug')
         .eq('id', roleId)
@@ -630,7 +630,7 @@ router.delete('/:id/members/:userId', auth, hasPermission('roles', 'manage'), as
       }
     }
 
-    const { error } = await supabase
+    const { error } = await db
       .from('user_roles')
       .delete()
       .eq('role_id', roleId)
