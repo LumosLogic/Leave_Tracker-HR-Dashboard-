@@ -265,21 +265,19 @@ function EmailAutomationPanel({ schedule }) {
   });
 
   const [form, setForm] = useState({
-    late_email_enabled:           false,
-    daily_summary_enabled:        false,
-    daily_summary_time:           '18:30',
-    appreciation_email_enabled:   false,
-    appreciation_threshold_hours: 8,
+    late_email_enabled:         false,
+    daily_summary_enabled:      false,
+    daily_summary_time:         '18:30',
+    appreciation_email_enabled: false,
   });
 
   useEffect(() => {
     if (emailSettings) {
       setForm({
-        late_email_enabled:           !!emailSettings.late_email_enabled,
-        daily_summary_enabled:        !!emailSettings.daily_summary_enabled,
-        daily_summary_time:           emailSettings.daily_summary_time?.slice(0,5) || '18:30',
-        appreciation_email_enabled:   !!emailSettings.appreciation_email_enabled,
-        appreciation_threshold_hours: parseFloat(emailSettings.appreciation_threshold_hours) || 8,
+        late_email_enabled:         !!emailSettings.late_email_enabled,
+        daily_summary_enabled:      !!emailSettings.daily_summary_enabled,
+        daily_summary_time:         emailSettings.daily_summary_time?.slice(0,5) || '18:30',
+        appreciation_email_enabled: !!emailSettings.appreciation_email_enabled,
       });
     }
   }, [emailSettings]);
@@ -287,7 +285,12 @@ function EmailAutomationPanel({ schedule }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const mutation = useMutation({
-    mutationFn: () => apiPut('/settings/email-automation', form),
+    mutationFn: () => apiPut('/settings/email-automation', {
+      late_email_enabled:         form.late_email_enabled,
+      daily_summary_enabled:      form.daily_summary_enabled,
+      daily_summary_time:         form.daily_summary_time,
+      appreciation_email_enabled: form.appreciation_email_enabled,
+    }),
     onSuccess: () => {
       toast('Email automation settings saved!', 'success');
       qc.invalidateQueries({ queryKey: ['email-automation-settings'] });
@@ -377,23 +380,15 @@ function EmailAutomationPanel({ schedule }) {
               </div>
               <div>
                 <p className="font-bold text-sm text-[#151c27]">Work Appreciation Email</p>
-                <p className="text-xs text-[#777587] mt-0.5">Send appreciation when employee exceeds threshold</p>
+                <p className="text-xs text-[#777587] mt-0.5">Send appreciation when employee exceeds Full Day Hours</p>
               </div>
             </div>
             <Toggle checked={form.appreciation_email_enabled} onChange={v => set('appreciation_email_enabled', v)} />
           </div>
-          {form.appreciation_email_enabled && (
-            <div className="mb-4">
-              <label className="form-label text-xs">Appreciation Threshold (hours)</label>
-              <div className="flex gap-2">
-                <input type="number" step="0.5" min="1" className="form-control text-sm flex-1"
-                  value={form.appreciation_threshold_hours}
-                  onChange={e => set('appreciation_threshold_hours', e.target.value)}
-                  onWheel={e => e.target.blur()} />
-                <span className="flex items-center text-xs text-[#777587] font-semibold px-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg">hrs</span>
-              </div>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+            <Info size={12} className="text-amber-600 flex-shrink-0" />
+            <p className="text-xs text-amber-700">Uses Full Day Hours: <strong>{schedule?.full_day_hours ?? 8} hrs</strong></p>
+          </div>
           <p className="text-xs font-semibold text-[#464555] mb-2">Email Content Includes:</p>
           <ul className="space-y-1">
             {['Employee name', 'Total working hours', 'Appreciation message', 'Work date'].map(i => (

@@ -49,9 +49,9 @@ async function fetchOrgSettings() {
               aes.daily_summary_enabled,
               aes.daily_summary_time,
               aes.appreciation_email_enabled,
-              aes.appreciation_threshold_hours,
               ws.start_time, ws.end_time,
-              ws.late_threshold, ws.early_exit_threshold
+              ws.late_threshold, ws.early_exit_threshold,
+              COALESCE(ws.full_day_hours, 8) AS full_day_hours
          FROM organizations o
          LEFT JOIN attendance_email_settings aes ON aes.organization_id = o.id
          LEFT JOIN work_schedule ws ON ws.organization_id = o.id
@@ -98,7 +98,7 @@ async function runEndOfDayCheck(orgs, now) {
     const settings = {
       daily_summary_enabled:        org.daily_summary_enabled,
       appreciation_email_enabled:   org.appreciation_email_enabled,
-      appreciation_threshold_hours: org.appreciation_threshold_hours,
+      appreciation_threshold_hours: parseFloat(org.full_day_hours || 8),
     };
     const schedule = {
       start_time:           org.start_time,
