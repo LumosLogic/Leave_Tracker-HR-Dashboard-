@@ -12,7 +12,8 @@ const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
 const { biometricSnGuard, biometricAuditLog } = require('./middleware/biometricSecurity');
 const { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent } = require('./utils/cronJobs');
-const payrollScheduler = require('./services/payrollScheduler');
+const payrollScheduler          = require('./services/payrollScheduler');
+const attendanceEmailScheduler  = require('./services/attendanceEmailScheduler');
 
 // ── Module routers (extracted from old server.js) ────────────────────────────
 const authRouter       = require('./modules/auth/auth.routes');
@@ -284,6 +285,8 @@ async function start() {
     biometricAutoScheduler.start().catch(err =>
       console.error('[auto-sync] Scheduler init error:', err.message)
     );
+    // Attendance email automation (late check-in, daily summary, appreciation)
+    attendanceEmailScheduler.start();
   } catch (err) {
     console.error('Failed to start:', err.message);
     process.exit(1);

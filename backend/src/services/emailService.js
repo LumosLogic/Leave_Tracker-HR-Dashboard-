@@ -505,10 +505,107 @@ function credentialsEmailHtml({ employee, tempPassword, orgName = '', orgEmail =
   );
 }
 
+// ── Attendance: Late Check-in — sent to the employee ─────────────────────────
+function lateCheckinHtml(employee, { date, workStartTime, lateThreshold, checkInTime, lateMinutes }, orgName = '', orgEmail = '') {
+  const hrs  = Math.floor(lateMinutes / 60);
+  const mins = lateMinutes % 60;
+  const lateDuration = hrs > 0 ? `${hrs}h ${mins}m Late` : `${mins} Minutes Late`;
+  return WRAP(
+    HEADER(orgName, 'Late Check-in Recorded', `You checked in after the late entry threshold`, '⏰') +
+    BODY(`
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        Our records indicate that you checked in <strong style="color:#f97316;">late</strong> today. Please ensure timely attendance going forward.
+      </p>
+      ${TABLE(
+        ROW('📅', 'Date',                  date) +
+        ROW('👤', 'Employee',              `<strong>${employee.name}</strong>`) +
+        ROW('🕘', 'Work Start Time',       workStartTime || '—') +
+        ROW('⚠️', 'Late Entry Threshold',  lateThreshold || '—') +
+        ROW('🕐', 'Actual Check-in',       `<strong style="color:#f97316;">${checkInTime}</strong>`) +
+        ROW('⏱️', 'Late Duration',         `<strong style="color:#ef4444;">${lateDuration}</strong>`)
+      )}
+      <div style="padding:13px 18px;background:#fff7ed;border-left:4px solid #f97316;border-radius:6px;font-size:13px;color:#7c2d12;margin-top:4px;">
+        ⚠️ Please ensure you check in on time. Repeated late arrivals may impact your attendance record.
+      </div>
+    `) +
+    FOOTER(orgEmail, orgName)
+  );
+}
+
+// ── Attendance: Daily Summary — sent to the employee ─────────────────────────
+function dailyAttendanceSummaryHtml(employee, { date, checkIn, checkOut, workingHours, breakHours, totalDuration, lateMinutes, earlyExitMinutes, status }, orgName = '', orgEmail = '') {
+  function fmtMins(m) {
+    if (!m || m <= 0) return '0 Minutes';
+    const h = Math.floor(m / 60), mn = m % 60;
+    return h > 0 ? `${h}h ${mn}m` : `${mn} Minutes`;
+  }
+  const statusLabel = {
+    present:     '✅ Present',
+    early_leave: '⚠️ Early Leave',
+    half_day:    '⚡ Half Day',
+    on_leave:    '🏖️ On Leave',
+    wfh:         '🏠 Work From Home',
+    absent:      '❌ Absent',
+  }[status] || status || '—';
+
+  return WRAP(
+    HEADER(orgName, 'Your Attendance Summary', `Daily attendance report — ${date}`, '📊') +
+    BODY(`
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">Here is your attendance summary for today. Please review and contact HR if you notice any discrepancies.</p>
+      ${TABLE(
+        ROW('📅', 'Date',            date) +
+        ROW('🕘', 'Check-In',        checkIn  || '<span style="color:#94a3b8;">Not Available</span>') +
+        ROW('🕕', 'Check-Out',       checkOut || '<span style="color:#94a3b8;">Not Available</span>') +
+        ROW('⏱️', 'Working Hours',   workingHours  || '—') +
+        ROW('☕', 'Break / Non-Working', breakHours || '0 Minutes') +
+        ROW('🕐', 'Total Duration',  totalDuration || '—') +
+        ROW('⚠️', 'Late Duration',   lateMinutes > 0 ? fmtMins(lateMinutes) : '0 Minutes') +
+        ROW('🏃', 'Early Exit',      earlyExitMinutes > 0 ? fmtMins(earlyExitMinutes) : '0 Minutes') +
+        ROW('📋', 'Status',          `<strong>${statusLabel}</strong>`)
+      )}
+      <div style="padding:13px 18px;background:#f0f3ff;border-left:4px solid #3525cd;border-radius:6px;font-size:13px;color:#1e1456;margin-top:4px;">
+        If you believe any data is incorrect, please submit an attendance regularization request.
+      </div>
+      ${BTN('https://hrms.lumoslogic.com/portal/attendance', 'View My Attendance')}
+    `) +
+    FOOTER(orgEmail, orgName)
+  );
+}
+
+// ── Attendance: Work Appreciation — sent to the employee ─────────────────────
+function workAppreciationHtml(employee, { date, workingHours, thresholdHours }, orgName = '', orgEmail = '') {
+  return WRAP(
+    HEADER(orgName, 'Thank You for Your Dedication!', `Outstanding effort today — ${date}`, '⭐') +
+    BODY(`
+      ${GREETING(employee.name)}
+      <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
+        We want to take a moment to recognize your exceptional effort today. Your commitment and hard work inspire the entire team!
+      </p>
+      <div style="background:linear-gradient(135deg,#f0f3ff,#ede9fe);border:1px solid #c7c4d8;border-radius:12px;padding:24px;text-align:center;margin-bottom:20px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#3525cd;text-transform:uppercase;letter-spacing:2px;">You Completed</p>
+        <p style="margin:0;font-size:36px;font-weight:900;color:#1e1456;">${workingHours}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#64748b;">of productive work today</p>
+      </div>
+      ${TABLE(
+        ROW('📅', 'Date',                date) +
+        ROW('⏱️', 'Total Working Hours', `<strong style="color:#10b981;">${workingHours}</strong>`) +
+        ROW('🎯', 'Appreciation Threshold', `${thresholdHours} Hours`)
+      )}
+      <div style="padding:16px 20px;background:#ecfdf5;border-left:4px solid #10b981;border-radius:6px;font-size:14px;color:#14532d;margin-top:8px;text-align:center;">
+        🌟 Your dedication makes a real difference. Keep up the excellent work!
+      </div>
+    `) +
+    FOOTER(orgEmail, orgName)
+  );
+}
+
 module.exports = {
   sendMail, getTransporter, resetTransporter,
   leaveAppliedHtml, leaveStatusHtml, leaveDeptApprovalHtml, leaveForwardedToRootHtml,
   welcomeEmployeeHtml, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml,
   orgRequestReceivedHtml, orgApprovedHtml, orgRejectedHtml, passwordResetHtml,
   preOnboardingRequestHtml, announcementHtml, credentialsEmailHtml,
+  lateCheckinHtml, dailyAttendanceSummaryHtml, workAppreciationHtml,
 };
