@@ -347,7 +347,7 @@ function EmpCellContent({ records, userId }) {
 
 // ── Week View ─────────────────────────────────────────────────────────────────
 // BUG_073: half_day uses cyan (#06B6D4) to match the legend and badge colors
-const STATUS_COLORS_MAP = { present: '#10B981', absent: '#EF4444', on_leave: '#F59E0B', half_day: '#06B6D4', wfh: '#3525cd' };
+const STATUS_COLORS_MAP = { present: '#10B981', early_leave: '#F97316', absent: '#EF4444', on_leave: '#F59E0B', half_day: '#06B6D4', wfh: '#3525cd' };
 
 function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, getLeaveForDate }) {
   const today = todayStr();

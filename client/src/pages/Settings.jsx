@@ -20,12 +20,13 @@ function timeToMinutes(t) {
 }
 
 const STATUS_LEGEND = [
-  { label: 'Present',    color: '#10B981', desc: 'Full day attendance' },
-  { label: 'Absent',     color: '#EF4444', desc: 'Not present, no leave applied' },
-  { label: 'On Leave',   color: '#F59E0B', desc: 'Approved leave' },
-  { label: 'Half Day',   color: '#3B82F6', desc: 'Work hours below threshold' },
-  { label: 'Late Entry', color: '#F97316', desc: 'Check-in after late threshold' },
-  { label: 'Early Exit', color: '#8B5CF6', desc: 'Check-out before early exit threshold' },
+  { label: 'Present',     color: '#10B981', desc: 'Full day attendance (≥ Full Day Hours)' },
+  { label: 'Early Leave', color: '#F97316', desc: 'Work hours below Full Day Hours but above Half Day' },
+  { label: 'Absent',      color: '#EF4444', desc: 'Not present, no leave applied' },
+  { label: 'On Leave',    color: '#F59E0B', desc: 'Approved leave' },
+  { label: 'Half Day',    color: '#3B82F6', desc: 'Work hours below Half Day threshold' },
+  { label: 'Late Entry',  color: '#6366F1', desc: 'Check-in after late threshold' },
+  { label: 'Early Exit',  color: '#8B5CF6', desc: 'Check-out before early exit threshold' },
 ];
 
 // ── Work Schedule Card ────────────────────────────────────────────────────────
@@ -33,23 +34,27 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
   const toast = useToast();
 
   const [form, setForm] = useState({
-    start_time:           schedule?.start_time           || '09:00',
-    end_time:             schedule?.end_time             || '18:00',
-    late_threshold:       schedule?.late_threshold       || '09:15',
-    early_exit_threshold: schedule?.early_exit_threshold || '17:45',
-    half_day_hours:       schedule?.half_day_hours       || 4,
-    work_days:            (schedule?.work_days || '1,2,3,4,5').split(',').map(Number),
+    start_time:             schedule?.start_time             || '09:00',
+    end_time:               schedule?.end_time               || '18:00',
+    late_threshold:         schedule?.late_threshold         || '09:15',
+    early_exit_threshold:   schedule?.early_exit_threshold   || '17:45',
+    half_day_hours:         schedule?.half_day_hours         || 4,
+    full_day_hours:         schedule?.full_day_hours         || 8,
+    max_early_leave_count:  schedule?.max_early_leave_count  || 3,
+    work_days:              (schedule?.work_days || '1,2,3,4,5').split(',').map(Number),
   });
 
   useEffect(() => {
     if (schedule) {
       setForm({
-        start_time:           schedule.start_time,
-        end_time:             schedule.end_time,
-        late_threshold:       schedule.late_threshold,
-        early_exit_threshold: schedule.early_exit_threshold,
-        half_day_hours:       schedule.half_day_hours,
-        work_days:            (schedule.work_days || '1,2,3,4,5').split(',').map(Number),
+        start_time:             schedule.start_time,
+        end_time:               schedule.end_time,
+        late_threshold:         schedule.late_threshold,
+        early_exit_threshold:   schedule.early_exit_threshold,
+        half_day_hours:         schedule.half_day_hours,
+        full_day_hours:         schedule.full_day_hours ?? 8,
+        max_early_leave_count:  schedule.max_early_leave_count ?? 3,
+        work_days:              (schedule.work_days || '1,2,3,4,5').split(',').map(Number),
       });
     }
   }, [schedule]);
@@ -78,6 +83,8 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
         (earlyMins <= lateMins || earlyMins >= endMins))
       errs.early_exit_threshold = 'Early Exit Threshold must be between Late Threshold and End time.';
     // BUG_101/102: Half day threshold must be positive and < total work hours
+    const fullHours = parseFloat(form.full_day_hours);
+    const maxELC    = parseInt(form.max_early_leave_count, 10);
     if (isNaN(halfHours) || halfHours <= 0)
       errs.half_day_hours = 'Half Day Threshold must be a positive number.';
     else if (startMins !== null && endMins !== null) {
@@ -85,6 +92,19 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
       if (halfHours >= totalWorkHours)
         errs.half_day_hours = `Half Day Threshold must be less than total work hours (${totalWorkHours.toFixed(1)} hrs).`;
     }
+    // Full Day Hours validation
+    if (isNaN(fullHours) || fullHours <= 0)
+      errs.full_day_hours = 'Full Day Threshold must be a positive number.';
+    else if (!isNaN(halfHours) && fullHours <= halfHours)
+      errs.full_day_hours = `Full Day Threshold must be greater than Half Day Threshold (${halfHours} hrs).`;
+    else if (startMins !== null && endMins !== null) {
+      const totalWorkHours = (endMins - startMins) / 60;
+      if (fullHours > totalWorkHours)
+        errs.full_day_hours = `Full Day Threshold cannot exceed total work hours (${totalWorkHours.toFixed(1)} hrs).`;
+    }
+    // Max Early Leave Count validation
+    if (isNaN(maxELC) || maxELC < 1)
+      errs.max_early_leave_count = 'Maximum Early Leave Count must be at least 1.';
     // BUG_103: At least one working day required
     if (form.work_days.length === 0)
       errs.work_days = 'Please select at least one working day.';
@@ -101,12 +121,14 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
 
   const mutation = useMutation({
     mutationFn: () => apiPut('/settings', {
-      start_time:           form.start_time,
-      end_time:             form.end_time,
-      late_threshold:       form.late_threshold,
-      early_exit_threshold: form.early_exit_threshold,
-      half_day_hours:       parseFloat(form.half_day_hours),
-      work_days:            form.work_days.join(','),
+      start_time:            form.start_time,
+      end_time:              form.end_time,
+      late_threshold:        form.late_threshold,
+      early_exit_threshold:  form.early_exit_threshold,
+      half_day_hours:        parseFloat(form.half_day_hours),
+      full_day_hours:        parseFloat(form.full_day_hours),
+      max_early_leave_count: parseInt(form.max_early_leave_count, 10),
+      work_days:             form.work_days.join(','),
     }),
     onSuccess: () => { toast('Work schedule saved!', 'success'); onSaved?.(); },
     onError:   err => toast(err.message, 'error'),
@@ -163,6 +185,29 @@ function WorkScheduleCard({ schedule, isAdmin, onSaved }) {
           {scheduleErrors.half_day_hours
             ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.half_day_hours}</p>
             : <p className="form-hint">Work hours below this = Half Day</p>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="form-label">Full Day Hours</label>
+            <input type="number" className={`form-control ${scheduleErrors.full_day_hours ? 'border-rose-400' : ''}`} value={form.full_day_hours}
+              step="0.5" min="0.5" disabled={!isAdmin}
+              onChange={e => set('full_day_hours', e.target.value)}
+              onWheel={e => e.target.blur()} />
+            {scheduleErrors.full_day_hours
+              ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.full_day_hours}</p>
+              : <p className="form-hint">Work hours at or above this = Full Day</p>}
+          </div>
+          <div>
+            <label className="form-label">Max Early Leave Count</label>
+            <input type="number" className={`form-control ${scheduleErrors.max_early_leave_count ? 'border-rose-400' : ''}`} value={form.max_early_leave_count}
+              step="1" min="1" disabled={!isAdmin}
+              onChange={e => set('max_early_leave_count', e.target.value)}
+              onWheel={e => e.target.blur()} />
+            {scheduleErrors.max_early_leave_count
+              ? <p className="text-xs text-rose-500 mt-1">{scheduleErrors.max_early_leave_count}</p>
+              : <p className="form-hint">Excess early leaves per period → LOP</p>}
+          </div>
         </div>
 
         <div>

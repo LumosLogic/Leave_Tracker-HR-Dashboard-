@@ -120,26 +120,30 @@ function buildLeaveDateMap(leaveRows, year, month) {
 // Returns counters and daily breakdown. Pure function — no DB access.
 function calculateAttendance({
   dateMap,
-  attendanceMap,    // Map<dateStr, { status, check_in, check_out }>
-  regularizedSet,   // Set<dateStr> — approved regularizations
+  attendanceMap,      // Map<dateStr, { status, check_in, check_out }>
+  regularizedSet,     // Set<dateStr> — approved regularizations
   leaveDateMap,
   countHolidaysAsPaid,
-  scheduleCheckIn,  // 'HH:MM' or null
+  scheduleCheckIn,    // 'HH:MM' or null
   graceMins,
+  maxEarlyLeaveCount, // number — early leaves within this limit are full-day; excess → LOP
 }) {
-  const schedMins = toMins(scheduleCheckIn);
-  const g         = Number(graceMins) || 0;
+  const schedMins      = toMins(scheduleCheckIn);
+  const g              = Number(graceMins) || 0;
+  const maxEarlyLeave  = Number(maxEarlyLeaveCount) || 3;
 
-  let presentFull   = 0;  // full present day (including WFH)
+  let presentFull   = 0;  // full present day (including WFH + early_leave within allowance)
   let presentHalf   = 0;  // half-day attendance record
   let paidLeave     = 0;  // approved paid leave (full day)
   let paidHalfLeave = 0;  // approved paid leave (half day)
   let unpaidLeave   = 0;  // approved unpaid leave
-  let absent        = 0;  // absent / no record on working day
+  let absent        = 0;  // absent / no record on working day (includes excess early_leave → LOP)
   let weekoff       = 0;
   let holiday       = 0;  // paid holidays only
   let lateCount     = 0;
   let regularized   = 0;
+  let earlyLeave    = 0;  // early_leave days within allowance
+  let earlyLeaveLop = 0;  // early_leave days beyond allowance that became LOP
   const daily       = [];
 
   for (const { dateStr: ds, isWeekend: isWe, isHoliday: isHol } of dateMap) {
@@ -224,6 +228,21 @@ function calculateAttendance({
       continue;
     }
 
+    if (status === 'early_leave') {
+      // Within the configured allowance: counts as a full present day.
+      // Beyond the allowance: treated as absent so LOP calculation picks it up.
+      if (earlyLeave < maxEarlyLeave) {
+        presentFull++;
+        earlyLeave++;
+        daily.push({ date: ds, type: 'early_leave' });
+      } else {
+        absent++;
+        earlyLeaveLop++;
+        daily.push({ date: ds, type: 'early_leave_lop' });
+      }
+      continue;
+    }
+
     // Absent or no record
     absent++;
     daily.push({ date: ds, type: status === 'absent' ? 'absent' : 'no_record' });
@@ -240,6 +259,8 @@ function calculateAttendance({
     holiday,
     lateCount,
     regularized,
+    earlyLeave,
+    earlyLeaveLop,
     daily,
   };
 }
@@ -434,20 +455,25 @@ async function fetchAllData(oId, uId, month, year) {
     (async () => {
       try {
         return await pool.query(
-          `SELECT check_in, check_out, work_days
+          `SELECT check_in, check_out, work_days, full_day_hours, max_early_leave_count
              FROM work_schedule
             WHERE organization_id = $1
             LIMIT 1`,
           [oId]
         );
       } catch {
-        return await pool.query(
-          `SELECT NULL as check_in, NULL as check_out, work_days
-             FROM work_schedule
-            WHERE organization_id = $1
-            LIMIT 1`,
-          [oId]
-        );
+        // Fallback for DBs that don't have the new columns yet (pre-migration)
+        try {
+          return await pool.query(
+            `SELECT check_in, check_out, work_days
+               FROM work_schedule
+              WHERE organization_id = $1
+              LIMIT 1`,
+            [oId]
+          );
+        } catch {
+          return { rows: [] };
+        }
       }
     })(),
 
@@ -554,9 +580,10 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     attendanceMap,
     regularizedSet,
     leaveDateMap,
-    countHolidaysAsPaid: settings.count_holidays_as_paid,
-    scheduleCheckIn:     data.schedule?.check_in ?? null,
-    graceMins:           settings.grace_minutes,
+    countHolidaysAsPaid:  settings.count_holidays_as_paid,
+    scheduleCheckIn:      data.schedule?.check_in ?? null,
+    graceMins:            settings.grace_minutes,
+    maxEarlyLeaveCount:   Number(data.schedule?.max_early_leave_count ?? 3),
   });
 
   // ── LOP ───────────────────────────────────────────────────────────────────
@@ -657,18 +684,20 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     payableDays: lop.payableDays,
 
     attendance: {
-      totalDays:    daysInMonth(y, m),
-      presentFull:  att.presentFull,
-      presentHalf:  att.presentHalf,
-      paidLeave:    att.paidLeave,
+      totalDays:     daysInMonth(y, m),
+      presentFull:   att.presentFull,
+      presentHalf:   att.presentHalf,
+      paidLeave:     att.paidLeave,
       paidHalfLeave: att.paidHalfLeave,
-      unpaidLeave:  att.unpaidLeave,
-      absent:       att.absent,
-      weekoff:      att.weekoff,
-      holiday:      att.holiday,
-      lateArrivals: att.lateCount,
-      regularized:  att.regularized,
-      daily:        att.daily,
+      unpaidLeave:   att.unpaidLeave,
+      absent:        att.absent,
+      weekoff:       att.weekoff,
+      holiday:       att.holiday,
+      lateArrivals:  att.lateCount,
+      regularized:   att.regularized,
+      earlyLeave:    att.earlyLeave,
+      earlyLeaveLop: att.earlyLeaveLop,
+      daily:         att.daily,
     },
 
     lop: {

@@ -15,11 +15,12 @@ import { Avatar } from '@/components/ui/Avatar';
 function cn(...classes) { return classes.filter(Boolean).join(' '); }
 
 const ATT_STATUS_STYLE = {
-  present:  'bg-emerald-50 text-emerald-700 border-emerald-200',
-  wfh:      'bg-indigo-50 text-indigo-700 border-indigo-200',
-  half_day: 'bg-amber-50 text-amber-700 border-amber-200',
-  on_leave: 'bg-rose-50 text-rose-600 border-rose-200',
-  absent:   'bg-slate-50 text-slate-500 border-slate-200',
+  present:     'bg-emerald-50 text-emerald-700 border-emerald-200',
+  early_leave: 'bg-orange-50 text-orange-700 border-orange-200',
+  wfh:         'bg-indigo-50 text-indigo-700 border-indigo-200',
+  half_day:    'bg-amber-50 text-amber-700 border-amber-200',
+  on_leave:    'bg-rose-50 text-rose-600 border-rose-200',
+  absent:      'bg-slate-50 text-slate-500 border-slate-200',
 };
 const LEAVE_STATUS_STYLE = {
   approved:  'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -308,7 +309,7 @@ export default function Reports() {
     if (search)         rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()));
     if (deptFilter)     rows = rows.filter(r => r.department === deptFilter);
     if (attStatusFilter === 'productive') {
-      rows = rows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status));
+      rows = rows.filter(r => ['present', 'early_leave', 'wfh', 'half_day'].includes(r.status));
     } else if (attStatusFilter) {
       rows = rows.filter(r => r.status === attStatusFilter);
     }
@@ -359,7 +360,7 @@ export default function Reports() {
   const kpiCards = useMemo(() => {
     if (active === 'attendance') {
       // BUG_123: count both 'present' AND 'wfh' (and half_day) for the Present/WFH card
-      const present       = attRows.filter(r => ['present', 'wfh', 'half_day'].includes(r.status)).length;
+      const present       = attRows.filter(r => ['present', 'early_leave', 'wfh', 'half_day'].includes(r.status)).length;
       const absent        = attRows.filter(r => r.status === 'absent').length;
       const onLeave       = attRows.filter(r => r.status === 'on_leave').length;
       const noCheckout    = attRows.filter(r => r.check_in && !r.check_out && !r.is_live).length;

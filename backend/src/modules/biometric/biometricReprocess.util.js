@@ -20,7 +20,7 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
  *   Today before shiftEnd → keep 'present' (employee may still punch; don't show Half Day prematurely)
  *   Today after  shiftEnd → finalise: work_hours ≥ halfDayHours → 'present', else 'half_day'
  */
-async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5, shiftEndTime = '17:30') {
+async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5, shiftEndTime = '17:30', fullDayHours = 8) {
   if (!dayLogs.length) return;
 
   const sorted = [...dayLogs].sort((a, b) =>
@@ -83,10 +83,12 @@ async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHo
     workHours = parseFloat(Math.max(0, grossHours - gapMinutes / 60).toFixed(2));
   }
 
-  // Half Day is a finalised end-of-day verdict — never a mid-day label.
+  // Status is a finalised end-of-day verdict — never a mid-day label.
   // Before shift ends: always 'present' regardless of hours accumulated so far.
   const status = (checkOutStr && dayFinished)
-    ? (workHours >= halfDayHours ? 'present' : 'half_day')
+    ? (workHours >= fullDayHours ? 'present'
+      : workHours >= halfDayHours ? 'early_leave'
+      : 'half_day')
     : 'present';
 
   if (existingAtt) {
@@ -138,10 +140,11 @@ async function reprocessPin(orgId, employeePin) {
   if (policy === 'first_in_last_out') {
     // Fetch thresholds from work_schedule for this org
     const wsRes = await pool.query(
-      `SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
+      `SELECT half_day_hours, full_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
       [orgId]
     );
     const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+    const fullDayHours = parseFloat(wsRes.rows[0]?.full_day_hours ?? 8);
     const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
 
     // Find unique dates that have unprocessed logs
@@ -171,8 +174,8 @@ async function reprocessPin(orgId, employeePin) {
       if (!unprocessedLogs.length) continue;
 
       // Leave guard — only skip on full-day leave or WFH.
-      // half_day is NOT guarded: biometric data with multiple punches overrides an
-      // incorrectly-short attendance record (e.g. early-checkout that set half_day).
+      // half_day / early_leave are NOT guarded: biometric data with multiple punches overrides an
+      // incorrectly-short attendance record (e.g. early-checkout that set half_day/early_leave).
       const attRes = await pool.query(
         `SELECT id, status FROM attendance WHERE user_id = $1 AND date = $2 LIMIT 1`,
         [userId, date]
@@ -190,7 +193,7 @@ async function reprocessPin(orgId, employeePin) {
         continue;
       }
 
-      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime);
+      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime, fullDayHours);
 
       await pool.query(
         `UPDATE biometric_raw_logs SET processed = true
@@ -303,10 +306,11 @@ async function reprocessPinForDates(orgId, employeePin, fromDate, toDate, jobId 
   // ── FILO mode ────────────────────────────────────────────────────────────────
   if (policy === 'first_in_last_out') {
     const wsRes = await pool.query(
-      `SELECT half_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
+      `SELECT half_day_hours, full_day_hours, end_time FROM work_schedule WHERE organization_id = $1 LIMIT 1`,
       [orgId]
     );
     const halfDayHours = parseFloat(wsRes.rows[0]?.half_day_hours ?? 4.5);
+    const fullDayHours = parseFloat(wsRes.rows[0]?.full_day_hours ?? 8);
     const shiftEndTime = wsRes.rows[0]?.end_time || '17:30';
 
     // Discover dates that have unprocessed logs belonging to this job.
@@ -364,7 +368,7 @@ async function reprocessPinForDates(orgId, employeePin, fromDate, toDate, jobId 
         continue;
       }
 
-      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime);
+      await applyFILODay(userId, date, orgId, dayLogs, att, halfDayHours, shiftEndTime, fullDayHours);
       attendanceUpdated++;
 
       await pool.query(

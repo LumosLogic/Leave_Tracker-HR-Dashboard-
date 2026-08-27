@@ -73,7 +73,7 @@ export function isWeekend(date) {
 
 // ── Status Helpers ────────────────────────────────────────────────────────────
 export function statusLabel(s) {
-  const map = { present: 'Present', absent: 'Absent', on_leave: 'On Leave', half_day: 'Half Day', wfh: 'WFH' };
+  const map = { present: 'Present', early_leave: 'Early Leave', absent: 'Absent', on_leave: 'On Leave', half_day: 'Half Day', wfh: 'WFH' };
   return map[s] || s || '—';
 }
 

@@ -92,7 +92,7 @@ function AttendanceCheckinCard({ onRefreshed }) {
     try {
       const { record: r, message } = await apiPost('/attendance/checkout', {});
       setRecord(r);
-      toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success');
+      toast(message || 'Checked out!', (r.status === 'half_day' || r.status === 'early_leave') ? 'warning' : 'success');
       qc.invalidateQueries(['my-attendance']);
       onRefreshed?.();
     } catch (err) { toast(err.message, 'error'); }
@@ -164,7 +164,7 @@ function AttendanceCheckinCard({ onRefreshed }) {
                 <p className="text-xs text-[#777587]">
                   {fmtTime(record.check_in)} – {fmtTime(record.check_out)}
                   {record.work_hours ? ` · ${fmtHours(record.work_hours)} effective` : ''}
-                  {record.status === 'half_day' ? ' · Half Day' : ''}
+                  {record.status === 'half_day' ? ' · Half Day' : record.status === 'early_leave' ? ' · Early Leave' : ''}
                 </p>
                 {record.total_break_minutes > 0 && (
                   <p className="text-xs text-amber-600">Break: {fmtBreak(record.total_break_minutes)}</p>
@@ -237,20 +237,22 @@ function AttendanceCheckinCard({ onRefreshed }) {
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const STATUS_CONFIG = {
-  present:  { label: 'Present',  bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200', dot: 'bg-emerald-500', cellBg: 'bg-emerald-50',  showTag: false },
-  half_day: { label: 'Half Day', bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200',   dot: 'bg-amber-500',   cellBg: 'bg-amber-50',    showTag: true,  tag: 'Half' },
-  on_leave: { label: 'On Leave', bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200',  dot: 'bg-indigo-500',  cellBg: 'bg-indigo-50',   showTag: true,  tag: 'Leave' },
-  wfh:      { label: 'WFH',      bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200',    dot: 'bg-cyan-500',    cellBg: 'bg-cyan-50',     showTag: true,  tag: 'WFH' },
-  absent:   { label: 'Absent',   bg: 'bg-rose-50',     text: 'text-rose-700',     border: 'border-rose-200',    dot: 'bg-rose-500',    cellBg: 'bg-rose-50',     showTag: false },
+  present:      { label: 'Present',      bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200', dot: 'bg-emerald-500', cellBg: 'bg-emerald-50',  showTag: false },
+  early_leave:  { label: 'Early Leave',  bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200',  dot: 'bg-orange-500',  cellBg: 'bg-orange-50',   showTag: true,  tag: 'Early' },
+  half_day:     { label: 'Half Day',     bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200',   dot: 'bg-amber-500',   cellBg: 'bg-amber-50',    showTag: true,  tag: 'Half' },
+  on_leave:     { label: 'On Leave',     bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200',  dot: 'bg-indigo-500',  cellBg: 'bg-indigo-50',   showTag: true,  tag: 'Leave' },
+  wfh:          { label: 'WFH',          bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200',    dot: 'bg-cyan-500',    cellBg: 'bg-cyan-50',     showTag: true,  tag: 'WFH' },
+  absent:       { label: 'Absent',       bg: 'bg-rose-50',     text: 'text-rose-700',     border: 'border-rose-200',    dot: 'bg-rose-500',    cellBg: 'bg-rose-50',     showTag: false },
 };
 
 // KPI card accent config (ring color for active state)
 const KPI_RING = {
-  present:  'ring-2 ring-emerald-400',
-  half_day: 'ring-2 ring-amber-400',
-  on_leave: 'ring-2 ring-indigo-400',
-  wfh:      'ring-2 ring-cyan-400',
-  absent:   'ring-2 ring-rose-400',
+  present:     'ring-2 ring-emerald-400',
+  early_leave: 'ring-2 ring-orange-400',
+  half_day:    'ring-2 ring-amber-400',
+  on_leave:    'ring-2 ring-indigo-400',
+  wfh:         'ring-2 ring-cyan-400',
+  absent:      'ring-2 ring-rose-400',
 };
 
 function toDSString(d) {
@@ -408,7 +410,7 @@ export default function MyAttendance() {
 
       if (isWorkingDay) {
         const existing = map[ds];
-        if (!existing || (!existing.check_in && !['present', 'half_day', 'on_leave', 'wfh'].includes(existing?.status))) {
+        if (!existing || (!existing.check_in && !['present', 'early_leave', 'half_day', 'on_leave', 'wfh'].includes(existing?.status))) {
           if (ds < todayStr) {
             map[ds] = {
               ...(existing || {}),
@@ -430,7 +432,7 @@ export default function MyAttendance() {
 
   // Summary counts — derived from tableRecords so KPI card counts match the filtered list
   const summary = useMemo(() => {
-    const s = { present: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
+    const s = { present: 0, early_leave: 0, half_day: 0, on_leave: 0, wfh: 0, absent: 0 };
     tableRecords.forEach(r => { if (s[r.status] !== undefined) s[r.status]++; });
     return s;
   }, [tableRecords]);
@@ -442,15 +444,15 @@ export default function MyAttendance() {
       return activeWorkDays.includes(d.getDay());
     }).length;
 
-    const presentCount  = summary.present;
-    const halfDayCount  = summary.half_day;
+    const presentCount     = summary.present + summary.early_leave;
+    const halfDayCount     = summary.half_day;
     const attPct = workingDaysCount > 0
       ? Math.min(100, Math.round(((presentCount + halfDayCount * 0.5) / workingDaysCount) * 100))
       : 0;
 
-    // Average work hours for present/half_day rows
+    // Average work hours for present/early_leave/half_day rows
     // parseFloat handles PostgreSQL NUMERIC columns returned as strings by the pg driver
-    const workedRows = tableRecords.filter(r => (r.status === 'present' || r.status === 'half_day') && parseFloat(r.work_hours) > 0);
+    const workedRows = tableRecords.filter(r => (r.status === 'present' || r.status === 'early_leave' || r.status === 'half_day') && parseFloat(r.work_hours) > 0);
     const avgWorkHours = workedRows.length > 0
       ? workedRows.reduce((sum, r) => sum + parseFloat(r.work_hours || 0), 0) / workedRows.length
       : 0;
@@ -550,8 +552,8 @@ export default function MyAttendance() {
       </div>
 
       {/* KPI Summary Cards — clickable */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        {Object.entries({ present: 'Present', half_day: 'Half Day', on_leave: 'On Leave', wfh: 'WFH', absent: 'Absent' }).map(([key, label]) => {
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+        {Object.entries({ present: 'Present', early_leave: 'Early Leave', half_day: 'Half Day', on_leave: 'On Leave', wfh: 'WFH', absent: 'Absent' }).map(([key, label]) => {
           const cfg      = STATUS_CONFIG[key] || { bg: 'bg-[#f0f3ff]', text: 'text-[#464555]', border: 'border-[#c7c4d8]' };
           const isActive = statusFilter === key;
           const ringCls  = isActive ? KPI_RING[key] : '';

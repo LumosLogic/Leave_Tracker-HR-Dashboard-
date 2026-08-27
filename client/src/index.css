@@ -68,13 +68,14 @@
   .badge-approved  { @apply bg-emerald-50 text-emerald-800 border-emerald-200; }
   .badge-rejected  { @apply bg-rose-50    text-rose-800    border-rose-200; }
   .badge-cancelled { @apply bg-[#f0f3ff]  text-[#464555]   border-[#c7c4d8]; }
-  .badge-present   { @apply bg-emerald-50 text-emerald-800 border-emerald-200; }
-  .badge-absent    { @apply bg-rose-50    text-rose-800    border-rose-200; }
-  .badge-on_leave  { @apply bg-amber-50   text-amber-800   border-amber-200; }
-  .badge-half_day  { @apply bg-[#f0f3ff]  text-[#3525cd]   border-[#c7c4d8]; }
-  .badge-late      { @apply bg-orange-50  text-orange-800  border-orange-200; }
-  .badge-early_exit{ @apply bg-[#f0f3ff]  text-[#712ae2]   border-[#c7c4d8]; }
-  .badge-wfh       { @apply bg-[#f0f3ff]  text-[#4f46e5]   border-[#c7c4d8]; }
+  .badge-present      { @apply bg-emerald-50 text-emerald-800 border-emerald-200; }
+  .badge-early_leave  { @apply bg-orange-50  text-orange-800  border-orange-200; }
+  .badge-absent       { @apply bg-rose-50    text-rose-800    border-rose-200; }
+  .badge-on_leave     { @apply bg-amber-50   text-amber-800   border-amber-200; }
+  .badge-half_day     { @apply bg-[#f0f3ff]  text-[#3525cd]   border-[#c7c4d8]; }
+  .badge-late         { @apply bg-orange-50  text-orange-800  border-orange-200; }
+  .badge-early_exit   { @apply bg-[#f0f3ff]  text-[#712ae2]   border-[#c7c4d8]; }
+  .badge-wfh          { @apply bg-[#f0f3ff]  text-[#4f46e5]   border-[#c7c4d8]; }
 
   /* ── Leave type badges ── */
   .leave-badge       { @apply inline-flex text-[0.66rem] font-bold px-2.5 py-0.5 rounded-full capitalize border tracking-wide; }

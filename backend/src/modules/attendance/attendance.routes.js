@@ -134,15 +134,24 @@ router.post('/checkout', auth, async (req, res) => {
     const shift = await getActiveShiftTimes(req.user.id, today);
     const earlyExitThreshold = shift?.end_time || settings.early_exit_threshold;
     const is_early_exit = toMinutes(timeStr) < toMinutes(earlyExitThreshold);
-    const status        = effectiveHours < settings.half_day_hours ? 'half_day' : 'present';
+    const fullDayHours  = parseFloat(settings.full_day_hours ?? 8);
+    let status;
+    if (effectiveHours < settings.half_day_hours) {
+      status = 'half_day';
+    } else if (effectiveHours < fullDayHours) {
+      status = 'early_leave';
+    } else {
+      status = 'present';
+    }
 
     const { data: updated } = await supabase.from('attendance')
       .update({ check_out: timeStr, gross_hours: Math.round(grossHours * 100) / 100, work_hours: Math.round(effectiveHours * 100) / 100, status, is_early_exit, ...breakUpdateFields })
       .eq('id', record.id).select().single();
 
     const msgs = [];
-    if (is_early_exit)         msgs.push('Early exit noted');
-    if (status === 'half_day') msgs.push('Half day recorded');
+    if (is_early_exit)           msgs.push('Early exit noted');
+    if (status === 'half_day')   msgs.push('Half day recorded');
+    if (status === 'early_leave') msgs.push('Early leave noted');
     res.json({ record: updated, message: msgs.length ? msgs.join(' · ') : 'Checked out successfully' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

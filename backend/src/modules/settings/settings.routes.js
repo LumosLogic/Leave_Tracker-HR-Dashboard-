@@ -16,18 +16,19 @@ router.get('/', auth, async (req, res) => {
 // ─── Settings: Update Work Schedule ──────────────────────────────────────────
 router.put('/', auth, hasPermission('settings', 'manage'), async (req, res) => {
   try {
-    const { start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days } = req.body;
+    const { start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days, full_day_hours, max_early_leave_count } = req.body;
     // Try to update existing; insert if none
     const { data: existing } = await supabase.from('work_schedule').select('id').eq('organization_id', orgId(req)).limit(1).maybeSingle();
+    const fields = { start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days, full_day_hours, max_early_leave_count };
     let data, err;
     if (existing) {
       const res2 = await supabase.from('work_schedule')
-        .update({ start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days })
+        .update(fields)
         .eq('id', existing.id).select().single();
       data = res2.data; err = res2.error;
     } else {
       const res2 = await supabase.from('work_schedule')
-        .insert({ start_time, end_time, late_threshold, early_exit_threshold, half_day_hours, work_days, organization_id: orgId(req) }).select().single();
+        .insert({ ...fields, organization_id: orgId(req) }).select().single();
       data = res2.data; err = res2.error;
     }
     if (err) throw new Error(err.message);

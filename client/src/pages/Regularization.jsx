@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2, Search, Download, SortDesc, X, CalendarRange, Send } from 'lucide-react';
+import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2, Search, Download, SortDesc, X, CalendarRange, Send, Eye, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -83,6 +83,55 @@ function ReviewModal({ open, onClose, request }) {
           <label className="form-label">Reviewer Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — sent to employee)</span></label>
           <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add a note for the employee…" />
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ViewModal({ open, onClose, request }) {
+  if (!request) return null;
+  const cfg = STATUS_CFG[request.status] || STATUS_CFG.pending;
+  return (
+    <Modal open={open} onClose={onClose} title="Regularization Details" size="md"
+      footer={<div className="flex justify-end"><button className="btn btn-outline" onClick={onClose}>Close</button></div>}>
+      <div className="space-y-4">
+        <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Avatar name={request.user_name || 'Employee'} color={request.user_avatar_color} size={36} />
+            <div>
+              <p className="font-bold text-sm text-[#151c27]">{request.user_name || '—'}</p>
+              <p className="text-xs text-[#777587]">{request.user_department || '—'}{request.user_position ? ` · ${request.user_position}` : ''}</p>
+            </div>
+            <span className={`ml-auto badge ${cfg.cls} flex items-center gap-1 font-semibold`}>{cfg.icon}{cfg.label}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs border-t border-[#f0f3ff] pt-3">
+            <div><span className="text-[#777587]">Date</span><p className="font-semibold text-[#151c27]">{fmtDate(request.date)}</p></div>
+            <div><span className="text-[#777587]">Submitted</span><p className="font-semibold text-[#151c27]">{request.created_at ? new Date(request.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p></div>
+            {request.requested_check_in  && <div><span className="text-[#777587]">Requested In</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.requested_check_in)}</p></div>}
+            {request.requested_check_out && <div><span className="text-[#777587]">Requested Out</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.requested_check_out)}</p></div>}
+            {request.actual_check_in  && <div><span className="text-[#777587]">Actual In</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.actual_check_in)}</p></div>}
+            {request.actual_check_out && <div><span className="text-[#777587]">Actual Out</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.actual_check_out)}</p></div>}
+          </div>
+          <div className="text-xs border-t border-[#f0f3ff] pt-2">
+            <span className="text-[#777587]">Reason</span>
+            <p className="text-[#151c27] mt-0.5 italic">"{request.reason}"</p>
+          </div>
+        </div>
+        {(request.reviewer_name || request.reviewer_notes || request.reviewed_at) && (
+          <div className="rounded-xl border border-[#e7eefe] p-4 space-y-2">
+            <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Review Information</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              {request.reviewer_name && <div><span className="text-[#777587]">Reviewed By</span><p className="font-semibold text-[#151c27]">{request.reviewer_name}</p></div>}
+              {request.reviewed_at  && <div><span className="text-[#777587]">Reviewed On</span><p className="font-semibold text-[#151c27]">{new Date(request.reviewed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p></div>}
+            </div>
+            {request.reviewer_notes && (
+              <div className="text-xs">
+                <span className="text-[#777587]">Notes</span>
+                <p className="text-[#464555] mt-0.5">{request.reviewer_notes}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -563,15 +612,17 @@ export default function Regularization() {
 
   const [applyOpen,   setApplyOpen]   = useState(false);
   const [reviewReq,   setReviewReq]   = useState(null);
+  const [viewReq,     setViewReq]     = useState(null);
   const [confirmDel,  setConfirmDel]  = useState(null);
   const [filter,      setFilter]      = useState(() => {
     const s = searchParams.get('status');
     return s && ['pending', 'approved', 'rejected'].includes(s) ? s : 'all';
   });
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dateFrom,    setDateFrom]    = useState('');
-  const [dateTo,      setDateTo]      = useState('');
-  const [sortBy,      setSortBy]      = useState('newest');
+  const [searchQuery,  setSearchQuery]  = useState('');
+  const [dateFrom,     setDateFrom]     = useState('');
+  const [dateTo,       setDateTo]       = useState('');
+  const [sortBy,       setSortBy]       = useState('newest');
+  const [employeeId,   setEmployeeId]   = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const toast = useToast();
   const qc    = useQueryClient();
@@ -608,10 +659,24 @@ export default function Regularization() {
     rejected: requests.filter(r => r.status === 'rejected').length,
   };
 
-  const isFilterActive = filter !== 'all' || searchQuery.trim() !== '' || dateFrom !== '' || dateTo !== '' || sortBy !== 'newest';
+  // Derive unique employee list from loaded records (admin view only)
+  const employeeList = useMemo(() => {
+    if (!isAdmin) return [];
+    const seen = {};
+    requests.forEach(r => {
+      if (r.user_id && !seen[r.user_id]) seen[r.user_id] = { id: r.user_id, name: r.user_name || `Employee ${r.user_id}` };
+    });
+    return Object.values(seen).sort((a, b) => a.name.localeCompare(b.name));
+  }, [requests, isAdmin]);
+
+  const isFilterActive = filter !== 'all' || searchQuery.trim() !== '' || dateFrom !== '' || dateTo !== '' || sortBy !== 'newest' || employeeId !== '';
 
   const filtered = useMemo(() => {
     let list = filter === 'all' ? [...requests] : requests.filter(r => r.status === filter);
+
+    if (employeeId) {
+      list = list.filter(r => String(r.user_id) === String(employeeId));
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -646,7 +711,7 @@ export default function Regularization() {
     });
 
     return list;
-  }, [requests, filter, searchQuery, dateFrom, dateTo, sortBy]);
+  }, [requests, filter, searchQuery, dateFrom, dateTo, sortBy, employeeId]);
 
   const clearAllFilters = () => {
     setFilter('all');
@@ -654,13 +719,14 @@ export default function Regularization() {
     setDateFrom('');
     setDateTo('');
     setSortBy('newest');
+    setEmployeeId('');
     setVisibleCount(PAGE_SIZE);
   };
 
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [filter, searchQuery, dateFrom, dateTo, sortBy]);
+  }, [filter, searchQuery, dateFrom, dateTo, sortBy, employeeId]);
 
   const visibleRows = filtered.slice(0, visibleCount);
   const remaining   = filtered.length - visibleCount;
@@ -720,7 +786,7 @@ export default function Regularization() {
         ))}
       </div>
 
-      {/* Filter bar: search + date range + sort + clear */}
+      {/* Filter bar: search + employee + date range + sort + clear */}
       <div className="flex flex-wrap items-center gap-2 mb-5 p-3 bg-[#f9f9ff] border border-[#e7eefe] rounded-xl">
         {/* Search */}
         <div className="relative flex-1 min-w-[160px]">
@@ -741,6 +807,23 @@ export default function Regularization() {
             </button>
           )}
         </div>
+
+        {/* Employee filter (admin only) */}
+        {isAdmin && employeeList.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <User size={13} className="text-[#777587] flex-shrink-0" />
+            <select
+              className={`form-control py-1.5 text-xs pr-7 ${employeeId ? 'border-[#3525cd] text-[#3525cd] font-semibold' : ''}`}
+              value={employeeId}
+              onChange={e => setEmployeeId(e.target.value)}
+            >
+              <option value="">All Employees</option>
+              {employeeList.map(e => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Date From */}
         <div className="flex items-center gap-1.5">
@@ -903,7 +986,14 @@ export default function Regularization() {
                   </div>
 
                   {/* Action buttons */}
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="flex gap-2 flex-shrink-0 items-start">
+                    <button
+                      className="p-1.5 rounded-lg text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors"
+                      title="View details"
+                      onClick={() => setViewReq(r)}
+                    >
+                      <Eye size={14} />
+                    </button>
                     {isAdmin && r.status === 'pending' && (
                       <button className="btn btn-outline btn-sm" onClick={() => setReviewReq(r)}>
                         Review <ChevronRight size={13} />
@@ -944,6 +1034,7 @@ export default function Regularization() {
         <ApplyModal open onClose={() => setApplyOpen(false)} initialDate={dateParam} />
       )}
       {reviewReq && <ReviewModal open onClose={() => setReviewReq(null)} request={reviewReq} />}
+      {viewReq   && <ViewModal  open onClose={() => setViewReq(null)}   request={viewReq}   />}
       <ConfirmModal
         open={!!confirmDel}
         title="Delete Regularization Request"

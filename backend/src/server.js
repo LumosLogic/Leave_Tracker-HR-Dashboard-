@@ -49,10 +49,11 @@ const onboardingRouter     = require('./modules/onboarding/onboarding.routes');
 const offboardingRouter    = require('./modules/offboarding/offboarding.routes');
 const exitRouter           = require('./modules/exit/exit.routes');
 const branchesRouter       = require('./modules/branches/branches.routes');
-const biometricRouter      = require('./modules/biometric/biometric.routes');
-const biometricPush        = require('./modules/biometric/biometricPush.handler');
-const biometricHeartbeat   = require('./modules/biometric/biometricHeartbeat.handler');
-const biometricDeviceCmd   = require('./modules/biometric/biometricDeviceCmd.handler');
+const biometricRouter        = require('./modules/biometric/biometric.routes');
+const biometricPush          = require('./modules/biometric/biometricPush.handler');
+const biometricHeartbeat     = require('./modules/biometric/biometricHeartbeat.handler');
+const biometricDeviceCmd     = require('./modules/biometric/biometricDeviceCmd.handler');
+const biometricAutoScheduler = require('./modules/biometric/biometricAutoSyncScheduler');
 
 // ── Phase 1: RBAC ─────────────────────────────────────────────────────────────
 const rolesRouter          = require('./modules/roles/roles.routes');
@@ -243,6 +244,25 @@ async function runStartupMigrations() {
     `ALTER TABLE employee_salary_structures ADD COLUMN IF NOT EXISTS retention NUMERIC DEFAULT 0`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_in TEXT`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_out TEXT`,
+    // Auto-sync config table (2026-08-27) — schedule only, no SQL Server credentials
+    `CREATE TABLE IF NOT EXISTS biometric_auto_sync_config (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      enabled BOOLEAN NOT NULL DEFAULT false,
+      frequency TEXT NOT NULL DEFAULT 'day' CHECK (frequency IN ('day','week','month')),
+      sync_time_1 TEXT NOT NULL DEFAULT '10:00',
+      sync_time_2 TEXT DEFAULT '17:00',
+      last_sync_at TIMESTAMPTZ,
+      last_sync_date DATE,
+      last_sync_status TEXT DEFAULT 'never',
+      last_sync_error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (org_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_auto_sync_config_org ON biometric_auto_sync_config(org_id)`,
+    // Mark auto-triggered jobs in the existing historical sync table
+    `ALTER TABLE biometric_historical_sync_jobs ADD COLUMN IF NOT EXISTS auto_triggered BOOLEAN DEFAULT false`,
   ];
   for (const sql of migrations) {
     await pool.query(sql).catch(e => console.warn('[startup-migration] skipped:', e.message));
@@ -260,6 +280,10 @@ async function start() {
     // BUG_072: Auto-mark absent at 23:30 nightly — marks employees with no check-in and no leave as absent
     scheduleDailyAt(23, 30, runAutoMarkAbsent);
     payrollScheduler.start();
+    // Automatic EasyWDMS → HRMS biometric sync (per-org configurable schedule)
+    biometricAutoScheduler.start().catch(err =>
+      console.error('[auto-sync] Scheduler init error:', err.message)
+    );
   } catch (err) {
     console.error('Failed to start:', err.message);
     process.exit(1);

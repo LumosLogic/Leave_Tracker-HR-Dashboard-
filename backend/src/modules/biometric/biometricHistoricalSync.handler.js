@@ -23,7 +23,8 @@
 
 'use strict';
 
-const { pool } = require('../../config/db-pg-adapter');
+const { pool }                = require('../../config/db-pg-adapter');
+const { reprocessPinForDates } = require('./biometricReprocess.util');
 
 // ── Active historical sync jobs (in-memory, per server process) ───────────────
 // Map: serial_number → jobState
@@ -51,8 +52,12 @@ function getActiveJobForSn(sn) {
 /**
  * Activate a historical sync job in memory.
  * Call this AFTER the DB record is created and BEFORE scheduleSyncForSn.
+ *
+ * autoReprocess (optional) — when true, reprocessPinForDates() runs automatically
+ * after the job completes so attendance is updated without admin action.
+ * Used exclusively by the automatic sync scheduler; always false for manual syncs.
  */
-async function activateJob(sn, jobId, orgId, fromDate, toDate, dryRun) {
+async function activateJob(sn, jobId, orgId, fromDate, toDate, dryRun, autoReprocess = false) {
   // Build IST-aware date boundaries
   const fromTs = new Date(fromDate + 'T00:00:00+05:30');
   const toTs   = new Date(toDate   + 'T23:59:59.999+05:30');
@@ -63,6 +68,7 @@ async function activateJob(sn, jobId, orgId, fromDate, toDate, dryRun) {
     fromDate: fromTs,
     toDate:   toTs,
     dryRun,
+    autoReprocess,
     stats: { received: 0, in_range: 0, inserted: 0, duplicate: 0, ignored: 0 },
     timer: null,
   };
@@ -203,6 +209,68 @@ async function _finalizeJob(sn, error) {
     `received=${s.received} in_range=${s.in_range} inserted=${s.inserted} ` +
     `duplicate=${s.duplicate} ignored=${s.ignored}${error ? ' err=' + error : ''}`
   );
+
+  // Auto-reprocess: only for non-dry-run auto-triggered jobs that completed successfully.
+  // Runs in background so the 90-second finalization returns immediately.
+  if (!error && !job.dryRun && job.autoReprocess) {
+    setImmediate(() => _autoReprocess(job));
+  }
+}
+
+/**
+ * Auto-reprocess attendance for all PINs inserted by this job.
+ * Mirrors what the admin does manually via POST /historical-sync-jobs/:id/reprocess.
+ * Updates biometric_auto_sync_config.last_sync_status when done.
+ */
+async function _autoReprocess(job) {
+  console.log(`[auto-sync] Auto-reprocess starting — job=${job.jobId} org=${job.orgId}`);
+  try {
+    const pinsRes = await pool.query(
+      `SELECT DISTINCT employee_pin
+       FROM biometric_raw_logs
+       WHERE historical_sync_job_id = $1 AND processed = false`,
+      [job.jobId]
+    );
+    const pins = pinsRes.rows.map(r => r.employee_pin);
+
+    if (!pins.length) {
+      console.log(`[auto-sync] Job ${job.jobId} — no unprocessed pins, marking success`);
+      await _updateAutoSyncStatus(job.orgId, 'success', null);
+      return;
+    }
+
+    const fromStr = job.fromDate.toISOString().slice(0, 10);
+    const toStr   = job.toDate.toISOString().slice(0, 10);
+    let errors = 0;
+
+    for (const pin of pins) {
+      try {
+        await reprocessPinForDates(job.orgId, pin, fromStr, toStr, job.jobId);
+      } catch (err) {
+        errors++;
+        console.error(`[auto-sync] Reprocess PIN=${pin} job=${job.jobId}:`, err.message);
+      }
+    }
+
+    const finalStatus = errors === 0 ? 'success' : 'partial';
+    console.log(
+      `[auto-sync] Auto-reprocess done — job=${job.jobId} pins=${pins.length} errors=${errors} status=${finalStatus}`
+    );
+    await _updateAutoSyncStatus(job.orgId, finalStatus, errors > 0 ? `${errors} PIN(s) failed reprocess` : null);
+  } catch (err) {
+    console.error(`[auto-sync] Auto-reprocess error — job=${job.jobId}:`, err.message);
+    await _updateAutoSyncStatus(job.orgId, 'failed', err.message);
+  }
+}
+
+async function _updateAutoSyncStatus(orgId, status, errorMsg) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  await pool.query(
+    `UPDATE biometric_auto_sync_config
+     SET last_sync_status = $1, last_sync_error = $2, last_sync_date = $3, updated_at = NOW()
+     WHERE org_id = $4`,
+    [status, errorMsg || null, today, orgId]
+  ).catch(err => console.error('[auto-sync] Config status update error:', err.message));
 }
 
 module.exports = { getActiveJobForSn, activateJob, processHistoricalLine, onBatchComplete };

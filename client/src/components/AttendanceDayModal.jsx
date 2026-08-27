@@ -65,7 +65,7 @@ function EditAttSubModal({ record, onClose, onRefresh }) {
               <label className="form-label">Status</label>
               <select className="form-control" value={form.status}
                 onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                {['present','absent','on_leave','half_day','wfh'].map(s => (
+                {['present','early_leave','absent','on_leave','half_day','wfh'].map(s => (
                   <option key={s} value={s}>{statusLabel(s)}</option>
                 ))}
               </select>
@@ -137,7 +137,7 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
     });
 
   const dayRecords = Object.values(grouped);
-  const present  = dayRecords.filter(r => r.status === 'present').length;
+  const present  = dayRecords.filter(r => r.status === 'present' || r.status === 'early_leave').length;
   const absent   = dayRecords.filter(r => r.status === 'absent').length;
   const onLeave  = dayRecords.filter(r => r.status === 'on_leave').length;
   const wfh      = dayRecords.filter(r => r.status === 'wfh').length;
@@ -150,12 +150,12 @@ export function AttendanceDayModal({ dateStr, initialTab = 'all', onClose }) {
     ? (isFutureDay
         ? displayEmps.filter(emp => {
             const rec = grouped[emp.id];
-            return rec && ['on_leave', 'half_day', 'wfh'].includes(rec.status);
+            return rec && ['on_leave', 'early_leave', 'half_day', 'wfh'].includes(rec.status);
           })
         : displayEmps)
     : displayEmps.filter(emp => {
         const rec = grouped[emp.id];
-        if (activeTab === 'present')  return rec && rec.status === 'present' && !rec?._synthetic;
+        if (activeTab === 'present')  return rec && (rec.status === 'present' || rec.status === 'early_leave') && !rec?._synthetic;
         if (activeTab === 'on_leave') return rec && (rec.status === 'on_leave' || rec.status === 'half_day');
         if (activeTab === 'wfh')      return rec && rec.status === 'wfh';
         if (activeTab === 'absent')   return rec && rec.status === 'absent';

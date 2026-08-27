@@ -109,7 +109,7 @@ function CheckinWidget({ onRefresh }) {
   }
   async function checkOut() {
     setBusy(true);
-    try { const { record: r, message } = await apiPost('/attendance/checkout', {}); setRecord(r); toast(message || 'Checked out!', r.status === 'half_day' ? 'warning' : 'success'); onRefresh?.(); }
+    try { const { record: r, message } = await apiPost('/attendance/checkout', {}); setRecord(r); toast(message || 'Checked out!', (r.status === 'half_day' || r.status === 'early_leave') ? 'warning' : 'success'); onRefresh?.(); }
     catch (err) { toast(err.message, 'error'); } finally { setBusy(false); }
   }
   async function breakIn() {

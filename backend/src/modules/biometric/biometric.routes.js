@@ -11,6 +11,7 @@ const { reprocessPin, reprocessPinForDates } = require('./biometricReprocess.uti
 const { importEasyWDMS, previewEasyWDMS } = require('./biometricEasyWDMSImport.handler');
 const { getOrgPolicy }   = require('../../utils/orgPolicy');
 const { activateJob, getActiveJobForSn } = require('./biometricHistoricalSync.handler');
+const autoSyncScheduler = require('./biometricAutoSyncScheduler');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -935,6 +936,105 @@ router.get('/my-punches', auth, async (req, res) => {
 
     res.json(logsRes.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTOMATIC BIOMETRIC SYNC — config, history, manual trigger
+// Reuses the existing Historical Sync architecture (biometricHistoricalSync.handler)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GET /api/biometric/auto-sync/config ──────────────────────────────────────
+router.get('/auto-sync/config', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const result = await pool.query(
+      `SELECT id, org_id, enabled, frequency, sync_time_1, sync_time_2,
+              last_sync_at, last_sync_date, last_sync_status, last_sync_error,
+              created_at, updated_at
+       FROM biometric_auto_sync_config
+       WHERE org_id = $1 LIMIT 1`,
+      [orgId]
+    );
+    res.json(result.rows[0] || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── PUT /api/biometric/auto-sync/config ──────────────────────────────────────
+// Upserts schedule config and immediately reschedules the org's timers.
+router.put('/auto-sync/config', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const { enabled, frequency, sync_time_1, sync_time_2 } = req.body;
+
+    const timeRe = /^\d{2}:\d{2}$/;
+    if (sync_time_1 && !timeRe.test(sync_time_1))
+      return res.status(400).json({ error: 'sync_time_1 must be HH:MM (e.g. 10:00)' });
+    if (sync_time_2 && sync_time_2 !== '' && !timeRe.test(sync_time_2))
+      return res.status(400).json({ error: 'sync_time_2 must be HH:MM (e.g. 17:00)' });
+
+    const existsRes = await pool.query(
+      `SELECT id FROM biometric_auto_sync_config WHERE org_id = $1 LIMIT 1`,
+      [orgId]
+    );
+
+    if (existsRes.rows.length) {
+      await pool.query(
+        `UPDATE biometric_auto_sync_config
+         SET enabled = $1, frequency = $2, sync_time_1 = $3, sync_time_2 = $4,
+             updated_at = NOW()
+         WHERE org_id = $5`,
+        [enabled ?? true, frequency || 'day', sync_time_1 || '10:00', sync_time_2 || null, orgId]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO biometric_auto_sync_config (org_id, enabled, frequency, sync_time_1, sync_time_2)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [orgId, enabled ?? true, frequency || 'day', sync_time_1 || '10:00', sync_time_2 || null]
+      );
+    }
+
+    // Apply new schedule immediately — no restart required
+    await autoSyncScheduler.rescheduleOrg(orgId);
+
+    res.json({ ok: true, message: 'Auto sync configuration saved. Schedule updated.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── GET /api/biometric/auto-sync/history ─────────────────────────────────────
+// Returns auto-triggered historical sync jobs (same table as manual sync, filtered).
+router.get('/auto-sync/history', auth, adminOnly, async (req, res) => {
+  try {
+    const orgId = req.user.organization_id;
+    const limit = Math.min(50, parseInt(req.query.limit) || 20);
+    const result = await pool.query(
+      `SELECT j.id, j.serial_number, j.from_date, j.to_date,
+              j.status, j.created_at, j.completed_at,
+              j.records_received, j.records_in_range,
+              j.records_inserted, j.records_duplicate, j.records_ignored,
+              j.error, d.device_name
+       FROM biometric_historical_sync_jobs j
+       LEFT JOIN biometric_devices d ON d.id = j.device_id
+       WHERE j.org_id = $1 AND j.auto_triggered = true
+       ORDER BY j.created_at DESC
+       LIMIT $2`,
+      [orgId, limit]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /api/biometric/auto-sync/trigger ────────────────────────────────────
+// Manually trigger an immediate sync (for testing or on-demand use).
+router.post('/auto-sync/trigger', auth, adminOnly, async (req, res) => {
+  const orgId = req.user.organization_id;
+  res.json({ ok: true, message: 'Sync triggered. Device(s) will upload on next heartbeat (~30–60 s). Check history for results.' });
+  setImmediate(async () => {
+    try {
+      await autoSyncScheduler.triggerNow(orgId);
+    } catch (err) {
+      console.error(`[auto-sync] Manual trigger error org=${orgId}:`, err.message);
+    }
+  });
 });
 
 module.exports = router;
