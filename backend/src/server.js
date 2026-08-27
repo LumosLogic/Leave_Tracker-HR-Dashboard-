@@ -244,10 +244,10 @@ async function runStartupMigrations() {
     `ALTER TABLE employee_salary_structures ADD COLUMN IF NOT EXISTS retention NUMERIC DEFAULT 0`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_in TEXT`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_out TEXT`,
-    // Auto-sync config table (2026-08-27) — schedule only, no SQL Server credentials
+    // Auto-sync config table (2026-08-27) — org_id BIGINT to match organizations.id
     `CREATE TABLE IF NOT EXISTS biometric_auto_sync_config (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      id BIGSERIAL PRIMARY KEY,
+      org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
       enabled BOOLEAN NOT NULL DEFAULT false,
       frequency TEXT NOT NULL DEFAULT 'day' CHECK (frequency IN ('day','week','month')),
       sync_time_1 TEXT NOT NULL DEFAULT '10:00',
