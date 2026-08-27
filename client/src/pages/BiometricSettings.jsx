@@ -307,10 +307,10 @@ export default function BiometricSettings() {
                   <div className="flex items-start gap-2">
                     <Info size={13} className="text-[#3525cd] mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-[#464555]">
-                      At each scheduled time, the server sends a data-query command to every registered ZKTeco device.
-                      The device uploads its attendance records automatically via the existing ADMS connection.
-                      New records are inserted and attendance is reprocessed — no manual steps required.
-                      Times are in IST (Asia/Kolkata).
+                      {form.frequency === 'day' && 'Runs at the configured time(s) every day — syncs yesterday + today\'s records.'}
+                      {form.frequency === 'week' && 'Runs every Sunday at the configured time — syncs the full week (Monday → Sunday).'}
+                      {form.frequency === 'month' && 'Runs on the 1st of each month — syncs the entire previous month\'s records.'}
+                      {' '}The device uploads automatically via ADMS — no manual steps required. Times are in IST.
                     </p>
                   </div>
                 </div>
