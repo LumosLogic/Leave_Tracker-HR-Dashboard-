@@ -25,7 +25,8 @@ router.get('/', auth, async (req, res) => {
       query = query.eq('date', date);
     } else if (year && month) {
       const start = `${year}-${String(month).padStart(2,'0')}-01`;
-      const end = new Date(year, month, 0).toISOString().split('T')[0];
+      const lastDay = new Date(year, month, 0).getDate();
+      const end = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
       query = query.gte('date', start).lte('date', end);
     } else if (year) {
       const start = `${year}-01-01`;
