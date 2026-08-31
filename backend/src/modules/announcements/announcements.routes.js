@@ -56,7 +56,13 @@ router.get('/', auth, async (req, res) => {
     // Filter expired for non-admins
     const filtered = isAdmin(req.user.role) ? rows : rows.filter(r => !r.expires_at || r.expires_at >= today);
 
-    res.json(filtered.map(r => ({ ...r, creator_name: creatorMap[r.created_by] || 'Admin' })));
+    // BUG_179: auto-unpin expired announcements in the response so they don't appear
+    // in the Pinned section even for admins who can still see expired announcements.
+    res.json(filtered.map(r => ({
+      ...r,
+      creator_name: creatorMap[r.created_by] || 'Admin',
+      pinned: r.pinned && (!r.expires_at || r.expires_at >= today),
+    })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

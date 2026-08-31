@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const { db, pool } = require('../../config/db');
-const { auth, isAdminRole } = require('../../middleware/auth');
+const { auth, isAdminRole, blockUser, unblockUser } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml, credentialsEmailHtml } = require('../../services/emailService');
@@ -352,6 +352,13 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       } catch (mapErr) {
         console.error('[employees] biometric_employee_map sync error:', mapErr.message);
       }
+    }
+
+    // BUG_181: If employee status changed to inactive/resigned/terminated, invalidate their session
+    if (employee_status && ['inactive', 'resigned', 'terminated'].includes(employee_status)) {
+      blockUser(empId);
+    } else if (employee_status === 'active' || employee_status === 'probation') {
+      unblockUser(empId); // re-allow if re-activated
     }
 
     res.json(data);

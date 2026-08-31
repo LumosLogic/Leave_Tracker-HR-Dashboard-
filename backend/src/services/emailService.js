@@ -50,35 +50,37 @@ async function sendMail({ to, subject, html, attachments, replyTo } = {}) {
 // ─── Templates ────────────────────────────────────────────────────────────────
 // Theme: deep purple header (#1e1456), accent #3525cd, light purple highlights
 
+// BUG (email improvements): Compact layout — full width, smaller header, no emojis in icons
 const WRAP = (inner) => `<!DOCTYPE html>
-<html><body style="margin:0;padding:24px 16px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
-<div style="max-width:600px;margin:0 auto;">${inner}</div>
+<html><body style="margin:0;padding:16px 8px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:680px;margin:0 auto;">${inner}</div>
 </body></html>`;
 
-// icon: emoji string shown in the circle below the org name
-const HEADER = (orgName, title, subtitle, icon = '📋') => `
-<div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 50%,#712ae2 100%);padding:40px 32px 36px;border-radius:12px 12px 0 0;text-align:center;">
-  <p style="margin:0 0 4px;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:rgba(255,255,255,0.55);font-family:Arial,sans-serif;">HRMS BY LUMOSLOGIC</p>
-  <h1 style="margin:0 0 4px;font-size:32px;font-weight:900;color:#ffffff;font-family:Arial,sans-serif;letter-spacing:-0.5px;">${orgName || 'HR System'}</h1>
-  <p style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.45);font-family:Arial,sans-serif;">HUMAN RESOURCE MANAGEMENT SYSTEM</p>
-  <div style="border-top:1px solid rgba(255,255,255,0.2);margin:24px auto;max-width:360px;"></div>
-  <div style="display:inline-block;width:64px;height:64px;line-height:64px;border-radius:50%;background:rgba(255,255,255,0.15);font-size:28px;margin-bottom:16px;">${icon}</div>
-  <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${title}</h2>
-  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">${subtitle}</p>
+// Compact header — reduced height, removed large icon circle, smaller org name
+const HEADER = (orgName, title, subtitle) => `
+<div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 100%);padding:20px 28px 18px;border-radius:10px 10px 0 0;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+    <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:6px 12px;display:inline-block;">
+      <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.85);font-family:Arial,sans-serif;">HRMS</span>
+    </div>
+    <span style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">${orgName || 'Lumos Logic'}</span>
+  </div>
+  <h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">${title}</h2>
+  <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">${subtitle}</p>
 </div>`;
 
 const BODY = (content) => `
-<div style="background:#ffffff;padding:32px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">
+<div style="background:#ffffff;padding:24px 28px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">
   ${content}
 </div>`;
 
-// Table row with icon — icon is an emoji, label is bold left col, value is right col
+// Table row — uses a simple dash label prefix instead of emojis (email-client-safe)
 const ROW = (icon, label, value) => `
 <tr>
-  <td style="width:42%;padding:13px 16px;border-bottom:1px solid #e8eaf6;border-right:1px solid #e8eaf6;background:#f7f8ff;vertical-align:middle;">
-    <div style="display:inline-block;width:26px;height:26px;line-height:26px;background:#ede9fe;border-radius:6px;font-size:13px;text-align:center;vertical-align:middle;margin-right:8px;">${icon}</div><span style="font-size:13px;font-weight:700;color:#1e1456;vertical-align:middle;font-family:Arial,sans-serif;">${label}</span>
+  <td style="width:38%;padding:10px 14px;border-bottom:1px solid #e8eaf6;border-right:1px solid #e8eaf6;background:#f7f8ff;vertical-align:middle;">
+    <span style="font-size:13px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">${label}</span>
   </td>
-  <td style="padding:13px 16px;border-bottom:1px solid #e8eaf6;font-size:13px;color:#334155;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
+  <td style="padding:10px 14px;border-bottom:1px solid #e8eaf6;font-size:13px;color:#334155;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
 </tr>`;
 
 const TABLE = (rows) => `
@@ -96,23 +98,12 @@ const GREETING = (name) => name
   : `<p style="margin:0 0 16px;font-size:15px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Hello,</p>`;
 
 const FOOTER = (orgEmail = '', orgName = '') => `
-<div style="background:#f0f3ff;border:1px solid #dde1f0;border-top:none;padding:24px 32px 28px;border-radius:0 0 12px 12px;font-family:Arial,sans-serif;">
-  <table style="width:100%;border-collapse:collapse;">
-    <tr>
-      <td style="width:64px;vertical-align:top;padding-right:16px;">
-        <div style="width:52px;height:52px;line-height:52px;border-radius:50%;background:#ede9fe;text-align:center;font-size:22px;">🎧</div>
-      </td>
-      <td style="vertical-align:top;">
-        <p style="margin:0 0 8px;font-size:15px;font-weight:800;color:#1e1456;font-family:Arial,sans-serif;">Need Help?</p>
-        <p style="margin:0 0 4px;font-size:13px;color:#475569;font-family:Arial,sans-serif;">✉&nbsp;&nbsp;Email:&nbsp;&nbsp;<a href="mailto:${orgEmail || process.env.SMTP_USER || ''}" style="color:#3525cd;text-decoration:none;font-weight:600;">${orgEmail || process.env.SMTP_USER || 'hr@company.com'}</a></p>
-        <p style="margin:0;font-size:13px;color:#475569;font-family:Arial,sans-serif;">🌐&nbsp;&nbsp;Website:&nbsp;&nbsp;<a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;font-weight:600;">https://hrms.lumoslogic.com/</a></p>
-      </td>
-    </tr>
-  </table>
-  <div style="border-top:1px solid #c7c4d8;margin:20px 0 16px;"></div>
-  <p style="margin:0 0 4px;font-size:12px;color:#64748b;text-align:center;font-family:Arial,sans-serif;">This is an automated email from <strong>HRMS by LumosLogic</strong>.</p>
-  <p style="margin:0 0 12px;font-size:12px;color:#64748b;text-align:center;font-family:Arial,sans-serif;">Please do not reply to this email.</p>
-  <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;font-family:Arial,sans-serif;">© ${new Date().getFullYear()} HRMS By Lumos Logic</p>
+<div style="background:#f0f3ff;border:1px solid #dde1f0;border-top:none;padding:16px 28px 18px;border-radius:0 0 10px 10px;font-family:Arial,sans-serif;">
+  <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Need Help?</p>
+  <p style="margin:0 0 3px;font-size:12px;color:#475569;font-family:Arial,sans-serif;">Email: <a href="mailto:${orgEmail || process.env.SMTP_USER || ''}" style="color:#3525cd;text-decoration:none;font-weight:600;">${orgEmail || process.env.SMTP_USER || 'hr@company.com'}</a></p>
+  <p style="margin:0 0 12px;font-size:12px;color:#475569;font-family:Arial,sans-serif;">Portal: <a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;font-weight:600;">hrms.lumoslogic.com</a></p>
+  <div style="border-top:1px solid #c7c4d8;margin:0 0 10px;"></div>
+  <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;font-family:Arial,sans-serif;">Automated email from HRMS by LumosLogic &nbsp;&middot;&nbsp; Please do not reply &nbsp;&middot;&nbsp; &copy; ${new Date().getFullYear()}</p>
 </div>`;
 
 const LEAVE_TYPE_LABEL = {
@@ -128,7 +119,7 @@ function leaveAppliedHtml(employee, leave, orgName = '', orgEmail = '') {
     : leave.leave_time === 'wfh' ? 'Work from Home'
     : `${leave.start_date} → ${leave.end_date}`;
   return WRAP(
-    HEADER(orgName, 'New Leave Request', 'Action Required — Please Review', '📋') +
+    HEADER(orgName, 'New Leave Request', 'Action Required — Please Review') +
     BODY(`
       ${GREETING('HR Team')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">A new leave request has been submitted and requires your review and approval.</p>
@@ -157,8 +148,7 @@ function leaveStatusHtml(employee, leave, status, approverName, orgName = '', or
   return WRAP(
     HEADER(orgName,
       approved ? 'Leave Request Approved' : 'Leave Request Rejected',
-      approved ? 'Your leave has been approved ✓' : 'Your leave has been rejected ✗',
-      approved ? '✅' : '❌'
+      approved ? 'Your leave has been approved' : 'Your leave has been rejected'
     ) +
     BODY(`
       ${GREETING(employee.name)}
@@ -188,7 +178,7 @@ function leaveStatusHtml(employee, leave, status, approverName, orgName = '', or
 // ── Welcome Email — new employee ──────────────────────────────────────────────
 function welcomeEmployeeHtml(employee, plainPassword, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, 'Welcome to the Team!', `We're glad to have you with us`, '🎉') +
+    HEADER(orgName, 'Welcome to the Team!', "We're glad to have you with us") +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">Welcome to <strong>${orgName || 'the team'}</strong>! Your HR account is ready. Use the credentials below to log in for the first time.</p>
@@ -213,7 +203,7 @@ function welcomeEmployeeHtml(employee, plainPassword, orgName = '', orgEmail = '
 // ── Birthday Wish — sent to the employee ─────────────────────────────────────
 function birthdayWishHtml(employee, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, `Happy Birthday, ${employee.name}!`, `Wishing you a wonderful day 🎂`, '🎂') +
+    HEADER(orgName, `Happy Birthday, ${employee.name}!`, 'Wishing you a wonderful day') +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 16px;font-size:15px;color:#334155;line-height:1.8;text-align:center;">
@@ -235,7 +225,7 @@ function birthdayWishHtml(employee, orgName = '', orgEmail = '') {
 function birthdayReminderHtml(employees, orgName = '', orgEmail = '') {
   const names = employees.map(e => `<strong>${e.name}</strong>`).join(' &amp; ');
   return WRAP(
-    HEADER(orgName, 'Birthday Reminder', `Tomorrow${employees.length > 1 ? "'s birthdays" : "'s birthday"}`, '🎂') +
+    HEADER(orgName, 'Birthday Reminder', "Upcoming team birthday") +
     BODY(`
       ${GREETING('HR Team')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -254,7 +244,7 @@ function holidayReminderHtml(holiday, orgName = '', orgEmail = '') {
   const dateObj  = holiday.date ? new Date(holiday.date + 'T12:00:00') : null;
   const dateStr  = dateObj ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' }) : holiday.date;
   return WRAP(
-    HEADER(orgName, `Tomorrow is a Holiday`, `${holiday.name} — Holiday Reminder`, '🏖️') +
+    HEADER(orgName, `Tomorrow is a Holiday`, 'Plan your day accordingly') +
     BODY(`
       ${GREETING('Team')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -276,7 +266,7 @@ function holidayReminderHtml(holiday, orgName = '', orgEmail = '') {
 function leaveDeptApprovalHtml(employee, leave, deptHeadName, orgName = '', orgEmail = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER(orgName, 'Leave Request — Your Approval Needed', 'Department Head Action Required', '👥') +
+    HEADER(orgName, 'Leave Request — Your Approval Needed', 'Department Head Action Required') +
     BODY(`
       ${GREETING(deptHeadName || 'Department Head')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -304,7 +294,7 @@ function leaveDeptApprovalHtml(employee, leave, deptHeadName, orgName = '', orgE
 function leaveForwardedToRootHtml(employee, leave, deptHeadName, orgName = '', orgEmail = '') {
   const type = LEAVE_TYPE_LABEL[leave.leave_type] || leave.leave_type;
   return WRAP(
-    HEADER(orgName, 'Leave Request — Final Approval Needed', 'Forwarded by Department Head', '🔄') +
+    HEADER(orgName, 'Leave Request — Final Approval Needed', 'Forwarded by Department Head') +
     BODY(`
       ${GREETING('Admin')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -328,7 +318,7 @@ function leaveForwardedToRootHtml(employee, leave, deptHeadName, orgName = '', o
 // ── New Org Registration — sent to platform admin ─────────────────────────────
 function orgRequestReceivedHtml(req) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'New Organization Request', 'Awaiting your review', '🏢') +
+    HEADER('HRMS by LumosLogic', 'New Organization Request', 'Awaiting your review') +
     BODY(`
       ${GREETING('Platform Admin')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">A new organization registration has been submitted and is awaiting your approval.</p>
@@ -352,7 +342,7 @@ function orgRequestReceivedHtml(req) {
 // ── Org Approved — sent to registrant ────────────────────────────────────────
 function orgApprovedHtml(req, orgSlug, tempPassword) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'Organization Approved!', `${req.company_name} is now live on HRMS`, '🎉') +
+    HEADER('HRMS by LumosLogic', 'Organization Approved!', 'Your organization is now live on HRMS') +
     BODY(`
       ${GREETING(req.contact_name)}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -375,7 +365,7 @@ function orgApprovedHtml(req, orgSlug, tempPassword) {
 // ── Org Rejected — sent to registrant ────────────────────────────────────────
 function orgRejectedHtml(req, notes) {
   return WRAP(
-    HEADER('HRMS by LumosLogic', 'Registration Update', 'Organization Request Status', '📋') +
+    HEADER('HRMS by LumosLogic', 'Registration Update', 'Organization Request Status') +
     BODY(`
       ${GREETING(req.contact_name)}
       <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.7;">
@@ -391,7 +381,7 @@ function orgRejectedHtml(req, notes) {
 // ── Password Reset ────────────────────────────────────────────────────────────
 function passwordResetHtml(user, resetLink, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, 'Reset Your Password', 'We received a password reset request', '🔐') +
+    HEADER(orgName, 'Reset Your Password', 'We received a password reset request') +
     BODY(`
       ${GREETING(user.name || 'User')}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -420,7 +410,7 @@ function preOnboardingRequestHtml({ name, orgName, portalUrl, orgEmail = '' }) {
     'Previous Employment Documents (offer letter, relieving letter, if applicable)',
   ];
   return WRAP(
-    HEADER(orgName, `Welcome, ${name}!`, 'Action Required Before Your First Day', '📄') +
+    HEADER(orgName, `Welcome, ${name}!`, 'Action Required Before Your First Day') +
     BODY(`
       ${GREETING(name)}
       <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.7;">
@@ -450,7 +440,7 @@ function announcementHtml(ann, orgName = '', orgEmail = '') {
     ? `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">⏳ This announcement expires on <strong>${ann.expires_at}</strong>.</p>`
     : '';
   return WRAP(
-    HEADER(orgName, ann.title, 'New Announcement', cfg.icon) +
+    HEADER(orgName, ann.title, `New Announcement — ${cfg.label}`) +
     BODY(`
       <div style="display:inline-block;background:${cfg.bg};border:1px solid ${cfg.border};color:${cfg.color};font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-transform:uppercase;letter-spacing:1px;">${cfg.icon}&nbsp;&nbsp;${cfg.label}</div>
       <p style="margin:0 0 20px;font-size:14px;white-space:pre-wrap;line-height:1.8;color:#1e293b;">${ann.content}</p>
@@ -472,7 +462,7 @@ function announcementHtml(ann, orgName = '', orgEmail = '') {
 // ── Send Login Credentials — admin-initiated temp password ────────────────────
 function credentialsEmailHtml({ employee, tempPassword, orgName = '', orgEmail = '', portalUrl = 'https://hrms.lumoslogic.com' }) {
   return WRAP(
-    HEADER(orgName, 'Your Login Credentials', 'Welcome — Your account is ready to access', '🔑') +
+    HEADER(orgName, 'Your Login Credentials', 'Welcome — Your account is ready to access') +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">
@@ -511,7 +501,7 @@ function lateCheckinHtml(employee, { date, workStartTime, lateThreshold, checkIn
   const mins = lateMinutes % 60;
   const lateDuration = hrs > 0 ? `${hrs}h ${mins}m late` : `${mins} minutes late`;
   return WRAP(
-    HEADER(orgName, 'Late Check-in Recorded', `You checked in after the scheduled start time`, '&#9888;') +
+    HEADER(orgName, 'Late Check-in Recorded', 'You checked in after the scheduled start time') +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 16px;font-size:13px;color:#475569;line-height:1.6;">
@@ -572,7 +562,7 @@ function dailyAttendanceSummaryHtml(employee, { date, checkIn, checkOut, working
   }
 
   return WRAP(
-    HEADER(orgName, 'Attendance Summary', `Daily report — ${date}`, '&#9632;') +
+    HEADER(orgName, 'Attendance Summary', `Daily report — ${date}`) +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 16px;font-size:13px;color:#475569;line-height:1.6;">Here is your attendance summary for today. Please contact HR if you notice any discrepancies.</p>
@@ -594,7 +584,7 @@ function dailyAttendanceSummaryHtml(employee, { date, checkIn, checkOut, working
 // ── Attendance: Work Appreciation — sent to the employee ─────────────────────
 function workAppreciationHtml(employee, { date, workingHours, thresholdHours }, orgName = '', orgEmail = '') {
   return WRAP(
-    HEADER(orgName, 'Thank You for Your Dedication!', `Outstanding effort today — ${date}`, '⭐') +
+    HEADER(orgName, 'Thank You for Your Dedication!', `Outstanding effort today — ${date}`) +
     BODY(`
       ${GREETING(employee.name)}
       <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;">

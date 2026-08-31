@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { pool } = require('../config/db');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -6,6 +7,15 @@ if (!JWT_SECRET) {
   console.error('    Add  JWT_SECRET=<random-64-char-string>  to your .env file.\n');
   process.exit(1);
 }
+
+// BUG_181: In-memory set of user IDs whose sessions must be invalidated immediately.
+// Populated when an employee's status is changed to inactive/resigned/terminated.
+// Cleared on server restart (acceptable — tokens are short-lived; worst case is a single restart).
+const _blockedUsers = new Set();
+const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
+
+function blockUser(userId) { _blockedUsers.add(String(userId)); }
+function unblockUser(userId) { _blockedUsers.delete(String(userId)); }
 
 const ALLOWED_ORIGINS = [
   'https://hrms.lumoslogic.com',
@@ -20,12 +30,38 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000',
 ];
 
-function auth(req, res, next) {
+async function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1] || req.query.token;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (decoded.purpose === 'totp-pending') return res.status(401).json({ error: 'TOTP verification required' });
+
+    // BUG_181: Check in-memory blocklist first (instant, no DB cost)
+    if (_blockedUsers.has(String(decoded.id))) {
+      return res.status(401).json({ error: 'Account access has been revoked. Please contact HR.', code: 'ACCOUNT_INACTIVE' });
+    }
+
+    // BUG_181: For employee-role tokens, do a lightweight DB check on status.
+    // Only employees need this check — admins/root_admins are managed differently.
+    // Cache miss is acceptable because status changes are rare.
+    if (decoded.role === 'employee') {
+      try {
+        const { rows } = await pool.query(
+          `SELECT employee_status FROM users WHERE id = $1 LIMIT 1`,
+          [decoded.id]
+        );
+        const status = rows[0]?.employee_status;
+        if (status && INACTIVE_STATUSES.includes(status)) {
+          _blockedUsers.add(String(decoded.id)); // cache for subsequent requests
+          return res.status(401).json({
+            error: 'Your account is currently inactive. Please contact HR/Admin for assistance.',
+            code: 'ACCOUNT_INACTIVE',
+          });
+        }
+      } catch { /* DB error — don't block auth, fail open */ }
+    }
+
     req.user = decoded;
     next();
   }
@@ -76,4 +112,4 @@ function platformAdminAuth(req, res, next) {
   } catch { return res.status(401).json({ error: 'Invalid token' }); }
 }
 
-module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth, selfOrAdmin };
+module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth, selfOrAdmin, blockUser, unblockUser };

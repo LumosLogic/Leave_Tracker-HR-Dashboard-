@@ -577,9 +577,12 @@ function OverviewTab({ empId }) {
     queryFn: () => apiGet('/leaves'),
   });
 
-  const { data: policies = [] } = useQuery({
-    queryKey: ['leave-policies'],
-    queryFn: () => apiGet('/leave-policies'),
+  // BUG_182: use the proper /leaves/balance endpoint (same as MyLeaves page)
+  // instead of computing from /leave-policies which returns 0 when policies aren't configured
+  const { data: leaveBalanceData } = useQuery({
+    queryKey: ['my-leave-balance-profile', new Date().getFullYear()],
+    queryFn: () => apiGet('/leaves/balance'),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch today's shift assignment for this employee
@@ -591,7 +594,10 @@ function OverviewTab({ empId }) {
     staleTime: 10 * 60 * 1000,
     retry: false,
   });
-  const todayShift = shiftAssignments.find(a => a.date === todayDate)?.shift || null;
+  // BUG_182: find today's specific assignment first; fall back to any assignment
+  // this month (same shift definition applies for all working days)
+  const todayShift = shiftAssignments.find(a => a.date === todayDate)?.shift
+    || (shiftAssignments.length > 0 ? shiftAssignments[shiftAssignments.length - 1]?.shift : null);
 
   if (ovLoading) return <Spinner />;
   if (!overview) return null;
@@ -600,16 +606,10 @@ function OverviewTab({ empId }) {
   const experience = calcExperience(joiningDate);
   const managerName = overview.manager?.name || overview.manager_name || '—';
 
-  // Leave balance calculation
-  const myLeaves = leaves.filter(l => l.status === 'approved');
-  const totalUsed = myLeaves.reduce((acc, l) => {
-    const start = new Date(l.start_date);
-    const end = new Date(l.end_date);
-    const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
-    return acc + days;
-  }, 0);
-  const totalAlloc = policies.reduce((acc, p) => acc + (p.days_allowed || 0), 0);
-  const leaveBalance = Math.max(0, totalAlloc - totalUsed);
+  // BUG_182: compute leave balance from the /leaves/balance API (accurate, respects adjustments)
+  const balances = leaveBalanceData?.balances || [];
+  const leaveBalance = balances.reduce((sum, b) => sum + Math.max(0, b.available ?? (b.total - b.used)), 0);
+  const totalAlloc   = balances.reduce((sum, b) => sum + (b.total || 0), 0);
 
   // Today's attendance from overview
   const todayAtt = overview.todayAttendance || null;
@@ -2436,23 +2436,16 @@ function PrivacySection() {
         </div>
       </div>
 
-      {/* GDPR Controls */}
-      <div className="bg-white rounded-xl border border-rose-200 shadow-sm p-5">
-        <h2 className="text-sm font-black text-rose-700 uppercase tracking-wider flex items-center gap-2 mb-2">
-          <AlertTriangle size={15} className="text-rose-600" /> Privacy (GDPR)
+      {/* BUG_180: Account changes (deactivation/deletion) must go through HR — removed self-service buttons */}
+      <div className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-5">
+        <h2 className="text-sm font-black text-[#777587] uppercase tracking-wider flex items-center gap-2 mb-2">
+          <AlertTriangle size={15} className="text-[#777587]" /> Account Changes
         </h2>
-        <p className="text-xs text-[#777587] mb-4">Submit a GDPR Right to be Forgotten request to permanently delete your profile data. HR will review your request.</p>
-        <button onClick={() => setDelModal(true)} className="btn btn-danger btn-sm flex items-center gap-1.5">
-          <Trash2 size={13} /> Request Account Deletion (GDPR)
-        </button>
+        <p className="text-xs text-[#777587] leading-relaxed">
+          To request account deactivation or data deletion, please contact your HR Administrator directly.
+          Account changes require HR approval and cannot be self-initiated.
+        </p>
       </div>
-
-      <Modal open={delModal} onClose={() => setDelModal(false)} title="Request Account Deletion (GDPR)"
-        footer={<><button className="btn btn-outline" onClick={() => setDelModal(false)}>Cancel</button><button className="btn btn-danger" onClick={() => requestDel.mutate()} disabled={requestDel.isPending}>{requestDel.isPending ? 'Submitting…' : 'Submit Deletion Request'}</button></>}>
-        <p className="text-xs text-[#777587] mb-3">Under GDPR Right to be Forgotten, you can request permanent deletion of your profile and data. HR will review your request.</p>
-        <label className="form-label">Reason for deletion (optional)</label>
-        <textarea className="form-control text-xs" rows={3} placeholder="Provide a reason..." value={delReason} onChange={e => setDelReason(e.target.value)} />
-      </Modal>
     </div>
   );
 }
