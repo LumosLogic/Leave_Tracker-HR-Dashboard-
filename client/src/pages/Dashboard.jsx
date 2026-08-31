@@ -489,6 +489,8 @@ function AttendanceTrendChart({ analytics, navigate }) {
 // ── Organization Overview ──────────────────────────────────────────────────────
 function OrgOverviewSection({ analytics, navigate }) {
   const { deptDistribution = [], roleDistribution = [], totalDepts = 0, totalEmpCount = 0 } = analytics || {};
+  // BUG_170: number of distinct designation/role types shown in chart (not total employees)
+  const totalRoleTypes = roleDistribution.length;
   const [tab, setTab] = useState('depts');
 
   const deptChartData = {
@@ -533,7 +535,7 @@ function OrgOverviewSection({ analytics, navigate }) {
           </button>
           <button onClick={() => setTab('roles')}
             className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${!isDepts ? 'bg-white text-[#3525cd] shadow-xs' : 'text-[#777587] hover:text-[#151c27]'}`}>
-            Roles ({totalEmpCount})
+            Roles ({totalRoleTypes})
           </button>
         </div>
       </div>

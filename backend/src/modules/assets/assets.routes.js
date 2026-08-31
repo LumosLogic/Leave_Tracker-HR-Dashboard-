@@ -30,9 +30,11 @@ router.post('/', auth, hasPermission('assets', 'create'), async (req, res) => {
     const oId = req.user.organization_id;
     const body = { ...req.body, organization_id: oId };
     delete body.id; delete body.created_at;
-    // BUG_134: serial_number is bigint in DB — send null if empty string to avoid type error
+    // BUG_134: convert empty-string FK/numeric fields to null to avoid bigint/uuid type errors
     if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
     if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
+    if (body.assigned_to === '' || body.assigned_to === undefined) body.assigned_to = null;
+    if (body.purchase_date === '' || body.purchase_date === undefined) body.purchase_date = null;
     const { data, error } = await db.from('assets').insert(body).select().single();
     if (error) throw error;
     res.json(data);
@@ -46,9 +48,11 @@ router.put('/:id', auth, hasPermission('assets', 'manage'), async (req, res) => 
     const oId = req.user.organization_id;
     const body = { ...req.body };
     delete body.id; delete body.created_at; delete body.organization_id;
-    // BUG_134: sanitize bigint/numeric fields
+    // BUG_134: sanitize bigint/numeric/date FK fields — empty strings cause type errors
     if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
     if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
+    if (body.assigned_to === '' || body.assigned_to === undefined) body.assigned_to = null;
+    if (body.purchase_date === '' || body.purchase_date === undefined) body.purchase_date = null;
     const { data, error } = await db.from('assets')
       .update(body).eq('id', req.params.id).eq('organization_id', oId)
       .select().single();

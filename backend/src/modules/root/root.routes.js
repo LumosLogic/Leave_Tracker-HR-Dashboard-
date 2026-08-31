@@ -21,7 +21,8 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
       if (!u) return res.status(404).json({ error: 'User not found in your organization' });
       recipients = [u.email];
     } else {
-      const { data: users } = await db.from('users').select('email').eq('organization_id', oId).neq('role', 'root_admin');
+      // BUG_136: "all employees" must exclude both root admins and HR admins
+      const { data: users } = await db.from('users').select('email').eq('organization_id', oId).eq('role', 'employee');
       recipients = (users || []).map(u => u.email).filter(Boolean);
     }
 
@@ -381,8 +382,9 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
 
     res.json({
       totalEmployees, totalHR, pendingLeaves, presentToday,
-      // BUG_116: expose pendingRegCount so frontend KPI can add it to pendingLeaves
+      // BUG_116: expose pendingRegCount and pendingExpCount so frontend KPI adds all pending types
       pendingRegCount: pendingReg || 0,
+      pendingExpCount: pendingExp || 0,
       totalDepartments: totalDepartments || 0,
       recentLeaves:      flat(recentLeavesRaw),
       pendingLeavesData: flat(pendingLeavesRaw),

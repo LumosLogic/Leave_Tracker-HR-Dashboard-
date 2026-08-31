@@ -89,6 +89,10 @@ router.post('/', auth, async (req, res) => {
     const oId = resolveOrgId(req);
     const { title, content, type, priority, target_audience, pinned, expires_at, file_url, file_name, file_type } = req.body;
     if (!title || !content) return res.status(400).json({ error: 'title and content required' });
+    // BUG_088: enforce field length limits at API level
+    if (title.trim().length > 100) return res.status(400).json({ error: 'Title must be 100 characters or fewer.' });
+    if (!/[a-zA-Z]/.test(title.trim())) return res.status(400).json({ error: 'Title must contain at least one letter.' });
+    if (content.trim().length > 2000) return res.status(400).json({ error: 'Content must be 2000 characters or fewer.' });
 
     // BUG_090: Duplicate check — same title by same creator within last 24 hours
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

@@ -279,9 +279,11 @@ export default function Performance() {
     onError: e => toast(e.message, 'error'),
   });
 
-  const completedGoals = goals.filter(g => g.status === 'completed').length;
+  // BUG_165: exclude cancelled goals/reviews from all KPI calculations
   const activeGoals    = goals.filter(g => g.status !== 'cancelled');
+  const completedGoals = activeGoals.filter(g => g.status === 'completed').length;
   const avgProgress    = activeGoals.length > 0 ? Math.min(100, Math.round(activeGoals.reduce((s, g) => s + Math.min(100, Math.max(0, Number(g.progress) || 0)), 0) / activeGoals.length)) : 0;
+  const activeReviews  = reviews.filter(r => r.status !== 'cancelled');
 
   return (
     <div className={wrap}>
@@ -309,10 +311,10 @@ export default function Performance() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Goals',    value: goals.length,    color: 'from-[#f0f3ff] to-[#e7eefe]',    top: '#3525cd', text: 'text-[#3525cd]' },
-          { label: 'Completed',      value: completedGoals,  color: 'from-emerald-50 to-emerald-100',  top: '#10B981', text: 'text-emerald-700' },
-          { label: 'Avg. Progress',  value: `${avgProgress}%`,color: 'from-amber-50 to-amber-100',    top: '#F59E0B', text: 'text-amber-700' },
-          { label: 'Reviews',        value: reviews.length,  color: 'from-[#f0f3ff] to-[#e7eefe]',    top: '#712ae2', text: 'text-[#712ae2]' },
+          { label: 'Total Goals',    value: activeGoals.length,    color: 'from-[#f0f3ff] to-[#e7eefe]',    top: '#3525cd', text: 'text-[#3525cd]' },
+          { label: 'Completed',      value: completedGoals,        color: 'from-emerald-50 to-emerald-100',  top: '#10B981', text: 'text-emerald-700' },
+          { label: 'Avg. Progress',  value: `${avgProgress}%`,     color: 'from-amber-50 to-amber-100',      top: '#F59E0B', text: 'text-amber-700' },
+          { label: 'Reviews',        value: activeReviews.length,  color: 'from-[#f0f3ff] to-[#e7eefe]',    top: '#712ae2', text: 'text-[#712ae2]' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl p-5 bg-gradient-to-br ${s.color} border border-[#c7c4d8] shadow-card relative overflow-hidden`}>
             <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-xl" style={{ background: s.top }} />

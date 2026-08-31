@@ -222,7 +222,7 @@ function EditRoleModal({ role, onClose, onSaved }) {
               autoFocus
               value={name}
               onChange={e => setName(e.target.value)}
-              maxLength={100}
+              maxLength={50}
               placeholder="e.g. Finance Manager"
               className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 transition-colors"
             />
@@ -298,14 +298,17 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
     onError: (err) => setRemoveError(err.message || 'Failed to remove member'),
   });
 
-  // BUG_142: assign to one role exclusively — PUT /roles/user/:userId replaces all existing roles
+  // BUG_142: assign to one role exclusively — PUT /roles/user/:userId replaces all existing roles.
+  // Invalidate ALL role caches so the previously-assigned role's member list updates without refresh.
   const addMut = useMutation({
     mutationFn: async (user) => {
       await apiPut(`/roles/user/${user.id}`, { role_ids: [parseInt(roleId, 10)] });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['role', String(roleId)] });
-      qc.invalidateQueries({ queryKey: ['role-members', roleId] });
+      // Invalidate current role AND all other roles — the user was removed from their previous role
+      qc.invalidateQueries({ queryKey: ['role'] });
+      qc.invalidateQueries({ queryKey: ['role-members'] });
+      qc.invalidateQueries({ queryKey: ['roles'] });
       refetchMembers?.();
       onRefetch?.();
       setShowPicker(false);
@@ -655,12 +658,13 @@ export default function PermissionMatrix() {
           </div>
         )}
 
-        {/* System role banner */}
+        {/* System role banner — BUG_160: core permissions are protected; only additions allowed */}
         {isSystemRole && !isRootAdmin && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
-            <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
+            <Lock size={15} className="text-amber-500 flex-shrink-0" />
             <p className="text-xs text-amber-700 font-semibold">
-              This is a system role. You can modify its permissions, but it cannot be deleted or renamed.
+              This is a system role. Pre-loaded (core) permissions are <strong>protected</strong> and cannot be removed.
+              You may grant additional permissions on top of the baseline. The role cannot be deleted or renamed.
             </p>
           </div>
         )}

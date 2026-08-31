@@ -39,7 +39,7 @@ function PanelWrap({ group, label, icon: Icon, accentColor = '#3525cd', children
   return (
     <div className="h-full flex flex-col">
       {/* Panel header */}
-      <div className="px-8 pt-7 pb-5 border-b border-[#f0f3ff]">
+      <div className="px-4 sm:px-8 pt-5 sm:pt-7 pb-4 sm:pb-5 border-b border-[#f0f3ff]">
         <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#a09fb5] mb-1">{group}</p>
         <h2 className="text-xl font-black text-[#151c27] flex items-center gap-2.5">
           <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl" style={{ background: accentColor + '15' }}>
@@ -49,7 +49,7 @@ function PanelWrap({ group, label, icon: Icon, accentColor = '#3525cd', children
         </h2>
       </div>
       {/* Panel body */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">{children}</div>
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6">{children}</div>
     </div>
   );
 }
@@ -876,10 +876,10 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="flex gap-5 items-start min-h-[calc(100vh-200px)]">
+      <div className="flex flex-col lg:flex-row gap-5 items-start min-h-[calc(100vh-200px)]">
 
         {/* ── Left navigation sidebar ── */}
-        <div className="w-64 flex-shrink-0 sticky top-4">
+        <div className="w-full lg:w-64 lg:flex-shrink-0 lg:sticky lg:top-4">
           <div className="bg-white border border-[#e7eefe] rounded-2xl overflow-hidden shadow-sm">
             {NAV_GROUPS.map((group, gi) => {
               const GroupIcon  = group.icon;

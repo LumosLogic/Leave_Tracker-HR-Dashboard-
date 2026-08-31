@@ -7,8 +7,8 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
-// BUG_088: max length constants
-const TITLE_MAX   = 150;
+// BUG_088: max length constants — title capped at 100 to prevent UI crash
+const TITLE_MAX   = 100;
 const CONTENT_MAX = 2000;
 
 const TYPE_CFG = {
@@ -102,7 +102,7 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
             <label className="form-label mb-0">Title *</label>
             <span className={`text-[0.65rem] font-semibold ${titleLen > TITLE_MAX ? 'text-rose-600' : 'text-[#777587]'}`}>{titleLen}/{TITLE_MAX}</span>
           </div>
-          <input className={`form-control ${errors.title ? 'border-rose-400' : ''}`} placeholder="Announcement title…" maxLength={TITLE_MAX + 10} value={form.title} onChange={e => { set('title', e.target.value); if (errors.title) setErrors(p => ({ ...p, title: '' })); }} />
+          <input className={`form-control ${errors.title ? 'border-rose-400' : ''}`} placeholder="Announcement title…" maxLength={TITLE_MAX} value={form.title} onChange={e => { set('title', e.target.value); if (errors.title) setErrors(p => ({ ...p, title: '' })); }} />
           {errors.title && <p className="text-xs text-rose-500 mt-1">{errors.title}</p>}
         </div>
         <div>
@@ -323,7 +323,7 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 flex-wrap">
                 {a.pinned && <Pin size={12} className="text-[#3525cd]" />}
-                <h3 className="font-black text-[#151c27] break-words overflow-hidden">{a.title}</h3>
+                <h3 className="font-black text-[#151c27] break-words overflow-hidden line-clamp-2">{a.title}</h3>
                 <span className={`badge ${cfg.bg} ${cfg.text} ${cfg.border} border flex items-center gap-1`}>{cfg.icon}{cfg.label}</span>
                 {expired && <span className="badge badge-cancelled">Expired</span>}
               </div>
@@ -334,7 +334,7 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
                 </div>
               )}
             </div>
-            <p className="text-sm text-[#464555] whitespace-pre-wrap leading-relaxed mb-3 break-words overflow-hidden max-h-48 overflow-y-auto">{a.content}</p>
+            <p className="text-sm text-[#464555] leading-relaxed mb-3 break-words overflow-hidden line-clamp-6">{a.content}</p>
 
             {/* Attached Poster or Document Display */}
             {a.file_url && (

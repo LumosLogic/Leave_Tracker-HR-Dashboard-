@@ -60,11 +60,16 @@ function LevelRow({ level, index, total, usedTypes = new Set(), onChange, onDele
             <input
               type="text"
               value={level.level_label || ''}
-              onChange={e => onChange({ ...level, level_label: e.target.value })}
+              onChange={e => {
+                const v = e.target.value;
+                // Validate: if not empty it must contain at least one letter, no pure numbers/symbols
+                onChange({ ...level, level_label: v, _labelErr: v.trim() && !/[a-zA-Z]/.test(v) ? 'Must contain at least one letter' : '' });
+              }}
               placeholder={roleOption?.label || 'e.g. HR Approval'}
               maxLength={30}
-              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+              className={`w-full border rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:ring-1 ${level._labelErr ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-200' : 'border-[#c7c4d8] focus:border-[#3525cd] focus:ring-[#3525cd]/20'}`}
             />
+            {level._labelErr && <p className="text-[0.62rem] text-rose-500 mt-0.5">{level._labelErr}</p>}
             <p className="text-[0.62rem] text-[#9ca3af] mt-1">Shown in employee timeline</p>
           </div>
 
@@ -129,10 +134,13 @@ export default function LeaveWorkflowSettings() {
   const [levels, setLevels] = useState([]);
   const [dirty, setDirty] = useState(false);
 
-  // BUG_109: validate workflow name
+  // BUG_109: validate workflow name — requires at least one letter, no pure digits/special-char names
   function validateWorkflowName(name) {
     if (!name.trim()) return 'Workflow name is required.';
     if (!/[a-zA-Z]/.test(name)) return 'Workflow name must contain at least one alphabetic character.';
+    if (/^\s+/.test(name)) return 'Workflow name cannot start with spaces.';
+    if (/\s{2,}/.test(name)) return 'Workflow name cannot contain consecutive spaces.';
+    if (name.trim().length < 3) return 'Workflow name must be at least 3 characters.';
     if (name.trim().length > 100) return 'Workflow name must be 100 characters or fewer.';
     return '';
   }
@@ -253,7 +261,7 @@ export default function LeaveWorkflowSettings() {
         <input
           type="text"
           value={workflowName}
-          onChange={e => { setWorkflowName(e.target.value); setDirty(true); if (workflowNameError) setWorkflowNameError(validateWorkflowName(e.target.value)); }}
+          onChange={e => { const v = e.target.value; setWorkflowName(v); setDirty(true); setWorkflowNameError(validateWorkflowName(v)); }}
           placeholder="e.g. Standard Leave Approval"
           className={`w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20 ${workflowNameError ? 'border-rose-400' : 'border-[#c7c4d8]'}`}
           maxLength={100}

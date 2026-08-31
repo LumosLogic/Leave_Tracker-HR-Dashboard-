@@ -240,6 +240,14 @@ export default function DeptHeadApprovals() {
     queryFn:  () => apiGet('/leaves/is-dept-head'),
   });
 
+  // BUG_153: fetch actual team count for the Team Members stat
+  const { data: teamData } = useQuery({
+    queryKey: ['team-dashboard'],
+    queryFn:  () => apiGet('/leaves/team-dashboard'),
+    enabled:  !!(deptInfo?.is_dept_head),
+  });
+  const actualTeamCount = teamData?.team_count ?? new Set(pending.map(l => l.user_id)).size;
+
   function invalidate() {
     qc.invalidateQueries({ queryKey: ['dept-pending-leaves'] });
     qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -331,7 +339,8 @@ export default function DeptHeadApprovals() {
         {[
           { label: 'Total Pending',  value: pending.length,    bg: 'bg-[#f0f3ff]', icon: <Clock size={16} className="text-[#3525cd]" /> },
           { label: 'New Workflow',   value: newFlowCount,      bg: 'bg-emerald-50', icon: <CheckCircle2 size={16} className="text-emerald-600" /> },
-          { label: 'Team Members',   value: new Set(pending.map(l => l.user_id)).size, bg: 'bg-amber-50', icon: <Users size={16} className="text-amber-600" /> },
+          // BUG_153: show actual team size, not just those with pending leaves
+          { label: 'Team Members',   value: actualTeamCount, bg: 'bg-amber-50', icon: <Users size={16} className="text-amber-600" /> },
         ].map((c, i) => (
           <div key={i} className="bg-white border border-[#e7eefe] rounded-xl p-4">
             <div className={`w-8 h-8 rounded-xl ${c.bg} flex items-center justify-center mb-2`}>{c.icon}</div>

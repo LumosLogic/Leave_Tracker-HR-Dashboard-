@@ -222,8 +222,8 @@ router.post('/', auth, hasPermission('roles', 'manage'), async (req, res) => {
       return res.status(400).json({ error: 'Role name is required' });
     }
     const trimmedName = name.trim();
-    if (trimmedName.length > 100) {
-      return res.status(400).json({ error: 'Role name must be 100 characters or fewer' });
+    if (trimmedName.length > 50) {
+      return res.status(400).json({ error: 'Role name must be 50 characters or fewer' });
     }
 
     const slug = slugify(trimmedName) + '_' + Date.now();
@@ -326,7 +326,7 @@ router.put('/:id', auth, hasPermission('roles', 'manage'), async (req, res) => {
     if (name !== undefined) {
       const trimmed = name.trim();
       if (!trimmed) return res.status(400).json({ error: 'Role name cannot be empty' });
-      if (trimmed.length > 100) return res.status(400).json({ error: 'Role name must be 100 characters or fewer' });
+      if (trimmed.length > 50) return res.status(400).json({ error: 'Role name must be 50 characters or fewer' });
       update.name = trimmed;
     }
     if (description !== undefined) update.description = description.slice(0, 500);
@@ -480,6 +480,38 @@ router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (re
     // Root Admin role always has all permissions and cannot be restricted
     if (role.slug === 'root_admin') {
       return res.status(400).json({ error: 'The Root Admin role always has all permissions and cannot be restricted.' });
+    }
+
+    // BUG_160: For other system roles, only ALLOW adding new permissions — never remove pre-existing ones.
+    // This preserves the minimum required permissions for hr_admin, dept_head, and employee system roles.
+    if (role.is_system_role) {
+      // Fetch current permissions for this system role
+      const { data: existingPerms } = await db.from('role_permissions').select('permission_id').eq('role_id', roleId);
+      const existingIds = new Set((existingPerms || []).map(p => p.permission_id));
+      // Merge: keep all existing + add any new ones requested; never remove existing
+      const mergedIds = new Set([...existingIds, ...safeIds]);
+      // Override safeIds to prevent removal
+      const client2 = await pool.connect();
+      try {
+        await client2.query('BEGIN');
+        if (mergedIds.size > 0) {
+          const mergedArr = Array.from(mergedIds);
+          const values = mergedArr.map((_, i) => `($1, $${i + 2})`).join(', ');
+          await client2.query(
+            `INSERT INTO role_permissions (role_id, permission_id)
+             VALUES ${values}
+             ON CONFLICT (role_id, permission_id) DO NOTHING`,
+            [roleId, ...mergedArr]
+          );
+        }
+        await client2.query('COMMIT');
+      } catch (err2) {
+        await client2.query('ROLLBACK');
+        throw err2;
+      } finally { client2.release(); }
+      clearOrgCache(oId);
+      const { data: result } = await db.from('role_permissions').select('permission_id, permissions(id, module_key, action, label)').eq('role_id', roleId);
+      return res.json((result || []).map(r => r.permissions).filter(Boolean));
     }
 
     const client = await pool.connect();

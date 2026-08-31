@@ -110,25 +110,50 @@ router.post('/', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/exit/:id — fetch a single exit request (for modal detail view)
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+    const { data, error } = await db.from('exit_requests')
+      .select('*').eq('id', req.params.id).eq('organization_id', oId).single();
+    if (error) return res.status(404).json({ error: 'Exit request not found' });
+    if (!isAdmin(req.user.role) && data.user_id !== req.user.id)
+      return res.status(403).json({ error: 'Access denied' });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // PUT /api/exit/:id
 router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
     // Explicit field whitelist — prevents mass assignment of user_id, reviewed_by, reviewed_at, etc.
-    const { resignation_date, reason, notice_period_days, last_working_day, notes, status } = req.body;
+    const { resignation_date, reason, notice_period_days, last_working_day, notes, status,
+            clearance_it, clearance_hr, clearance_finance, clearance_admin } = req.body;
     const updates = {};
     if (resignation_date   !== undefined) updates.resignation_date   = resignation_date;
     if (reason             !== undefined) updates.reason             = reason || '';
     if (notice_period_days !== undefined) updates.notice_period_days = Number(notice_period_days) || 30;
     if (last_working_day   !== undefined) updates.last_working_day   = last_working_day;
     if (notes              !== undefined) updates.notes              = notes || '';
+    // BUG_155: clearance fields must be included in the whitelist
+    if (clearance_it      !== undefined) updates.clearance_it      = !!clearance_it;
+    if (clearance_hr      !== undefined) updates.clearance_hr      = !!clearance_hr;
+    if (clearance_finance !== undefined) updates.clearance_finance = !!clearance_finance;
+    if (clearance_admin   !== undefined) updates.clearance_admin   = !!clearance_admin;
     if (status             !== undefined) {
       if (!['approved', 'rejected'].includes(status))
         return res.status(400).json({ error: "status must be 'approved' or 'rejected'" });
       updates.status = status;
     }
     const isStatusChange = updates.status === 'approved' || updates.status === 'rejected';
+
+    // Guard against empty update object (would cause a DB error)
+    if (Object.keys(updates).length === 0) {
+      const { data: current } = await db.from('exit_requests').select('*').eq('id', req.params.id).eq('organization_id', oId).single();
+      return res.json(current || {});
+    }
 
     if (isStatusChange) {
       // Fetch current state to enforce idempotency — prevent double-approval

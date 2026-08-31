@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 function validateRoleName(val) {
   if (!val || !val.trim()) return 'Role name is required';
   if (val.trim().length < 2) return 'Must be at least 2 characters';
-  if (val.trim().length > 100) return 'Must be 100 characters or fewer';
+  if (val.trim().length > 50) return 'Must be 50 characters or fewer';
   if (/[^a-zA-Z0-9\s\-_]/.test(val)) return 'Only letters, numbers, spaces, hyphens, and underscores are allowed';
   return '';
 }
@@ -70,8 +70,8 @@ function CreateRoleModal({ onClose, onCreate }) {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-[#464555]">Role Name <span className="text-rose-500">*</span></label>
-              <span className={cn('text-[0.65rem] font-semibold', name.length > 90 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
-                {name.length}/100
+              <span className={cn('text-[0.65rem] font-semibold', name.length > 45 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {name.length}/50
               </span>
             </div>
             <input
@@ -79,7 +79,7 @@ function CreateRoleModal({ onClose, onCreate }) {
               value={name}
               onChange={handleNameChange}
               placeholder="e.g. Finance Manager"
-              maxLength={100}
+              maxLength={50}
               className={cn(
                 'w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:ring-1 transition-colors',
                 nameErr
@@ -196,8 +196,8 @@ function EditRoleModal({ role, onClose, onSaved }) {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-[#464555]">Role Name <span className="text-rose-500">*</span></label>
-              <span className={cn('text-[0.65rem] font-semibold', name.length > 90 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
-                {name.length}/100
+              <span className={cn('text-[0.65rem] font-semibold', name.length > 45 ? 'text-amber-500' : 'text-[#c7c4d8]')}>
+                {name.length}/50
               </span>
             </div>
             <input
@@ -205,7 +205,7 @@ function EditRoleModal({ role, onClose, onSaved }) {
               value={name}
               onChange={handleNameChange}
               placeholder="e.g. Finance Manager"
-              maxLength={100}
+              maxLength={50}
               className={cn(
                 'w-full border rounded-lg px-3 py-2.5 text-sm text-[#151c27] focus:outline-none focus:ring-1 transition-colors',
                 nameErr

@@ -59,7 +59,8 @@ export default function Broadcast() {
     queryKey: ['all-users-broadcast'],
     queryFn: () => apiGet('/employees'),
   });
-  const employees = allUsers.filter(u => u.role !== 'root_admin');
+  // BUG_135/136: exclude both root admins and HR admins — broadcast should reach employees only
+  const employees = allUsers.filter(u => u.role !== 'root_admin' && u.role !== 'admin');
 
   const [nTitle,   setNTitle]   = useState('');
   const [nBody,    setNBody]    = useState('');

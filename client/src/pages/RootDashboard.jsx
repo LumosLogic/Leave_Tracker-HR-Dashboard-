@@ -241,8 +241,9 @@ export default function RootDashboard() {
 
   const {
     totalEmployees = 0, totalHR = 0, pendingLeaves = 0, presentToday = 0,
-    // BUG_116: pendingRegCount comes from dashboard API (leaves table only for pendingLeaves)
+    // BUG_116: pendingRegCount and pendingExpCount come from dashboard API
     pendingRegCount = 0,
+    pendingExpCount = 0,
     totalDepartments = 0,
     pendingLeavesData = [], attendanceBreakdown = {}, leavesByType = {},
     attendanceTrend = [], departmentHealth = [], headcountGrowth = [],
@@ -254,8 +255,8 @@ export default function RootDashboard() {
   const onLeaveToday = attendanceBreakdown.on_leave || 0;
   // BUG_117: totalEmployees from backend already excludes resigned/terminated
   const presentPct   = totalEmployees > 0 ? Math.min(100, Math.round((presentToday / totalEmployees) * 100)) : 0;
-  // BUG_116: total pending = leaves/WFH (from dashboard API) + regularizations
-  const totalPendingApprovals = pendingLeaves + pendingRegCount;
+  // BUG_116: total pending = leaves/WFH + regularizations + expenses
+  const totalPendingApprovals = pendingLeaves + pendingRegCount + pendingExpCount;
 
   // ── Yearly leave: sort + filter ───────────────────────────────────────────────
   const allYearly   = yearlyData?.employees || [];
@@ -544,8 +545,8 @@ export default function RootDashboard() {
       sub: onLeaveToday > 0 ? `${onLeaveToday} out today` : 'Full attendance',
       icon: <CalendarDays size={16} />,
       iconBg: onLeaveToday > 3 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-500',
-      tooltip: 'Employees on approved leave today. Click to view filtered leave records.',
-      onClick: () => navigate(`/root/leaves?tab=all&date=${new Date().toISOString().split('T')[0]}`) },
+      tooltip: 'Employees on approved leave today. Click to see who is on leave.',
+      onClick: () => setAttModal({ date: new Date().toISOString().split('T')[0], filter: 'on_leave' }) },
   ];
 
   // ── Activity name click ───────────────────────────────────────────────────────

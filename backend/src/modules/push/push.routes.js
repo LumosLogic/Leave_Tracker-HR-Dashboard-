@@ -46,7 +46,8 @@ router.post('/send', auth, adminOnly, async (req, res) => {
       if (!u) return res.status(404).json({ error: 'User not found' });
       userIds = [u.id];
     } else {
-      const { data: users } = await db.from('users').select('id').eq('organization_id', oId);
+      // BUG_135/177: broadcast to all should exclude root admins and HR admins — employees only
+      const { data: users } = await db.from('users').select('id').eq('organization_id', oId).eq('role', 'employee');
       userIds = (users || []).map(u => u.id);
     }
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
