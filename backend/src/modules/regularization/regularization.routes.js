@@ -69,6 +69,7 @@ router.post('/', auth, async (req, res) => {
         title: 'Regularization Request',
         message: `${req.user.name} requested attendance correction for ${date}`,
         type: 'regularization',
+        reference_id: data.id, reference_type: 'regularization',
         organization_id: oId,
       })));
     }

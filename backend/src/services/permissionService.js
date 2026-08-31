@@ -98,7 +98,24 @@ async function resolvePermissions(userId, orgId) {
        JOIN role_permissions rp ON rp.role_id = r.id
        JOIN permissions p       ON p.id = rp.permission_id
        WHERE u.id = $1
-         AND u.organization_id = $2`,
+         AND u.organization_id = $2
+
+       UNION
+
+       -- BUG_168/169/172: Department Head system role permissions for users set
+       -- as head_user_id in any department. Dept heads have users.role='employee'
+       -- so the second UNION only gives them employee-level permissions. This third
+       -- UNION automatically grants dept_head permissions based on DB assignment,
+       -- without requiring a manual user_roles row.
+       SELECT DISTINCT p.module_key || '.' || p.action AS permission
+       FROM departments d
+       JOIN roles r  ON r.org_id        = d.organization_id
+                    AND r.is_system_role = true
+                    AND r.slug           = 'dept_head'
+       JOIN role_permissions rp ON rp.role_id = r.id
+       JOIN permissions p       ON p.id       = rp.permission_id
+       WHERE d.head_user_id    = $1
+         AND d.organization_id = $2`,
       [userId, orgId]
     );
 

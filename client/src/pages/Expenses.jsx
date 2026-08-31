@@ -309,6 +309,9 @@ export default function ExpensesPage() {
   const [confirmDel,       setConfirmDel]       = useState(null);
   const [filter,           setFilter]           = useState('all');
 
+  // BUG_094: read ?highlight=X from URL for notification-driven scrolling
+  const highlightExpId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
+
   // Auto-open submit form from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
     if (!isAdmin && searchParams.get('action') === 'apply') setAddOpen(true);
@@ -318,6 +321,13 @@ export default function ExpensesPage() {
 
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });
   const expenses = Array.isArray(_expData) ? _expData : [];
+
+  // BUG_094: scroll to highlighted expense after data loads
+  useEffect(() => {
+    if (!highlightExpId || !expenses.length) return;
+    const el = document.getElementById(`exp-${highlightExpId}`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [highlightExpId, expenses.length]);
   // Fetch all claims (unfiltered) to differentiate "no records for filter" vs "no claims at all"
   const { data: _allExpData } = useQuery({ queryKey: ['expenses', 'all'], queryFn: () => apiGet('/expenses') });
   const allExpenses = Array.isArray(_allExpData) ? _allExpData : [];
@@ -397,7 +407,7 @@ export default function ExpensesPage() {
           {expenses.map(e => {
             const cfg = STATUS_CFG[e.status] || STATUS_CFG.pending;
             return (
-              <div key={e.id} className="card p-4 hover:shadow-card-hover transition-all duration-200">
+              <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightExpId === e.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
                 <div className="flex items-start gap-4">
                   {isAdmin && <Avatar name={e.user_name || ''} color={e.user_avatar_color} size={38} />}
                   <div className="flex-1 min-w-0">

@@ -75,7 +75,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
       onClick={() => !disabled && onChange(permId, !checked)}
       onMouseDown={(e) => {
         // Prevent default browser focus algorithm to stop layout jumping in SPA layout
-        e.preventDefault(); 
+        e.preventDefault();
       }}
       onKeyDown={(e) => {
         if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
@@ -83,16 +83,19 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
           onChange(permId, !checked);
         }
       }}
+      title={disabled ? 'This permission is protected in system roles and cannot be removed' : undefined}
       className={cn(
-        'relative flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all select-none focus:outline-none focus:ring-2 focus:ring-[#3525cd]/20',
-        disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#f0f3ff]',
-        checked && !disabled ? 'bg-[#3525cd]/5 border border-[#3525cd]/20' : 'border border-transparent'
+        'relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all select-none focus:outline-none focus:ring-2 focus:ring-[#3525cd]/20',
+        disabled ? 'cursor-not-allowed bg-amber-50/40 border border-amber-100' : 'cursor-pointer hover:bg-[#f0f3ff]',
+        checked && !disabled ? 'bg-[#3525cd]/5 border border-[#3525cd]/20' : disabled ? '' : 'border border-transparent'
       )}
     >
       <div className="flex-shrink-0">
-        {checked
-          ? <CheckSquare size={16} className={disabled ? 'text-[#777587]' : 'text-[#3525cd]'} />
-          : <Square size={16} className="text-[#c7c4d8]" />
+        {disabled && checked
+          ? <Lock size={14} className="text-amber-500" title="This permission is protected and cannot be removed from a system role" />
+          : checked
+            ? <CheckSquare size={16} className="text-[#3525cd]" />
+            : <Square size={16} className="text-[#c7c4d8]" />
         }
       </div>
       <div className="min-w-0">
@@ -162,7 +165,9 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
               permission={permItem}
               checked={safeSelectedIds.has(permItem.id)}
               onChange={onToggle}
-              disabled={isSystemRole && (module === 'roles' || true) /* root_admin always has all */}
+              // BUG_144/160/161: for system roles, checked permissions are locked (can't remove).
+              // Unchecked permissions remain toggleable (can add more).
+              disabled={isSystemRole && safeSelectedIds.has(permItem.id)}
             />
           ))}
         </div>
@@ -505,6 +510,12 @@ export default function PermissionMatrix() {
   }
 
   function handleToggle(permId, checked) {
+    // BUG_144/160/161: For system roles (not root_admin), prevent removal of existing permissions.
+    // The backend enforces this too — this gives immediate UI feedback instead of silent revert.
+    if (isSystemRole && !isRootAdmin && !checked && selectedIds.has(permId)) {
+      showToast('System role permissions are protected — you can only grant additional ones, not remove them.', 'error');
+      return;
+    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       checked ? next.add(permId) : next.delete(permId);
@@ -514,6 +525,10 @@ export default function PermissionMatrix() {
   }
 
   function handleToggleAll(perms, checked) {
+    if (isSystemRole && !isRootAdmin && !checked) {
+      showToast('System role permissions are protected and cannot be removed.', 'error');
+      return;
+    }
     setSelectedIds(prev => {
       const next = new Set(prev);
       perms.forEach(perm => checked ? next.add(perm.id) : next.delete(perm.id));
@@ -528,6 +543,10 @@ export default function PermissionMatrix() {
   }
 
   function handleDeselectAll() {
+    if (isSystemRole && !isRootAdmin) {
+      showToast('System role permissions are protected and cannot be removed.', 'error');
+      return;
+    }
     setSelectedIds(new Set());
     setDirty(true);
   }

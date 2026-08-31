@@ -963,16 +963,33 @@ router.put('/:id/approve', auth, async (req, res) => {
             });
           }
         } else {
-          // Role-based next approver — notify all in that role
-          const recipients = await getRecipients(oId);
-          if (recipients.length > 0 && typeof leaveForwardedToRootHtml === 'function') {
-            const { data: empUser } = await db.from('users')
-              .select('name, email, department').eq('id', leave.user_id).maybeSingle();
-            sendMail({
-              to: recipients,
-              subject: `Leave Forwarded for ${nextLabel} Approval`,
-              html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name, orgName, orgEmail),
-            });
+          // BUG_169: Role-based next approver (hr_admin / root_admin) — notify ALL users of that role
+          // via both in-app notification and email so they don't miss the queued leave.
+          const nextRoleType = nextInfo.level.role_type;
+          const roleFilter   = nextRoleType === 'root_admin' ? ['root_admin'] : ['admin', 'root_admin'];
+          const { data: roleUsers } = await db.from('users')
+            .select('id, email, name').eq('organization_id', oId).in('role', roleFilter);
+          const { data: empUser } = await db.from('users')
+            .select('name, email, department').eq('id', leave.user_id).maybeSingle();
+          const empName = empUser?.name || 'An employee';
+          if (roleUsers?.length) {
+            // In-app notifications
+            await db.from('notifications').insert(roleUsers.map(u => ({
+              user_id: u.id,
+              title:   `Leave Request Awaiting Your Approval`,
+              message: `${empName}'s leave request (${leave.start_date} → ${leave.end_date}) requires your approval at the ${nextLabel} stage.`,
+              type:    'leave',
+              organization_id: oId,
+            }))).catch(() => {});
+            // Email
+            const emailList = roleUsers.map(u => u.email).filter(Boolean);
+            if (emailList.length > 0 && typeof leaveForwardedToRootHtml === 'function') {
+              sendMail({
+                to: emailList,
+                subject: `Leave Forwarded for ${nextLabel} Approval`,
+                html: leaveForwardedToRootHtml(empUser || {}, leave, req.user.name, orgName, orgEmail),
+              });
+            }
           }
         }
 

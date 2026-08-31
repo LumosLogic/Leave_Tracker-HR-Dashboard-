@@ -91,7 +91,7 @@ router.post('/', auth, async (req, res) => {
         user_id: managerId,
         title:   'Expense Claim — Your Approval Needed',
         message: `${req.user.name} submitted an expense claim of ₹${amount} for "${title}". Please review and approve.`,
-        type:    'expense', organization_id: oId,
+        type:    'expense', reference_id: data.id, reference_type: 'expense', organization_id: oId,
       }).then(() => {});
     }
 
@@ -103,7 +103,7 @@ router.post('/', auth, async (req, res) => {
         message: managerId
           ? `${req.user.name} submitted ₹${amount} for "${title}" — awaiting manager approval.`
           : `${req.user.name} submitted ₹${amount} for "${title}" — no manager assigned, direct review needed.`,
-        type: 'expense', organization_id: oId,
+        type: 'expense', reference_id: data.id, reference_type: 'expense', organization_id: oId,
       })));
     }
     res.json(data);
@@ -195,7 +195,7 @@ router.put('/:id/review', auth, hasPermission('expenses', 'approve'), async (req
     await db.from('notifications').insert({
       user_id: exp.user_id, title: `Expense ${status === 'approved' ? 'Approved' : 'Rejected'}`,
       message: `Your expense claim "${exp.title}" of ₹${exp.amount} was ${status}.`,
-      type: 'expense', organization_id: oId,
+      type: 'expense', reference_id: parseInt(req.params.id), reference_type: 'expense', organization_id: oId,
     });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

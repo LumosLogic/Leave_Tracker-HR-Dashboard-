@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -199,11 +200,19 @@ export default function AnnouncementsPage() {
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
+  const location = useLocation();
   const [addOpen,      setAddOpen]      = useState(false);
   const [editAnn,      setEditAnn]      = useState(null);
   const [confirmDel,   setConfirmDel]   = useState(null);
   const [filter,       setFilter]       = useState('all');
   const [previewMedia, setPreviewMedia] = useState(null);
+
+  // BUG_094: read ?highlight=X from URL — scroll to that announcement when data loads
+  const highlightId = useMemo(() => {
+    const p = new URLSearchParams(location.search);
+    const h = p.get('highlight');
+    return h ? parseInt(h, 10) : null;
+  }, [location.search]);
 
   const activeOrgId = null;
 
@@ -223,6 +232,18 @@ export default function AnnouncementsPage() {
   const filtered = filter === 'all' ? announcements : announcements.filter(a => a.type === filter);
   const pinned   = filtered.filter(a => a.pinned && (!a.expires_at || a.expires_at >= today));
   const regular  = filtered.filter(a => !a.pinned || (a.expires_at && a.expires_at < today));
+
+  // BUG_094: scroll to highlighted announcement after data loads
+  useEffect(() => {
+    if (!highlightId || announcements.length === 0) return;
+    // If the target is filtered out, show all announcements
+    const target = announcements.find(a => a.id === highlightId);
+    if (target && target.type !== filter && filter !== 'all') setFilter('all');
+    const el = document.getElementById(`ann-${highlightId}`);
+    if (el) {
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    }
+  }, [highlightId, announcements.length]);
 
   return (
     <div className={wrap}>
@@ -268,7 +289,7 @@ export default function AnnouncementsPage() {
                 <Pin size={12} className="text-[#3525cd]" />
                 <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Pinned</span>
               </div>
-              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} />)}
+              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId === a.id} />)}
               {regular.length > 0 && (
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Latest</span>
@@ -277,7 +298,7 @@ export default function AnnouncementsPage() {
               )}
             </>
           )}
-          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} />)}
+          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId === a.id} />)}
         </div>
       )}
 
@@ -306,13 +327,20 @@ export default function AnnouncementsPage() {
   );
 }
 
-function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview }) {
+function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHighlighted }) {
   const cfg     = TYPE_CFG[a.type] || TYPE_CFG.general;
   const expired = a.expires_at && a.expires_at < today;
   const isImage = a.file_url && (a.file_type?.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif)$/i.test(a.file_url));
+  // BUG_094: fade highlight out after 3 seconds
+  const [lit, setLit] = useState(!!isHighlighted);
+  useEffect(() => {
+    if (!isHighlighted) return;
+    const t = setTimeout(() => setLit(false), 3000);
+    return () => clearTimeout(t);
+  }, [isHighlighted]);
 
   return (
-    <div className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''}`}>
+    <div id={`ann-${a.id}`} className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''} ${lit ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
       <div className="h-1 w-full" style={{ background: cfg.strip }} />
       <div className="p-5">
         <div className="flex items-start gap-3">

@@ -183,14 +183,14 @@ router.get('/dashboard', auth, rootAdminOnly, async (req, res) => {
         .select('id, name, department, position, avatar_color, created_at, role, date_of_birth, joining_date, employee_status')
         .eq('organization_id', oid).in('role', ['employee', 'admin']).order('name'),
       db.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin').eq('organization_id', oid),
-      // BUG_116: count pending leaves (WFH included as they share the leaves table)
-      db.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root']).eq('organization_id', oid),
+      // BUG_116: count ALL pending leaves — legacy (pending, pending_root) + new workflow (pending_approval)
+      db.from('leaves').select('*', { count: 'exact', head: true }).in('status', ['pending', 'pending_root', 'pending_approval']).eq('organization_id', oid),
       db.from('leaves')
         .select('id, user_id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
         .eq('organization_id', oid).order('created_at', { ascending: false }).limit(10),
       db.from('leaves')
         .select('id, leave_type, leave_time, status, start_date, end_date, reason, created_at, users!leaves_user_id_fkey(name, email, department, avatar_color)')
-        .eq('organization_id', oid).in('status', ['pending', 'pending_root']).order('created_at', { ascending: false }).limit(15),
+        .eq('organization_id', oid).in('status', ['pending', 'pending_root', 'pending_approval']).order('created_at', { ascending: false }).limit(15),
       db.from('attendance').select('user_id, status, check_in').eq('date', today).eq('organization_id', oid),
       db.from('leaves').select('leave_type, leave_time').eq('organization_id', oid).eq('status', 'approved')
         .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`),

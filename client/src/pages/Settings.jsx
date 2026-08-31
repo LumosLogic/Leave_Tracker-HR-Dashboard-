@@ -39,7 +39,7 @@ function PanelWrap({ group, label, icon: Icon, accentColor = '#3525cd', children
   return (
     <div className="h-full flex flex-col">
       {/* Panel header */}
-      <div className="px-4 sm:px-8 pt-5 sm:pt-7 pb-4 sm:pb-5 border-b border-[#f0f3ff]">
+      <div className="px-4 md:px-8 pt-4 md:pt-7 pb-4 md:pb-5 border-b border-[#f0f3ff]">
         <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#a09fb5] mb-1">{group}</p>
         <h2 className="text-xl font-black text-[#151c27] flex items-center gap-2.5">
           <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl" style={{ background: accentColor + '15' }}>
@@ -49,7 +49,7 @@ function PanelWrap({ group, label, icon: Icon, accentColor = '#3525cd', children
         </h2>
       </div>
       {/* Panel body */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-4 sm:py-6">{children}</div>
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-6">{children}</div>
     </div>
   );
 }
@@ -821,8 +821,9 @@ export default function Settings() {
   });
   const schedule = data?.schedule;
 
-  const [active,       setActive]       = useState(() => firstVisible(role));
-  const [openGroups,   setOpenGroups]   = useState(() => new Set(NAV_GROUPS.map(g => g.id)));
+  const [active,         setActive]       = useState(() => firstVisible(role));
+  const [openGroups,     setOpenGroups]   = useState(() => new Set(NAV_GROUPS.map(g => g.id)));
+  const [mobileNavOpen,  setMobileNavOpen] = useState(false);
 
   if (isLoading) return <div className="loading"><div className="spinner" /> Loading…</div>;
 
@@ -867,6 +868,12 @@ export default function Settings() {
     }
   }
 
+  // Build a flat list of all visible items for the mobile dropdown
+  const allVisibleItems = NAV_GROUPS.flatMap(g =>
+    g.items.filter(i => i.roles.includes(role)).map(i => ({ ...i, groupLabel: g.label, groupColor: g.color }))
+  );
+  const activeItem = allVisibleItems.find(i => i.id === active);
+
   return (
     <div>
       <div className="page-header mb-5">
@@ -876,10 +883,75 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-5 items-start min-h-[calc(100vh-200px)]">
+      {/* ── Mobile nav: compact dropdown selector (hidden on lg+) ─────────────── */}
+      <div className="lg:hidden mb-4">
+        <div className="bg-white border border-[#e7eefe] rounded-2xl shadow-sm overflow-hidden">
+          {/* Current section indicator — tap to open/close the nav list */}
+          <button
+            onClick={() => setMobileNavOpen(o => !o)}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f9f9ff] transition-colors"
+          >
+            {activeItem && (
+              <>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: (activeItem.groupColor || '#3525cd') + '18' }}>
+                  {activeItem.icon && <activeItem.icon size={14} style={{ color: activeItem.groupColor || '#3525cd' }} />}
+                </span>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-[0.6rem] font-bold text-[#9ca3af] uppercase tracking-widest truncate">{activeItem.groupLabel}</p>
+                  <p className="text-sm font-bold text-[#151c27] truncate">{activeItem.label}</p>
+                </div>
+              </>
+            )}
+            <ChevronDown size={16} className={`text-[#c7c4d8] flex-shrink-0 transition-transform duration-200 ${mobileNavOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {/* Grouped item list — expandable/collapsible */}
+          {mobileNavOpen && (
+            <div className="border-t border-[#f0f3ff] overflow-y-auto max-h-72">
+              {NAV_GROUPS.map((group, gi) => {
+                const visibleItems = group.items.filter(i => i.roles.includes(role));
+                if (!visibleItems.length) return null;
+                const GroupIcon = group.icon;
+                return (
+                  <div key={group.id} className={gi > 0 ? 'border-t border-[#f0f3ff]' : ''}>
+                    {/* Group label */}
+                    <div className="flex items-center gap-2 px-4 py-2 bg-[#f9f9ff]">
+                      <span className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                        style={{ background: group.color + '18' }}>
+                        <GroupIcon size={11} style={{ color: group.color }} />
+                      </span>
+                      <span className="text-[0.62rem] font-black uppercase tracking-widest text-[#9ca3af]">{group.label}</span>
+                    </div>
+                    {/* Items */}
+                    {visibleItems.map(item => {
+                      const ItemIcon = item.icon;
+                      const isActive = active === item.id;
+                      return (
+                        <button key={item.id}
+                          onClick={() => { if (!item.soon) { setActive(item.id); setMobileNavOpen(false); } }}
+                          className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left transition-all relative
+                            ${isActive ? 'text-[#3525cd] font-bold bg-[#3525cd]/6' : item.soon ? 'text-[#a09fb5] cursor-default' : 'text-[#464555] font-medium hover:bg-[#f5f4ff]'}`}>
+                          {isActive && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-[#3525cd] rounded-r-full" />}
+                          <ItemIcon size={13} className={isActive ? 'text-[#3525cd]' : item.soon ? 'text-[#c7c4d8]' : 'text-[#9ca3af]'} />
+                          <span className="flex-1">{item.label}</span>
+                          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#3525cd]" />}
+                          {item.soon && <span className="text-[0.55rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#a09fb5] border border-[#e7eefe]">SOON</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
-        {/* ── Left navigation sidebar ── */}
-        <div className="w-full lg:w-64 lg:flex-shrink-0 lg:sticky lg:top-4">
+      {/* ── Desktop layout: sidebar + content (hidden on mobile) ─────────────── */}
+      <div className="hidden lg:flex gap-5 items-start min-h-[calc(100vh-200px)]">
+
+        {/* Desktop sidebar */}
+        <div className="w-64 flex-shrink-0 sticky top-4">
           <div className="bg-white border border-[#e7eefe] rounded-2xl overflow-hidden shadow-sm">
             {NAV_GROUPS.map((group, gi) => {
               const GroupIcon  = group.icon;
@@ -889,17 +961,16 @@ export default function Settings() {
 
               return (
                 <div key={group.id} className={gi > 0 ? 'border-t border-[#f0f3ff]' : ''}>
-                  {/* Group header */}
                   <button onClick={() => toggleGroup(group.id)}
                     className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-[#fafbff] transition-colors text-left">
-                    <span className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: group.color + '18' }}>
+                    <span className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: group.color + '18' }}>
                       <GroupIcon size={13} style={{ color: group.color }} />
                     </span>
                     <span className="flex-1 text-[0.7rem] font-black uppercase tracking-widest text-[#8b87a2] truncate">{group.label}</span>
                     <ChevronDown size={13} className={`text-[#c7c4d8] flex-shrink-0 transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
                   </button>
 
-                  {/* Sub-items */}
                   {isOpen && (
                     <div className="pb-1">
                       {visibleItems.map(item => {
@@ -927,11 +998,18 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* ── Right content area ── */}
+        {/* Desktop content */}
         <div className="flex-1 min-w-0">
           <div className="bg-white border border-[#e7eefe] rounded-2xl shadow-sm overflow-hidden min-h-[560px]">
             {renderPanel()}
           </div>
+        </div>
+      </div>
+
+      {/* ── Mobile content panel (shown below the mobile nav) ─────────────────── */}
+      <div className="lg:hidden">
+        <div className="bg-white border border-[#e7eefe] rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
+          {renderPanel()}
         </div>
       </div>
     </div>
