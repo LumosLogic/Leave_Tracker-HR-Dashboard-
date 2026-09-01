@@ -262,6 +262,36 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     return m;
   }, [assignments, shift]);
 
+  // userId set → already assigned to THIS shift in current month's data
+  const thisShiftEmpIds = useMemo(() => {
+    const s = new Set();
+    assignments.forEach(a => {
+      if (a.user_id && a.shift?.id === shift?.id) s.add(a.user_id);
+    });
+    return s;
+  }, [assignments, shift]);
+
+  // Date presets (computed once — based on current date)
+  const presets = useMemo(() => {
+    const n = new Date();
+    const y = n.getFullYear();
+    const mo = n.getMonth();
+    return {
+      today:      n.toISOString().slice(0, 10),
+      monthStart: `${y}-${String(mo + 1).padStart(2, '0')}-01`,
+      monthEnd:   new Date(y, mo + 1, 0).toISOString().slice(0, 10),
+      yearStart:  `${y}-01-01`,
+      yearEnd:    `${y}-12-31`,
+    };
+  }, []);
+
+  function applyPreset(type) {
+    if (type === 'today') { setFromDate(presets.today);      setToDate(presets.today); }
+    if (type === 'month') { setFromDate(presets.monthStart); setToDate(presets.monthEnd); }
+    if (type === 'year')  { setFromDate(presets.yearStart);  setToDate(presets.yearEnd); }
+    setErrs(prev => { const e = { ...prev }; delete e.fromDate; delete e.toDate; return e; });
+  }
+
   // Group conflicts by employee for display
   const conflictsByEmp = useMemo(() => {
     const m = {};
@@ -277,7 +307,9 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     e.name?.toLowerCase().includes(search.toLowerCase()) ||
     e.department?.toLowerCase().includes(search.toLowerCase())
   );
-  const allFiltered = filteredEmps.length > 0 && filteredEmps.every(e => selectedIds.has(e.id));
+  // Employees eligible for assignment (not already on this shift)
+  const assignableFiltered = filteredEmps.filter(e => !thisShiftEmpIds.has(e.id));
+  const allFiltered = assignableFiltered.length > 0 && assignableFiltered.every(e => selectedIds.has(e.id));
 
   // ── Interaction handlers ────────────────────────────────────────────────────
 
@@ -292,9 +324,9 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
 
   function toggleAll() {
     if (allFiltered) {
-      setSelectedIds(prev => { const n = new Set(prev); filteredEmps.forEach(e => n.delete(e.id)); return n; });
+      setSelectedIds(prev => { const n = new Set(prev); assignableFiltered.forEach(e => n.delete(e.id)); return n; });
     } else {
-      setSelectedIds(prev => { const n = new Set(prev); filteredEmps.forEach(e => n.add(e.id)); return n; });
+      setSelectedIds(prev => { const n = new Set(prev); assignableFiltered.forEach(e => n.add(e.id)); return n; });
       setErrs(prev => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== 'employees')));
     }
   }
@@ -419,6 +451,29 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                 <label className="block text-xs font-black text-[#464555] uppercase tracking-wider mb-2">
                   Assignment Period <span className="text-rose-500">*</span>
                 </label>
+                {/* Quick presets */}
+                <div className="flex gap-2 mb-3">
+                  {[
+                    { key: 'today', label: 'Today' },
+                    { key: 'month', label: 'This Month' },
+                    { key: 'year',  label: 'Full Year' },
+                  ].map(p => {
+                    const active =
+                      (p.key === 'today' && fromDate === presets.today && toDate === presets.today) ||
+                      (p.key === 'month' && fromDate === presets.monthStart && toDate === presets.monthEnd) ||
+                      (p.key === 'year'  && fromDate === presets.yearStart  && toDate === presets.yearEnd);
+                    return (
+                      <button key={p.key} type="button" onClick={() => applyPreset(p.key)}
+                        className={`text-[0.68rem] font-bold px-3 py-1 rounded-full border transition-colors ${
+                          active
+                            ? 'border-[#3525cd] bg-[#3525cd] text-white'
+                            : 'border-[#c7c4d8] text-[#777587] hover:border-[#3525cd] hover:text-[#3525cd] hover:bg-[#f0f3ff]'
+                        }`}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[0.7rem] text-[#777587] font-semibold mb-1 block">From</label>
@@ -473,7 +528,7 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                       </span>
                     )}
                   </label>
-                  {filteredEmps.length > 0 && (
+                  {assignableFiltered.length > 0 && (
                     <button onClick={toggleAll}
                       className="text-[0.7rem] font-bold text-[#3525cd] hover:underline">
                       {allFiltered ? 'Deselect All' : 'Select All'}
@@ -495,8 +550,31 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                   {filteredEmps.length === 0 ? (
                     <p className="text-xs text-[#777587] text-center py-6">No employees found</p>
                   ) : filteredEmps.map(emp => {
-                    const checked      = selectedIds.has(emp.id);
-                    const otherShift   = otherShiftMap[emp.id];
+                    const checked        = selectedIds.has(emp.id);
+                    const otherShift     = otherShiftMap[emp.id];
+                    const alreadyHere    = thisShiftEmpIds.has(emp.id);
+
+                    if (alreadyHere) {
+                      return (
+                        <div key={emp.id}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-[#f0f3ff] last:border-0 bg-[#f4fef6]">
+                          <div className="w-4 h-4 rounded border-2 border-green-500 bg-green-500 flex items-center justify-center shrink-0">
+                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                              <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                          <Avatar name={emp.name || '?'} color={emp.avatar_color} size={28} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-[#151c27] truncate">{emp.name}</p>
+                            <p className="text-[0.65rem] text-[#777587] truncate">{emp.department || emp.email}</p>
+                          </div>
+                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 shrink-0 whitespace-nowrap">
+                            Assigned
+                          </span>
+                        </div>
+                      );
+                    }
+
                     return (
                       <button key={emp.id} type="button" onClick={() => toggleEmp(emp.id)}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[#f0f3ff] transition-colors text-left border-b border-[#f0f3ff] last:border-0 ${checked ? 'bg-[#f0f3ff]' : ''}`}>

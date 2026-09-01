@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Download, BarChart3, Users, FileText, CalendarDays, TrendingUp,
@@ -227,6 +227,52 @@ function PunchLogRow({ employee_pin, user_id, date, name, colSpan }) {
   );
 }
 
+// ── Pagination bar ─────────────────────────────────────────────────────────────
+function Pagination({ page, totalPages, totalCount, onPageChange, label = 'records' }) {
+  if (totalPages <= 1) return null;
+  const delta = 2;
+  const start = Math.max(1, page - delta);
+  const end   = Math.min(totalPages, page + delta);
+  const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  const btn   = 'w-7 h-7 rounded-lg text-xs font-bold border transition-colors';
+  const idle  = 'border-[#c7c4d8] text-[#777587] hover:border-[#3525cd] hover:text-[#3525cd]';
+  return (
+    <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between gap-2 flex-wrap">
+      <span className="text-xs text-[#777587]">
+        Page {page} of {totalPages} · {totalCount} total {label}
+      </span>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPageChange(page - 1)} disabled={page === 1}
+          className={cn(btn, idle, 'flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed')}>
+          ‹
+        </button>
+        {start > 1 && (
+          <>
+            <button onClick={() => onPageChange(1)} className={cn(btn, idle)}>1</button>
+            {start > 2 && <span className="text-xs text-[#777587] px-0.5">…</span>}
+          </>
+        )}
+        {pages.map(p => (
+          <button key={p} onClick={() => onPageChange(p)}
+            className={cn(btn, p === page ? 'bg-[#3525cd] text-white border-[#3525cd]' : idle)}>
+            {p}
+          </button>
+        ))}
+        {end < totalPages && (
+          <>
+            {end < totalPages - 1 && <span className="text-xs text-[#777587] px-0.5">…</span>}
+            <button onClick={() => onPageChange(totalPages)} className={cn(btn, idle)}>{totalPages}</button>
+          </>
+        )}
+        <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages}
+          className={cn(btn, idle, 'flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed')}>
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Reports page ──────────────────────────────────────────────────────────
 export default function Reports() {
   const now = new Date();
@@ -243,7 +289,7 @@ export default function Reports() {
   const [attStatusFilter, setAttStatusFilter] = useState('');
   const [empTypeFilter,   setEmpTypeFilter]   = useState('');
   const [sort,            setSort]            = useState({ col: 'date', dir: 'desc' });
-  const [pageSize,        setPageSize]        = useState(50);
+  const [page,            setPage]            = useState(1);
   const [dlOpen,          setDlOpen]          = useState(false);
   // Biometric punch log expansion (Relitrade / first_in_last_out orgs only)
   // Use attendance record id as key — user_id can be null causing all rows to expand
@@ -257,13 +303,28 @@ export default function Reports() {
     setLeaveTypeFilter('');
     setAttStatusFilter('');
     setEmpTypeFilter('');
-    setPageSize(50);
+    setPage(1);
     setSort(tab === 'employees' ? { col: 'name', dir: 'asc' } : { col: 'date', dir: 'desc' });
   }
 
   function toggleSort(col) {
     setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+    setPage(1);
   }
+
+  // Reset page whenever filters or period changes
+  useEffect(() => { setPage(1); }, [search, deptFilter, statusFilter, leaveTypeFilter, attStatusFilter, empTypeFilter, active, viewMode, year, month]);
+
+  function prevMonth() {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (month === now.getMonth() + 1 && year === now.getFullYear()) return;
+    if (month === 12) { setMonth(1); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  }
+  const atCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
 
   // ── Data queries ──────────────────────────────────────────────────────────────
   const queryParams = viewMode === 'monthly' ? { year, month } : { year };
@@ -338,10 +399,12 @@ export default function Reports() {
     return sortRows(rows, sort);
   }, [empRows, search, deptFilter, statusFilter, empTypeFilter, sort]);
 
-  const activeRows = active === 'attendance' ? filteredAtt : active === 'leaves' ? filteredLeave : filteredEmp;
-  const isLoading  = active === 'attendance' ? attLoading : active === 'leaves' ? lvLoading : empLoading;
-  const displayRows = activeRows.slice(0, pageSize);
-  const hasMore = activeRows.length > pageSize;
+  const activeRows  = active === 'attendance' ? filteredAtt : active === 'leaves' ? filteredLeave : filteredEmp;
+  const isLoading   = active === 'attendance' ? attLoading : active === 'leaves' ? lvLoading : empLoading;
+  const PAGE_SIZE   = 50;
+  const totalPages  = Math.max(1, Math.ceil(activeRows.length / PAGE_SIZE));
+  const safePage    = Math.min(page, totalPages);
+  const displayRows = activeRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   // ── KPI cards per tab ─────────────────────────────────────────────────────────
   // BUG_124: helper to clear all other filters before setting a status filter
@@ -485,9 +548,12 @@ export default function Reports() {
           </div>
 
           {viewMode === 'monthly' && (
-            <select className="form-control w-auto text-xs" value={month} onChange={e => setMonth(Number(e.target.value))}>
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
+            <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-3 py-2">
+              <button onClick={prevMonth} className="text-[#3525cd] font-black text-base leading-none px-0.5">‹</button>
+              <span className="font-bold text-[#151c27] min-w-[4.5rem] text-center text-sm">{MONTHS[month - 1]}</span>
+              <button onClick={nextMonth} disabled={atCurrentMonth}
+                className={`font-black text-base leading-none px-0.5 ${atCurrentMonth ? 'text-[#c7c4d8] cursor-not-allowed' : 'text-[#3525cd]'}`}>›</button>
+            </div>
           )}
 
           <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-3 py-2">
@@ -778,13 +844,7 @@ export default function Reports() {
               </>
             )}
           </div>
-          {hasMore && (
-            <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between">
-              <span className="text-xs text-[#777587]">Showing {displayRows.length} of {activeRows.length} records</span>
-              <button onClick={() => setPageSize(p => p + 50)}
-                className="text-xs font-bold text-[#3525cd] hover:underline">Load 50 more</button>
-            </div>
-          )}
+          <Pagination page={safePage} totalPages={totalPages} totalCount={activeRows.length} onPageChange={setPage} />
         </div>
       )}
 
@@ -845,12 +905,7 @@ export default function Reports() {
               </tbody>
             </table>
           </div>
-          {hasMore && (
-            <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between">
-              <span className="text-xs text-[#777587]">Showing {displayRows.length} of {activeRows.length} records</span>
-              <button onClick={() => setPageSize(p => p + 50)} className="text-xs font-bold text-[#3525cd] hover:underline">Load 50 more</button>
-            </div>
-          )}
+          <Pagination page={safePage} totalPages={totalPages} totalCount={activeRows.length} onPageChange={setPage} />
         </div>
       )}
 
@@ -917,12 +972,7 @@ export default function Reports() {
               </tbody>
             </table>
           </div>
-          {hasMore && (
-            <div className="px-4 py-3 border-t border-[#f0f3ff] bg-[#f9f9ff] flex items-center justify-between">
-              <span className="text-xs text-[#777587]">Showing {displayRows.length} of {activeRows.length} employees</span>
-              <button onClick={() => setPageSize(p => p + 50)} className="text-xs font-bold text-[#3525cd] hover:underline">Load 50 more</button>
-            </div>
-          )}
+          <Pagination page={safePage} totalPages={totalPages} totalCount={activeRows.length} onPageChange={setPage} label="employees" />
         </div>
       )}
 

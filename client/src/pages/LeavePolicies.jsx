@@ -85,9 +85,9 @@ export default function LeavePolicies() {
         </button>
       </div>
 
-      <div className="card p-1 mb-4 flex items-start gap-2.5 text-xs text-[#464555] bg-[#f0f3ff] border-[#c7c4d8]">
-        <Info size={14} className="text-[#3525cd] flex-shrink-0 mt-0.5 ml-2.5 my-2.5" />
-        <p className="py-2.5 pr-2.5">Changes apply to new leave requests. Existing approved leaves are not affected.</p>
+      <div className="card px-4 py-3 mb-4 flex items-center gap-2.5 text-xs text-[#464555] bg-[#f0f3ff] border-[#c7c4d8]">
+        <Info size={14} className="text-[#3525cd] flex-shrink-0" />
+        <p>Changes apply to new leave requests. Existing approved leaves are not affected.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
