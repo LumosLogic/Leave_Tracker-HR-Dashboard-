@@ -34,8 +34,8 @@ function Navbar() {
         <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
           <img src="/LogoWithoutName.svg" alt="HRMS" className="w-8 h-8" />
           <div className="flex flex-col leading-none">
-            <span className="font-black text-[#151c27] text-sm tracking-tight">Lumos Logic</span>
-            <span className="text-[0.6rem] font-bold text-[#3525cd] uppercase tracking-widest">HRMS</span>
+            <span className="font-black text-[#151c27] text-sm tracking-tight">HRMS</span>
+            <span className="text-[0.6rem] font-semibold text-[#777587] tracking-wide">by LumosLogic</span>
           </div>
         </Link>
 
@@ -687,7 +687,7 @@ function Footer() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
-    <div className="min-h-screen w-full overflow-x-hidden">
+    <div className="h-screen overflow-y-auto overflow-x-hidden w-full">
       <Navbar />
       <HeroSection />
       <FeaturesSection />
