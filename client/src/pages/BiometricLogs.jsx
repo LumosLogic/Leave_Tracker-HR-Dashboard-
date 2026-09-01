@@ -153,6 +153,13 @@ export default function BiometricLogs() {
     queryFn:  () => apiGet('/biometric/devices'),
   });
 
+  const { data: _empList = [] } = useQuery({
+    queryKey: ['employees-for-bio-logs'],
+    queryFn:  () => apiGet('/reports/employees'),
+    staleTime: 300000,
+  });
+  const empList = Array.isArray(_empList) ? _empList : [];
+
   const logs        = Array.isArray(_res?.data) ? _res.data : Array.isArray(_res?.logs) ? _res.logs : Array.isArray(_res) ? _res : [];
   const total       = _res?.total ?? logs.length;
   const totalPages  = Math.ceil(total / PAGE_SIZE);
@@ -224,17 +231,20 @@ export default function BiometricLogs() {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">Name / Employee ID</label>
-            <input type="text" className="form-control text-xs py-1.5 w-44"
-              placeholder="Name or Employee ID…"
-              value={nameSearch || pin}
+            <label className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider">Employee</label>
+            <select
+              className="form-control text-xs py-1.5 min-w-[180px]"
+              value={nameSearch}
               onChange={e => {
-                const v = e.target.value;
-                // If purely numeric treat as Employee ID (pin), otherwise name search
-                if (/^\d+$/.test(v)) { setPin(v); setNameSearch(''); }
-                else { setNameSearch(v); setPin(''); }
+                setNameSearch(e.target.value);
+                setPin('');
                 setPage(1);
-              }} />
+              }}>
+              <option value="">All Employees</option>
+              {empList.map(emp => (
+                <option key={emp.id} value={emp.name}>{emp.name}</option>
+              ))}
+            </select>
           </div>
           {hasFilter && (
             <div className="flex items-end">

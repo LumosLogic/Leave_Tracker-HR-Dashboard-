@@ -282,7 +282,7 @@ export default function Reports() {
   const [viewMode,        setViewMode]        = useState('monthly');
   const [year,            setYear]            = useState(now.getFullYear());
   const [month,           setMonth]           = useState(now.getMonth() + 1);
-  const [search,          setSearch]          = useState('');
+  const [selectedEmpId,   setSelectedEmpId]   = useState('');
   const [deptFilter,      setDeptFilter]      = useState('');
   const [statusFilter,    setStatusFilter]    = useState('');
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('');
@@ -297,7 +297,7 @@ export default function Reports() {
 
   function handleTabChange(tab) {
     setActive(tab);
-    setSearch('');
+    setSelectedEmpId('');
     setDeptFilter('');
     setStatusFilter('');
     setLeaveTypeFilter('');
@@ -313,7 +313,7 @@ export default function Reports() {
   }
 
   // Reset page whenever filters or period changes
-  useEffect(() => { setPage(1); }, [search, deptFilter, statusFilter, leaveTypeFilter, attStatusFilter, empTypeFilter, active, viewMode, year, month]);
+  useEffect(() => { setPage(1); }, [selectedEmpId, deptFilter, statusFilter, leaveTypeFilter, attStatusFilter, empTypeFilter, active, viewMode, year, month]);
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
@@ -358,6 +358,104 @@ export default function Reports() {
   const leaveRows = Array.isArray(_lvData) ? _lvData : [];
   const empRows   = Array.isArray(_empData) ? _empData : [];
 
+  // ── Work schedule (for full calendar) ─────────────────────────────────────────
+  const { data: _wsData } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings'),
+    staleTime: 300000,
+  });
+  const workDays = useMemo(() => {
+    const wd = _wsData?.schedule?.work_days;
+    if (!wd) return [1, 2, 3, 4, 5]; // Mon–Fri default
+    return wd.split(',').map(Number);
+  }, [_wsData]);
+
+  // Selected employee's name — used to match leave rows (which carry name, not id)
+  const selectedEmpName = useMemo(
+    () => empRows.find(e => String(e.id) === selectedEmpId)?.name || '',
+    [empRows, selectedEmpId]
+  );
+
+  // Full calendar: all working days for the selected employee/month, with statuses filled in.
+  // Approved leaves override absent; past days with no record → absent; future → skipped.
+  const fullCalendarRows = useMemo(() => {
+    if (!selectedEmpId || active !== 'attendance' || viewMode !== 'monthly') return null;
+    const emp = empRows.find(e => String(e.id) === selectedEmpId);
+    if (!emp) return null;
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    // Map date → attendance record
+    const attMap = new Map();
+    for (const r of attRows) {
+      if (String(r.user_id) === selectedEmpId) attMap.set(r.date, r);
+    }
+
+    // Map date → leave status (approved leaves only, expand date ranges)
+    const leaveMap = new Map();
+    for (const lv of leaveRows) {
+      if (lv.name !== selectedEmpName || lv.status !== 'approved') continue;
+      const s = new Date(lv.start_date + 'T12:00:00Z');
+      const e = new Date(lv.end_date   + 'T12:00:00Z');
+      const cur = new Date(s);
+      while (cur <= e) {
+        const ds = cur.toISOString().split('T')[0];
+        if (!leaveMap.has(ds)) {
+          leaveMap.set(ds, lv.leave_type === 'wfh' ? 'wfh' : 'on_leave');
+        }
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const result = [];
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month - 1, d);
+      const dow  = date.getDay(); // 0=Sun … 6=Sat
+      if (!workDays.includes(dow)) continue; // skip non-working days
+
+      const ds  = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const att = attMap.get(ds);
+      if (att) { result.push(att); continue; }
+
+      const leaveStatus = leaveMap.get(ds);
+      if (leaveStatus) {
+        result.push({
+          id: `synth-leave-${ds}`, name: emp.name, department: emp.department,
+          date: ds, status: leaveStatus, user_id: Number(selectedEmpId),
+          check_in: null, check_out: null, work_hours: 0, gross_hours: 0,
+        });
+        continue;
+      }
+
+      // Past day with no record → absent; today/future → skip
+      if (date < today) {
+        result.push({
+          id: `synth-absent-${ds}`, name: emp.name, department: emp.department,
+          date: ds, status: 'absent', user_id: Number(selectedEmpId),
+          check_in: null, check_out: null, work_hours: 0, gross_hours: 0,
+        });
+      }
+    }
+    return result;
+  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays]);
+
+  // Effective rows — full calendar when employee selected, otherwise full dataset (filtered by employee if set)
+  const effectiveAttRows = useMemo(() => {
+    if (fullCalendarRows) return fullCalendarRows;
+    if (selectedEmpId) return attRows.filter(r => String(r.user_id) === selectedEmpId);
+    return attRows;
+  }, [fullCalendarRows, attRows, selectedEmpId]);
+
+  const effectiveLeaveRows = useMemo(() =>
+    selectedEmpName ? leaveRows.filter(r => r.name === selectedEmpName) : leaveRows,
+  [leaveRows, selectedEmpName]);
+
+  const effectiveEmpRows = useMemo(() =>
+    selectedEmpId ? empRows.filter(r => String(r.id) === selectedEmpId) : empRows,
+  [empRows, selectedEmpId]);
+
   // ── Derived filter options ────────────────────────────────────────────────────
   const deptOptions = useMemo(() => {
     const src = active === 'attendance' ? attRows : active === 'leaves' ? leaveRows : empRows;
@@ -366,8 +464,7 @@ export default function Reports() {
 
   // ── Filtered + sorted rows ────────────────────────────────────────────────────
   const filteredAtt = useMemo(() => {
-    let rows = attRows;
-    if (search)         rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()));
+    let rows = effectiveAttRows;
     if (deptFilter)     rows = rows.filter(r => r.department === deptFilter);
     if (attStatusFilter === 'productive') {
       rows = rows.filter(r => ['present', 'early_leave', 'wfh', 'half_day'].includes(r.status));
@@ -375,11 +472,10 @@ export default function Reports() {
       rows = rows.filter(r => r.status === attStatusFilter);
     }
     return sortRows(rows, sort);
-  }, [attRows, search, deptFilter, attStatusFilter, sort]);
+  }, [effectiveAttRows, deptFilter, attStatusFilter, sort]);
 
   const filteredLeave = useMemo(() => {
-    let rows = leaveRows;
-    if (search)          rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()));
+    let rows = effectiveLeaveRows;
     if (deptFilter)      rows = rows.filter(r => r.department === deptFilter);
     if (statusFilter === 'all_pending') {
       rows = rows.filter(r => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(r.status));
@@ -388,16 +484,15 @@ export default function Reports() {
     }
     if (leaveTypeFilter) rows = rows.filter(r => r.leave_type === leaveTypeFilter);
     return sortRows(rows, sort);
-  }, [leaveRows, search, deptFilter, statusFilter, leaveTypeFilter, sort]);
+  }, [effectiveLeaveRows, deptFilter, statusFilter, leaveTypeFilter, sort]);
 
   const filteredEmp = useMemo(() => {
-    let rows = empRows;
-    if (search)       rows = rows.filter(r => r.name?.toLowerCase().includes(search.toLowerCase()) || r.email?.toLowerCase().includes(search.toLowerCase()));
+    let rows = effectiveEmpRows;
     if (deptFilter)   rows = rows.filter(r => r.department === deptFilter);
     if (statusFilter) rows = rows.filter(r => (r.employment_status || 'active') === statusFilter);
     if (empTypeFilter) rows = rows.filter(r => r.employment_type === empTypeFilter);
     return sortRows(rows, sort);
-  }, [empRows, search, deptFilter, statusFilter, empTypeFilter, sort]);
+  }, [effectiveEmpRows, deptFilter, statusFilter, empTypeFilter, sort]);
 
   const activeRows  = active === 'attendance' ? filteredAtt : active === 'leaves' ? filteredLeave : filteredEmp;
   const isLoading   = active === 'attendance' ? attLoading : active === 'leaves' ? lvLoading : empLoading;
@@ -409,12 +504,10 @@ export default function Reports() {
   // ── KPI cards per tab ─────────────────────────────────────────────────────────
   // BUG_124: helper to clear all other filters before setting a status filter
   function clearAndSetAttFilter(value) {
-    setSearch('');
     setDeptFilter('');
     setAttStatusFilter(prev => prev === value ? '' : value);
   }
   function clearAndSetLeaveFilter(value) {
-    setSearch('');
     setDeptFilter('');
     setLeaveTypeFilter('');
     setStatusFilter(prev => prev === value ? '' : value);
@@ -423,15 +516,15 @@ export default function Reports() {
   const kpiCards = useMemo(() => {
     if (active === 'attendance') {
       // BUG_123: count both 'present' AND 'wfh' (and half_day) for the Present/WFH card
-      const present       = attRows.filter(r => ['present', 'early_leave', 'wfh', 'half_day'].includes(r.status)).length;
-      const absent        = attRows.filter(r => r.status === 'absent').length;
-      const onLeave       = attRows.filter(r => r.status === 'on_leave').length;
-      const noCheckout    = attRows.filter(r => r.check_in && !r.check_out && !r.is_live).length;
-      const completedRows = attRows.filter(r => (r.work_hours > 0) || (r.estimated_hours > 0));
+      const present       = effectiveAttRows.filter(r => ['present', 'early_leave', 'wfh', 'half_day'].includes(r.status)).length;
+      const absent        = effectiveAttRows.filter(r => r.status === 'absent').length;
+      const onLeave       = effectiveAttRows.filter(r => r.status === 'on_leave').length;
+      const noCheckout    = effectiveAttRows.filter(r => r.check_in && !r.check_out && !r.is_live).length;
+      const completedRows = effectiveAttRows.filter(r => (r.work_hours > 0) || (r.estimated_hours > 0));
       const totalEffHrs   = completedRows.reduce((s, r) => s + (r.work_hours > 0 ? Number(r.work_hours) : Number(r.estimated_hours) || 0), 0);
       const avgHrs        = completedRows.length > 0 ? (totalEffHrs / completedRows.length).toFixed(1) : 0;
       return [
-        { label: 'Total Records',   value: attRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,  accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setAttStatusFilter(''); } },
+        { label: 'Total Records',   value: effectiveAttRows.length, icon: <CalendarDays size={18} className="text-[#3525cd]" />,  accent: 'border-t-[#3525cd]', onClick: () => { setSelectedEmpId(''); setDeptFilter(''); setAttStatusFilter(''); } },
         // BUG_123: onClick uses 'productive' sentinel to filter present+wfh+half_day; BUG_124: clears other filters; isActive shows ring
         { label: 'Present / WFH',  value: present,         icon: <UserCheck size={18} className="text-emerald-600" />,   accent: 'border-t-emerald-500', onClick: () => clearAndSetAttFilter('productive'), isActive: attStatusFilter === 'productive' },
         // BUG_124: clears other filters before setting absent filter
@@ -440,14 +533,14 @@ export default function Reports() {
       ];
     }
     if (active === 'leaves') {
-      const approved   = leaveRows.filter(r => r.status === 'approved').length;
+      const approved   = effectiveLeaveRows.filter(r => r.status === 'approved').length;
       // BUG_126: count ALL pending variants (multi-level workflow)
-      const pending    = leaveRows.filter(r => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(r.status)).length;
-      const rejected   = leaveRows.filter(r => r.status === 'rejected').length;
+      const pending    = effectiveLeaveRows.filter(r => ['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(r.status)).length;
+      const rejected   = effectiveLeaveRows.filter(r => r.status === 'rejected').length;
       // BUG_127: count cancelled leaves
-      const cancelled  = leaveRows.filter(r => r.status === 'cancelled').length;
+      const cancelled  = effectiveLeaveRows.filter(r => r.status === 'cancelled').length;
       return [
-        { label: 'Total Leaves', value: leaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); } },
+        { label: 'Total Leaves', value: effectiveLeaveRows.length, icon: <FileText size={18} className="text-[#3525cd]" />,       accent: 'border-t-[#3525cd]', onClick: () => { setSelectedEmpId(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); } },
         // BUG_124: clears other filters before setting leave status filter; isActive shows ring
         { label: 'Approved',     value: approved,          icon: <CheckCircle2 size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500', onClick: () => clearAndSetLeaveFilter('approved'),   isActive: statusFilter === 'approved' },
         { label: 'Pending',      value: pending,           icon: <Clock size={18} className="text-amber-500" />,          accent: 'border-t-amber-400',   onClick: () => clearAndSetLeaveFilter('all_pending'), isActive: statusFilter === 'all_pending', sub: pending > 0 ? 'Needs attention' : undefined },
@@ -457,16 +550,16 @@ export default function Reports() {
       ];
     }
     // employees
-    const active_count = empRows.filter(r => !r.employment_status || r.employment_status === 'active').length;
-    const resigned     = empRows.filter(r => r.employment_status === 'resigned').length;
-    const depts        = new Set(empRows.map(r => r.department).filter(Boolean)).size;
+    const active_count = effectiveEmpRows.filter(r => !r.employment_status || r.employment_status === 'active').length;
+    const resigned     = effectiveEmpRows.filter(r => r.employment_status === 'resigned').length;
+    const depts        = new Set(effectiveEmpRows.map(r => r.department).filter(Boolean)).size;
     return [
-      { label: 'Total Employees', value: empRows.length, icon: <Users size={18} className="text-[#3525cd]" />, accent: 'border-t-[#3525cd]', onClick: () => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setEmpTypeFilter(''); } },
+      { label: 'Total Employees', value: effectiveEmpRows.length, icon: <Users size={18} className="text-[#3525cd]" />, accent: 'border-t-[#3525cd]', onClick: () => { setSelectedEmpId(''); setDeptFilter(''); setStatusFilter(''); setEmpTypeFilter(''); } },
       { label: 'Active',          value: active_count,                        icon: <TrendingUp size={18} className="text-emerald-600" />, accent: 'border-t-emerald-500' },
       { label: 'Resigned',        value: resigned,                            icon: <AlertCircle size={18} className="text-rose-500" />,   accent: 'border-t-rose-500' },
       { label: 'Departments',     value: depts,                               icon: <Building2 size={18} className="text-[#712ae2]" />,    accent: 'border-t-[#712ae2]' },
     ];
-  }, [active, attRows, leaveRows, empRows, headcount, statusFilter, attStatusFilter]);
+  }, [active, effectiveAttRows, effectiveLeaveRows, effectiveEmpRows, headcount, statusFilter, attStatusFilter]);
 
   // ── CSV download ──────────────────────────────────────────────────────────────
   function getToken() { return localStorage.getItem('lt_token'); }
@@ -496,7 +589,7 @@ export default function Reports() {
   }
 
   const periodLabel = viewMode === 'monthly' ? `${MONTHS[month - 1]} ${year}` : `${year}`;
-  const anyFilter   = search || deptFilter || statusFilter || leaveTypeFilter || attStatusFilter || empTypeFilter;
+  const anyFilter   = selectedEmpId || deptFilter || statusFilter || leaveTypeFilter || attStatusFilter || empTypeFilter;
 
   const LEAVE_TYPES = ['casual', 'sick', 'annual', 'emergency', 'wfh', 'other'];
   const ATT_STATUSES = ['present', 'absent', 'wfh', 'on_leave', 'half_day'];
@@ -585,21 +678,16 @@ export default function Reports() {
         <div className="flex items-center gap-2 flex-wrap">
           <Filter size={13} className="text-[#777587] flex-shrink-0" />
 
-          {/* Search */}
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
-            <input
-              type="text"
-              placeholder="Search employee…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="form-control pl-8 py-1.5 text-xs w-full" />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#464555]">
-                <X size={12} />
-              </button>
-            )}
-          </div>
+          {/* Employee dropdown */}
+          <select
+            value={selectedEmpId}
+            onChange={e => { setSelectedEmpId(e.target.value); setPage(1); }}
+            className="form-control text-xs py-1.5 min-w-[180px] max-w-xs">
+            <option value="">All Employees</option>
+            {empRows.map(e => (
+              <option key={e.id} value={String(e.id)}>{e.name}</option>
+            ))}
+          </select>
 
           {/* Department */}
           <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
@@ -648,7 +736,7 @@ export default function Reports() {
           )}
 
           {anyFilter && (
-            <button onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); setAttStatusFilter(''); setEmpTypeFilter(''); }}
+            <button onClick={() => { setSelectedEmpId(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); setAttStatusFilter(''); setEmpTypeFilter(''); }}
               className="flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all">
               <X size={12} /> Clear all
             </button>
