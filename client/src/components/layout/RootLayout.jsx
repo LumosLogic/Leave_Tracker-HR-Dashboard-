@@ -77,7 +77,6 @@ const NAV_SECTIONS = [
   { id: 'tour-nav-account', title: 'Administration', items: [
     { to: '/root/pending-approvals',  label: 'Pending Approvals',  Icon: ClipboardList },
     { to: '/root/roles',              label: 'Role Management',    Icon: KeyRound },
-    { to: '/root/org-settings',       label: 'Org Settings',       Icon: Building2 },
     { to: '/root/manage-root-admins', label: 'Manage Root Admins', Icon: Shield },
     { to: '/root/settings',           label: 'Settings',           Icon: Settings },
   ]},

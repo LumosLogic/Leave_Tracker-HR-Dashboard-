@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, Info, Palette, Check, RefreshCw, Mail, Plus, Trash2,
@@ -6,6 +6,7 @@ import {
   CalendarDays, Bell, BellOff, Wrench, Settings2, ChevronRight,
   ChevronDown, MailCheck, Star, BarChart3, AlarmClock, SlidersHorizontal,
   Lock, MessageSquare, Calendar, GitBranch, Sparkles,
+  Eye, EyeOff, Save, CheckCircle2,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +23,38 @@ function timeToMinutes(t) {
   if (!t) return null;
   const [h, m] = (t || '').split(':').map(Number);
   return h * 60 + m;
+}
+
+// ─── Org settings helpers ─────────────────────────────────────────────────────
+const DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/;
+
+function Field({ label, hint, inlineHint, children }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <label className="form-label !mb-0">{label}</label>
+        {inlineHint && <span className="text-[0.7rem] text-[#777587] font-normal normal-case tracking-normal">{inlineHint}</span>}
+      </div>
+      {hint && <p className="text-xs text-[#777587] mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
+function PasswordField({ label, hint, value, onChange, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <Field label={label} hint={hint}>
+      <div className="relative">
+        <input type={show ? 'text' : 'password'} className="form-control pr-10"
+          value={value} onChange={onChange} placeholder={placeholder || ''} autoComplete="new-password" />
+        <button type="button" onClick={() => setShow(s => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#151c27]">
+          {show ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
+    </Field>
+  );
 }
 
 // ─── Shared toggle ────────────────────────────────────────────────────────────
@@ -765,6 +798,171 @@ function RootAdminsPanel() {
   );
 }
 
+// ── 10. Org Profile & Integrations ───────────────────────────────────────────
+function OrgSettingsPanel() {
+  const toast = useToast();
+  const qc    = useQueryClient();
+
+  const { data: org, isLoading } = useQuery({
+    queryKey: ['org-settings'],
+    queryFn:  () => apiGet('/org/settings'),
+  });
+
+  const [form,      setForm]      = useState({});
+  const [savedForm, setSavedForm] = useState({});
+  const [orgErrors, setOrgErrors] = useState({});
+  const [saved,     setSaved]     = useState(false);
+
+  const isDirty = useMemo(() => {
+    if (Object.keys(savedForm).length === 0) return false;
+    return Object.keys(form).some(k => {
+      if (k === 'name') return false;
+      const secretFields = ['google_client_secret', 'google_refresh_token', 'vapid_private_key'];
+      if (secretFields.includes(k)) return (form[k] || '') !== '';
+      return String(form[k] ?? '') !== String(savedForm[k] ?? '');
+    });
+  }, [form, savedForm]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (org && Object.keys(form).length === 0) {
+      const initial = {
+        name:                 org.name || '',
+        domain:               org.domain || '',
+        google_client_id:     org.google_client_id || '',
+        google_client_secret: '',
+        google_refresh_token: '',
+        google_calendar_id:   org.google_calendar_id || '',
+        vapid_public_key:     org.vapid_public_key || '',
+        vapid_private_key:    '',
+        total_annual_leaves:  org.total_annual_leaves || 18,
+      };
+      setForm(initial);
+      setSavedForm(initial);
+    }
+  }, [org]);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function validateOrgForm() {
+    const errs = {};
+    const domain = (form.domain || '').trim();
+    if (domain && !DOMAIN_REGEX.test(domain)) errs.domain = 'Please enter a valid domain (e.g. company.com)';
+    setOrgErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  const saveMut = useMutation({
+    mutationFn: () => apiPut('/org/settings', form),
+    onSuccess: () => {
+      toast('Organization settings saved!', 'success');
+      setSaved(true); setTimeout(() => setSaved(false), 3000);
+      setSavedForm(prev => ({ ...prev, ...form, google_client_secret: '', google_refresh_token: '', vapid_private_key: '' }));
+      setForm(f => ({ ...f, google_client_secret: '', google_refresh_token: '', vapid_private_key: '' }));
+      qc.invalidateQueries({ queryKey: ['org-settings'] });
+    },
+    onError: err => toast(err.message, 'error'),
+  });
+
+  if (isLoading) return <div className="flex justify-center py-20"><span className="spinner w-6 h-6" /></div>;
+
+  return (
+    <PanelWrap group="Organization & Administration" label="Org Profile & Integrations" icon={Building2} accentColor="#7c3aed">
+      <div className="max-w-2xl space-y-8">
+
+        {/* Unsaved changes banner */}
+        {isDirty && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-300 rounded-xl">
+            <div className="flex items-center gap-2 text-amber-800 text-sm font-semibold">
+              <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" /> Unsaved changes
+            </div>
+            <button onClick={() => { setForm({ ...savedForm }); setOrgErrors({}); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-800 border border-amber-300 bg-white hover:bg-amber-100 transition-colors">
+              Discard
+            </button>
+          </div>
+        )}
+
+        {/* ── Organization Profile ── */}
+        <div>
+          <p className="text-xs font-black text-[#464555] uppercase tracking-wide mb-4 pb-2 border-b border-[#f0f3ff]">Organization Profile</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Company Name">
+              <input className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]" value={form.name || ''} readOnly />
+              <p className="text-[0.68rem] text-[#777587] mt-1">Contact your Platform Admin to request a name change.</p>
+            </Field>
+            <Field label="Company Domain" inlineHint="Used for email auto-detection">
+              <input className={`form-control ${orgErrors.domain ? 'border-rose-400' : ''}`}
+                value={form.domain || ''} placeholder="acmecorp.com"
+                onChange={e => { set('domain', e.target.value); setOrgErrors(p => ({ ...p, domain: undefined })); }} />
+              {orgErrors.domain && <p className="text-xs text-rose-500 mt-1">{orgErrors.domain}</p>}
+            </Field>
+          </div>
+          <div className="mt-4 p-3 bg-[#f0f3ff] rounded-xl">
+            <p className="text-xs text-[#464555]">
+              <span className="font-bold">Organization Slug:</span>{' '}
+              <span className="font-mono text-[#3525cd]">{org?.slug}</span>
+              {' — '}Share this with employees so they can select the right organization on login.
+            </p>
+            <p className="text-xs text-[#464555] mt-1">
+              <span className="font-bold">Plan:</span>{' '}
+              <span className="capitalize font-semibold text-[#3525cd]">{org?.plan}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* ── Google Calendar Integration ── */}
+        <div>
+          <p className="text-xs font-black text-[#464555] uppercase tracking-wide mb-4 pb-2 border-b border-[#f0f3ff]">Google Calendar Integration</p>
+          <div className="space-y-4">
+            <Field label="Google OAuth2 Client ID">
+              <input className="form-control" value={form.google_client_id || ''} onChange={e => set('google_client_id', e.target.value)} placeholder="xxxx.apps.googleusercontent.com" />
+            </Field>
+            <PasswordField label="Google OAuth2 Client Secret" hint="Leave blank to keep current" value={form.google_client_secret || ''} onChange={e => set('google_client_secret', e.target.value)} placeholder="Leave blank to keep" />
+            <PasswordField label="Google Refresh Token" hint="Leave blank to keep current" value={form.google_refresh_token || ''} onChange={e => set('google_refresh_token', e.target.value)} placeholder="Leave blank to keep" />
+            <Field label="Google Calendar ID" hint="The calendar to sync to (e.g. primary or your calendar email)">
+              <input className="form-control" value={form.google_calendar_id || ''} onChange={e => set('google_calendar_id', e.target.value)} placeholder="primary" />
+            </Field>
+          </div>
+        </div>
+
+        {/* ── Web Push / VAPID ── */}
+        <div>
+          <p className="text-xs font-black text-[#464555] uppercase tracking-wide mb-4 pb-2 border-b border-[#f0f3ff]">Web Push Notifications (VAPID Keys)</p>
+          <div className="space-y-4">
+            <Field label="VAPID Public Key">
+              <input className="form-control font-mono text-xs" value={form.vapid_public_key || ''} onChange={e => set('vapid_public_key', e.target.value)} placeholder="BxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxA=" />
+            </Field>
+            <PasswordField label="VAPID Private Key" hint="Leave blank to keep current" value={form.vapid_private_key || ''} onChange={e => set('vapid_private_key', e.target.value)} placeholder="Leave blank to keep" />
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+              Generate VAPID keys at <strong>web-push-codelab.glitch.me</strong> or run <code className="bg-amber-100 px-1 rounded">npx web-push generate-vapid-keys</code>
+            </div>
+          </div>
+        </div>
+
+        {/* Save */}
+        <div className="flex items-center gap-3 pt-2">
+          <button className="btn btn-primary" onClick={() => { if (validateOrgForm()) saveMut.mutate(); }} disabled={saveMut.isPending || !isDirty}>
+            {saveMut.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : <><Save size={14} /> Save Changes</>}
+          </button>
+          {saved && (
+            <span className="flex items-center gap-1.5 text-emerald-700 text-sm font-semibold">
+              <CheckCircle2 size={14} /> Saved
+            </span>
+          )}
+        </div>
+
+      </div>
+    </PanelWrap>
+  );
+}
+
 // ─── Navigation config ────────────────────────────────────────────────────────
 const NAV_GROUPS = [
   {
@@ -794,9 +992,9 @@ const NAV_GROUPS = [
   {
     id: 'organization', label: 'Organization & Administration', icon: Building2, color: '#7c3aed',
     items: [
-      { id: 'root_admins', label: 'Root Administrators',  icon: ShieldCheck, roles: ['root_admin'] },
-      { id: 'org_details', label: 'Organization Details', icon: Building2,   roles: ['root_admin'], soon: true },
-      { id: 'security',    label: 'Security',             icon: Lock,        roles: ['root_admin'], soon: true },
+      { id: 'root_admins',  label: 'Root Administrators',      icon: ShieldCheck, roles: ['root_admin'] },
+      { id: 'org_settings', label: 'Org Profile & Integrations', icon: Building2,   roles: ['root_admin'] },
+      { id: 'security',     label: 'Security',                   icon: Lock,        roles: ['root_admin'], soon: true },
     ],
   },
 ];
@@ -858,8 +1056,7 @@ export default function Settings() {
       case 'push':             return <PushNotificationsPanel userId={user?.id} />;
       case 'email_recipients': return <EmailRecipientsPanel />;
       case 'root_admins':      return <RootAdminsPanel />;
-      case 'org_details':
-        return <ComingSoonPanel group="Organization & Administration" label="Organization Details" icon={Building2} description="Manage company information, timezone, currency, and branding." />;
+      case 'org_settings':     return <OrgSettingsPanel />;
       case 'security':
         return <ComingSoonPanel group="Organization & Administration" label="Security" icon={Lock} description="Session timeout, password rules, and MFA configuration." />;
       case 'communication':

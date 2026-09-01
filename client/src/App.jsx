@@ -22,7 +22,6 @@ import Calendar         from '@/pages/Calendar';
 import Leaves           from '@/pages/Leaves';
 import Employees        from '@/pages/Employees';
 import Settings         from '@/pages/Settings';
-import OrgSettings      from '@/pages/OrgSettings';
 import RootDashboard    from '@/pages/RootDashboard';
 import ManageHR         from '@/pages/ManageHR';
 import ManageRootAdmins from '@/pages/ManageRootAdmins';
@@ -294,7 +293,7 @@ function AppRoutes() {
         <Route path="/root/roles/:id/permissions" element={<PermissionMatrix />} />
         <Route path="/root/broadcast"       element={<Broadcast />} />
         <Route path="/root/profile"         element={<MyProfile />} />
-        <Route path="/root/org-settings"    element={<OrgSettings />} />
+        <Route path="/root/org-settings"    element={<Navigate to="/root/settings" replace />} />
         <Route path="/root/biometric/devices"         element={<FeatureRoute featureKey="biometric"><BiometricDevices /></FeatureRoute>} />
         <Route path="/root/biometric/mapping"         element={<FeatureRoute featureKey="biometric"><BiometricPinMapping /></FeatureRoute>} />
         <Route path="/root/biometric/logs"            element={<FeatureRoute featureKey="biometric"><BiometricLogs /></FeatureRoute>} />

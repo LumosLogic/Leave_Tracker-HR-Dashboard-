@@ -48,7 +48,6 @@ const META = {
   '/root/manage-hr':          { title: 'Manage Admins',       subtitle: 'Manage HR and root admin accounts' },
   '/root/broadcast':          { title: 'Broadcast',           subtitle: 'Send notifications to employees' },
   '/root/profile':            { title: 'My Profile',          subtitle: 'Manage your account' },
-  '/root/org-settings':       { title: 'Organization Settings', subtitle: 'Configure your organization' },
 
   // Employee Portal
   '/portal/home':             { title: 'My Dashboard',        subtitle: 'Your attendance and leave summary' },

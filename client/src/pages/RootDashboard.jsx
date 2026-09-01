@@ -81,7 +81,7 @@ const QUICK_ACTIONS = [
   { label: 'Payroll',        to: '/root/payroll',                icon: <DollarSign size={11} />,   color: 'bg-emerald-50 text-emerald-600' },
   { label: 'Expenses',       to: '/root/expenses',               icon: <Receipt size={11} />,      color: 'bg-orange-50 text-orange-500' },
   { label: 'Reports',        to: '/root/reports',                icon: <BarChart3 size={11} />,    color: 'bg-[#f0f3ff] text-[#3525cd]' },
-  { label: 'Org Settings',   to: '/root/org-settings',           icon: <Settings size={11} />,     color: 'bg-slate-50 text-slate-500' },
+  { label: 'Settings',       to: '/root/settings',               icon: <Settings size={11} />,     color: 'bg-slate-50 text-slate-500' },
 ];
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
