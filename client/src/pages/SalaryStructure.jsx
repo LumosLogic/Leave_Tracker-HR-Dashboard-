@@ -651,6 +651,22 @@ function HistoryModal({ employee, onClose }) {
                         </div>
                       ))}
                   </div>
+                  {[['PF', h.employee_pf],['ESI', h.employee_esi],['Prof. Tax', h.professional_tax],['TDS', h.tds],['Retention', h.retention],['Other Ded.', h.other_deductions]]
+                    .filter(([,v]) => Number(v) > 0).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[#e7eefe]">
+                      <p className="text-[0.6rem] font-black uppercase tracking-widest text-rose-500 mb-1.5">Deductions / month</p>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {[['PF', h.employee_pf],['ESI', h.employee_esi],['Prof. Tax', h.professional_tax],['TDS', h.tds],['Retention', h.retention],['Other Ded.', h.other_deductions]]
+                          .filter(([,v]) => Number(v) > 0)
+                          .map(([label, val]) => (
+                            <div key={label} className="flex justify-between">
+                              <span className="text-[#777587]">{label}</span>
+                              <span className="font-semibold text-rose-600">{fmt(val)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#e7eefe]">
                     <span className="text-[0.65rem] text-[#9ca3af]">CTC: {fmt(h.ctc)}/mo{h.created_by_name && ` · By ${h.created_by_name}`}</span>
                     {h.notes && <span className="text-[0.65rem] italic text-[#777587] max-w-[60%] truncate">{h.notes}</span>}

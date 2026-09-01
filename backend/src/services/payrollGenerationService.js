@@ -133,10 +133,11 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
     calc.grossSalary,                                        // 19
     ded.pf, ded.esi, ded.professionalTax, ded.tds,          // 20-23
     ded.otherDeductions,                                     // 24
-    emp.pf, emp.esi,                                         // 25-26
-    ded.total, lop.total, ded.lopDeduction,                  // 27-29
-    calc.netSalary,                                          // 30
-    calc.workingDays, presentDays, att.absent, leaveDays,   // 31-34
+    ded.retention,                                           // 25
+    emp.pf, emp.esi,                                         // 26-27
+    ded.total, lop.total, ded.lopDeduction,                  // 28-30
+    calc.netSalary,                                          // 31
+    calc.workingDays, presentDays, att.absent, leaveDays,   // 32-35
   ];
 
   let rows;
@@ -164,16 +165,17 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
           professional_tax    = $22,
           tds                 = $23,
           other_deductions    = $24,
-          pf_employer         = $25,
-          esi_employer        = $26,
-          total_deductions    = $27,
-          lop_days            = $28,
-          lop_amount          = $29,
-          net_salary          = $30,
-          working_days        = $31,
-          present_days        = $32,
-          absent_days         = $33,
-          leave_days          = $34,
+          retention           = $25,
+          pf_employer         = $26,
+          esi_employer        = $27,
+          total_deductions    = $28,
+          lop_days            = $29,
+          lop_amount          = $30,
+          net_salary          = $31,
+          working_days        = $32,
+          present_days        = $33,
+          absent_days         = $34,
+          leave_days          = $35,
           status              = 'generated'
         WHERE user_id = $1 AND month = $2 AND year = $3 AND organization_id = $5
         RETURNING id, gross_salary, total_deductions, net_salary`,
@@ -190,6 +192,7 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
           special_allowance, other_allowances,
           gross_salary,
           pf_employee, esi_employee, professional_tax, tds, other_deductions,
+          retention,
           pf_employer, esi_employer,
           total_deductions, lop_days, lop_amount,
           net_salary, working_days, present_days, absent_days, leave_days,
@@ -198,8 +201,10 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
        VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
           $12,$13,$14,$15,$16,$17,$18,$19,
-          $20,$21,$22,$23,$24,$25,$26,
-          $27,$28,$29,$30,$31,$32,$33,$34,
+          $20,$21,$22,$23,$24,
+          $25,
+          $26,$27,
+          $28,$29,$30,$31,$32,$33,$34,$35,
           'generated'
        )
        RETURNING id, gross_salary, total_deductions, net_salary`,

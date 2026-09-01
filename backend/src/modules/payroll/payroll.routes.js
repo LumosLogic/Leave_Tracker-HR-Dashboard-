@@ -573,7 +573,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
               other_allowance   AS other_allowances,
               employee_pf AS pf_employee, employee_esi AS esi_employee,
               employer_pf AS pf_employer, employer_esi AS esi_employer,
-              professional_tax, tds, other_deductions,
+              professional_tax, tds, other_deductions, retention,
               effective_from
          FROM employee_salary_structures
         WHERE user_id        = $1
@@ -660,7 +660,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
     const grossSalary  = (structure.basic || 0) + (structure.hra || 0) + (structure.da || 0) + (structure.transport_allowance || 0) + (structure.medical_allowance || 0) + (structure.other_allowances || 0);
     const perDaySalary = totalWorkingDays > 0 ? grossSalary / totalWorkingDays : 0;
     const lopAmount    = lopDays * perDaySalary;
-    const totalDed     = (structure.pf_employee || 0) + (structure.esi_employee || 0) + (structure.professional_tax || 0) + (structure.tds || 0) + Number(other_deductions || 0) + lopAmount;
+    const totalDed     = (structure.pf_employee || 0) + (structure.esi_employee || 0) + (structure.professional_tax || 0) + (structure.tds || 0) + Number(other_deductions || 0) + Number(structure.retention || 0) + lopAmount;
     const netSalary    = Math.max(0, grossSalary - totalDed);
 
     // Use an advisory lock keyed on (org_id, user_id, month, year) to prevent
@@ -702,8 +702,8 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
             medical_allowance, other_allowances, gross_salary, pf_employee, pf_employer,
             esi_employee, esi_employer, professional_tax, tds, other_deductions,
             total_deductions, lop_days, lop_amount, net_salary, working_days, present_days,
-            absent_days, leave_days, notes, status, organization_id, generated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'generated',$28,$29)
+            absent_days, leave_days, notes, status, organization_id, generated_by, retention)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'generated',$28,$29,$30)
          ON CONFLICT (user_id, month, year)
          DO UPDATE SET
            basic=$5, hra=$6, da=$7, transport_allowance=$8, medical_allowance=$9,
@@ -711,7 +711,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
            esi_employee=$14, esi_employer=$15, professional_tax=$16, tds=$17,
            other_deductions=$18, total_deductions=$19, lop_days=$20, lop_amount=$21,
            net_salary=$22, working_days=$23, present_days=$24, absent_days=$25,
-           leave_days=$26, notes=$27, status='generated', generated_by=$29
+           leave_days=$26, notes=$27, status='generated', generated_by=$29, retention=$30
          RETURNING *`,
         [user_id, String(month).padStart(2,'0'), Number(year),
          `${String(month).padStart(2,'0')}/${year}`,
@@ -724,7 +724,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
          Number(other_deductions||0), parseFloat(totalDed.toFixed(2)),
          lopDays, parseFloat(lopAmount.toFixed(2)), parseFloat(netSalary.toFixed(2)),
          totalWorkingDays, presentDays, absentCount, leaveCount,
-         notes||'', oId, req.user.id]
+         notes||'', oId, req.user.id, Number(structure.retention || 0)]
       );
       data = upsertRes.rows[0];
 

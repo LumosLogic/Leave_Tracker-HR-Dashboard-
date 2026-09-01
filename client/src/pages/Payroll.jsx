@@ -128,7 +128,7 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
               </div>
               <div className="rounded-xl bg-rose-50 border border-rose-100 p-4">
                 <p className="text-[0.68rem] font-black uppercase tracking-widest text-rose-700 mb-3">Deductions</p>
-                {[['PF','pf_employee'],['ESI','esi_employee'],['Prof. Tax','professional_tax'],['TDS','tds'],['LOP','lop_amount'],['Other','other_deductions']].filter(([,k]) => Number(ps[k]) > 0).map(([label, key]) => (
+                {[['PF','pf_employee'],['ESI','esi_employee'],['Prof. Tax','professional_tax'],['TDS','tds'],['Retention','retention'],['LOP','lop_amount'],['Other','other_deductions']].filter(([,k]) => Number(ps[k]) > 0).map(([label, key]) => (
                   <div key={key} className="flex justify-between text-xs mb-1.5">
                     <span className="text-rose-700">{label}{key === 'lop_amount' ? ` (${ps.lop_days}d)` : ''}</span>
                     <span className="font-bold text-rose-800">{fmt(ps[key])}</span>

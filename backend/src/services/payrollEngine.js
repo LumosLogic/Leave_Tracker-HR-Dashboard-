@@ -322,15 +322,16 @@ function calculateGross(sal) {
 function calculateDeductions(sal, settings, lopDays, perDaySalary) {
   const lopDeduction = round2(lopDays * perDaySalary);
 
-  const pf  = settings.pf_enabled               ? round2(Number(sal.employee_pf)       || 0) : 0;
-  const esi = settings.esi_enabled              ? round2(Number(sal.employee_esi)      || 0) : 0;
-  const pt  = settings.professional_tax_enabled ? round2(Number(sal.professional_tax) || 0) : 0;
-  const tds = settings.tds_enabled              ? round2(Number(sal.tds)              || 0) : 0;
-  const other = round2(Number(sal.other_deductions) || 0);
+  const pf        = settings.pf_enabled               ? round2(Number(sal.employee_pf)       || 0) : 0;
+  const esi       = settings.esi_enabled               ? round2(Number(sal.employee_esi)      || 0) : 0;
+  const pt        = settings.professional_tax_enabled  ? round2(Number(sal.professional_tax)  || 0) : 0;
+  const tds       = settings.tds_enabled               ? round2(Number(sal.tds)               || 0) : 0;
+  const retention = round2(Number(sal.retention)       || 0);
+  const other     = round2(Number(sal.other_deductions) || 0);
 
-  const total = round2(pf + esi + pt + tds + other + lopDeduction);
+  const total = round2(pf + esi + pt + tds + retention + other + lopDeduction);
 
-  return { pf, esi, professionalTax: pt, tds, otherDeductions: other, lopDeduction, total };
+  return { pf, esi, professionalTax: pt, tds, retention, otherDeductions: other, lopDeduction, total };
 }
 
 // ─── calculateEmployerContribution ────────────────────────────────────────────
@@ -618,6 +619,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     { label: 'ESI (Employee)',             amount: deductions.esi },
     { label: 'Professional Tax',           amount: deductions.professionalTax },
     { label: 'TDS',                        amount: deductions.tds },
+    { label: 'Retention',                  amount: deductions.retention },
     { label: 'Other Deductions',           amount: deductions.otherDeductions },
     { label: `LOP (${lop.totalLOP} days)`, amount: deductions.lopDeduction },
   ].filter(e => e.amount > 0);
@@ -658,6 +660,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
       employeeEsi:        round2(sal.employee_esi),
       professionalTax:    round2(sal.professional_tax),
       tds:                round2(sal.tds),
+      retention:          round2(sal.retention),
       otherDeductions:    round2(sal.other_deductions),
       employerPf:         round2(sal.employer_pf),
       employerEsi:        round2(sal.employer_esi),
@@ -716,6 +719,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
       esi:             deductions.esi,
       professionalTax: deductions.professionalTax,
       tds:             deductions.tds,
+      retention:       deductions.retention,
       otherDeductions: deductions.otherDeductions,
       lopDeduction:    deductions.lopDeduction,
       total:           deductions.total,
