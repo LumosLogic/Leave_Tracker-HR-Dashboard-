@@ -4,7 +4,7 @@
 export const rootAdminTourSteps = [
   {
     popover: {
-      title: '👋 Welcome to LeaveTracker!',
+      title: '👋 Welcome to HRMS!',
       description: "Let's take a quick tour so you can hit the ground running. Click <strong>Next</strong> to continue or <strong>Skip Tour</strong> to explore on your own.",
       side: 'over',
       align: 'center',
@@ -86,7 +86,7 @@ export const rootAdminTourSteps = [
     element: '#tour-main-content',
     popover: {
       title: '🏠 Your Workspace',
-      description: 'All your data and actions appear right here. You\'re all set — enjoy using <strong>LeaveTracker</strong>! 🎉',
+      description: 'All your data and actions appear right here. You\'re all set — enjoy using <strong>HRMS</strong>! 🎉',
       side: 'left',
       align: 'center',
     },
@@ -96,7 +96,7 @@ export const rootAdminTourSteps = [
 export const hrAdminTourSteps = [
   {
     popover: {
-      title: '👋 Welcome to LeaveTracker!',
+      title: '👋 Welcome to HRMS!',
       description: "Let's take a quick tour so you can hit the ground running. Click <strong>Next</strong> to continue or <strong>Skip Tour</strong> to explore on your own.",
       side: 'over',
       align: 'center',
@@ -178,7 +178,7 @@ export const hrAdminTourSteps = [
     element: '#tour-main-content',
     popover: {
       title: '🏠 Your Workspace',
-      description: 'All your data and actions appear right here. You\'re all set — enjoy using <strong>LeaveTracker</strong>! 🎉',
+      description: 'All your data and actions appear right here. You\'re all set — enjoy using <strong>HRMS</strong>! 🎉',
       side: 'left',
       align: 'center',
     },
@@ -188,7 +188,7 @@ export const hrAdminTourSteps = [
 export const employeeTourSteps = [
   {
     popover: {
-      title: '👋 Welcome to LeaveTracker!',
+      title: '👋 Welcome to HRMS!',
       description: "Let's take a quick tour of your Employee Portal. Click <strong>Next</strong> to continue or <strong>Skip Tour</strong> to explore on your own.",
       side: 'over',
       align: 'center',
@@ -234,7 +234,7 @@ export const employeeTourSteps = [
     element: '#tour-emp-user-card',
     popover: {
       title: '👤 Your Account',
-      description: 'Your profile is shown here. Use <strong>Sign Out</strong> when you\'re done. Enjoy using LeaveTracker! 🎉',
+      description: 'Your profile is shown here. Use <strong>Sign Out</strong> when you\'re done. Enjoy using HRMS! 🎉',
       side: 'top',
       align: 'start',
     },

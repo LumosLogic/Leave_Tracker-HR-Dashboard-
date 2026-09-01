@@ -33,7 +33,7 @@ function Sidebar({ onClose }) {
           </div>
           <div>
             <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight">Platform Admin</h2>
-            <p className="text-[0.62rem] text-[#777587] mt-0.5 tracking-wide">LeaveTracker Console</p>
+            <p className="text-[0.62rem] text-[#777587] mt-0.5 tracking-wide">HRMS Console</p>
           </div>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function PlatformLayout() {
           </button>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-xs text-[#777587] font-semibold">LeaveTracker — Platform Admin Console</span>
+            <span className="text-xs text-[#777587] font-semibold">HRMS — Platform Admin Console</span>
           </div>
           <div className="flex-1" />
           <span className="text-[0.65rem] text-[#c7c4d8] font-mono hidden sm:block">v2.2.0</span>

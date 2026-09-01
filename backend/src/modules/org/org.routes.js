@@ -113,7 +113,7 @@ router.post('/register-org', rateLimiter(LIMITS.ORG_REGISTER), async (req, res) 
     // Notify platform admin via email (using LumosLogic SMTP)
     const platformAdminEmail = process.env.PLATFORM_ADMIN_EMAIL || process.env.SMTP_USER;
     if (platformAdminEmail) {
-      sendMail({ to: platformAdminEmail, subject: `[LeaveTracker] New Org Request: ${companyTrim}`, html: orgRequestReceivedHtml(request) });
+      sendMail({ to: platformAdminEmail, subject: `[HRMS] New Org Request: ${companyTrim}`, html: orgRequestReceivedHtml(request) });
     }
 
     res.json({ success: true, message: 'Your registration request has been submitted. Our team will review and email you within 24 hours.', request_id: request.id });

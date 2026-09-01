@@ -319,7 +319,7 @@ router.post('/requests/:id/approve', platformAdminAuth, async (req, res) => {
     // Send approval email (LumosLogic SMTP)
     sendMail({
       to: request.email,
-      subject: `Welcome to LeaveTracker — Your organization "${request.company_name}" is approved!`,
+      subject: `Welcome to HRMS — Your organization "${request.company_name}" is approved!`,
       html: orgApprovedHtml(request, slug, tempPassword),
     });
 
@@ -349,7 +349,7 @@ router.post('/requests/:id/reject', platformAdminAuth, async (req, res) => {
 
     sendMail({
       to: request.email,
-      subject: `LeaveTracker — Update on your registration request`,
+      subject: `HRMS — Update on your registration request`,
       html: orgRejectedHtml(request, notes),
     });
 

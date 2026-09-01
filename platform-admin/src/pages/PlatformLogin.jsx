@@ -44,7 +44,7 @@ export default function PlatformLogin() {
             </div>
             <div>
               <span className="text-white font-black text-base tracking-tight block">Platform Admin</span>
-              <span className="text-white/60 text-xs">LeaveTracker Console</span>
+              <span className="text-white/60 text-xs">HRMS Console</span>
             </div>
           </div>
 
@@ -53,7 +53,7 @@ export default function PlatformLogin() {
             <span className="opacity-80">Control Panel</span>
           </h1>
           <p className="text-white/75 text-sm leading-relaxed max-w-sm mb-8">
-            Manage all organizations on the LeaveTracker platform. Review registration requests, monitor activity, and keep the ecosystem running.
+            Manage all organizations on the HRMS platform. Review registration requests, monitor activity, and keep the ecosystem running.
           </p>
 
           <div className="flex flex-col gap-3 mb-7">

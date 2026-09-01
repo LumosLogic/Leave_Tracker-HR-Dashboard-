@@ -75,9 +75,9 @@ export default function Login() {
         <div className="relative z-10 text-white">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-7 h-7" />
+              <img src="/LogoWithoutName.svg" alt="HRMS" className="w-7 h-7" />
             </div>
-            <span className="text-white font-black text-lg tracking-tight">LeaveTracker</span>
+            <span className="text-white font-black text-lg tracking-tight">HRMS</span>
           </div>
 
           <h1 className="text-4xl font-black leading-tight tracking-[-0.04em] text-white mb-4">
@@ -128,9 +128,9 @@ export default function Login() {
           {/* Mobile branding */}
           <div className="flex items-center gap-2 mb-8 md:hidden">
             <div className="w-8 h-8 rounded-lg bg-[#3525cd] flex items-center justify-center flex-shrink-0">
-              <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-5 h-5" />
+              <img src="/LogoWithoutName.svg" alt="HRMS" className="w-5 h-5" />
             </div>
-            <span className="text-base font-black text-[#3525cd]">LeaveTracker</span>
+            <span className="text-base font-black text-[#3525cd]">HRMS</span>
           </div>
 
           {/* ── TOTP Step ─────────────────────────────────────────────────── */}
@@ -255,7 +255,7 @@ export default function Login() {
               </p>
 
               <p className="text-center text-[0.72rem] text-[#777587] mt-3">
-                LeaveTracker — Multi-Tenant HR Management
+                HRMS — Multi-Tenant HR Platform
               </p>
             </>
           )}

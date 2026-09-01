@@ -213,7 +213,7 @@ function RootSidebar({ onClose, onMenuClick, onSearchOpen }) {
             className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[#c7c4d8] bg-white hover:bg-[#f0f3ff] transition-colors flex-shrink-0">
             <X size={16} className="text-[#464555]" />
           </button>
-          <img src="/LogoWithoutName.svg" alt="LeaveTracker" className="w-9 h-9 flex-shrink-0 hidden md:block" />
+          <img src="/LogoWithoutName.svg" alt="HRMS" className="w-9 h-9 flex-shrink-0 hidden md:block" />
           <div>
             <h2 className="text-sm font-black text-[#151c27] leading-tight tracking-tight truncate">
               {organization?.name || 'Lumos Logic'}
