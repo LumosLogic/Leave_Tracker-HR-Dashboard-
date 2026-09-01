@@ -33,9 +33,9 @@ function Navbar() {
       <div className="w-full max-w-[1440px] mx-auto px-6 lg:px-12 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
           <img src="/LogoWithoutName.svg" alt="HRMS" className="w-8 h-8" />
-          <div className="flex flex-col leading-none">
-            <span className="font-black text-[#151c27] text-sm tracking-tight">HRMS</span>
-            <span className="text-[0.6rem] font-semibold text-[#777587] tracking-wide">by LumosLogic</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-black text-[#3525cd] text-base tracking-tight">HRMS</span>
+            <span className="text-xs font-semibold text-[#151c27]">by Lumos Logic</span>
           </div>
         </Link>
 
