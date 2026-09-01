@@ -307,8 +307,11 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     e.name?.toLowerCase().includes(search.toLowerCase()) ||
     e.department?.toLowerCase().includes(search.toLowerCase())
   );
-  // Employees eligible for assignment (not already on this shift)
-  const assignableFiltered = filteredEmps.filter(e => !thisShiftEmpIds.has(e.id));
+  // "Already assigned" lock only applies when the selected period is entirely
+  // within the month we have assignment data for. For Full Year / other months,
+  // all employees remain selectable (we don't have data to know their status).
+  const isWithinCurrentMonth = fromDate >= presets.monthStart && toDate <= presets.monthEnd;
+  const assignableFiltered = filteredEmps.filter(e => !(isWithinCurrentMonth && thisShiftEmpIds.has(e.id)));
   const allFiltered = assignableFiltered.length > 0 && assignableFiltered.every(e => selectedIds.has(e.id));
 
   // ── Interaction handlers ────────────────────────────────────────────────────
@@ -552,7 +555,7 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                   ) : filteredEmps.map(emp => {
                     const checked        = selectedIds.has(emp.id);
                     const otherShift     = otherShiftMap[emp.id];
-                    const alreadyHere    = thisShiftEmpIds.has(emp.id);
+                    const alreadyHere    = isWithinCurrentMonth && thisShiftEmpIds.has(emp.id);
 
                     if (alreadyHere) {
                       return (
