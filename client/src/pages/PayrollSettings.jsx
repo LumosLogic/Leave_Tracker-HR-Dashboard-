@@ -38,6 +38,9 @@ const DEFAULTS = {
   payroll_payout_day:           null,
   payroll_payout_time:          null,
   salary_calculation_rules:     null,
+  probation_enabled:              false,
+  default_probation_months:       3,
+  paid_leave_during_probation:    true,
 };
 
 const TIMEZONES = [
@@ -536,6 +539,47 @@ export default function PayrollSettings() {
         title="Salary Calculation Rules"
         subtitle="Configure how CTC is broken down into individual salary components when setting salary structures">
         <SalaryRulesSection rules={salaryRules} onChange={handleRulesChange} />
+      </Section>
+
+      {/* ── Probation Management ─────────────────────────────────────────────── */}
+      <Section
+        icon={<Users size={15} className="text-[#3525cd]" />}
+        title="Probation Management"
+        subtitle="Configure company-wide probation defaults and leave rules during probation">
+        <Row label="Enable Probation" hint="Turn on to allow setting probation periods for employees">
+          <Toggle checked={!!form.probation_enabled} onChange={v => set('probation_enabled', v)} />
+        </Row>
+        {form.probation_enabled && (
+          <>
+            <Row label="Default Probation Period" hint="Default number of months for new employees on probation">
+              <div className="flex items-center gap-2">
+                <NumInput
+                  value={form.default_probation_months ?? 3}
+                  onChange={v => set('default_probation_months', Math.max(1, v))}
+                  min={1}
+                  max={24}
+                />
+                <span className="text-sm text-[#777587]">months</span>
+              </div>
+            </Row>
+            <Row
+              label="Paid Leave During Probation"
+              hint="If OFF, approved leaves during probation are treated as unpaid (LOP applies in payroll)">
+              <Toggle
+                checked={form.paid_leave_during_probation !== false}
+                onChange={v => set('paid_leave_during_probation', v)}
+              />
+            </Row>
+            {form.paid_leave_during_probation === false && (
+              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <Info size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                  Employees on probation will have all leave marked as unpaid (LWP/LOP). Payroll will deduct salary for those leave days regardless of the leave policy's paid setting.
+                </p>
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       {/* Automation */}

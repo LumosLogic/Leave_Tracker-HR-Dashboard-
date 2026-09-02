@@ -21,8 +21,11 @@ router.post('/send-email', auth, adminOnly, async (req, res) => {
       if (!u) return res.status(404).json({ error: 'User not found in your organization' });
       recipients = [u.email];
     } else {
-      // BUG_136: "all employees" must exclude both root admins and HR admins
-      const { data: users } = await db.from('users').select('email').eq('organization_id', oId).eq('role', 'employee');
+      // BUG_136: "all employees" must exclude root admins, HR admins, and inactive/resigned/terminated
+      const { data: users } = await db.from('users').select('email')
+        .eq('organization_id', oId)
+        .eq('role', 'employee')
+        .not('employee_status', 'in', ['inactive', 'resigned', 'terminated']);
       recipients = (users || []).map(u => u.email).filter(Boolean);
     }
 
@@ -562,7 +565,14 @@ router.delete('/root-admins/:id', auth, rootAdminOnly, async (req, res) => {
       return res.status(400).json({ error: 'You cannot remove your own root admin access.' });
     }
 
-    // Count active root admins in this org
+    // Verify target is a root_admin in this org (direct lookup avoids BigInt === Number mismatch)
+    const { data: targetAdmin } = await db.from('users').select('id')
+      .eq('id', targetId).eq('role', 'root_admin').eq('organization_id', oid).maybeSingle();
+    if (!targetAdmin) {
+      return res.status(404).json({ error: 'Root admin not found in this organisation.' });
+    }
+
+    // Count root admins in this org to enforce minimum-one rule
     const { data: rootAdmins, error: cntErr } = await db
       .from('users').select('id')
       .eq('role', 'root_admin').eq('organization_id', oid);
@@ -572,11 +582,6 @@ router.delete('/root-admins/:id', auth, rootAdminOnly, async (req, res) => {
       return res.status(400).json({
         error: 'Cannot remove the last root admin. Assign at least one other root admin first.',
       });
-    }
-
-    const isTarget = (rootAdmins || []).some(r => r.id === targetId);
-    if (!isTarget) {
-      return res.status(404).json({ error: 'Root admin not found in this organisation.' });
     }
 
     // Soft delete: demote role + deactivate

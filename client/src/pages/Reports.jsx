@@ -15,12 +15,14 @@ import { Avatar } from '@/components/ui/Avatar';
 function cn(...classes) { return classes.filter(Boolean).join(' '); }
 
 const ATT_STATUS_STYLE = {
-  present:     'bg-emerald-50 text-emerald-700 border-emerald-200',
-  early_leave: 'bg-orange-50 text-orange-700 border-orange-200',
-  wfh:         'bg-indigo-50 text-indigo-700 border-indigo-200',
-  half_day:    'bg-amber-50 text-amber-700 border-amber-200',
-  on_leave:    'bg-rose-50 text-rose-600 border-rose-200',
-  absent:      'bg-slate-50 text-slate-500 border-slate-200',
+  present:          'bg-emerald-50 text-emerald-700 border-emerald-200',
+  early_leave:      'bg-orange-50 text-orange-700 border-orange-200',
+  wfh:              'bg-indigo-50 text-indigo-700 border-indigo-200',
+  work_from_home:   'bg-indigo-50 text-indigo-700 border-indigo-200',
+  half_day:         'bg-amber-50 text-amber-700 border-amber-200',
+  on_leave:         'bg-rose-50 text-rose-600 border-rose-200',
+  absent:           'bg-slate-50 text-slate-500 border-slate-200',
+  holiday:          'bg-violet-50 text-violet-700 border-violet-200',
 };
 const LEAVE_STATUS_STYLE = {
   approved:  'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -364,6 +366,18 @@ export default function Reports() {
     queryFn:  () => apiGet('/settings'),
     staleTime: 300000,
   });
+
+  // ── Holidays for the selected year (for full calendar holiday detection) ───────
+  const { data: _holData = [] } = useQuery({
+    queryKey: ['holidays-report', year],
+    queryFn:  () => apiGet('/holidays', { year }),
+    staleTime: 300000,
+  });
+  const holidayDateSet = useMemo(() => {
+    const s = new Set();
+    for (const h of Array.isArray(_holData) ? _holData : []) s.add(h.date);
+    return s;
+  }, [_holData]);
   const workDays = useMemo(() => {
     const wd = _wsData?.schedule?.work_days;
     if (!wd) return [1, 2, 3, 4, 5]; // Mon–Fri default
@@ -429,17 +443,22 @@ export default function Reports() {
         continue;
       }
 
-      // Past day with no record → absent; today/future → skip
+      // Past day with no record — show as holiday if configured, else absent
       if (date < today) {
+        const isHoliday = holidayDateSet.has(ds);
         result.push({
-          id: `synth-absent-${ds}`, name: emp.name, department: emp.department,
-          date: ds, status: 'absent', user_id: Number(selectedEmpId),
+          id:         isHoliday ? `synth-holiday-${ds}` : `synth-absent-${ds}`,
+          name:       emp.name,
+          department: emp.department,
+          date:       ds,
+          status:     isHoliday ? 'holiday' : 'absent',
+          user_id:    Number(selectedEmpId),
           check_in: null, check_out: null, work_hours: 0, gross_hours: 0,
         });
       }
     }
     return result;
-  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays]);
+  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays, holidayDateSet]);
 
   // Effective rows — full calendar when employee selected, otherwise full dataset (filtered by employee if set)
   const effectiveAttRows = useMemo(() => {
@@ -592,7 +611,7 @@ export default function Reports() {
   const anyFilter   = selectedEmpId || deptFilter || statusFilter || leaveTypeFilter || attStatusFilter || empTypeFilter;
 
   const LEAVE_TYPES = ['casual', 'sick', 'annual', 'emergency', 'wfh', 'other'];
-  const ATT_STATUSES = ['present', 'absent', 'wfh', 'on_leave', 'half_day'];
+  const ATT_STATUSES = ['present', 'absent', 'holiday', 'wfh', 'on_leave', 'half_day'];
   const LEAVE_STATUSES = ['approved', 'pending', 'rejected', 'cancelled'];
   const EMP_STATUSES = ['active', 'inactive', 'resigned'];
   const EMP_TYPES = ['full_time', 'part_time', 'contract', 'intern'];
@@ -826,10 +845,17 @@ export default function Reports() {
                       <td className="px-4 py-3 text-[#464555] text-xs">{r.department || '—'}</td>
                       <td className="px-4 py-3 text-[#464555] text-xs whitespace-nowrap">{r.date}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className={cn('text-[0.68rem] font-bold px-2 py-0.5 rounded-full border capitalize', ATT_STATUS_STYLE[r.status] || 'bg-slate-50 text-slate-500 border-slate-200')}>
-                            {r.status?.replace('_', ' ') || '—'}
+                            {r.status === 'holiday'
+                              ? (r.holiday_name ? `${r.holiday_type === 'public' ? 'Public ' : ''}Holiday` : 'Holiday')
+                              : r.status?.replace(/_/g, ' ') || '—'}
                           </span>
+                          {r.status === 'holiday' && r.holiday_name && (
+                            <span className="text-[0.6rem] font-semibold text-violet-600 truncate max-w-[120px]" title={r.holiday_name}>
+                              {r.holiday_name}
+                            </span>
+                          )}
                           {r.is_on_break && (
                             <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
                               On Break

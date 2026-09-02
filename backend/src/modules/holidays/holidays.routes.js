@@ -39,10 +39,19 @@ router.post('/', auth, hasPermission('holidays', 'manage'), async (req, res) => 
       .select().single();
     if (error) throw error;
 
-    // Auto-mark attendance as 'holiday' for employees who have no record on this date (fire-and-forget)
+    // Auto-mark attendance as 'holiday' for this date (fire-and-forget):
+    // 1. Update any existing 'absent' records to 'holiday' (handles backdated holidays)
+    // 2. Insert 'holiday' records for employees who have no record at all
     db.from('users').select('id').eq('organization_id', oId).eq('role', 'employee').eq('employee_status', 'active')
       .then(async ({ data: employees }) => {
         if (!employees?.length) return;
+        // Step 1: flip existing absent records to holiday
+        await db.from('attendance')
+          .update({ status: 'holiday' })
+          .eq('date', date)
+          .eq('organization_id', oId)
+          .eq('status', 'absent');
+        // Step 2: insert holiday records for employees with no record on this date
         const { data: existing } = await db.from('attendance')
           .select('user_id').eq('date', date).eq('organization_id', oId);
         const markedIds = new Set((existing || []).map(r => r.user_id));

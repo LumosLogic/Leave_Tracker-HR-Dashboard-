@@ -164,4 +164,52 @@ async function runAutoMarkAbsent() {
   }
 }
 
-module.exports = { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent };
+// Probation expiry check — runs daily. Employees whose probation_end_date has
+// passed are promoted from employee_status='probation' to 'active' + employment_type='full-time'.
+async function runProbationExpiryCheck() {
+  const today = localDateStr();
+  const { data: orgs } = await db.from('organizations').select('id').eq('status', 'active');
+
+  for (const org of (orgs || [])) {
+    const oId = org.id;
+    try {
+      // Find employees whose probation period has ended
+      const { data: expired } = await db.from('users')
+        .select('id, name')
+        .eq('organization_id', oId)
+        .eq('probation_applicable', true)
+        .eq('employee_status', 'probation')
+        .not('probation_end_date', 'is', null)
+        .lte('probation_end_date', today);
+
+      if (!expired?.length) continue;
+
+      for (const emp of expired) {
+        await db.from('users')
+          .update({ employee_status: 'active', employment_type: 'full_time' })
+          .eq('id', emp.id)
+          .eq('organization_id', oId);
+
+        // Notify HR admins
+        const { data: admins } = await db.from('users')
+          .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
+        if (admins?.length) {
+          await db.from('notifications').insert(
+            admins.map(a => ({
+              user_id:         a.id,
+              title:           `Probation Completed — ${emp.name}`,
+              message:         `${emp.name}'s probation period has ended. Their status has been updated to Full Time (Active).`,
+              type:            'general',
+              organization_id: oId,
+            }))
+          );
+        }
+      }
+      console.log(`[Probation] Completed probation for ${expired.length} employee(s) in org ${oId}`);
+    } catch (err) {
+      console.error(`[Probation] Error for org ${oId}:`, err.message);
+    }
+  }
+}
+
+module.exports = { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent, runProbationExpiryCheck };

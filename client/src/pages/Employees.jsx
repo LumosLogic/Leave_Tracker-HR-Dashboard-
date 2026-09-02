@@ -1201,6 +1201,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     citizenship:          employee.citizenship          || '',
     height:               employee.height               || '',
     weight:               employee.weight               || '',
+    // Probation
+    probation_applicable: employee.probation_applicable || false,
+    probation_months:     employee.probation_months     || 3,
   } : {
     name: '', email: '', password: '', department: '', position: '', designation_id: '',
     role: defaultRole, avatar_color: '#3525cd', date_of_birth: '', department_ids: [],
@@ -1213,6 +1216,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     // Personal profile fields defaults
     gender: '', blood_group: '', marital_status: '', nationality: '',
     religion: '', citizenship: '', height: '', weight: '',
+    // Probation defaults
+    probation_applicable: false,
+    probation_months: 3,
   });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1588,6 +1594,68 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     <option value="terminated">Terminated</option>
                   </select>
                 </div>
+              </div>
+
+              {/* ── Probation ── */}
+              <div className="border border-[#e7eefe] rounded-xl p-4 space-y-4 bg-[#fafaff]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-[#151c27]">Probation Period</p>
+                    <p className="text-[0.68rem] text-[#777587]">Automatically promotes to Full Time when probation ends</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newVal = !form.probation_applicable;
+                      set('probation_applicable', newVal);
+                      // Auto-sync status: turning probation ON sets status=probation; OFF reverts to active
+                      if (newVal) set('employee_status', 'probation');
+                      else if (form.employee_status === 'probation') set('employee_status', 'active');
+                    }}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${form.probation_applicable ? 'bg-[#3525cd]' : 'bg-[#c7c4d8]'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${form.probation_applicable ? 'translate-x-4' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {form.probation_applicable && (
+                  <div className="grid grid-cols-3 gap-4 pt-1">
+                    <div>
+                      <label className="form-label">Probation Period</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number" min={1} max={24}
+                          className="form-control w-20 text-center"
+                          value={form.probation_months || 3}
+                          onChange={e => set('probation_months', Math.max(1, parseInt(e.target.value) || 3))}
+                        />
+                        <span className="text-xs text-[#777587]">months</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="form-label">Start Date</label>
+                      <input
+                        className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]"
+                        value={form.joining_date || '—'}
+                        readOnly
+                      />
+                      <p className="text-[0.65rem] text-[#777587] mt-0.5">Auto-set from Joining Date</p>
+                    </div>
+                    <div>
+                      <label className="form-label">End Date</label>
+                      <input
+                        className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]"
+                        value={(() => {
+                          if (!form.joining_date || !form.probation_months) return '—';
+                          const d = new Date(form.joining_date + 'T12:00:00Z');
+                          d.setMonth(d.getMonth() + (parseInt(form.probation_months) || 3));
+                          return d.toISOString().split('T')[0];
+                        })()}
+                        readOnly
+                      />
+                      <p className="text-[0.65rem] text-[#777587] mt-0.5">Auto-calculated</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

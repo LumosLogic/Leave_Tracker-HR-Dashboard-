@@ -80,6 +80,10 @@ const SETTINGS_DEFAULTS = {
   payroll_payout_day: null,     payroll_payout_time: null,
   // Salary calculation rules (CTC-based auto-calculation)
   salary_calculation_rules: null,
+  // Probation management settings
+  probation_enabled:              false,
+  default_probation_months:       3,
+  paid_leave_during_probation:    true,
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);

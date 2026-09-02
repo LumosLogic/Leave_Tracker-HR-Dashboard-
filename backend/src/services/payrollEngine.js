@@ -175,7 +175,9 @@ function calculateAttendance({
     }
 
     // ── Leave-driven classification ───────────────────────────────────────
-    if (status === 'on_leave' || (!status && leave)) {
+    // Approved leave takes priority over 'absent' attendance records
+    // (handles case where employee was auto-marked absent and later applied leave)
+    if (status === 'on_leave' || ((!status || status === 'absent') && leave)) {
       const lv = leave ?? { paid: true, leave_time: 'full' };
       const ltime = lv.leave_time || 'full';
 
@@ -373,13 +375,27 @@ async function fetchAllData(oId, uId, month, year) {
     regRes,
   ] = await Promise.all([
 
-    // Employee — org-scoped
-    pool.query(
-      `SELECT id, name, email, department, position, employee_id, employee_status AS status
-         FROM users
-        WHERE id = $1 AND organization_id = $2`,
-      [uId, oId]
-    ),
+    // Employee — org-scoped (with probation dates for leave override)
+    (async () => {
+      try {
+        return await pool.query(
+          `SELECT id, name, email, department, position, employee_id,
+                  employee_status AS status,
+                  probation_start_date::text, probation_end_date::text
+             FROM users
+            WHERE id = $1 AND organization_id = $2`,
+          [uId, oId]
+        );
+      } catch {
+        return await pool.query(
+          `SELECT id, name, email, department, position, employee_id,
+                  employee_status AS status
+             FROM users
+            WHERE id = $1 AND organization_id = $2`,
+          [uId, oId]
+        );
+      }
+    })(),
 
     // Payroll settings
     pool.query(
@@ -563,6 +579,25 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
   const regularizedSet = new Set(data.regularized.map(r => r.date));
 
   const leaveDateMap = buildLeaveDateMap(data.leaves, y, m);
+
+  // ── Probation leave override (per-date) ───────────────────────────────────
+  // If the org disallows paid leave during probation, mark only the leave dates
+  // that fall ON OR BEFORE probation_end_date as unpaid. Leaves taken after
+  // probation ends keep their original paid status — fixing the mid-month case:
+  // e.g. probation ends Aug 10, leave on Aug 15 → still paid (no LOP).
+  const emp = data.employee;
+  if (
+    settings.probation_enabled &&
+    settings.paid_leave_during_probation === false &&
+    emp.probation_end_date &&
+    emp.probation_end_date >= data.start   // probation overlaps this pay period
+  ) {
+    for (const [ds, lv] of leaveDateMap) {
+      if (ds <= emp.probation_end_date) {          // only dates within probation window
+        leaveDateMap.set(ds, { ...lv, paid: false });
+      }
+    }
+  }
 
   const dateMap = buildDateMap(y, m, settings.weekend_policy, holidaySet);
 

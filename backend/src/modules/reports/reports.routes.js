@@ -65,6 +65,21 @@ router.get('/attendance', auth, async (req, res) => {
     const { data, error } = await q;
     if (error) throw error;
 
+    // Build a holiday map for the queried range so we can override absent→holiday
+    // for dates that were incorrectly marked absent before the holiday was configured.
+    const holidayMap = new Map();
+    try {
+      let hq = db.from('holidays').select('date, name, type').eq('organization_id', oId);
+      if (year && month) {
+        hq = hq.gte('date', `${year}-${String(month).padStart(2,'0')}-01`)
+               .lte('date', `${year}-${String(month).padStart(2,'0')}-31`);
+      } else if (year) {
+        hq = hq.gte('date', `${year}-01-01`).lte('date', `${year}-12-31`);
+      }
+      const { data: hols } = await hq;
+      for (const h of hols || []) holidayMap.set(h.date, h);
+    } catch { /* non-critical — degrade gracefully */ }
+
     const timeNow = nowIST();
 
     const rows = (data || []).map(r => {
@@ -101,6 +116,10 @@ router.get('/attendance', auth, async (req, res) => {
         if (effMins > 0) estimated_hours = Math.round((effMins / 60) * 100) / 100;
       }
 
+      // Override 'absent' with 'holiday' if this date is a configured company holiday
+      const holidayInfo = holidayMap.get(r.date);
+      const effectiveStatus = (r.status === 'absent' && holidayInfo) ? 'holiday' : r.status;
+
       return {
         id:                   r.id,
         user_id:              r.user_id,
@@ -109,7 +128,9 @@ router.get('/attendance', auth, async (req, res) => {
         department:           r.users?.department || '',
         position:             r.users?.position || '',
         date:                 r.date,
-        status:               r.status,
+        status:               effectiveStatus,
+        holiday_name:         holidayInfo?.name || null,
+        holiday_type:         holidayInfo?.type || null,
         check_in,
         check_out,
         break_start:          r.break_start  || '',

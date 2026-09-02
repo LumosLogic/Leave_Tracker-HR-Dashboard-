@@ -23,6 +23,8 @@ const EMPLOYEE_PUBLIC_COLS = [
   // personal profile fields
   'gender', 'blood_group', 'marital_status', 'nationality', 'religion',
   'citizenship', 'height', 'weight',
+  // probation management
+  'probation_applicable', 'probation_months', 'probation_start_date', 'probation_end_date',
 ].join(', ');
 
 // Sensitive statutory fields — admin only (last_credentials_sent_at added via startup migration)
@@ -209,6 +211,8 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       // personal profile fields
       gender, blood_group, marital_status, nationality, religion,
       citizenship, height, weight,
+      // probation management
+      probation_applicable, probation_months,
     } = req.body;
     if (role === 'root_admin' && req.user.role !== 'root_admin') {
       return res.status(403).json({ error: 'Only root admins can assign the root_admin role' });
@@ -257,6 +261,21 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       weight:               weight               || null,
     };
     if (password) update.password = bcrypt.hashSync(password, 10);
+    // Probation fields — only update if explicitly provided in the request body
+    if (probation_applicable !== undefined) update.probation_applicable = probation_applicable;
+    if (probation_months     !== undefined) update.probation_months     = parseInt(probation_months) || 0;
+
+    // Auto-calculate probation dates from joining_date + probation_months
+    const effectiveJoining = joining_date || null;
+    if (probation_applicable && probation_months && effectiveJoining) {
+      update.probation_start_date = effectiveJoining;
+      const endDate = new Date(effectiveJoining + 'T12:00:00Z');
+      endDate.setMonth(endDate.getMonth() + parseInt(probation_months));
+      update.probation_end_date = endDate.toISOString().split('T')[0];
+    } else if (probation_applicable === false) {
+      update.probation_start_date = null;
+      update.probation_end_date   = null;
+    }
     // Use a transaction when department_ids are provided — DELETE then INSERT must be atomic.
     // Without it, a crash between DELETE and INSERT leaves the employee with no departments.
     const empId = parseInt(req.params.id);
