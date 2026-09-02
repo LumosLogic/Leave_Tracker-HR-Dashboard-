@@ -265,13 +265,34 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
     if (probation_applicable !== undefined) update.probation_applicable = probation_applicable;
     if (probation_months     !== undefined) update.probation_months     = parseInt(probation_months) || 0;
 
-    // Auto-calculate probation dates from joining_date + probation_months
-    const effectiveJoining = joining_date || null;
-    if (probation_applicable && probation_months && effectiveJoining) {
-      update.probation_start_date = effectiveJoining;
-      const endDate = new Date(effectiveJoining + 'T12:00:00Z');
-      endDate.setMonth(endDate.getMonth() + parseInt(probation_months));
-      update.probation_end_date = endDate.toISOString().split('T')[0];
+    // ── Backend enforcement of probation status ───────────────────────────────
+    // If probation is being enabled, always force employee_status='probation'
+    // regardless of what the frontend sent — single source of truth.
+    if (probation_applicable === true) {
+      update.employee_status = 'probation';
+    }
+    // If probation is being disabled, do NOT force a status — preserve whatever
+    // the frontend sent (HR chose the correct new status in the form).
+
+    // Auto-calculate probation dates from joining_date + probation_months.
+    // If joining_date is not in this request, fall back to the DB value (COALESCE
+    // with date_of_joining) so employees whose date lives in date_of_joining work too.
+    if (probation_applicable === true && probation_months) {
+      let effectiveJoining = joining_date || null;
+      if (!effectiveJoining) {
+        const { rows: jdRow } = await pool.query(
+          `SELECT COALESCE(joining_date::text, date_of_joining) AS jd
+             FROM users WHERE id = $1 AND organization_id = $2`,
+          [parseInt(req.params.id), orgId(req)]
+        );
+        effectiveJoining = jdRow[0]?.jd || null;
+      }
+      if (effectiveJoining) {
+        update.probation_start_date = effectiveJoining;
+        const endDate = new Date(effectiveJoining + 'T12:00:00Z');
+        endDate.setMonth(endDate.getMonth() + parseInt(probation_months));
+        update.probation_end_date = endDate.toISOString().split('T')[0];
+      }
     } else if (probation_applicable === false) {
       update.probation_start_date = null;
       update.probation_end_date   = null;

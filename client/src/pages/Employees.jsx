@@ -1586,13 +1586,21 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 </div>
                 <div>
                   <label className="form-label">Status</label>
-                  <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
-                    <option value="active">Active</option>
-                    <option value="probation">Probation</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="resigned">Resigned</option>
-                    <option value="terminated">Terminated</option>
-                  </select>
+                  {form.probation_applicable ? (
+                    /* When probation is ON, status is auto-managed — show read-only indicator */
+                    <div className="form-control bg-[#f5f5f8] cursor-not-allowed flex items-center justify-between">
+                      <span className="text-sky-700 font-bold text-sm">Probation</span>
+                      <span className="text-[0.65rem] text-[#777587]">Auto-managed</span>
+                    </div>
+                  ) : (
+                    <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
+                      <option value="active">Active</option>
+                      <option value="probation">Probation</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="resigned">Resigned</option>
+                      <option value="terminated">Terminated</option>
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1607,10 +1615,19 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     type="button"
                     onClick={() => {
                       const newVal = !form.probation_applicable;
-                      set('probation_applicable', newVal);
-                      // Auto-sync status: turning probation ON sets status=probation; OFF reverts to active
-                      if (newVal) set('employee_status', 'probation');
-                      else if (form.employee_status === 'probation') set('employee_status', 'active');
+                      if (newVal) {
+                        // Turning ON: force status to probation
+                        set('probation_applicable', true);
+                        set('employee_status', 'probation');
+                      } else {
+                        // Turning OFF: restore to the employee's original non-probation status
+                        // (or 'active' for new employees / if original was already probation)
+                        const fallback = (isEdit && employee?.employee_status && employee.employee_status !== 'probation')
+                          ? employee.employee_status
+                          : 'active';
+                        set('probation_applicable', false);
+                        set('employee_status', fallback);
+                      }
                     }}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${form.probation_applicable ? 'bg-[#3525cd]' : 'bg-[#c7c4d8]'}`}
                   >
