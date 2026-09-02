@@ -169,9 +169,11 @@ async function checkCanApprove(leave, userId, userRole) {
   }
 
   const workflow = await getOrgWorkflow(leave.organization_id);
-  const currentLevel = workflow.levels.find(l => l.level_number === leave.current_level);
+  // Coerce to number — Supabase JS client may return level_number as string
+  const currentLevelNum = Number(leave.current_level);
+  const currentLevel = workflow.levels.find(l => Number(l.level_number) === currentLevelNum);
 
-  // BUG_169: if the workflow was updated after leave submission, current_level may not
+  // If the workflow was updated after leave submission, current_level may not
   // match any level — allow any admin as a fallback so the leave doesn't get stuck.
   if (!currentLevel) {
     const isAdmin = ['admin', 'root_admin'].includes(userRole);
@@ -227,9 +229,10 @@ async function initWorkflow(employeeId, oId) {
 // skipping optional levels with no approver. Returns null if no more levels.
 // ─────────────────────────────────────────────────────────────────────────────
 async function findNextLevel(workflow, afterLevelNum, employeeId, oId) {
+  const after = Number(afterLevelNum);
   const remaining = workflow.levels
-    .filter(l => l.level_number > afterLevelNum)
-    .sort((a, b) => a.level_number - b.level_number);
+    .filter(l => Number(l.level_number) > after)
+    .sort((a, b) => Number(a.level_number) - Number(b.level_number));
 
   for (const level of remaining) {
     const { userId } = await resolveApprover(level, employeeId, oId);
