@@ -125,12 +125,12 @@ SELECT
   (SELECT id FROM users WHERE name ILIKE '%mukesh%thakor%' AND organization_id = (SELECT id FROM organizations WHERE name ILIKE '%relitrade%' LIMIT 1)),
   (SELECT id FROM organizations WHERE name ILIKE '%relitrade%' LIMIT 1),
   (SELECT s.id FROM shifts s JOIN shift_assignments sx ON sx.shift_id = s.id WHERE sx.organization_id = (SELECT id FROM organizations WHERE name ILIKE '%relitrade%' LIMIT 1) AND s.name = 'Weekday Shift' LIMIT 1),
-  d
-FROM unnest(ARRAY['2026-08-01','2026-08-08','2026-08-22','2026-08-29']::date[]) AS d
+  d::date
+FROM unnest(ARRAY['2026-08-01','2026-08-08','2026-08-22','2026-08-29']::text[]) AS d
 WHERE NOT EXISTS (
   SELECT 1 FROM shift_assignments sa2
   WHERE  sa2.user_id = (SELECT id FROM users WHERE name ILIKE '%mukesh%thakor%' AND organization_id = (SELECT id FROM organizations WHERE name ILIKE '%relitrade%' LIMIT 1))
-    AND  sa2.date = d
+    AND  sa2.date::text = d
     AND  sa2.organization_id = (SELECT id FROM organizations WHERE name ILIKE '%relitrade%' LIMIT 1)
 );
 
@@ -169,7 +169,7 @@ FROM unnest(ARRAY[
   '2026-08-01','2026-08-03','2026-08-04','2026-08-05','2026-08-06','2026-08-07',
   '2026-08-08','2026-08-10','2026-08-11','2026-08-12','2026-08-13','2026-08-14',
   '2026-08-17','2026-08-18','2026-08-19','2026-08-20','2026-08-25','2026-08-31'
-]::date[]) AS d
+]::text[]) AS d
 ON CONFLICT DO NOTHING;
 
 
