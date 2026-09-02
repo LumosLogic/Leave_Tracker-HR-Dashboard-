@@ -310,7 +310,30 @@ async function updateWorkflow(oId, workflowName, newLevels) {
     );
   }
 
-  // Return updated workflow
+  // Reset any pending leaves to the new workflow's first level.
+  // When level numbers are replaced, a leave whose current_level mapped to
+  // e.g. 'hr_admin' may now map to 'root_admin', blocking the original approver.
+  // Resetting to level 1 lets the new workflow re-evaluate from the start.
+  if (newLevels.length > 0) {
+    const firstLevel = [...newLevels].sort((a, b) => a.level_number - b.level_number)[0];
+    // For role-based levels (hr_admin, root_admin) current_approver_id is not used
+    // by canUserApproveLevel, so NULL is correct. Person-based levels (reporting_manager,
+    // department_head) store a specific user — those will need re-initiation, but
+    // setting NULL causes the BUG_169 admin fallback to take over, keeping them unblocked.
+    await pool.query(
+      `UPDATE leaves
+          SET current_level       = $1,
+              current_approver_id = CASE
+                WHEN $2 IN ('hr_admin','root_admin') THEN NULL
+                ELSE current_approver_id
+              END
+        WHERE organization_id = $3
+          AND workflow_id     = $4
+          AND status          = 'pending_approval'`,
+      [firstLevel.level_number, firstLevel.role_type, oId, workflow.id]
+    );
+  }
+
   return getOrgWorkflow(oId);
 }
 
