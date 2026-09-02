@@ -1,4 +1,4 @@
-const { db } = require('../config/db');
+const { db, pool } = require('../config/db');
 const { localDateStr, getRecipients, getOrgContext } = require('./helpers');
 const { sendMail, birthdayWishHtml, birthdayReminderHtml, holidayReminderHtml } = require('../services/emailService');
 const { sendPushToUsers } = require('../services/pushService');
@@ -216,18 +216,24 @@ async function runProbationExpiryCheck() {
 
       const months = Number(ps.default_probation_months) || 3;
 
-      const { data: newEmps } = await db.from('users')
-        .select('id, joining_date')
-        .eq('organization_id', oId)
-        .eq('role', 'employee')
-        .eq('probation_applicable', false)
-        .not('employee_status', 'in', ['inactive', 'resigned', 'terminated', 'probation'])
-        .not('joining_date', 'is', null);
+      // Use COALESCE so employees whose date is in date_of_joining are included
+      const { rows: newEmps } = await pool.query(`
+        SELECT id,
+          COALESCE(
+            joining_date::text,
+            date_of_joining,
+            TO_CHAR(created_at, 'YYYY-MM-DD')
+          ) AS resolved_joining_date
+        FROM users
+        WHERE organization_id = $1
+          AND role = 'employee'
+          AND COALESCE(probation_applicable, false) = false
+          AND COALESCE(employee_status, 'active') NOT IN ('inactive', 'resigned', 'terminated', 'probation')
+          AND COALESCE(joining_date::text, date_of_joining) IS NOT NULL
+      `, [oId]);
 
-      for (const emp of (newEmps || [])) {
-        const startDate = typeof emp.joining_date === 'string'
-          ? emp.joining_date.slice(0, 10)
-          : new Date(emp.joining_date).toISOString().split('T')[0];
+      for (const emp of newEmps) {
+        const startDate = emp.resolved_joining_date.slice(0, 10);
 
         const endD = new Date(startDate + 'T12:00:00Z');
         endD.setMonth(endD.getMonth() + months);

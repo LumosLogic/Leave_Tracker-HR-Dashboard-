@@ -168,21 +168,27 @@ router.post('/apply-probation-bulk', auth, hasPermission('payroll', 'manage_sett
     const months = Number(settings.default_probation_months) || 3;
     const today  = new Date().toISOString().split('T')[0];
 
-    // Fetch all non-terminal employees (including existing 'active'; exclude already-probation)
-    const { data: employees, error: empErr } = await db.from('users')
-      .select('id, joining_date')
-      .eq('organization_id', oId)
-      .eq('role', 'employee')
-      .not('employee_status', 'in', ['inactive', 'resigned', 'terminated', 'probation'])
-      .not('joining_date', 'is', null);
-    if (empErr) throw empErr;
+    // Use raw query so we can COALESCE joining_date + date_of_joining + created_at —
+    // the same resolution the rest of the app uses. The Supabase client's joining_date
+    // filter excluded employees whose date is only in date_of_joining or created_at.
+    const { rows: employees } = await pool.query(`
+      SELECT id,
+        COALESCE(
+          joining_date::text,
+          date_of_joining,
+          TO_CHAR(created_at, 'YYYY-MM-DD')
+        ) AS resolved_joining_date
+      FROM users
+      WHERE organization_id = $1
+        AND role = 'employee'
+        AND COALESCE(employee_status, 'active') NOT IN ('inactive', 'resigned', 'terminated', 'probation')
+        AND COALESCE(joining_date::text, date_of_joining) IS NOT NULL
+    `, [oId]);
 
     let setToProbation = 0, setToActive = 0;
 
-    for (const emp of (employees || [])) {
-      const startDate = typeof emp.joining_date === 'string'
-        ? emp.joining_date.slice(0, 10)
-        : new Date(emp.joining_date).toISOString().split('T')[0];
+    for (const emp of employees) {
+      const startDate = emp.resolved_joining_date.slice(0, 10);
 
       const endD = new Date(startDate + 'T12:00:00Z');
       endD.setMonth(endD.getMonth() + months);

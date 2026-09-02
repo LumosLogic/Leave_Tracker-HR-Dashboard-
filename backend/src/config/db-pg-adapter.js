@@ -92,6 +92,12 @@ function from(table) {
             const placeholders = f.val.map(v => addParam(v)).join(', ');
             return `(${col} IS NULL OR ${col} NOT IN (${placeholders}))`;
           }
+          case 'not_is': {
+            if (f.val === null)  return `${col} IS NOT NULL`;
+            if (f.val === true)  return `${col} IS NOT TRUE`;
+            if (f.val === false) return `${col} IS NOT FALSE`;
+            return `${col} IS NOT ${addParam(f.val)}`;
+          }
           case 'not_eq': return `${col} <> ${addParam(f.val)}`;
           default:       return `${col} = ${addParam(f.val)}`;
         }
