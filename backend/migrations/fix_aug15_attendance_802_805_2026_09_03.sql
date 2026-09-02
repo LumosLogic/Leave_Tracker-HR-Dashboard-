@@ -17,7 +17,7 @@ SELECT u.id, 1, '2026-08-15', 'present', 3
 FROM users u
 WHERE u.organization_id = 1
   AND u.device_enrollment_id IN ('802', '805')
-ON CONFLICT (user_id, date) DO NOTHING;
+ON CONFLICT (user_id, date, organization_id) DO NOTHING;
 
 COMMIT;
 
