@@ -6,8 +6,9 @@ import {
   ChevronDown, ChevronUp, Percent, Lock, Zap,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { DEFAULT_SALARY_RULES, mergeWithDefaults } from '@/lib/salaryCalculator';
 
 const DEFAULTS = {
@@ -298,26 +299,30 @@ function ComponentRow({ comp, onChange }) {
 
 // ── Probation Management section ──────────────────────────────────────────────
 function ProbationSection({ form, set, settings }) {
-  const toast  = useToast();
-  const [applying, setApplying] = React.useState(false);
-  const [applyResult, setApplyResult] = React.useState(null); // { applied, skipped }
+  const toast = useToast();
+  const [applying,    setApplying]    = React.useState(false);
+  const [applyResult, setApplyResult] = React.useState(null);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  async function handleApplyAll() {
-    if (!window.confirm(
-      `This will set employee_status = "Probation" for all active employees whose joining date is within the last ${form.default_probation_months ?? 3} months.\n\nEmployees whose probation period has already ended are NOT affected.\n\nProceed?`
-    )) return;
+  async function executeBulkApply() {
     setApplying(true);
     setApplyResult(null);
     try {
-      const { apiPost } = await import('@/lib/api');
       const res = await apiPost('/payroll/apply-probation-bulk', {});
       setApplyResult(res);
-      toast(`Applied: ${res.applied} employee(s) set to Probation. Skipped: ${res.skipped} (period already over).`, 'success');
+      toast(
+        `Done — ${res.set_to_probation} set to Probation, ${res.set_to_active} set to Active (probation already completed).`,
+        'success'
+      );
     } catch (e) {
       toast(e.message || 'Failed to apply probation.', 'error');
     } finally {
       setApplying(false);
     }
+  }
+
+  function handleApplyAll() {
+    setConfirmOpen(true);
   }
 
   return (
@@ -403,18 +408,17 @@ function ProbationSection({ form, set, settings }) {
               <div className="flex items-start gap-2">
                 <Info size={14} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-[#464555] space-y-1">
-                  <p><strong>How it works:</strong> Click "Apply to All" after saving settings. The system will set <em>employee_status = Probation</em> for every active employee whose probation period is still ongoing based on their Joining Date.</p>
-                  <p>Employees whose calculated probation end date has already passed are <strong>not changed</strong>. The daily cron also auto-applies this to any new joiners overnight.</p>
+                  <p><strong>How it works:</strong> Click "Apply to All" after saving settings. Active employees still within their probation window are set to <em>Probation</em>; those whose window has already passed are set to <em>Active (Full Time)</em>. The daily cron auto-applies this to any new joiners overnight.</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   type="button"
                   onClick={handleApplyAll}
-                  disabled={applying || !(settings?.probation_enabled) || settings?.probation_scope !== 'all'}
+                  disabled={applying || !settings?.probation_enabled || settings?.probation_scope !== 'all'}
                   className={cn(
                     'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all',
-                    applying || !(settings?.probation_enabled) || settings?.probation_scope !== 'all'
+                    applying || !settings?.probation_enabled || settings?.probation_scope !== 'all'
                       ? 'bg-[#e7eefe] text-[#9ca3af] cursor-not-allowed'
                       : 'bg-[#3525cd] text-white hover:bg-[#2a1fb0]'
                   )}>
@@ -422,12 +426,12 @@ function ProbationSection({ form, set, settings }) {
                     ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Applying…</>
                     : <><Users size={13} /> Apply to All Eligible Employees</>}
                 </button>
-                {(settings?.probation_enabled && settings?.probation_scope !== 'all') && (
+                {settings?.probation_enabled && settings?.probation_scope !== 'all' && (
                   <span className="text-[0.68rem] text-amber-600 font-semibold">Save settings first to enable this button.</span>
                 )}
                 {applyResult && (
                   <span className="text-[0.68rem] text-emerald-700 font-semibold">
-                    Done — {applyResult.applied} set to Probation, {applyResult.skipped} skipped (period over).
+                    Done — {applyResult.set_to_probation} set to Probation, {applyResult.set_to_active} set to Active (completed).
                   </span>
                 )}
               </div>
@@ -435,6 +439,17 @@ function ProbationSection({ form, set, settings }) {
           )}
         </>
       )}
+
+      {/* Custom confirmation dialog — replaces native window.confirm */}
+      <ConfirmModal
+        open={confirmOpen}
+        variant="warning"
+        title="Apply Probation to All Employees?"
+        message={`Active employees joining within the last ${form.default_probation_months ?? 3} months will be set to Probation. Employees whose probation period has already ended will be set to Active (Full Time). Employees without a joining date are skipped. This action cannot be undone automatically.`}
+        confirmLabel="Yes, Apply"
+        onConfirm={executeBulkApply}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </Section>
   );
 }

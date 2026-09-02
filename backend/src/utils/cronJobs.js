@@ -233,15 +233,26 @@ async function runProbationExpiryCheck() {
         endD.setMonth(endD.getMonth() + months);
         const endDate = endD.toISOString().split('T')[0];
 
-        if (endDate <= today) continue; // already past — do not change status
-
-        await db.from('users').update({
-          probation_applicable: true,
-          probation_months:     months,
-          probation_start_date: startDate,
-          probation_end_date:   endDate,
-          employee_status:      'probation',
-        }).eq('id', emp.id).eq('organization_id', oId);
+        if (endDate > today) {
+          // Still within probation window
+          await db.from('users').update({
+            probation_applicable: true,
+            probation_months:     months,
+            probation_start_date: startDate,
+            probation_end_date:   endDate,
+            employee_status:      'probation',
+          }).eq('id', emp.id).eq('organization_id', oId);
+        } else {
+          // Probation already completed — mark confirmed
+          await db.from('users').update({
+            probation_applicable: true,
+            probation_months:     months,
+            probation_start_date: startDate,
+            probation_end_date:   endDate,
+            employee_status:      'active',
+            employment_type:      'full_time',
+          }).eq('id', emp.id).eq('organization_id', oId);
+        }
       }
     } catch (err) {
       console.error(`[Probation] Error for org ${oId}:`, err.message);

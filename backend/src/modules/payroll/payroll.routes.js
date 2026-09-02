@@ -142,18 +142,18 @@ router.put('/settings', auth, hasPermission('payroll', 'manage_settings'), async
 });
 
 // ─── POST /payroll/apply-probation-bulk ──────────────────────────────────────
-// Applies company-wide probation to all eligible active employees using their
-// joining_date + default_probation_months. Only runs when scope='all'.
-// Safety rules:
-//   • Skips employees whose probation period is already over (joining+months <= today)
-//   • Skips employees already on probation (employee_status = 'probation')
-//   • Skips employees without a joining_date
-//   • Never touches inactive / resigned / terminated employees
+// Applies company-wide probation to all eligible active employees (not already
+// inactive/resigned/terminated/probation) using joining_date + default_months.
+// Only available when scope='all'.
+//
+// Classification:
+//   probation_end_date > today  → set Probation (still serving)
+//   probation_end_date <= today → set Active + full_time (already completed)
+//   no joining_date             → skipped
 router.post('/apply-probation-bulk', auth, hasPermission('payroll', 'manage_settings'), async (req, res) => {
   try {
     const oId = orgId(req);
 
-    // Load current settings
     const { data: settings } = await db.from('payroll_settings')
       .select('probation_enabled, default_probation_months, probation_scope')
       .eq('organization_id', oId).maybeSingle();
@@ -168,16 +168,16 @@ router.post('/apply-probation-bulk', auth, hasPermission('payroll', 'manage_sett
     const months = Number(settings.default_probation_months) || 3;
     const today  = new Date().toISOString().split('T')[0];
 
-    // Fetch active employees with a joining_date who are not already on probation
+    // Fetch all non-terminal employees (including existing 'active'; exclude already-probation)
     const { data: employees, error: empErr } = await db.from('users')
-      .select('id, joining_date, employee_status')
+      .select('id, joining_date')
       .eq('organization_id', oId)
       .eq('role', 'employee')
       .not('employee_status', 'in', ['inactive', 'resigned', 'terminated', 'probation'])
       .not('joining_date', 'is', null);
     if (empErr) throw empErr;
 
-    let applied = 0, skipped = 0;
+    let setToProbation = 0, setToActive = 0;
 
     for (const emp of (employees || [])) {
       const startDate = typeof emp.joining_date === 'string'
@@ -188,24 +188,31 @@ router.post('/apply-probation-bulk', auth, hasPermission('payroll', 'manage_sett
       endD.setMonth(endD.getMonth() + months);
       const endDate = endD.toISOString().split('T')[0];
 
-      if (endDate <= today) {
-        // Probation period already over — do not change status
-        skipped++;
-        continue;
+      if (endDate > today) {
+        // Still within probation window
+        await db.from('users').update({
+          probation_applicable: true,
+          probation_months:     months,
+          probation_start_date: startDate,
+          probation_end_date:   endDate,
+          employee_status:      'probation',
+        }).eq('id', emp.id).eq('organization_id', oId);
+        setToProbation++;
+      } else {
+        // Probation already completed — mark as confirmed full-time
+        await db.from('users').update({
+          probation_applicable: true,
+          probation_months:     months,
+          probation_start_date: startDate,
+          probation_end_date:   endDate,
+          employee_status:      'active',
+          employment_type:      'full_time',
+        }).eq('id', emp.id).eq('organization_id', oId);
+        setToActive++;
       }
-
-      await db.from('users').update({
-        probation_applicable:  true,
-        probation_months:      months,
-        probation_start_date:  startDate,
-        probation_end_date:    endDate,
-        employee_status:       'probation',
-      }).eq('id', emp.id).eq('organization_id', oId);
-
-      applied++;
     }
 
-    res.json({ success: true, applied, skipped });
+    res.json({ success: true, set_to_probation: setToProbation, set_to_active: setToActive });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
