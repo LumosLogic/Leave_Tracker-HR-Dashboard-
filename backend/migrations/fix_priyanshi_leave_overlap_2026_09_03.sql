@@ -37,19 +37,22 @@ END;
 $$;
 
 -- Fix: trim ID 215 to Aug 28 only
-UPDATE leaves
-SET    end_date = '2026-08-28'
-WHERE  id = 215
-  AND  organization_id = 1
-  AND  start_date = '2026-08-28'
-  AND  end_date   = '2026-08-29';
-
--- Confirm exactly 1 row was updated
 DO $$
+DECLARE
+  v_rows INT;
 BEGIN
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'ABORT: UPDATE matched 0 rows — leave ID 215 may already be corrected or has unexpected values';
+  UPDATE leaves
+  SET    end_date = '2026-08-28'
+  WHERE  id = 215
+    AND  organization_id = 1
+    AND  start_date = '2026-08-28'
+    AND  end_date   = '2026-08-29';
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'ABORT: UPDATE matched % rows — leave ID 215 may already be corrected or has unexpected values', v_rows;
   END IF;
+  RAISE NOTICE 'leave ID 215 end_date updated to 2026-08-28 (% row)', v_rows;
 END;
 $$;
 
