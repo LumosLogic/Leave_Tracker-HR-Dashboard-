@@ -672,19 +672,9 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
 
   const dateMap = buildDateMap(y, m, settings.weekend_policy, holidaySet);
 
-  // ── Working days (denominator) ────────────────────────────────────────────
-  // = all non-weekend days in the month (includes holidays — both paid and unpaid).
-  // Using a fixed denominator for stable per-day salary regardless of holiday count.
-  const workingDays = settings.working_days_rule === 'fixed'
-    ? Math.max(1, Number(settings.fixed_working_days))
-    : Math.max(1, dateMap.filter(d => !d.isWeekend).length);
-
-  const perDaySalary = round2(calculateGross(data.salary) / workingDays);
-
-  // ── Per-employee shift map: working days + duration per assigned date ─────
+  // ── Per-employee shift map (built BEFORE workingDays so denominator can use it) ──
   // Value: { workDays: Set<dow>|null, durationH: number }
-  // workDays null = no restriction (all days work per shift).
-  // durationH used to reclassify short-shift 'half_day' records as 'present'.
+  // workDays null = no restriction. durationH used for short-shift half_day reclassification.
   const shiftDateMap = new Map();
   for (const row of (data.shiftAssignments ?? [])) {
     const workDays  = parseShiftWorkDays(row.days_of_week);
@@ -696,6 +686,25 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     }
     shiftDateMap.set(row.date, { workDays, durationH });
   }
+
+  // ── Working days (denominator) ────────────────────────────────────────────
+  // For employees with shift-based weekoffs (e.g. a Saturday date assigned the
+  // Weekday Shift which only covers DOW 1–5), that Saturday is excluded from the
+  // denominator so per-day salary and LOP are consistent with their actual schedule.
+  // Employees whose Saturday assignments include DOW 6 (Saturday Shift) retain the
+  // standard calendar count. Fixed-rule orgs are unaffected.
+  const workingDays = settings.working_days_rule === 'fixed'
+    ? Math.max(1, Number(settings.fixed_working_days))
+    : Math.max(1, dateMap.reduce((n, d) => {
+        if (d.isWeekend) return n;
+        if (shiftDateMap.has(d.dateStr)) {
+          const si = shiftDateMap.get(d.dateStr);
+          if (si.workDays !== null && !si.workDays.has(d.dow)) return n;
+        }
+        return n + 1;
+      }, 0));
+
+  const perDaySalary = round2(calculateGross(data.salary) / workingDays);
 
   // Org half_day_hours — from work_schedule (needed for short-shift reclassification)
   const orgHalfDayHours = Number(data.schedule?.half_day_hours ?? 4.5);
