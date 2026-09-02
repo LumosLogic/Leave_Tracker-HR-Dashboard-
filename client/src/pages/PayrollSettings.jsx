@@ -41,6 +41,7 @@ const DEFAULTS = {
   probation_enabled:              false,
   default_probation_months:       3,
   paid_leave_during_probation:    true,
+  probation_scope:                'selected',
 };
 
 const TIMEZONES = [
@@ -295,6 +296,149 @@ function ComponentRow({ comp, onChange }) {
   );
 }
 
+// ── Probation Management section ──────────────────────────────────────────────
+function ProbationSection({ form, set, settings }) {
+  const toast  = useToast();
+  const [applying, setApplying] = React.useState(false);
+  const [applyResult, setApplyResult] = React.useState(null); // { applied, skipped }
+
+  async function handleApplyAll() {
+    if (!window.confirm(
+      `This will set employee_status = "Probation" for all active employees whose joining date is within the last ${form.default_probation_months ?? 3} months.\n\nEmployees whose probation period has already ended are NOT affected.\n\nProceed?`
+    )) return;
+    setApplying(true);
+    setApplyResult(null);
+    try {
+      const { apiPost } = await import('@/lib/api');
+      const res = await apiPost('/payroll/apply-probation-bulk', {});
+      setApplyResult(res);
+      toast(`Applied: ${res.applied} employee(s) set to Probation. Skipped: ${res.skipped} (period already over).`, 'success');
+    } catch (e) {
+      toast(e.message || 'Failed to apply probation.', 'error');
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <Section
+      icon={<Users size={15} className="text-[#3525cd]" />}
+      title="Probation Management"
+      subtitle="Configure company-wide probation defaults and leave rules during probation">
+
+      <Row label="Enable Probation" hint="Turn on to allow setting probation periods for employees">
+        <Toggle checked={!!form.probation_enabled} onChange={v => set('probation_enabled', v)} />
+      </Row>
+
+      {form.probation_enabled && (
+        <>
+          <Row label="Default Probation Period" hint="Default number of months for new employees on probation">
+            <div className="flex items-center gap-2">
+              <NumInput
+                value={form.default_probation_months ?? 3}
+                onChange={v => set('default_probation_months', Math.max(1, v))}
+                min={1} max={24}
+              />
+              <span className="text-sm text-[#777587]">months</span>
+            </div>
+          </Row>
+
+          <Row
+            label="Paid Leave During Probation"
+            hint="If OFF, approved leaves during probation are treated as unpaid (LOP applies in payroll)">
+            <Toggle
+              checked={form.paid_leave_during_probation !== false}
+              onChange={v => set('paid_leave_during_probation', v)}
+            />
+          </Row>
+          {form.paid_leave_during_probation === false && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              <Info size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">
+                Employees on probation will have all leave marked as unpaid (LWP/LOP). Payroll will deduct salary for those leave days regardless of the leave policy's paid setting.
+              </p>
+            </div>
+          )}
+
+          {/* ── Apply Probation To ── */}
+          <div className="border-t border-[#f0f3ff] pt-4">
+            <p className="text-sm font-semibold text-[#151c27] mb-1">Apply Probation To</p>
+            <p className="text-[0.68rem] text-[#777587] mb-3">
+              Controls which employees receive probation. Existing statuses are never changed automatically
+              unless you explicitly click "Apply to All" below.
+            </p>
+            <div className="flex gap-3">
+              {[
+                { value: 'selected', label: 'Selected Employees', desc: 'HR sets probation per employee in the employee edit modal' },
+                { value: 'all',     label: 'All Employees',       desc: 'Auto-applies to every active employee based on Joining Date' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => set('probation_scope', opt.value)}
+                  className={cn(
+                    'flex-1 text-left rounded-xl border px-4 py-3 transition-all',
+                    (form.probation_scope ?? 'selected') === opt.value
+                      ? 'border-[#3525cd] bg-[#f0f3ff] ring-1 ring-[#3525cd]/20'
+                      : 'border-[#c7c4d8] bg-white hover:border-[#3525cd]/40'
+                  )}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={cn(
+                      'w-3.5 h-3.5 rounded-full border-2 flex-shrink-0',
+                      (form.probation_scope ?? 'selected') === opt.value
+                        ? 'border-[#3525cd] bg-[#3525cd]'
+                        : 'border-[#c7c4d8] bg-white'
+                    )} />
+                    <span className="text-sm font-bold text-[#151c27]">{opt.label}</span>
+                  </div>
+                  <p className="text-[0.68rem] text-[#777587] pl-5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── All Employees: bulk apply button ── */}
+          {(form.probation_scope ?? 'selected') === 'all' && (
+            <div className="bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Info size={14} className="text-[#3525cd] flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-[#464555] space-y-1">
+                  <p><strong>How it works:</strong> Click "Apply to All" after saving settings. The system will set <em>employee_status = Probation</em> for every active employee whose probation period is still ongoing based on their Joining Date.</p>
+                  <p>Employees whose calculated probation end date has already passed are <strong>not changed</strong>. The daily cron also auto-applies this to any new joiners overnight.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleApplyAll}
+                  disabled={applying || !(settings?.probation_enabled) || settings?.probation_scope !== 'all'}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all',
+                    applying || !(settings?.probation_enabled) || settings?.probation_scope !== 'all'
+                      ? 'bg-[#e7eefe] text-[#9ca3af] cursor-not-allowed'
+                      : 'bg-[#3525cd] text-white hover:bg-[#2a1fb0]'
+                  )}>
+                  {applying
+                    ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Applying…</>
+                    : <><Users size={13} /> Apply to All Eligible Employees</>}
+                </button>
+                {(settings?.probation_enabled && settings?.probation_scope !== 'all') && (
+                  <span className="text-[0.68rem] text-amber-600 font-semibold">Save settings first to enable this button.</span>
+                )}
+                {applyResult && (
+                  <span className="text-[0.68rem] text-emerald-700 font-semibold">
+                    Done — {applyResult.applied} set to Probation, {applyResult.skipped} skipped (period over).
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ── Salary Calculation Rules section ─────────────────────────────────────────
 function SalaryRulesSection({ rules, onChange }) {
   const updateComp = (key, updated) => {
@@ -542,45 +686,7 @@ export default function PayrollSettings() {
       </Section>
 
       {/* ── Probation Management ─────────────────────────────────────────────── */}
-      <Section
-        icon={<Users size={15} className="text-[#3525cd]" />}
-        title="Probation Management"
-        subtitle="Configure company-wide probation defaults and leave rules during probation">
-        <Row label="Enable Probation" hint="Turn on to allow setting probation periods for employees">
-          <Toggle checked={!!form.probation_enabled} onChange={v => set('probation_enabled', v)} />
-        </Row>
-        {form.probation_enabled && (
-          <>
-            <Row label="Default Probation Period" hint="Default number of months for new employees on probation">
-              <div className="flex items-center gap-2">
-                <NumInput
-                  value={form.default_probation_months ?? 3}
-                  onChange={v => set('default_probation_months', Math.max(1, v))}
-                  min={1}
-                  max={24}
-                />
-                <span className="text-sm text-[#777587]">months</span>
-              </div>
-            </Row>
-            <Row
-              label="Paid Leave During Probation"
-              hint="If OFF, approved leaves during probation are treated as unpaid (LOP applies in payroll)">
-              <Toggle
-                checked={form.paid_leave_during_probation !== false}
-                onChange={v => set('paid_leave_during_probation', v)}
-              />
-            </Row>
-            {form.paid_leave_during_probation === false && (
-              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-                <Info size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-700">
-                  Employees on probation will have all leave marked as unpaid (LWP/LOP). Payroll will deduct salary for those leave days regardless of the leave policy's paid setting.
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </Section>
+      <ProbationSection form={form} set={set} settings={settings} />
 
       {/* Automation */}
       <Section

@@ -84,6 +84,7 @@ const SETTINGS_DEFAULTS = {
   probation_enabled:              false,
   default_probation_months:       3,
   paid_leave_during_probation:    true,
+  probation_scope:                'selected', // 'selected' | 'all'
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);
@@ -137,6 +138,74 @@ router.put('/settings', auth, hasPermission('payroll', 'manage_settings'), async
     });
 
     res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /payroll/apply-probation-bulk ──────────────────────────────────────
+// Applies company-wide probation to all eligible active employees using their
+// joining_date + default_probation_months. Only runs when scope='all'.
+// Safety rules:
+//   • Skips employees whose probation period is already over (joining+months <= today)
+//   • Skips employees already on probation (employee_status = 'probation')
+//   • Skips employees without a joining_date
+//   • Never touches inactive / resigned / terminated employees
+router.post('/apply-probation-bulk', auth, hasPermission('payroll', 'manage_settings'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+
+    // Load current settings
+    const { data: settings } = await db.from('payroll_settings')
+      .select('probation_enabled, default_probation_months, probation_scope')
+      .eq('organization_id', oId).maybeSingle();
+
+    if (!settings?.probation_enabled) {
+      return res.status(400).json({ error: 'Probation is not enabled for this organisation.' });
+    }
+    if (settings?.probation_scope !== 'all') {
+      return res.status(400).json({ error: 'Bulk apply is only available when scope is set to "All Employees".' });
+    }
+
+    const months = Number(settings.default_probation_months) || 3;
+    const today  = new Date().toISOString().split('T')[0];
+
+    // Fetch active employees with a joining_date who are not already on probation
+    const { data: employees, error: empErr } = await db.from('users')
+      .select('id, joining_date, employee_status')
+      .eq('organization_id', oId)
+      .eq('role', 'employee')
+      .not('employee_status', 'in', ['inactive', 'resigned', 'terminated', 'probation'])
+      .not('joining_date', 'is', null);
+    if (empErr) throw empErr;
+
+    let applied = 0, skipped = 0;
+
+    for (const emp of (employees || [])) {
+      const startDate = typeof emp.joining_date === 'string'
+        ? emp.joining_date.slice(0, 10)
+        : new Date(emp.joining_date).toISOString().split('T')[0];
+
+      const endD = new Date(startDate + 'T12:00:00Z');
+      endD.setMonth(endD.getMonth() + months);
+      const endDate = endD.toISOString().split('T')[0];
+
+      if (endDate <= today) {
+        // Probation period already over — do not change status
+        skipped++;
+        continue;
+      }
+
+      await db.from('users').update({
+        probation_applicable:  true,
+        probation_months:      months,
+        probation_start_date:  startDate,
+        probation_end_date:    endDate,
+        employee_status:       'probation',
+      }).eq('id', emp.id).eq('organization_id', oId);
+
+      applied++;
+    }
+
+    res.json({ success: true, applied, skipped });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

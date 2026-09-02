@@ -164,8 +164,9 @@ async function runAutoMarkAbsent() {
   }
 }
 
-// Probation expiry check — runs daily. Employees whose probation_end_date has
-// passed are promoted from employee_status='probation' to 'active' + employment_type='full-time'.
+// Probation expiry check — runs daily.
+// Part 1: promotes employees whose probation has ended → active + full_time
+// Part 2: for orgs with scope='all', auto-applies probation to newly joined employees
 async function runProbationExpiryCheck() {
   const today = localDateStr();
   const { data: orgs } = await db.from('organizations').select('id').eq('status', 'active');
@@ -173,7 +174,7 @@ async function runProbationExpiryCheck() {
   for (const org of (orgs || [])) {
     const oId = org.id;
     try {
-      // Find employees whose probation period has ended
+      // ── Part 1: promote expired probations → active ───────────────────────
       const { data: expired } = await db.from('users')
         .select('id, name')
         .eq('organization_id', oId)
@@ -182,30 +183,66 @@ async function runProbationExpiryCheck() {
         .not('probation_end_date', 'is', null)
         .lte('probation_end_date', today);
 
-      if (!expired?.length) continue;
+      if (expired?.length) {
+        for (const emp of expired) {
+          await db.from('users')
+            .update({ employee_status: 'active', employment_type: 'full_time' })
+            .eq('id', emp.id)
+            .eq('organization_id', oId);
 
-      for (const emp of expired) {
-        await db.from('users')
-          .update({ employee_status: 'active', employment_type: 'full_time' })
-          .eq('id', emp.id)
-          .eq('organization_id', oId);
-
-        // Notify HR admins
-        const { data: admins } = await db.from('users')
-          .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
-        if (admins?.length) {
-          await db.from('notifications').insert(
-            admins.map(a => ({
-              user_id:         a.id,
-              title:           `Probation Completed — ${emp.name}`,
-              message:         `${emp.name}'s probation period has ended. Their status has been updated to Full Time (Active).`,
-              type:            'general',
-              organization_id: oId,
-            }))
-          );
+          const { data: admins } = await db.from('users')
+            .select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin']);
+          if (admins?.length) {
+            await db.from('notifications').insert(
+              admins.map(a => ({
+                user_id:         a.id,
+                title:           `Probation Completed — ${emp.name}`,
+                message:         `${emp.name}'s probation period has ended. Status updated to Full Time (Active).`,
+                type:            'general',
+                organization_id: oId,
+              }))
+            );
+          }
         }
+        console.log(`[Probation] Promoted ${expired.length} employee(s) in org ${oId}`);
       }
-      console.log(`[Probation] Completed probation for ${expired.length} employee(s) in org ${oId}`);
+
+      // ── Part 2: scope='all' — auto-apply to newly joined employees ─────────
+      const { data: ps } = await db.from('payroll_settings')
+        .select('probation_enabled, default_probation_months, probation_scope')
+        .eq('organization_id', oId).maybeSingle();
+
+      if (!ps?.probation_enabled || ps?.probation_scope !== 'all') continue;
+
+      const months = Number(ps.default_probation_months) || 3;
+
+      const { data: newEmps } = await db.from('users')
+        .select('id, joining_date')
+        .eq('organization_id', oId)
+        .eq('role', 'employee')
+        .eq('probation_applicable', false)
+        .not('employee_status', 'in', ['inactive', 'resigned', 'terminated', 'probation'])
+        .not('joining_date', 'is', null);
+
+      for (const emp of (newEmps || [])) {
+        const startDate = typeof emp.joining_date === 'string'
+          ? emp.joining_date.slice(0, 10)
+          : new Date(emp.joining_date).toISOString().split('T')[0];
+
+        const endD = new Date(startDate + 'T12:00:00Z');
+        endD.setMonth(endD.getMonth() + months);
+        const endDate = endD.toISOString().split('T')[0];
+
+        if (endDate <= today) continue; // already past — do not change status
+
+        await db.from('users').update({
+          probation_applicable: true,
+          probation_months:     months,
+          probation_start_date: startDate,
+          probation_end_date:   endDate,
+          employee_status:      'probation',
+        }).eq('id', emp.id).eq('organization_id', oId);
+      }
     } catch (err) {
       console.error(`[Probation] Error for org ${oId}:`, err.message);
     }

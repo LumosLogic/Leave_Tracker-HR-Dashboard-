@@ -17,3 +17,7 @@ ALTER TABLE users
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS probation_applicable BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS probation_months     INTEGER DEFAULT 0;
+
+-- ── 3. Probation scope: 'selected' (per-employee) or 'all' (company-wide) ───
+ALTER TABLE payroll_settings
+  ADD COLUMN IF NOT EXISTS probation_scope TEXT DEFAULT 'selected';
