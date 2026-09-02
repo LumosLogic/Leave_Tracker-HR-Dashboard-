@@ -43,10 +43,11 @@ export default function PendingApprovals() {
     refetchInterval: 30000,
   });
 
-  // ── Old-flow: status=pending_root ─────────────────────────────────────────
+  // ── Old-flow: status=pending_root (legacy only) ────────────────────────────
   const { data: _rootLeaves = [], isLoading: loadRootLeaves } = useQuery({
     queryKey: ['pending-root-leaves'],
     queryFn:  () => apiGet('/leaves/pending-root').catch(() => []),
+    select:   d  => (Array.isArray(d) ? d : []).filter(l => l._flow === 'legacy' || l.status === 'pending_root'),
     refetchInterval: 30000,
   });
 
@@ -105,9 +106,8 @@ export default function PendingApprovals() {
 
   // Old flow leaves
   const leaves     = _leaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'old_pending' }));
-  // Old flow pending_root
+  // Old flow pending_root (legacy only — new workflow leaves come via my-approvals)
   const rootLeaves = _rootLeaves
-    .filter(l => l._flow === 'legacy' || !l._flow)   // only legacy ones (new workflow ones come via my-approvals)
     .map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'old_root' }));
   // New workflow (admin/root level) — filter out dept-level ones (handled by DeptHeadApprovals)
   const workflowLeaves = _myApprovals
