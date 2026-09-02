@@ -116,6 +116,18 @@ function buildLeaveDateMap(leaveRows, year, month) {
   return map;
 }
 
+// ─── Parse shift days_of_week into a Set<dow> ─────────────────────────────────
+// Handles: null, Array ([1,2,3,4,5]), JSON string ("[1,2,3,4,5]"), comma string "1,2,3,4,5"
+function parseShiftWorkDays(days_of_week) {
+  if (!days_of_week) return null;
+  if (Array.isArray(days_of_week)) return new Set(days_of_week.map(Number));
+  try {
+    const parsed = JSON.parse(days_of_week);
+    if (Array.isArray(parsed)) return new Set(parsed.map(Number));
+  } catch { /* not JSON */ }
+  return new Set(String(days_of_week).split(',').map(s => Number(s.trim())).filter(n => !isNaN(n)));
+}
+
 // ─── calculateAttendance ─────────────────────────────────────────────────────
 // Returns counters and daily breakdown. Pure function — no DB access.
 function calculateAttendance({
@@ -127,6 +139,7 @@ function calculateAttendance({
   scheduleCheckIn,    // 'HH:MM' or null
   graceMins,
   maxEarlyLeaveCount, // number — early leaves within this limit are full-day; excess → LOP
+  shiftDateMap,       // Map<dateStr, Set<dow>|null> — per-date shift working days override
 }) {
   const schedMins      = toMins(scheduleCheckIn);
   const g              = Number(graceMins) || 0;
@@ -146,8 +159,19 @@ function calculateAttendance({
   let earlyLeaveLop = 0;  // early_leave days beyond allowance that became LOP
   const daily       = [];
 
-  for (const { dateStr: ds, isWeekend: isWe, isHoliday: isHol } of dateMap) {
-    if (isWe) {
+  for (const { dateStr: ds, isWeekend: isWe, isHoliday: isHol, dow } of dateMap) {
+    // Per-employee shift override: if the employee has a shift assigned for this date
+    // and the date's day-of-week is NOT in that shift's configured working days,
+    // treat it as a week-off — NOT absent, NOT LOP.
+    let effectiveIsWeekend = isWe;
+    if (shiftDateMap && shiftDateMap.has(ds)) {
+      const shiftWorkDays = shiftDateMap.get(ds); // Set<dow> or null
+      if (shiftWorkDays !== null) {
+        effectiveIsWeekend = !shiftWorkDays.has(dow);
+      }
+    }
+
+    if (effectiveIsWeekend) {
       weekoff++;
       daily.push({ date: ds, type: 'weekoff' });
       continue;
@@ -373,6 +397,7 @@ async function fetchAllData(oId, uId, month, year) {
     holidayRes,
     scheduleRes,
     regRes,
+    shiftRes,
   ] = await Promise.all([
 
     // Employee — org-scoped (with probation dates for leave override)
@@ -494,27 +519,40 @@ async function fetchAllData(oId, uId, month, year) {
       }
     })(),
 
-    // Approved regularizations (graceful fallback if schema differs)
+    // Approved regularizations — correct table name is attendance_regularization
     pool.query(
       `SELECT date::text
-         FROM regularization
+         FROM attendance_regularization
         WHERE user_id         = $1
           AND organization_id = $2
           AND date >= $3 AND date <= $4
           AND status          = 'approved'`,
       [uId, oId, start, end]
     ).catch(() => ({ rows: [] })),
+
+    // Per-employee shift assignments for the pay period — determines per-date working days.
+    // Graceful: if shifts/shift_assignments tables don't exist, returns empty.
+    pool.query(
+      `SELECT sa.date::text, s.days_of_week
+         FROM shift_assignments sa
+         JOIN shifts s ON s.id = sa.shift_id
+        WHERE sa.user_id         = $1
+          AND sa.organization_id = $2
+          AND sa.date >= $3 AND sa.date <= $4`,
+      [uId, oId, start, end]
+    ).catch(() => ({ rows: [] })),
   ]);
 
   return {
-    employee:    empRes.rows[0]      ?? null,
-    settings:    settingsRes.rows[0] ?? null,
-    salary:      salaryRes.rows[0]   ?? null,
-    attendance:  attRes.rows         ?? [],
-    leaves:      leaveRes.rows       ?? [],
-    holidays:    holidayRes.rows     ?? [],
-    schedule:    scheduleRes.rows[0] ?? null,
-    regularized: regRes.rows         ?? [],
+    employee:         empRes.rows[0]      ?? null,
+    settings:         settingsRes.rows[0] ?? null,
+    salary:           salaryRes.rows[0]   ?? null,
+    attendance:       attRes.rows         ?? [],
+    leaves:           leaveRes.rows       ?? [],
+    holidays:         holidayRes.rows     ?? [],
+    schedule:         scheduleRes.rows[0] ?? null,
+    regularized:      regRes.rows         ?? [],
+    shiftAssignments: shiftRes.rows       ?? [],
     start,
     end,
   };
@@ -610,6 +648,14 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
 
   const perDaySalary = round2(calculateGross(data.salary) / workingDays);
 
+  // ── Per-employee shift work-day map ──────────────────────────────────────
+  // Build Map<dateStr, Set<dow>|null> from shift_assignments + shift.days_of_week.
+  // If a date is in this map and the date's DOW is NOT in the Set, it's a shift day-off.
+  const shiftDateMap = new Map();
+  for (const row of (data.shiftAssignments ?? [])) {
+    shiftDateMap.set(row.date, parseShiftWorkDays(row.days_of_week));
+  }
+
   // ── Attendance ────────────────────────────────────────────────────────────
   const att = calculateAttendance({
     dateMap,
@@ -620,6 +666,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     scheduleCheckIn:      data.schedule?.check_in ?? null,
     graceMins:            settings.grace_minutes,
     maxEarlyLeaveCount:   Number(data.schedule?.max_early_leave_count ?? 3),
+    shiftDateMap,
   });
 
   // ── LOP ───────────────────────────────────────────────────────────────────

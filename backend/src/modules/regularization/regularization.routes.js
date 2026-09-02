@@ -3,6 +3,7 @@ const router  = express.Router();
 const { db, pool } = require('../../config/db');
 const { auth } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
+const { generateEmployeePayslip } = require('../../services/payrollGenerationService');
 
 function isAdmin(role) { return role === 'admin' || role === 'root_admin'; }
 
@@ -184,7 +185,7 @@ router.put('/:id/review', auth, hasPermission('attendance', 'approve_regularizat
     client.release();
   }
 
-  // Fire-and-forget notification (after COMMIT — failure doesn't affect data)
+  // Fire-and-forget: notification
   db.from('notifications').insert({
     user_id: finalReg.user_id,
     title:   `Regularization ${status === 'approved' ? 'Approved' : 'Rejected'}`,
@@ -192,6 +193,35 @@ router.put('/:id/review', auth, hasPermission('attendance', 'approve_regularizat
     type:    'regularization',
     organization_id: oId,
   }).then(() => {});
+
+  // Fire-and-forget: if a draft payslip exists for the corrected month, regenerate it
+  // so LOP/attendance counts reflect the corrected attendance immediately.
+  // Locked/published payslips are intentionally NOT regenerated — admin must do that manually.
+  if (status === 'approved') {
+    const regDate = new Date(finalReg.date + 'T12:00:00Z');
+    const regMonth = regDate.getUTCMonth() + 1;
+    const regYear  = regDate.getUTCFullYear();
+    (async () => {
+      try {
+        const { rows: ps } = await pool.query(
+          `SELECT id FROM payslips
+            WHERE user_id         = $1
+              AND month           = $2
+              AND year            = $3
+              AND organization_id = $4
+              AND locked          = FALSE
+            LIMIT 1`,
+          [finalReg.user_id, regMonth, regYear, oId]
+        );
+        if (ps.length) {
+          await generateEmployeePayslip(oId, finalReg.user_id, regMonth, regYear, req.user.id);
+          console.log(`[Regularization] Regenerated draft payslip for user ${finalReg.user_id} ${regMonth}/${regYear} after attendance correction`);
+        }
+      } catch (e) {
+        console.error('[Regularization] Post-approval payslip regen error:', e.message);
+      }
+    })();
+  }
 
   res.json(finalReg);
 });

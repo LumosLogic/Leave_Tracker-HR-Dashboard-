@@ -147,8 +147,33 @@ async function runAutoMarkAbsent() {
         .select('id').eq('organization_id', oId).eq('date', today).limit(1);
       if (holidays?.length) continue; // org-wide holiday, skip absent marking
 
-      // Mark absent: employees not checked in and not on leave
-      const absentIds = empIds.filter(id => !checkedInIds.has(id) && !onLeaveIds.has(id));
+      // Find employees whose assigned shift has today as a day-off.
+      // These must NOT be marked absent — it's their configured day off.
+      const todayDow = new Date().getDay(); // 0=Sun ... 6=Sat
+      let shiftOffIds = new Set();
+      try {
+        const { rows: shiftRows } = await pool.query(
+          `SELECT sa.user_id, s.days_of_week
+             FROM shift_assignments sa
+             JOIN shifts s ON s.id = sa.shift_id
+            WHERE sa.organization_id = $1 AND sa.date = $2
+              AND sa.user_id = ANY($3::int[])`,
+          [oId, today, empIds]
+        );
+        for (const row of shiftRows) {
+          if (!row.days_of_week) continue;
+          let workDays;
+          try { workDays = JSON.parse(row.days_of_week); } catch { workDays = String(row.days_of_week).split(',').map(Number); }
+          if (!workDays.map(Number).includes(todayDow)) {
+            shiftOffIds.add(row.user_id);
+          }
+        }
+      } catch { /* shifts table may not exist — skip check */ }
+
+      // Mark absent: employees not checked in, not on leave, and not on a shift day-off
+      const absentIds = empIds.filter(id =>
+        !checkedInIds.has(id) && !onLeaveIds.has(id) && !shiftOffIds.has(id)
+      );
       if (!absentIds.length) continue;
 
       // Insert absent records (skip if already exists)
