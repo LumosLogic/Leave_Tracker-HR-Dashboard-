@@ -289,10 +289,32 @@ router.get('/team', auth, async (req, res) => {
 router.get('/balance', auth, async (req, res) => {
   try {
     const oId   = orgId(req);
-    const year  = parseInt(req.query.year) || new Date().getFullYear();
     const targetId = (isAdminRole(req.user.role) && req.query.userId)
       ? parseInt(req.query.userId)
       : req.user.id;
+
+    // Fetch org's leave-year start month (1=Jan calendar year, 4=Apr financial year, etc.)
+    const { data: orgRow } = await db.from('organizations')
+      .select('leave_year_start_month')
+      .eq('id', oId)
+      .maybeSingle();
+    const startMonth = orgRow?.leave_year_start_month || 1;
+
+    // Default 'year' to the starting year of the CURRENT leave cycle.
+    // e.g. for Apr-start FY: if today is Feb 2027, the current FY started in Apr 2026 → year=2026.
+    const now = new Date();
+    const curMonth = now.getMonth() + 1; // 1-indexed
+    const curYear  = now.getFullYear();
+    const defaultYear = (startMonth > 1 && curMonth < startMonth) ? curYear - 1 : curYear;
+    const year = parseInt(req.query.year) || defaultYear;
+
+    // Compute the leave-cycle date window for this year + start month
+    const mm       = String(startMonth).padStart(2, '0');
+    const fyStart  = `${year}-${mm}-01`;
+    const fyEndYear  = startMonth === 1 ? year : year + 1;
+    const fyEndMonth = startMonth === 1 ? 12  : startMonth - 1;
+    // Date.UTC month is 0-indexed; day 0 = last day of previous month. UTC avoids TZ shift.
+    const fyEnd = new Date(Date.UTC(fyEndYear, fyEndMonth, 0)).toISOString().split('T')[0];
 
     const [policiesRes, leavesRes, settings, adjRes] = await Promise.all([
       db.from('leave_policies')
@@ -302,7 +324,7 @@ router.get('/balance', auth, async (req, res) => {
         .select('leave_type, leave_time, start_date, end_date, status')
         .eq('user_id', targetId).eq('organization_id', oId)
         .in('status', ['approved', 'pending', 'pending_dept', 'pending_root', 'pending_approval'])
-        .gte('start_date', `${year}-01-01`).lte('end_date', `${year}-12-31`)
+        .gte('start_date', fyStart).lte('end_date', fyEnd)
         .neq('leave_type', 'wfh'),
       getSettings(oId),
       db.from('leave_balance_adjustments')
