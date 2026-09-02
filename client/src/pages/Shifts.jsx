@@ -223,28 +223,31 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
   const qc    = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [fromDate,    setFromDate]    = useState(today);
-  const [toDate,      setToDate]      = useState(today);
-  const [days,        setDays]        = useState([]);
-  const [search,      setSearch]      = useState('');
-  const [errs,        setErrs]        = useState({});
-  const [step,        setStep]        = useState('form'); // 'form' | 'conflicts'
-  const [conflicts,   setConflicts]   = useState([]);
+  const [selectedIds,      setSelectedIds]      = useState(new Set());
+  const [originalIds,      setOriginalIds]      = useState(new Set());
+  const [fromDate,         setFromDate]         = useState(today);
+  const [toDate,           setToDate]           = useState(today);
+  const [days,             setDays]             = useState([]);
+  const [search,           setSearch]           = useState('');
+  const [errs,             setErrs]             = useState({});
+  const [step,             setStep]             = useState('form');
+  const [conflicts,        setConflicts]        = useState([]);
+  const [pendingAssignIds, setPendingAssignIds] = useState([]);
+  const [saving,           setSaving]           = useState(false);
 
-  // Reset on every open
-  useEffect(() => {
-    if (open && shift) {
-      setSelectedIds(new Set());
-      setFromDate(today);
-      setToDate(today);
-      setDays(parseDays(shift.days_of_week).length > 0 ? parseDays(shift.days_of_week) : [1, 2, 3, 4, 5]);
-      setSearch('');
-      setErrs({});
-      setConflicts([]);
-      setStep('form');
-    }
-  }, [open, shift]);
+  // Date presets (computed once)
+  const presets = useMemo(() => {
+    const n = new Date();
+    const y = n.getFullYear();
+    const mo = n.getMonth();
+    return {
+      today:      n.toISOString().slice(0, 10),
+      monthStart: `${y}-${String(mo + 1).padStart(2, '0')}-01`,
+      monthEnd:   new Date(y, mo + 1, 0).toISOString().slice(0, 10),
+      yearStart:  `${y}-01-01`,
+      yearEnd:    `${y}-12-31`,
+    };
+  }, []);
 
   // Employee id → object lookup
   const empMap = useMemo(() => {
@@ -253,7 +256,7 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     return m;
   }, [employees]);
 
-  // userId → other shift name (from this month's assignments, only for different shifts)
+  // userId → other shift name (different shifts only)
   const otherShiftMap = useMemo(() => {
     const m = {};
     assignments.forEach(a => {
@@ -271,26 +274,32 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     return s;
   }, [assignments, shift]);
 
-  // Date presets (computed once — based on current date)
-  const presets = useMemo(() => {
-    const n = new Date();
-    const y = n.getFullYear();
-    const mo = n.getMonth();
-    return {
-      today:      n.toISOString().slice(0, 10),
-      monthStart: `${y}-${String(mo + 1).padStart(2, '0')}-01`,
-      monthEnd:   new Date(y, mo + 1, 0).toISOString().slice(0, 10),
-      yearStart:  `${y}-01-01`,
-      yearEnd:    `${y}-12-31`,
-    };
-  }, []);
+  // Reset on every open — pre-select already-assigned employees so they can be toggled
+  useEffect(() => {
+    if (open && shift) {
+      setSelectedIds(new Set(thisShiftEmpIds));
+      setOriginalIds(new Set(thisShiftEmpIds));
+      setFromDate(today);
+      setToDate(today);
+      setDays(parseDays(shift.days_of_week).length > 0 ? parseDays(shift.days_of_week) : [1, 2, 3, 4, 5]);
+      setSearch('');
+      setErrs({});
+      setConflicts([]);
+      setPendingAssignIds([]);
+      setStep('form');
+      setSaving(false);
+    }
+  }, [open, shift]);
 
-  function applyPreset(type) {
-    if (type === 'today') { setFromDate(presets.today);      setToDate(presets.today); }
-    if (type === 'month') { setFromDate(presets.monthStart); setToDate(presets.monthEnd); }
-    if (type === 'year')  { setFromDate(presets.yearStart);  setToDate(presets.yearEnd); }
-    setErrs(prev => { const e = { ...prev }; delete e.fromDate; delete e.toDate; return e; });
-  }
+  const isWithinCurrentMonth = fromDate >= presets.monthStart && toDate <= presets.monthEnd;
+
+  const filteredEmps = employees.filter(e =>
+    !search ||
+    e.name?.toLowerCase().includes(search.toLowerCase()) ||
+    e.department?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const allFiltered = filteredEmps.length > 0 && filteredEmps.every(e => selectedIds.has(e.id));
 
   // Group conflicts by employee for display
   const conflictsByEmp = useMemo(() => {
@@ -302,19 +311,12 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     return Object.values(m);
   }, [conflicts, empMap]);
 
-  const filteredEmps  = employees.filter(e =>
-    !search ||
-    e.name?.toLowerCase().includes(search.toLowerCase()) ||
-    e.department?.toLowerCase().includes(search.toLowerCase())
-  );
-  // "Already assigned" lock only applies when the selected period is entirely
-  // within the month we have assignment data for. For Full Year / other months,
-  // all employees remain selectable (we don't have data to know their status).
-  const isWithinCurrentMonth = fromDate >= presets.monthStart && toDate <= presets.monthEnd;
-  const assignableFiltered = filteredEmps.filter(e => !(isWithinCurrentMonth && thisShiftEmpIds.has(e.id)));
-  const allFiltered = assignableFiltered.length > 0 && assignableFiltered.every(e => selectedIds.has(e.id));
-
-  // ── Interaction handlers ────────────────────────────────────────────────────
+  function applyPreset(type) {
+    if (type === 'today') { setFromDate(presets.today);      setToDate(presets.today); }
+    if (type === 'month') { setFromDate(presets.monthStart); setToDate(presets.monthEnd); }
+    if (type === 'year')  { setFromDate(presets.yearStart);  setToDate(presets.yearEnd); }
+    setErrs(prev => { const e = { ...prev }; delete e.fromDate; delete e.toDate; return e; });
+  }
 
   function toggleEmp(id) {
     setSelectedIds(prev => {
@@ -327,9 +329,9 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
 
   function toggleAll() {
     if (allFiltered) {
-      setSelectedIds(prev => { const n = new Set(prev); assignableFiltered.forEach(e => n.delete(e.id)); return n; });
+      setSelectedIds(prev => { const n = new Set(prev); filteredEmps.forEach(e => n.delete(e.id)); return n; });
     } else {
-      setSelectedIds(prev => { const n = new Set(prev); assignableFiltered.forEach(e => n.add(e.id)); return n; });
+      setSelectedIds(prev => { const n = new Set(prev); filteredEmps.forEach(e => n.add(e.id)); return n; });
       setErrs(prev => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== 'employees')));
     }
   }
@@ -367,39 +369,88 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
     if (!fromDate) e.fromDate = 'Start date is required';
     if (!toDate)   e.toDate   = 'End date is required';
     if (fromDate && toDate && fromDate > toDate) e.toDate = 'End date must be on or after start date';
-    if (days.length === 0)       e.days      = 'Select at least one day';
-    if (selectedIds.size === 0)  e.employees = 'Select at least one employee';
+    if (days.length === 0) e.days = 'Select at least one day';
+    const toUnassign = [...originalIds].filter(id => !selectedIds.has(id));
+    const toAssign   = [...selectedIds].filter(id => !originalIds.has(id));
+    if (selectedIds.size === 0 && toUnassign.length === 0 && toAssign.length === 0)
+      e.employees = 'Select at least one employee';
     return e;
   }
 
-  // ── Mutation ────────────────────────────────────────────────────────────────
-
-  const assignMut = useMutation({
-    mutationFn: (force) => apiPost('/shifts/assignments/range', {
-      shift_id:     shift.id,
-      employee_ids: Array.from(selectedIds),
-      from_date:    fromDate,
-      to_date:      toDate,
-      days_of_week: days,
-      force,
-    }),
-    onSuccess: (data) => {
-      if (data.needs_confirmation) {
-        setConflicts(data.conflicts || []);
-        setStep('conflicts');
-      } else {
-        toast(`${data.created} assignment(s) saved for "${shift.name}"`, 'success');
-        qc.invalidateQueries({ queryKey: ['shift-assign'] });
-        onClose();
-      }
-    },
-    onError: e => toast(e.message, 'error'),
-  });
-
-  function handleAssign() {
+  async function handleAssign() {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
-    assignMut.mutate(false);
+
+    const toUnassign = [...originalIds].filter(id => !selectedIds.has(id));
+    const toAssign   = [...selectedIds].filter(id => !originalIds.has(id));
+
+    if (toUnassign.length === 0 && toAssign.length === 0) {
+      toast('No changes to save', 'info');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (toUnassign.length > 0) {
+        await apiDelete('/shifts/assignments/range', {
+          shift_id:     shift.id,
+          employee_ids: toUnassign,
+          from_date:    fromDate,
+          to_date:      toDate,
+          days_of_week: days,
+        });
+      }
+
+      if (toAssign.length > 0) {
+        const data = await apiPost('/shifts/assignments/range', {
+          shift_id:     shift.id,
+          employee_ids: toAssign,
+          from_date:    fromDate,
+          to_date:      toDate,
+          days_of_week: days,
+          force:        false,
+        });
+        if (data.needs_confirmation) {
+          setPendingAssignIds(toAssign);
+          setConflicts(data.conflicts || []);
+          setStep('conflicts');
+          setSaving(false);
+          return;
+        }
+      }
+
+      const msgs = [];
+      if (toAssign.length > 0)   msgs.push(`${toAssign.length} employee(s) assigned`);
+      if (toUnassign.length > 0) msgs.push(`${toUnassign.length} employee(s) removed`);
+      toast(`"${shift.name}": ${msgs.join(', ')}`, 'success');
+      qc.invalidateQueries({ queryKey: ['shift-assign'] });
+      onClose();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleForce() {
+    setSaving(true);
+    try {
+      await apiPost('/shifts/assignments/range', {
+        shift_id:     shift.id,
+        employee_ids: pendingAssignIds,
+        from_date:    fromDate,
+        to_date:      toDate,
+        days_of_week: days,
+        force:        true,
+      });
+      toast(`${pendingAssignIds.length} employee(s) assigned to "${shift.name}"`, 'success');
+      qc.invalidateQueries({ queryKey: ['shift-assign'] });
+      onClose();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open || !shift) return null;
@@ -454,7 +505,6 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                 <label className="block text-xs font-black text-[#464555] uppercase tracking-wider mb-2">
                   Assignment Period <span className="text-rose-500">*</span>
                 </label>
-                {/* Quick presets */}
                 <div className="flex gap-2 mb-3">
                   {[
                     { key: 'today', label: 'Today' },
@@ -531,7 +581,7 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                       </span>
                     )}
                   </label>
-                  {assignableFiltered.length > 0 && (
+                  {filteredEmps.length > 0 && (
                     <button onClick={toggleAll}
                       className="text-[0.7rem] font-bold text-[#3525cd] hover:underline">
                       {allFiltered ? 'Deselect All' : 'Select All'}
@@ -553,41 +603,40 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                   {filteredEmps.length === 0 ? (
                     <p className="text-xs text-[#777587] text-center py-6">No employees found</p>
                   ) : filteredEmps.map(emp => {
-                    const checked        = selectedIds.has(emp.id);
-                    const otherShift     = otherShiftMap[emp.id];
-                    const alreadyHere    = isWithinCurrentMonth && thisShiftEmpIds.has(emp.id);
+                    const checked     = selectedIds.has(emp.id);
+                    const wasAssigned = isWithinCurrentMonth && thisShiftEmpIds.has(emp.id);
+                    const willRemove  = wasAssigned && !checked;
+                    const otherShift  = !wasAssigned && otherShiftMap[emp.id];
 
-                    if (alreadyHere) {
-                      return (
-                        <div key={emp.id}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-[#f0f3ff] last:border-0 bg-[#f4fef6]">
-                          <div className="w-4 h-4 rounded border-2 border-green-500 bg-green-500 flex items-center justify-center shrink-0">
-                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                              <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </div>
-                          <Avatar name={emp.name || '?'} color={emp.avatar_color} size={28} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-[#151c27] truncate">{emp.name}</p>
-                            <p className="text-[0.65rem] text-[#777587] truncate">{emp.department || emp.email}</p>
-                          </div>
-                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 shrink-0 whitespace-nowrap">
-                            Assigned
-                          </span>
-                        </div>
-                      );
-                    }
+                    const rowBg = willRemove ? 'bg-rose-50'
+                      : wasAssigned ? 'bg-[#f4fef6]'
+                      : checked ? 'bg-[#f0f3ff]' : '';
+
+                    const cbClass = willRemove ? 'border-rose-400 bg-white'
+                      : (wasAssigned && checked) ? 'border-green-500 bg-green-500'
+                      : checked ? 'border-[#3525cd] bg-[#3525cd]'
+                      : 'border-[#c7c4d8] bg-white';
+
+                    let badge = null;
+                    if (wasAssigned && checked)
+                      badge = <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 shrink-0 whitespace-nowrap">Assigned</span>;
+                    else if (willRemove)
+                      badge = <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-500 border border-rose-200 shrink-0 whitespace-nowrap">Will Remove</span>;
+                    else if (otherShift)
+                      badge = <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 shrink-0 whitespace-nowrap">{otherShift}</span>;
 
                     return (
                       <button key={emp.id} type="button" onClick={() => toggleEmp(emp.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[#f0f3ff] transition-colors text-left border-b border-[#f0f3ff] last:border-0 ${checked ? 'bg-[#f0f3ff]' : ''}`}>
-                        {/* Checkbox */}
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                          checked ? 'border-[#3525cd] bg-[#3525cd]' : 'border-[#c7c4d8] bg-white'
-                        }`}>
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[#f0f3ff] transition-colors text-left border-b border-[#f0f3ff] last:border-0 ${rowBg}`}>
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${cbClass}`}>
                           {checked && (
                             <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                               <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                          {willRemove && (
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                              <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round" />
                             </svg>
                           )}
                         </div>
@@ -596,11 +645,7 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
                           <p className="text-xs font-bold text-[#151c27] truncate">{emp.name}</p>
                           <p className="text-[0.65rem] text-[#777587] truncate">{emp.department || emp.email}</p>
                         </div>
-                        {otherShift && (
-                          <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 shrink-0 whitespace-nowrap">
-                            {otherShift}
-                          </span>
-                        )}
+                        {badge}
                       </button>
                     );
                   })}
@@ -658,17 +703,17 @@ function AssignEmployeesModal({ open, onClose, shift, employees, assignments }) 
           </button>
 
           {step === 'form' ? (
-            <button className="btn btn-primary" onClick={handleAssign} disabled={assignMut.isPending}>
-              {assignMut.isPending
-                ? <><span className="spinner w-4 h-4" />Checking…</>
+            <button className="btn btn-primary" onClick={handleAssign} disabled={saving}>
+              {saving
+                ? <><span className="spinner w-4 h-4" />Saving…</>
                 : 'Assign'}
             </button>
           ) : (
             <button
-              onClick={() => assignMut.mutate(true)}
-              disabled={assignMut.isPending}
+              onClick={handleForce}
+              disabled={saving}
               className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors disabled:opacity-60">
-              {assignMut.isPending
+              {saving
                 ? <><span className="spinner w-4 h-4" />Saving…</>
                 : 'Proceed & Overwrite'}
             </button>

@@ -181,6 +181,53 @@ router.post('/assignments/bulk', auth, hasPermission('shifts', 'manage'), async 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// DELETE /api/shifts/assignments/range — unassign employees from a shift over a date range
+router.delete('/assignments/range', auth, hasPermission('shifts', 'manage'), async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
+    const oId = req.user.organization_id;
+    const { shift_id, employee_ids, from_date, to_date, days_of_week } = req.body;
+
+    if (!shift_id || !Array.isArray(employee_ids) || !employee_ids.length || !from_date || !to_date)
+      return res.status(400).json({ error: 'shift_id, employee_ids, from_date, to_date required' });
+
+    const safeEmpIds   = employee_ids.map(id => parseInt(id, 10)).filter(n => n > 0);
+    const safeShiftId  = parseInt(shift_id, 10);
+    if (!safeEmpIds.length) return res.status(400).json({ error: 'No valid employee IDs' });
+
+    // If days_of_week supplied, only delete assignments on those weekdays
+    let q = db.from('shift_assignments')
+      .delete()
+      .eq('organization_id', oId)
+      .eq('shift_id', safeShiftId)
+      .in('user_id', safeEmpIds)
+      .gte('date', from_date)
+      .lte('date', to_date);
+
+    if (Array.isArray(days_of_week) && days_of_week.length > 0) {
+      // Build list of matching dates within range for the given weekdays
+      const from = new Date(from_date + 'T12:00:00');
+      const to   = new Date(to_date   + 'T12:00:00');
+      const allowed = days_of_week.map(Number);
+      const dates = [];
+      for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+        if (allowed.includes(d.getDay())) dates.push(d.toISOString().slice(0, 10));
+      }
+      if (!dates.length) return res.json({ removed: 0 });
+      q = db.from('shift_assignments')
+        .delete()
+        .eq('organization_id', oId)
+        .eq('shift_id', safeShiftId)
+        .in('user_id', safeEmpIds)
+        .in('date', dates);
+    }
+
+    const { error } = await q;
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/shifts/assignments/:id
 router.delete('/assignments/:id', auth, hasPermission('shifts', 'manage'), async (req, res) => {
   try {
