@@ -1586,21 +1586,13 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 </div>
                 <div>
                   <label className="form-label">Status</label>
-                  {form.probation_applicable ? (
-                    /* When probation is ON, status is auto-managed — show read-only indicator */
-                    <div className="form-control bg-[#f5f5f8] cursor-not-allowed flex items-center justify-between">
-                      <span className="text-sky-700 font-bold text-sm">Probation</span>
-                      <span className="text-[0.65rem] text-[#777587]">Auto-managed</span>
-                    </div>
-                  ) : (
-                    <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
-                      <option value="active">Active</option>
-                      <option value="probation">Probation</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="resigned">Resigned</option>
-                      <option value="terminated">Terminated</option>
-                    </select>
-                  )}
+                  <select className="form-control" value={form.employee_status} onChange={e => set('employee_status', e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="probation">Probation</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="resigned">Resigned</option>
+                    <option value="terminated">Terminated</option>
+                  </select>
                 </div>
               </div>
 
