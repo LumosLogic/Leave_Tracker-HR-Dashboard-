@@ -132,18 +132,20 @@ function parseShiftWorkDays(days_of_week) {
 // Returns counters and daily breakdown. Pure function — no DB access.
 function calculateAttendance({
   dateMap,
-  attendanceMap,      // Map<dateStr, { status, check_in, check_out }>
+  attendanceMap,      // Map<dateStr, { status, check_in, check_out, work_hours }>
   regularizedSet,     // Set<dateStr> — approved regularizations
   leaveDateMap,
   countHolidaysAsPaid,
   scheduleCheckIn,    // 'HH:MM' or null
   graceMins,
   maxEarlyLeaveCount, // number — early leaves within this limit are full-day; excess → LOP
-  shiftDateMap,       // Map<dateStr, Set<dow>|null> — per-date shift working days override
+  shiftDateMap,       // Map<dateStr, { workDays: Set<dow>|null, durationH: number }>
+  orgHalfDayHours,    // org-level half_day_hours (from work_schedule) — used for short-shift reclassification
 }) {
   const schedMins      = toMins(scheduleCheckIn);
   const g              = Number(graceMins) || 0;
   const maxEarlyLeave  = Number(maxEarlyLeaveCount) || 3;
+  const halfDayH       = Number(orgHalfDayHours)    || 4.5;
 
   let presentFull   = 0;  // full present day (including WFH + early_leave within allowance)
   let presentHalf   = 0;  // half-day attendance record
@@ -164,11 +166,13 @@ function calculateAttendance({
     // and the date's day-of-week is NOT in that shift's configured working days,
     // treat it as a week-off — NOT absent, NOT LOP.
     let effectiveIsWeekend = isWe;
+    let shiftDurationH = 0; // shift's total hours (0 = not known / use org defaults)
     if (shiftDateMap && shiftDateMap.has(ds)) {
-      const shiftWorkDays = shiftDateMap.get(ds); // Set<dow> or null
-      if (shiftWorkDays !== null) {
-        effectiveIsWeekend = !shiftWorkDays.has(dow);
+      const shiftInfo = shiftDateMap.get(ds); // { workDays: Set<dow>|null, durationH: number }
+      if (shiftInfo.workDays !== null) {
+        effectiveIsWeekend = !shiftInfo.workDays.has(dow);
       }
+      shiftDurationH = shiftInfo.durationH || 0;
     }
 
     if (effectiveIsWeekend) {
@@ -249,8 +253,23 @@ function calculateAttendance({
     }
 
     if (status === 'half_day') {
-      presentHalf++;
-      daily.push({ date: ds, type: 'half_day' });
+      // Short-shift reclassification: if the assigned shift's total duration is
+      // less than the org's half_day_hours threshold, a 'half_day' status from
+      // the biometric is misleading — the shift was designed to be a short day.
+      // Reclassify to 'present' when the employee worked ≥ 50% of the shift's duration.
+      // Example: Saturday Shift 10:30–13:30 = 3h < half_day_hours(4.5h).
+      //          Employee worked 2.61h ≥ 3h × 0.5 = 1.5h → reclassify as present.
+      if (
+        shiftDurationH > 0 &&
+        shiftDurationH < halfDayH &&
+        Number(att?.work_hours ?? 0) >= shiftDurationH * 0.5
+      ) {
+        presentFull++;
+        daily.push({ date: ds, type: 'present' });
+      } else {
+        presentHalf++;
+        daily.push({ date: ds, type: 'half_day' });
+      }
       continue;
     }
 
@@ -493,29 +512,44 @@ async function fetchAllData(oId, uId, month, year) {
       [oId, start, end]
     ),
 
-    // Work schedule — resilient fallback if columns differ across DB versions
+    // Work schedule — try both column naming conventions across DB versions.
+    // Relitrade uses start_time/end_time; older DBs may use check_in/check_out.
     (async () => {
+      // Try new convention (start_time / end_time) first
       try {
         return await pool.query(
-          `SELECT check_in, check_out, work_days, full_day_hours, max_early_leave_count
+          `SELECT start_time AS check_in, end_time AS check_out,
+                  work_days, full_day_hours, half_day_hours, max_early_leave_count
+             FROM work_schedule
+            WHERE organization_id = $1
+            LIMIT 1`,
+          [oId]
+        );
+      } catch { /* column names differ */ }
+      // Fallback: old convention (check_in / check_out)
+      try {
+        return await pool.query(
+          `SELECT check_in, check_out,
+                  work_days, full_day_hours, half_day_hours, max_early_leave_count
+             FROM work_schedule
+            WHERE organization_id = $1
+            LIMIT 1`,
+          [oId]
+        );
+      } catch { /* pre-migration: no half_day_hours column */ }
+      // Last resort: bare minimum
+      try {
+        return await pool.query(
+          `SELECT COALESCE(start_time, check_in) AS check_in,
+                  COALESCE(end_time,   check_out) AS check_out,
+                  work_days
              FROM work_schedule
             WHERE organization_id = $1
             LIMIT 1`,
           [oId]
         );
       } catch {
-        // Fallback for DBs that don't have the new columns yet (pre-migration)
-        try {
-          return await pool.query(
-            `SELECT check_in, check_out, work_days
-               FROM work_schedule
-              WHERE organization_id = $1
-              LIMIT 1`,
-            [oId]
-          );
-        } catch {
-          return { rows: [] };
-        }
+        return { rows: [] };
       }
     })(),
 
@@ -530,10 +564,9 @@ async function fetchAllData(oId, uId, month, year) {
       [uId, oId, start, end]
     ).catch(() => ({ rows: [] })),
 
-    // Per-employee shift assignments for the pay period — determines per-date working days.
-    // Graceful: if shifts/shift_assignments tables don't exist, returns empty.
+    // Per-employee shift assignments — working days + shift duration for half-day reclassification.
     pool.query(
-      `SELECT sa.date::text, s.days_of_week
+      `SELECT sa.date::text, s.days_of_week, s.start_time, s.end_time
          FROM shift_assignments sa
          JOIN shifts s ON s.id = sa.shift_id
         WHERE sa.user_id         = $1
@@ -648,13 +681,24 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
 
   const perDaySalary = round2(calculateGross(data.salary) / workingDays);
 
-  // ── Per-employee shift work-day map ──────────────────────────────────────
-  // Build Map<dateStr, Set<dow>|null> from shift_assignments + shift.days_of_week.
-  // If a date is in this map and the date's DOW is NOT in the Set, it's a shift day-off.
+  // ── Per-employee shift map: working days + duration per assigned date ─────
+  // Value: { workDays: Set<dow>|null, durationH: number }
+  // workDays null = no restriction (all days work per shift).
+  // durationH used to reclassify short-shift 'half_day' records as 'present'.
   const shiftDateMap = new Map();
   for (const row of (data.shiftAssignments ?? [])) {
-    shiftDateMap.set(row.date, parseShiftWorkDays(row.days_of_week));
+    const workDays  = parseShiftWorkDays(row.days_of_week);
+    let   durationH = 0;
+    const sm = toMins(row.start_time);
+    const em = toMins(row.end_time);
+    if (sm !== null && em !== null && em > sm) {
+      durationH = round2((em - sm) / 60);
+    }
+    shiftDateMap.set(row.date, { workDays, durationH });
   }
+
+  // Org half_day_hours — from work_schedule (needed for short-shift reclassification)
+  const orgHalfDayHours = Number(data.schedule?.half_day_hours ?? 4.5);
 
   // ── Attendance ────────────────────────────────────────────────────────────
   const att = calculateAttendance({
@@ -667,6 +711,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     graceMins:            settings.grace_minutes,
     maxEarlyLeaveCount:   Number(data.schedule?.max_early_leave_count ?? 3),
     shiftDateMap,
+    orgHalfDayHours,
   });
 
   // ── LOP ───────────────────────────────────────────────────────────────────
