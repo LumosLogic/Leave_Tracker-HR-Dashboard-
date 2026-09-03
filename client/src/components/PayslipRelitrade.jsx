@@ -39,10 +39,11 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
     enabled:  Boolean(payslipId),
   });
 
-  const { data: orgData } = useQuery({
+  const { data: orgData, isFetched: orgFetched } = useQuery({
     queryKey: ['org-settings'],
     queryFn:  () => apiGet('/org/settings'),
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   const { data: statutory } = useQuery({
@@ -83,7 +84,7 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
     win.close();
   }
 
-  if (isLoading || !orgData) return (
+  if (isLoading || !orgFetched) return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-2xl p-8 flex items-center gap-3">
         <span className="w-5 h-5 border-2 border-[#3525cd]/20 border-t-[#3525cd] rounded-full animate-spin" />
