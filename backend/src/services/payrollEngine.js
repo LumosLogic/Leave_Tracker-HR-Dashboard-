@@ -376,11 +376,51 @@ function calculateGross(sal) {
 }
 
 // ─── calculateDeductions ──────────────────────────────────────────────────────
-function calculateDeductions(sal, settings, lopDays, perDaySalary) {
+// pfConfig / esiConfig: rows from statutory_pf_config / statutory_esi_config (may be null).
+// calendarDays: total days in the pay month (e.g. 31 for August).
+// grossSalary: pre-LOP gross (used as payable_gross base for dynamic ESI).
+function calculateDeductions(sal, settings, lopDays, perDaySalary, grossSalary, calendarDays, pfConfig, esiConfig) {
   const lopDeduction = round2(lopDays * perDaySalary);
 
-  const pf        = settings.pf_enabled               ? round2(Number(sal.employee_pf)       || 0) : 0;
-  const esi       = settings.esi_enabled               ? round2(Number(sal.employee_esi)      || 0) : 0;
+  // ── PF (employee) ─────────────────────────────────────────────────────────
+  // Priority: disabled → 0 | fixed → stored value | dynamic → calendar-day proration
+  let pf = 0;
+  if (settings.pf_enabled) {
+    const pfMode = sal.pf_calc_mode || 'fixed';
+    if (pfMode === 'disabled') {
+      pf = 0;
+    } else if (pfMode === 'dynamic' && pfConfig?.enabled) {
+      // payable_basic = basic × (payable_calendar_days / calendar_days)
+      const payableCalDays = Math.max(0, calendarDays - lopDays);
+      const payableBasic   = round2(Number(sal.basic || 0) * (payableCalDays / calendarDays));
+      const pfRate         = Number(pfConfig.employee_pf_pct || 12) / 100;
+      pf = round2(payableBasic * pfRate);
+    } else {
+      // 'fixed' (default) — use stored value as-is
+      pf = round2(Number(sal.employee_pf) || 0);
+    }
+  }
+
+  // ── ESI (employee) ────────────────────────────────────────────────────────
+  let esi = 0;
+  if (settings.esi_enabled) {
+    const esiMode = sal.esi_calc_mode || 'fixed';
+    if (esiMode === 'disabled') {
+      esi = 0;
+    } else if (esiMode === 'dynamic' && esiConfig?.enabled) {
+      // ESI eligibility: gross must be ≤ wage_limit (default ₹21,000)
+      const wageLimit = Number(esiConfig.wage_limit || 21000);
+      if (wageLimit <= 0 || grossSalary <= wageLimit) {
+        // payable_gross = gross - lop_deduction
+        const payableGross = round2(grossSalary - lopDeduction);
+        const esiRate      = Number(esiConfig.employee_esi_pct || 0.75) / 100;
+        esi = round2(payableGross * esiRate);
+      }
+    } else {
+      esi = round2(Number(sal.employee_esi) || 0);
+    }
+  }
+
   const pt        = settings.professional_tax_enabled  ? round2(Number(sal.professional_tax)  || 0) : 0;
   const tds       = settings.tds_enabled               ? round2(Number(sal.tds)               || 0) : 0;
   const retention = round2(Number(sal.retention)       || 0);
@@ -433,6 +473,8 @@ async function fetchAllData(oId, uId, month, year) {
     scheduleRes,
     regRes,
     shiftRes,
+    pfConfigRes,
+    esiConfigRes,
   ] = await Promise.all([
 
     // Employee — org-scoped (with probation dates for leave override)
@@ -594,6 +636,25 @@ async function fetchAllData(oId, uId, month, year) {
           AND sa.date >= $3 AND sa.date <= $4`,
       [uId, oId, start, end]
     ).catch(() => ({ rows: [] })),
+
+    // Statutory PF config — used by dynamic PF mode in calculateDeductions.
+    // Returns null row if unconfigured; engine falls back to fixed mode.
+    pool.query(
+      `SELECT enabled, pf_wage_basis, wage_ceiling, employee_pf_pct
+         FROM statutory_pf_config
+        WHERE organization_id = $1
+        LIMIT 1`,
+      [oId]
+    ).catch(() => ({ rows: [] })),
+
+    // Statutory ESI config — used by dynamic ESI mode in calculateDeductions.
+    pool.query(
+      `SELECT enabled, wage_limit, employee_esi_pct
+         FROM statutory_esi_config
+        WHERE organization_id = $1
+        LIMIT 1`,
+      [oId]
+    ).catch(() => ({ rows: [] })),
   ]);
 
   return {
@@ -606,6 +667,8 @@ async function fetchAllData(oId, uId, month, year) {
     schedule:         scheduleRes.rows[0] ?? null,
     regularized:      regRes.rows         ?? [],
     shiftAssignments: shiftRes.rows       ?? [],
+    pfConfig:         pfConfigRes.rows[0] ?? null,
+    esiConfig:        esiConfigRes.rows[0] ?? null,
     start,
     end,
   };
@@ -766,7 +829,11 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
   const grossSalary = calculateGross(data.salary);
 
   // ── Deductions ────────────────────────────────────────────────────────────
-  const deductions = calculateDeductions(data.salary, settings, lop.totalLOP, perDaySalary);
+  const calendarDays = daysInMonth(y, m);
+  const deductions = calculateDeductions(
+    data.salary, settings, lop.totalLOP, perDaySalary,
+    grossSalary, calendarDays, data.pfConfig, data.esiConfig
+  );
 
   // ── Employer ──────────────────────────────────────────────────────────────
   const employerContribution = calculateEmployerContribution(data.salary, settings);
