@@ -46,22 +46,15 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
   const toast = useToast();
   const qc    = useQueryClient();
 
-  const [ctcInput, setCtcInput]       = useState('');
-  const [manualKeys, setManualKeys]   = useState(new Set());
-  const [manualVals, setManualVals]   = useState({});
-  const [effectiveFrom, setFrom]      = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes]             = useState('');
+  const [ctcInput, setCtcInput] = useState('');
+  const [manualKeys, setManualKeys] = useState(new Set());
+  const [manualVals, setManualVals] = useState({});
+  const [notes, setNotes] = useState('');
   const isRevising = !!employee.salary_id;
-  const [editMode, setEditMode]       = useState(isRevising ? 'correct' : 'revise');
 
   useEffect(() => {
-    if (isRevising && employee.ctc) {
-      setCtcInput(String(Number(employee.ctc)));
-    }
-    if (isRevising) {
-      setFrom(new Date().toISOString().split('T')[0]);
-      setNotes(employee.notes || '');
-    }
+    if (isRevising && employee.ctc) setCtcInput(String(Number(employee.ctc)));
+    if (isRevising) setNotes(employee.notes || '');
   }, []);
 
   const ctcNum = Number(ctcInput) || 0;
@@ -94,38 +87,30 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
   }
 
   const componentPayload = () => ({
-    basic:          val('basic'),
-    hra:            val('hra'),
-    da:             val('da'),
-    transport_allowance: val('transport_allowance'),
-    medical_allowance:   val('medical_allowance'),
-    special_allowance:   val('special_allowance'),
-    other_allowance:     val('other_allowance'),
-    employee_pf:    val('employee_pf'),
-    employee_esi:   val('employee_esi'),
-    professional_tax: val('professional_tax'),
-    tds:            val('tds'),
-    other_deductions: val('other_deductions'),
-    retention:      val('retention'),
-    employer_pf:    val('employer_pf'),
-    employer_esi:   val('employer_esi'),
+    basic: val('basic'), hra: val('hra'), da: val('da'),
+    transport_allowance: val('transport_allowance'), medical_allowance: val('medical_allowance'),
+    special_allowance: val('special_allowance'), other_allowance: val('other_allowance'),
+    employee_pf: val('employee_pf'), employee_esi: val('employee_esi'),
+    professional_tax: val('professional_tax'), tds: val('tds'),
+    other_deductions: val('other_deductions'), retention: val('retention'),
+    employer_pf: val('employer_pf'), employer_esi: val('employer_esi'),
     notes,
   });
 
   const mut = useMutation({
     mutationFn: () => {
       if (!calc && ctcNum <= 0) throw new Error('Enter a valid monthly CTC');
-      if (editMode === 'correct' && employee.salary_id) {
+      if (isRevising) {
         return apiPut(`/payroll/salary-structures/${employee.salary_id}`, componentPayload());
       }
       return apiPost('/payroll/salary-structures', {
         user_id: employee.id,
-        effective_from: effectiveFrom,
+        effective_from: new Date().toISOString().split('T')[0],
         ...componentPayload(),
       });
     },
     onSuccess: () => {
-      toast(editMode === 'correct' ? 'Salary corrected!' : isRevising ? 'Salary revised!' : 'Salary structure saved!', 'success');
+      toast(isRevising ? 'Salary updated!' : 'Salary structure saved!', 'success');
       qc.invalidateQueries({ queryKey: ['payroll-employees'] });
       onSaved?.();
       onClose();
@@ -136,31 +121,23 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
   const getComp = key => rules.components?.find(c => c.key === key);
 
   function FieldRow({ fieldKey, group }) {
-    const comp   = getComp(fieldKey);
-    const isMan  = manualKeys.has(fieldKey);
-    const isAuto = comp?.enabled && !isMan;
+    const comp = getComp(fieldKey);
+    const isMan = manualKeys.has(fieldKey);
     const amount = val(fieldKey);
-    const compDisabled = comp && !comp.enabled;
-
-    if (compDisabled && !manualKeys.has(fieldKey)) return null;
+    if (comp && !comp.enabled && !isMan) return null;
 
     return (
       <div className="flex items-center gap-3 py-2 border-b border-[#f0f3ff] last:border-0">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-[#151c27]">{COMPONENT_LABELS[fieldKey]}</p>
-          {comp?.enabled && !isMan && (
-            <p className="text-[0.6rem] text-[#9ca3af]">{ruleLabel(comp)}</p>
-          )}
+          {comp?.enabled && !isMan && <p className="text-[0.6rem] text-[#9ca3af]">{ruleLabel(comp)}</p>}
           {isMan && <p className="text-[0.6rem] text-amber-600">Manual override</p>}
         </div>
-
         {isMan ? (
           <div className="flex items-center gap-1.5">
             <div className="relative">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
-              <input
-                type="number" min={0} step={1}
-                value={manualVals[fieldKey] ?? ''}
+              <input type="number" min={0} step={1} value={manualVals[fieldKey] ?? ''}
                 onChange={e => setManualVals(v => ({ ...v, [fieldKey]: Number(e.target.value) || 0 }))}
                 className="w-28 border border-amber-300 rounded-lg pl-5 pr-2 py-1 text-sm text-[#151c27] focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400/30"
               />
@@ -172,12 +149,8 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
           </div>
         ) : (
           <div className="flex items-center gap-1.5">
-            <span className={cn(
-              'text-sm font-black min-w-[6rem] text-right',
-              group === 'earning' ? 'text-emerald-700' :
-              group === 'deduction' ? 'text-rose-600' :
-              'text-blue-700'
-            )}>
+            <span className={cn('text-sm font-black min-w-[6rem] text-right',
+              group === 'earning' ? 'text-emerald-700' : group === 'deduction' ? 'text-rose-600' : 'text-blue-700')}>
               {fmtD(amount)}
             </span>
             {comp?.method !== 'remaining' && (
@@ -192,20 +165,17 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
     );
   }
 
-  const canSave = ctcNum > 0 && !!effectiveFrom;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(4,6,14,.55)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-[#c7c4d8] max-h-[92vh] flex flex-col">
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7eefe] flex-shrink-0">
           <div className="flex items-center gap-3">
             <Avatar name={employee.name} color={employee.avatar_color} size={34} />
             <div>
               <h2 className="font-black text-[#151c27] text-sm">
-                {isRevising ? 'Revise Salary' : 'Set Salary Structure'}
+                {isRevising ? 'Edit Salary Structure' : 'Set Salary Structure'}
               </h2>
               <p className="text-xs text-[#777587]">{employee.name} · {employee.department || 'No Dept'}</p>
             </div>
@@ -221,52 +191,6 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-
-          {/* Mode toggle — only when revising */}
-          {isRevising && (
-            <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl border border-[#c7c4d8]">
-              <button onClick={() => setEditMode('correct')}
-                className={cn('flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all',
-                  editMode === 'correct' ? 'bg-[#3525cd] text-white shadow-sm' : 'text-[#777587] hover:text-[#151c27]')}>
-                Correct Current
-              </button>
-              <button onClick={() => setEditMode('revise')}
-                className={cn('flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all',
-                  editMode === 'revise' ? 'bg-[#464555] text-white shadow-sm' : 'text-[#777587] hover:text-[#151c27]')}>
-                Revise (New Version)
-              </button>
-            </div>
-          )}
-
-          {/* Mode banners */}
-          {isRevising && editMode === 'correct' && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-              <p className="font-bold mb-0.5">Correct Current — edits in place, keeps effective date ({fmtDate(employee.effective_from)}).</p>
-              <p className="text-[0.68rem] text-blue-600">Payroll re-run for the current period will use the corrected values immediately.</p>
-            </div>
-          )}
-          {isRevising && editMode === 'revise' && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              <p className="font-bold mb-0.5">Revise — creates a new salary version from the date you choose.</p>
-              <p className="text-[0.68rem] text-amber-600">Past payroll (before the new date) is not affected. Use this for appraisals.</p>
-            </div>
-          )}
-
-          {/* Current salary summary */}
-          {isRevising && (
-            <div className="rounded-xl border border-[#e7eefe] bg-[#f9f9ff] px-4 py-3 text-xs">
-              <p className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-1">
-                Current Salary · Effective {fmtDate(employee.effective_from)}
-              </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[#464555]">
-                {[['Gross', employee.gross_salary], ['CTC', employee.ctc], ['Basic', employee.basic]].filter(([, v]) => Number(v) > 0).map(([l, v]) => (
-                  <span key={l}>{l}: <strong>{fmt(v)}</strong></span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* CTC Input */}
           <div>
             <label className="block text-sm font-bold text-[#151c27] mb-1.5">
               Monthly CTC <span className="text-rose-500">*</span>
@@ -274,57 +198,37 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#777587] font-bold text-base">₹</span>
-              <input
-                type="number" min={0} step={1}
-                placeholder="e.g. 25000"
-                value={ctcInput}
+              <input type="number" min={0} step={1} placeholder="e.g. 25000" value={ctcInput}
                 onChange={e => setCtcInput(e.target.value)}
                 className="w-full border-2 border-[#3525cd]/40 rounded-xl pl-8 pr-4 py-3 text-lg font-black text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-2 focus:ring-[#3525cd]/20"
                 autoFocus
               />
             </div>
             <p className="text-[0.65rem] text-[#9ca3af] mt-1">
-              All components are calculated automatically. Click <Unlock size={9} className="inline" /> to override any field manually.
+              Components are calculated automatically. Click <Unlock size={9} className="inline" /> to override any field manually.
             </p>
           </div>
 
-          {/* Calculated breakdown */}
           {calc && ctcNum > 0 ? (
             <div className="space-y-4">
-
-              {/* Earnings */}
               <div className="rounded-xl border border-emerald-200 overflow-hidden">
                 <div className="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200">
                   <p className="text-[0.65rem] font-black uppercase tracking-widest text-emerald-700">Earnings</p>
                 </div>
-                <div className="px-4">
-                  {EARNING_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="earning" />)}
-                </div>
+                <div className="px-4">{EARNING_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="earning" />)}</div>
                 <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 border-t border-emerald-200">
-                  <div className="flex items-center gap-1.5 text-emerald-700">
-                    <TrendingUp size={13} />
-                    <span className="text-xs font-bold">Gross Salary</span>
-                  </div>
+                  <div className="flex items-center gap-1.5 text-emerald-700"><TrendingUp size={13} /><span className="text-xs font-bold">Gross Salary</span></div>
                   <span className="text-sm font-black text-emerald-700">{fmtD(calc.gross)}</span>
                 </div>
               </div>
 
-              {/* Employee Deductions */}
               <div className="rounded-xl border border-rose-200 overflow-hidden">
                 <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200">
                   <p className="text-[0.65rem] font-black uppercase tracking-widest text-rose-700">Employee Deductions</p>
                 </div>
-                <div className="px-4">
-                  {DEDUCTION_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="deduction" />)}
-                </div>
+                <div className="px-4">{DEDUCTION_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="deduction" />)}</div>
                 <div className="flex items-center justify-between px-4 py-2.5 bg-rose-50 border-t border-rose-200">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 text-rose-600">
-                      <TrendingDown size={13} />
-                      <span className="text-xs font-bold">Total Deductions</span>
-                    </div>
-                    <span className="text-[0.65rem] text-rose-500">{fmtD(calc.total_deductions)}</span>
-                  </div>
+                  <div className="flex items-center gap-1.5 text-rose-600"><TrendingDown size={13} /><span className="text-xs font-bold">Total Deductions</span></div>
                   <div className="text-right">
                     <p className="text-[0.62rem] text-[#9ca3af]">Net Salary</p>
                     <p className="text-sm font-black text-[#151c27]">{fmtD(calc.net_salary)}</p>
@@ -332,21 +236,17 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
                 </div>
               </div>
 
-              {/* Employer Contributions */}
               <div className="rounded-xl border border-blue-200 overflow-hidden">
                 <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-200">
                   <p className="text-[0.65rem] font-black uppercase tracking-widest text-blue-700">Employer Contributions</p>
                 </div>
-                <div className="px-4">
-                  {EMPLOYER_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="employer" />)}
-                </div>
+                <div className="px-4">{EMPLOYER_KEYS.map(k => <FieldRow key={k} fieldKey={k} group="employer" />)}</div>
                 <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 border-t border-blue-200">
                   <span className="text-xs font-bold text-blue-700">Total Employer</span>
                   <span className="text-sm font-black text-blue-700">{fmtD(calc.total_employer)}</span>
                 </div>
               </div>
 
-              {/* Final CTC summary */}
               <div className="rounded-xl border-2 border-[#3525cd]/30 bg-[#f0f3ff] px-5 py-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -358,7 +258,7 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
                 {Math.abs(calc.final_ctc - ctcNum) > 1 && (
                   <p className="text-[0.62rem] text-amber-600 mt-2 flex items-center gap-1">
                     <Info size={10} />
-                    Target CTC ₹{Number(ctcNum).toLocaleString('en-IN')} · Calculated CTC ₹{Number(calc.final_ctc).toLocaleString('en-IN')} (rounding)
+                    Target CTC ₹{Number(ctcNum).toLocaleString('en-IN')} · Calculated ₹{Number(calc.final_ctc).toLocaleString('en-IN')} (rounding)
                   </p>
                 )}
               </div>
@@ -367,43 +267,25 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
             <div className="text-center py-8 text-sm text-[#777587]">No salary rules configured for this organization.</div>
           ) : null}
 
-          {/* Effective From + Notes — effective date only shown for revise mode */}
-          <div className={cn('pt-2 border-t border-[#f0f3ff]', editMode === 'correct' ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-2 gap-4')}>
-            {editMode === 'revise' && (
-              <div>
-                <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Effective From *</label>
-                <input type="date" value={effectiveFrom} onChange={e => setFrom(e.target.value)}
-                  className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]" />
-                {isRevising && <p className="text-[0.65rem] text-[#9ca3af] mt-1">Must be after {fmtDate(employee.effective_from)}.</p>}
-              </div>
-            )}
-            <div>
-              <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Notes (optional)</label>
-              <input value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="e.g. Corrected special allowance / Annual appraisal Apr 2026"
-                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]" />
-            </div>
+          <div className="pt-2 border-t border-[#f0f3ff]">
+            <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Notes (optional)</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="e.g. Salary structure update"
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]" />
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#e7eefe] flex-shrink-0">
           <button onClick={onClose}
             className="px-4 py-2.5 border border-[#c7c4d8] rounded-xl text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
             Cancel
           </button>
-          <button
-            onClick={() => mut.mutate()}
-            disabled={mut.isPending || (editMode === 'revise' && (!effectiveFrom || !calc)) || (editMode === 'correct' && !calc) || ctcNum <= 0}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60 transition-colors',
-              editMode === 'correct'
-                ? 'bg-[#3525cd] text-white hover:bg-[#2a1fb0]'
-                : 'bg-[#464555] text-white hover:bg-[#333240]'
-            )}>
+          <button onClick={() => mut.mutate()}
+            disabled={mut.isPending || !calc || ctcNum <= 0}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors">
             {mut.isPending
               ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
-              : <><Plus size={14} /> {editMode === 'correct' ? 'Save Correction' : isRevising ? 'Revise Salary' : 'Save Structure'}</>}
+              : <><Plus size={14} /> {isRevising ? 'Save Changes' : 'Save Structure'}</>}
           </button>
         </div>
       </div>
@@ -412,35 +294,24 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
 }
 
 // ── Manual Mode ───────────────────────────────────────────────────────────────
-// editMode = 'correct' → PUT (in-place fix, same effective date, affects current period)
-// editMode = 'revise'  → POST (new version from a future date, doesn't affect past payroll)
 function ManualModal({ employee, onClose, onSaved }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const isRevising = !!employee.salary_id;
 
-  // Default to 'correct' when an existing salary exists (the common fix-a-mistake case)
-  const [editMode, setEditMode] = useState(isRevising ? 'correct' : 'revise');
-
   const [form, setForm] = useState({
     ...EMPTY_FORM,
     user_id: employee.id,
     ...(isRevising ? {
-      basic: employee.basic || '',
-      hra: employee.hra || '',
-      da: employee.da || '',
+      basic: employee.basic || '', hra: employee.hra || '', da: employee.da || '',
       transport_allowance: employee.transport_allowance || '',
       medical_allowance: employee.medical_allowance || '',
       special_allowance: employee.special_allowance || '',
       other_allowance: employee.other_allowance || '',
-      employee_pf: employee.employee_pf || '',
-      employee_esi: employee.employee_esi || '',
-      professional_tax: employee.professional_tax || '',
-      tds: employee.tds || '',
-      other_deductions: employee.other_deductions || '',
-      retention: employee.retention || '',
-      employer_pf: employee.employer_pf || '',
-      employer_esi: employee.employer_esi || '',
+      employee_pf: employee.employee_pf || '', employee_esi: employee.employee_esi || '',
+      professional_tax: employee.professional_tax || '', tds: employee.tds || '',
+      other_deductions: employee.other_deductions || '', retention: employee.retention || '',
+      employer_pf: employee.employer_pf || '', employer_esi: employee.employer_esi || '',
       notes: employee.notes || '',
     } : {}),
   });
@@ -454,33 +325,27 @@ function ManualModal({ employee, onClose, onSaved }) {
   const netEstimate = Math.max(0, gross - empDed);
   const ctc         = gross + empContrib;
 
-  const payload = {
-    basic: num('basic'), hra: num('hra'), da: num('da'),
-    transport_allowance: num('transport_allowance'), medical_allowance: num('medical_allowance'),
-    special_allowance: num('special_allowance'), other_allowance: num('other_allowance'),
-    employee_pf: num('employee_pf'), employee_esi: num('employee_esi'),
-    professional_tax: num('professional_tax'), tds: num('tds'),
-    other_deductions: num('other_deductions'), retention: num('retention'),
-    employer_pf: num('employer_pf'), employer_esi: num('employer_esi'),
-    notes: form.notes,
-  };
-
   const mut = useMutation({
     mutationFn: () => {
-      if (editMode === 'correct' && employee.salary_id) {
-        // PUT — in-place correction of the current active structure
+      const payload = {
+        basic: num('basic'), hra: num('hra'), da: num('da'),
+        transport_allowance: num('transport_allowance'), medical_allowance: num('medical_allowance'),
+        special_allowance: num('special_allowance'), other_allowance: num('other_allowance'),
+        employee_pf: num('employee_pf'), employee_esi: num('employee_esi'),
+        professional_tax: num('professional_tax'), tds: num('tds'),
+        other_deductions: num('other_deductions'), retention: num('retention'),
+        employer_pf: num('employer_pf'), employer_esi: num('employer_esi'),
+        notes: form.notes,
+      };
+      if (isRevising) {
         return apiPut(`/payroll/salary-structures/${employee.salary_id}`, payload);
       }
-      // POST — new version with a new effective date
       return apiPost('/payroll/salary-structures', {
-        ...payload,
-        user_id: employee.id,
-        effective_from: form.effective_from,
-        ctc_override: form.ctc_override ? Number(form.ctc_override) : null,
+        ...payload, user_id: employee.id, effective_from: form.effective_from,
       });
     },
     onSuccess: () => {
-      toast(editMode === 'correct' ? 'Salary corrected!' : isRevising ? 'Salary revised!' : 'Salary structure saved!', 'success');
+      toast(isRevising ? 'Salary updated!' : 'Salary structure saved!', 'success');
       qc.invalidateQueries({ queryKey: ['payroll-employees'] });
       onSaved?.();
       onClose();
@@ -494,8 +359,7 @@ function ManualModal({ employee, onClose, onSaved }) {
       <div className="relative">
         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] text-xs">₹</span>
         <input type="number" min={0} step="1" placeholder={placeholder} value={form[key]}
-          onChange={e => set(key, e.target.value)}
-          onWheel={e => e.target.blur()}
+          onChange={e => set(key, e.target.value)} onWheel={e => e.target.blur()}
           className="w-full border border-[#c7c4d8] rounded-lg pl-6 pr-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
         />
       </div>
@@ -511,7 +375,7 @@ function ManualModal({ employee, onClose, onSaved }) {
             <Avatar name={employee.name} color={employee.avatar_color} size={34} />
             <div>
               <h2 className="font-black text-[#151c27] text-sm">
-                {!isRevising ? 'Set Salary Structure' : editMode === 'correct' ? 'Correct Salary (Current Period)' : 'Revise Salary (New Version)'}
+                {isRevising ? 'Edit Salary Structure' : 'Set Salary Structure'}
               </h2>
               <p className="text-xs text-[#777587]">{employee.name} · {employee.department || 'No Department'}</p>
             </div>
@@ -522,69 +386,6 @@ function ManualModal({ employee, onClose, onSaved }) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-
-          {/* Mode toggle — only shown when revising */}
-          {isRevising && (
-            <div className="flex gap-1 bg-[#f0f3ff] p-1 rounded-xl border border-[#c7c4d8]">
-              <button onClick={() => setEditMode('correct')}
-                className={cn('flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all',
-                  editMode === 'correct' ? 'bg-[#3525cd] text-white shadow-sm' : 'text-[#777587] hover:text-[#151c27]')}>
-                Correct Current
-              </button>
-              <button onClick={() => setEditMode('revise')}
-                className={cn('flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all',
-                  editMode === 'revise' ? 'bg-[#464555] text-white shadow-sm' : 'text-[#777587] hover:text-[#151c27]')}>
-                Revise (New Version)
-              </button>
-            </div>
-          )}
-
-          {/* Mode explanation banners */}
-          {isRevising && editMode === 'correct' && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-              <p className="font-bold mb-0.5">Correct Current — edits in place, keeps existing effective date ({fmtDate(employee.effective_from)}).</p>
-              <p className="text-[0.68rem] text-blue-600">Use this to fix wrong salary amounts. Payroll re-run for the current period will pick up the corrected values.</p>
-            </div>
-          )}
-          {isRevising && editMode === 'revise' && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              <p className="font-bold mb-0.5">Revise — creates a new salary version from the date you choose.</p>
-              <p className="text-[0.68rem] text-amber-600">Past payroll (before the new effective date) continues to use the old salary. Use this for appraisals or salary hikes.</p>
-            </div>
-          )}
-
-          {/* Current salary summary */}
-          {isRevising && (
-            <div className="rounded-xl border border-[#e7eefe] bg-[#f9f9ff] px-4 py-3">
-              <p className="text-[0.65rem] font-black uppercase tracking-widest text-[#777587] mb-2">
-                Current Salary · Effective {fmtDate(employee.effective_from)}
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                {[['Basic', employee.basic],['HRA', employee.hra],['Special', employee.special_allowance],['Gross', employee.gross_salary]]
-                  .filter(([,v]) => Number(v) > 0)
-                  .map(([label, val]) => (
-                    <div key={label} className="flex justify-between gap-1">
-                      <span className="text-[#777587]">{label}</span>
-                      <span className="font-bold text-[#151c27]">{fmt(val)}</span>
-                    </div>
-                  ))}
-              </div>
-              <p className="text-[0.6rem] text-[#9ca3af] mt-2">CTC: {fmt(employee.ctc)}/mo</p>
-            </div>
-          )}
-
-          {/* Effective From — only in revise mode */}
-          {editMode === 'revise' && (
-            <div>
-              <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Effective From *</label>
-              <input type="date" value={form.effective_from} onChange={e => set('effective_from', e.target.value)}
-                className="border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
-              />
-              <p className="text-[0.65rem] text-[#9ca3af] mt-1">Must be after {fmtDate(employee.effective_from)}. Payroll before this date uses the old salary.</p>
-            </div>
-          )}
-
-          {/* Earnings */}
           <div>
             <p className="text-[0.68rem] font-black uppercase tracking-widest text-[#777587] mb-3">Earnings (₹ / month)</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -598,7 +399,6 @@ function ManualModal({ employee, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Employee Deductions */}
           <div>
             <p className="text-[0.68rem] font-black uppercase tracking-widest text-[#777587] mb-3">Employee Deductions (₹ / month)</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -615,7 +415,6 @@ function ManualModal({ employee, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Employer Contributions */}
           <div>
             <p className="text-[0.68rem] font-black uppercase tracking-widest text-[#777587] mb-3">Employer Contributions (₹ / month)</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -626,12 +425,10 @@ function ManualModal({ employee, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Notes */}
           <div>
             <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Notes (optional)</label>
             <input className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
-              placeholder="e.g. Corrected special allowance / Revised per appraisal Apr 2026"
-              value={form.notes} onChange={e => set('notes', e.target.value)} />
+              placeholder="e.g. Salary update" value={form.notes} onChange={e => set('notes', e.target.value)} />
           </div>
         </div>
 
@@ -642,19 +439,14 @@ function ManualModal({ employee, onClose, onSaved }) {
           </button>
           <button
             onClick={() => {
-              if (gross === 0) { toast('Salary amount must be greater than ₹0.', 'error'); return; }
+              if (gross === 0) { toast('Enter at least one earning amount.', 'error'); return; }
               mut.mutate();
             }}
             disabled={mut.isPending || !form.basic || num('basic') === 0}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60 transition-colors',
-              editMode === 'correct'
-                ? 'bg-[#3525cd] text-white hover:bg-[#2a1fb0]'
-                : 'bg-[#464555] text-white hover:bg-[#333240]'
-            )}>
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors">
             {mut.isPending
               ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
-              : <><Plus size={14} /> {editMode === 'correct' ? 'Save Correction' : isRevising ? 'Revise Salary' : 'Save Structure'}</>}
+              : <><Plus size={14} /> {isRevising ? 'Save Changes' : 'Save Structure'}</>}
           </button>
         </div>
       </div>
