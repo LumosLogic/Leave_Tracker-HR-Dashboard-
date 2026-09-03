@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Download, BarChart3, Users, FileText, CalendarDays, TrendingUp,
@@ -279,13 +280,15 @@ function Pagination({ page, totalPages, totalCount, onPageChange, label = 'recor
 // ── Main Reports page ──────────────────────────────────────────────────────────
 export default function Reports() {
   const now = new Date();
+  const [searchParams] = useSearchParams();
+  const preselectedUserId = searchParams.get('userId') || '';
 
   // ── Filters & UI state ────────────────────────────────────────────────────────
   const [active,          setActive]          = useState('attendance');
   const [viewMode,        setViewMode]        = useState('monthly');
   const [year,            setYear]            = useState(now.getFullYear());
   const [month,           setMonth]           = useState(now.getMonth() + 1);
-  const [selectedEmpId,   setSelectedEmpId]   = useState('');
+  const [selectedEmpId,   setSelectedEmpId]   = useState(preselectedUserId);
   const [deptFilter,      setDeptFilter]      = useState('');
   const [statusFilter,    setStatusFilter]    = useState('');
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('');

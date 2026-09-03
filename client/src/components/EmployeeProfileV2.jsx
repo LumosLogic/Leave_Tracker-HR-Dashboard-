@@ -1256,7 +1256,7 @@ function WorkTab({ empId, isAdmin, emp }) {
 
       <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={() => navigate(`${basePath}/reports`, { state: { userId: empId, employeeName: emp?.name } })}
+          onClick={() => navigate(`${basePath}/reports?userId=${empId}`)}
           className="flex items-center gap-3 p-4 bg-white rounded-xl border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:bg-[#f0f3ff] hover:-translate-y-0.5 transition-all text-left group shadow-sm">
           <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] group-hover:bg-[#3525cd] flex items-center justify-center flex-shrink-0 transition-colors">
             <BarChart3 size={16} className="text-[#3525cd] group-hover:text-white transition-colors" />
@@ -1267,7 +1267,7 @@ function WorkTab({ empId, isAdmin, emp }) {
           </div>
         </button>
         <button
-          onClick={() => navigate(`${basePath}/leaves`, { state: { userId: empId, employeeName: emp?.name } })}
+          onClick={() => navigate(`${basePath}/leaves?userId=${empId}`)}
           className="flex items-center gap-3 p-4 bg-white rounded-xl border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:bg-[#f0f3ff] hover:-translate-y-0.5 transition-all text-left group shadow-sm">
           <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] group-hover:bg-[#3525cd] flex items-center justify-center flex-shrink-0 transition-colors">
             <Umbrella size={16} className="text-[#3525cd] group-hover:text-white transition-colors" />
