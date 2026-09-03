@@ -471,6 +471,80 @@ router.post('/salary-structures', auth, hasPermission('payroll', 'manage_structu
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PUT /api/payroll/salary-structures/:id — in-place correction of the current active structure.
+// Does NOT create a new version or change effective_from / effective_to.
+// Use when salary components were entered incorrectly and need to be fixed for the current period.
+router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_structures'), async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const id  = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'Invalid salary structure ID' });
+
+    const {
+      basic = 0, hra = 0, da = 0,
+      transport_allowance = 0, medical_allowance = 0,
+      special_allowance = 0, other_allowance = 0,
+      employee_pf = 0, employee_esi = 0,
+      professional_tax = 0, tds = 0, other_deductions = 0,
+      retention = 0,
+      employer_pf = 0, employer_esi = 0,
+      notes,
+    } = req.body;
+
+    // Only the currently active record (effective_to IS NULL) can be corrected
+    const { rows: existing } = await pool.query(
+      `SELECT id, user_id, effective_from, notes AS existing_notes
+         FROM employee_salary_structures
+        WHERE id = $1 AND organization_id = $2 AND effective_to IS NULL`,
+      [id, oId]
+    );
+    if (!existing.length) {
+      return res.status(404).json({
+        error: 'Active salary structure not found. Only the current active record can be corrected in-place.',
+      });
+    }
+
+    const gross_salary = parseFloat((
+      Number(basic) + Number(hra) + Number(da) +
+      Number(transport_allowance) + Number(medical_allowance) +
+      Number(special_allowance) + Number(other_allowance)
+    ).toFixed(2));
+
+    const ctc = parseFloat((gross_salary + Number(employer_pf) + Number(employer_esi)).toFixed(2));
+
+    const { rows: updated } = await pool.query(
+      `UPDATE employee_salary_structures SET
+          basic               = $1,  hra                 = $2,  da                 = $3,
+          transport_allowance = $4,  medical_allowance   = $5,
+          special_allowance   = $6,  other_allowance     = $7,  gross_salary       = $8,
+          employee_pf         = $9,  employee_esi        = $10, professional_tax   = $11,
+          tds                 = $12, other_deductions    = $13, retention          = $14,
+          employer_pf         = $15, employer_esi        = $16, ctc                = $17,
+          notes               = COALESCE($18, notes)
+        WHERE id = $19 AND organization_id = $20
+        RETURNING *`,
+      [
+        Number(basic), Number(hra), Number(da),
+        Number(transport_allowance), Number(medical_allowance),
+        Number(special_allowance), Number(other_allowance), gross_salary,
+        Number(employee_pf), Number(employee_esi), Number(professional_tax),
+        Number(tds), Number(other_deductions), Number(retention),
+        Number(employer_pf), Number(employer_esi), ctc,
+        notes ?? null,
+        id, oId,
+      ]
+    );
+
+    logPayroll({
+      oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'salary_updated', entityType: 'salary_structure', entityId: id,
+      targetUserId: existing[0].user_id, newValues: updated[0], ip: req.ip,
+    });
+
+    res.json(updated[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Payroll Structures ───────────────────────────────────────────────────────
 
 // GET /api/payroll/structure?userId=
@@ -743,7 +817,7 @@ router.post('/payslips/generate', auth, hasPermission('payroll', 'generate'), as
     // FIX: approved leaves (on_leave) are NOT LOP; absents and half-days are
     const lopDays      = absentCount + halfDayCount * 0.5;
 
-    const grossSalary  = (structure.basic || 0) + (structure.hra || 0) + (structure.da || 0) + (structure.transport_allowance || 0) + (structure.medical_allowance || 0) + (structure.other_allowances || 0);
+    const grossSalary  = (structure.basic || 0) + (structure.hra || 0) + (structure.da || 0) + (structure.transport_allowance || 0) + (structure.medical_allowance || 0) + (structure.special_allowance || 0) + (structure.other_allowances || 0);
     const perDaySalary = totalWorkingDays > 0 ? grossSalary / totalWorkingDays : 0;
     const lopAmount    = lopDays * perDaySalary;
     const totalDed     = (structure.pf_employee || 0) + (structure.esi_employee || 0) + (structure.professional_tax || 0) + (structure.tds || 0) + Number(other_deductions || 0) + Number(structure.retention || 0) + lopAmount;
