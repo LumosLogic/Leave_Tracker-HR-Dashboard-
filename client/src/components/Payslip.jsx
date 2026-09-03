@@ -115,8 +115,16 @@ export default function Payslip({ payslipId, onClose }) {
       </style></head><body>${content}</body></html>`);
     win.document.close();
     win.focus();
-    win.print();
-    win.close();
+    // Wait for all images to load before printing so logo isn't blank
+    const imgs = win.document.images;
+    if (imgs.length === 0) { win.print(); win.close(); return; }
+    let loaded = 0;
+    const total = imgs.length;
+    const done = () => { if (++loaded >= total) { win.print(); win.close(); } };
+    Array.from(imgs).forEach(img => {
+      if (img.complete) { done(); }
+      else { img.onload = done; img.onerror = done; }
+    });
   }
 
   if (isLoading || !orgFetched) return (
