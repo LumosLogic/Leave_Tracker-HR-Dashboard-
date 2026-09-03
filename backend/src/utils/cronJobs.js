@@ -147,31 +147,32 @@ async function runAutoMarkAbsent() {
         .select('id').eq('organization_id', oId).eq('date', today).limit(1);
       if (holidays?.length) continue; // org-wide holiday, skip absent marking
 
-      // Find employees whose assigned shift has today as a day-off.
-      // These must NOT be marked absent — it's their configured day off.
-      // Look back 6 days to catch Mon-Fri-only assignments (no Saturday row exists
-      // for the employee, but their most-recent weekday row references the shift
-      // whose days_of_week tells us Saturday is off).
+      // Find employees whose shift says today is a day-off (must NOT be marked absent).
+      // DOW-coverage: aggregate all DOWs from all shift assignments (±31 days).
+      // Any employee whose union of shift DOWs does NOT include today's DOW → shift weekoff.
       const todayDow = new Date().getDay(); // 0=Sun ... 6=Sat
       let shiftOffIds = new Set();
       try {
         const { rows: shiftRows } = await pool.query(
-          `SELECT DISTINCT ON (sa.user_id) sa.user_id, s.days_of_week
+          `SELECT DISTINCT sa.user_id, s.days_of_week
              FROM shift_assignments sa
              JOIN shifts s ON s.id = sa.shift_id
             WHERE sa.organization_id = $1
               AND sa.user_id = ANY($2::int[])
-              AND sa.date BETWEEN ($3::date - INTERVAL '6 days') AND $3::date
-            ORDER BY sa.user_id, sa.date DESC`,
+              AND sa.date BETWEEN ($3::date - INTERVAL '31 days') AND ($3::date + INTERVAL '31 days')`,
           [oId, empIds, today]
         );
+        // Per employee: union of all DOWs from all assigned shifts
+        const userWorkingDows = {};
         for (const row of shiftRows) {
           if (!row.days_of_week) continue;
-          let workDays;
-          try { workDays = JSON.parse(row.days_of_week); } catch { workDays = String(row.days_of_week).split(',').map(Number); }
-          if (!workDays.map(Number).includes(todayDow)) {
-            shiftOffIds.add(row.user_id);
-          }
+          if (!userWorkingDows[row.user_id]) userWorkingDows[row.user_id] = new Set();
+          let wDays;
+          try { wDays = JSON.parse(row.days_of_week); } catch { wDays = String(row.days_of_week).split(',').map(Number); }
+          for (const d of wDays) userWorkingDows[row.user_id].add(Number(d));
+        }
+        for (const uid of Object.keys(userWorkingDows)) {
+          if (!userWorkingDows[uid].has(todayDow)) shiftOffIds.add(Number(uid));
         }
       } catch { /* shifts table may not exist — skip check */ }
 
