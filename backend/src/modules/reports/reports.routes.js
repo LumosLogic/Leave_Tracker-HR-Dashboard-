@@ -80,10 +80,15 @@ router.get('/attendance', auth, async (req, res) => {
       for (const h of hols || []) holidayMap.set(h.date, h);
     } catch { /* non-critical — degrade gracefully */ }
 
-    // Build a shift weekoff map: { userId_date → true } for dates that are
-    // day-offs per each employee's assigned shift. Absent records on shift weekoff
-    // dates are overridden to 'off_day' so reports show the correct classification.
-    // Also used by the frontend full-calendar to skip synthesizing absent entries.
+    // Build a shift weekoff map using a LOOKBACK approach.
+    //
+    // Problem: Mon-Fri-only shift rosters create rows only for Mon-Fri dates.
+    // Saturday rows do not exist, so checking "does this date have a shift row"
+    // never detects Saturday as a shift weekoff.
+    //
+    // Solution: for each date in the report range, find the employee's most
+    // recent shift assignment on or before that date (within 6 days lookback).
+    // If that shift's days_of_week does NOT include the current date's DOW → shift weekoff.
     const shiftWeekoffSet = new Set(); // key = `${user_id}_${date}`
     const shiftWeekoffByUser = {}; // userId → [dateStr, ...]
     try {
@@ -95,24 +100,61 @@ router.get('/attendance', auth, async (req, res) => {
         : year ? `${year}-12-31` : null;
 
       if (rangeStart && rangeEnd) {
+        // Fetch 6 days before rangeStart so the lookback works for the first days of the month
+        const lookbackDate = new Date(rangeStart + 'T12:00:00Z');
+        lookbackDate.setUTCDate(lookbackDate.getUTCDate() - 6);
+        const lookbackStr = lookbackDate.toISOString().split('T')[0];
+
         const { rows: saRows } = await pool.query(
           `SELECT sa.user_id, sa.date::text, s.days_of_week
              FROM shift_assignments sa
              JOIN shifts s ON s.id = sa.shift_id
             WHERE sa.organization_id = $1
               AND sa.date >= $2 AND sa.date <= $3
-              ${userId ? 'AND sa.user_id = $4' : ''}`,
-          userId ? [oId, rangeStart, rangeEnd, userId] : [oId, rangeStart, rangeEnd]
+              ${userId ? 'AND sa.user_id = $4' : ''}
+            ORDER BY sa.user_id, sa.date ASC`,
+          userId ? [oId, lookbackStr, rangeEnd, userId] : [oId, lookbackStr, rangeEnd]
         );
+
+        // Group sorted assignment history per user
+        const userShiftHistory = {};
         for (const row of saRows) {
-          if (!row.days_of_week) continue;
-          let wDays;
-          try { wDays = JSON.parse(row.days_of_week); } catch { wDays = String(row.days_of_week).split(',').map(Number); }
-          const dow = new Date(row.date + 'T12:00:00Z').getDay();
-          if (!wDays.map(Number).includes(dow)) {
-            shiftWeekoffSet.add(`${row.user_id}_${row.date}`);
-            if (!shiftWeekoffByUser[row.user_id]) shiftWeekoffByUser[row.user_id] = [];
-            shiftWeekoffByUser[row.user_id].push(row.date);
+          if (!userShiftHistory[row.user_id]) userShiftHistory[row.user_id] = [];
+          userShiftHistory[row.user_id].push(row);
+        }
+
+        // For each date in the report range, for each employee with a shift,
+        // find the most-recent assignment on or before that date and check its DOW list
+        const rStart = new Date(rangeStart + 'T12:00:00Z');
+        const rEnd   = new Date(rangeEnd   + 'T12:00:00Z');
+
+        for (const uid of Object.keys(userShiftHistory)) {
+          const history = userShiftHistory[uid]; // sorted ASC by date
+          const cur = new Date(rStart);
+
+          while (cur <= rEnd) {
+            const ds  = cur.toISOString().split('T')[0];
+            const dow = cur.getUTCDay(); // 0=Sun … 6=Sat
+
+            // Binary-search-like: find last history entry with date <= ds
+            let activeShift = null;
+            for (let i = history.length - 1; i >= 0; i--) {
+              if (history[i].date <= ds) { activeShift = history[i]; break; }
+            }
+
+            if (activeShift?.days_of_week) {
+              let wDays;
+              try { wDays = JSON.parse(activeShift.days_of_week); }
+              catch { wDays = String(activeShift.days_of_week).split(',').map(Number); }
+
+              if (!wDays.map(Number).includes(dow)) {
+                shiftWeekoffSet.add(`${uid}_${ds}`);
+                if (!shiftWeekoffByUser[uid]) shiftWeekoffByUser[uid] = [];
+                shiftWeekoffByUser[uid].push(ds);
+              }
+            }
+
+            cur.setUTCDate(cur.getUTCDate() + 1);
           }
         }
       }
