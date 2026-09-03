@@ -265,16 +265,17 @@ function calculateAttendance({
     }
 
     if (status === 'half_day') {
-      // Short-shift reclassification: if the shift's duration is less than its configured
-      // half_day_hours threshold and the employee worked ≥ 50% of the shift duration,
-      // treat as a full present day. Uses shift-specific half_day_hours when configured.
-      // Example: Saturday Shift 10:30–13:30 = 3h; shift half_day_hours = 2h.
-      //          Employee worked 2.5h ≥ 3h × 0.5 = 1.5h → reclassify as present.
-      if (
-        shiftDurationH > 0 &&
-        shiftDurationH < dayHalfDayH &&
-        Number(att?.work_hours ?? 0) >= shiftDurationH * 0.5
-      ) {
+      // Short-shift reclassification:
+      // If the shift has its own half_day_hours configured, use it as the minimum
+      // threshold — employee worked ≥ shift's half_day_hours → full present.
+      // Example: Saturday Shift 10:30–13:30 = 3h; shift half_day_hours = 1h.
+      //          Employee worked 2.61h ≥ 1h → reclassify as full present.
+      // Fallback (no shift-specific half_day_hours): use 50% of shift duration.
+      const workedH = Number(att?.work_hours ?? 0);
+      const reclassThreshold = shiftHalfDayH !== null
+        ? shiftHalfDayH                          // shift's own threshold
+        : (shiftDurationH > 0 ? shiftDurationH * 0.5 : dayHalfDayH); // 50% of shift or org default
+      if (shiftDurationH > 0 && workedH >= reclassThreshold) {
         presentFull++;
         daily.push({ date: ds, type: 'present' });
       } else {
