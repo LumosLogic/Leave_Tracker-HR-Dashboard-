@@ -1252,11 +1252,10 @@ function WorkTab({ empId, isAdmin }) {
         <Clock size={24} className="mx-auto mb-2 text-[#3525cd]" />
         <p className="text-sm font-bold text-[#151c27]">Full Attendance & Leave History</p>
         <p className="text-xs text-[#777587] mt-1">Switch to the <strong>Leave & Attendance</strong> tab in the existing profile for detailed records, filters, and exports.</p>
-      </SectionCard>
+      </div>
 
       {/* ── Leave Balance ── */}
-      <LeaveBalanceSection empId={emp.id} />
-      </div>
+      <LeaveBalanceSection empId={empId} />
     </div>
   );
 }
