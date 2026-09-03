@@ -56,18 +56,19 @@ export default function Payslip({ payslipId, onClose }) {
     enabled:  Boolean(payslipId),
   });
 
-  // Org name from organizations table
-  const { data: orgSettings } = useQuery({
+  // Org name + logo from organizations table
+  const { data: orgSettings, isFetched: orgFetched } = useQuery({
     queryKey: ['org-settings'],
     queryFn:  () => apiGet('/org/settings'),
-    enabled:  !!slip,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   // Payslip branding fields from payroll_settings
   const { data: payrollSettings } = useQuery({
     queryKey: ['payroll-settings'],
     queryFn:  () => apiGet('/payroll/settings'),
-    enabled:  !!slip,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Employee statutory info
@@ -118,7 +119,7 @@ export default function Payslip({ payslipId, onClose }) {
     win.close();
   }
 
-  if (isLoading) return (
+  if (isLoading || !orgFetched) return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-2xl p-8 flex items-center gap-3">
         <span className="w-5 h-5 border-2 border-[#3525cd]/20 border-t-[#3525cd] rounded-full animate-spin" />
@@ -185,10 +186,9 @@ export default function Payslip({ payslipId, onClose }) {
   const totalCalDays = num(slip.working_days) + weekoff + paidHoliday;
   const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
-  // System logo URL — must be absolute so it resolves in the print popup window
-  const logoUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/LogoWithoutName.svg`
-    : '/LogoWithoutName.svg';
+  // Org logo — use uploaded logo if available, else fall back to system logo
+  const orgLogoUrl = orgSettings?.logo_url
+    || (typeof window !== 'undefined' ? `${window.location.origin}/LogoWithoutName.svg` : '/LogoWithoutName.svg');
 
   // Build right-side org header lines (graceful degradation when fields are empty)
   const orgHeaderLines = [
@@ -206,14 +206,8 @@ export default function Payslip({ payslipId, onClose }) {
     <table style="border:none;margin-bottom:12px">
       <tr>
         <td style="border:none;width:38%;vertical-align:top">
-          <div style="display:flex;align-items:center;gap:8px">
-            <img src="${logoUrl}" alt="Lumos HRMS"
-              style="width:32px;height:32px;object-fit:contain" />
-            <div>
-              <div style="font-size:14px;font-weight:bold;color:#3525cd">Lumos HRMS</div>
-              <div style="font-size:8px;color:#777;margin-top:1px">Smart HR Management</div>
-            </div>
-          </div>
+          <img src="${orgLogoUrl}" alt="${orgName}"
+            style="max-width:160px;max-height:60px;object-fit:contain" />
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
           ${orgHeaderLines || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
@@ -321,6 +315,7 @@ export default function Payslip({ payslipId, onClose }) {
     </div>
 
     <div class="note">${footerNote}</div>
+    <div style="text-align:center;font-size:7.5px;color:#aaa;margin-top:4px">HRMS by Lumos Logic</div>
   </div>`;
 
   // ── Render ─────────────────────────────────────────────────────────────────
