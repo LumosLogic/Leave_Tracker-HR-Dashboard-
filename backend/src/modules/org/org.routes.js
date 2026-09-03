@@ -1,10 +1,12 @@
-const express = require('express');
-const router  = express.Router();
-const { db } = require('../../config/db');
-const { auth } = require('../../middleware/auth');
-const { orgId } = require('../../utils/helpers');
+const express    = require('express');
+const router     = express.Router();
+const { db }     = require('../../config/db');
+const { auth }   = require('../../middleware/auth');
+const { orgId }  = require('../../utils/helpers');
 const { sendMail, orgRequestReceivedHtml } = require('../../services/emailService');
 const { rateLimiter, LIMITS } = require('../../middleware/rateLimiter');
+const upload     = require('../../middleware/upload');
+const cloudinary = require('../../config/cloudinary');
 
 // GST format: 2-digit state code + 10-char PAN + entity digit + 'Z' + check char (15 chars total)
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
@@ -179,6 +181,26 @@ router.put('/org/settings', auth, async (req, res) => {
     }
 
     res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── POST /org/logo — upload org logo to Cloudinary, save URL ─────────────────
+router.post('/org/logo', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (req.user.role !== 'root_admin') return res.status(403).json({ error: 'Root admin access required' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const targetOrgId = orgId(req);
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `hrms/${targetOrgId}/org`, resource_type: 'image', transformation: [{ width: 400, crop: 'limit' }] },
+        (err, r) => err ? reject(err) : resolve(r)
+      ).end(req.file.buffer);
+    });
+    const { data, error } = await db.from('organizations')
+      .update({ logo_url: result.secure_url }).eq('id', targetOrgId)
+      .select('id, logo_url').single();
+    if (error) throw new Error(error.message);
+    res.json({ logo_url: data.logo_url });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

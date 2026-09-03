@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Mail, Calendar, Bell, Shield, Save, Eye, EyeOff, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { Building2, Mail, Calendar, Bell, Shield, Save, Eye, EyeOff, ChevronDown, ChevronUp, CheckCircle2, ImageIcon, Upload, X } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -73,9 +73,12 @@ function PasswordField({ label, hint, value, onChange, placeholder }) {
 const DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/;
 
 export default function OrgSettings() {
-  const toast = useToast();
-  const qc    = useQueryClient();
+  const toast   = useToast();
+  const qc      = useQueryClient();
   const { user } = useAuth();
+  const fileRef  = useRef(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['org-settings'],
@@ -182,6 +185,38 @@ export default function OrgSettings() {
     onError: err => toast(err.message, 'error'),
   });
 
+  async function handleLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast('Please select an image file.', 'error'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast('Logo must be under 2 MB.', 'error'); return; }
+
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = ev => setLogoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch('/api/org/logo', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
+      const { logo_url } = await res.json();
+      set('logo_url', logo_url);
+      setLogoPreview(null); // use the real URL now
+      toast('Logo uploaded!', 'success');
+      qc.invalidateQueries({ queryKey: ['org-settings'] });
+    } catch (err) {
+      toast(err.message, 'error');
+      setLogoPreview(null);
+    } finally {
+      setLogoUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   function handleSaveOrg() {
     if (validateOrgForm()) saveMut.mutate();
   }
@@ -243,6 +278,42 @@ export default function OrgSettings() {
 
       {/* Org Profile */}
       <Section icon={<Building2 size={18} />} title="Organization Profile" subtitle="Basic company information" defaultOpen>
+        {/* Logo upload */}
+        <div className="mb-5 pb-5 border-b border-[#f0f3ff]">
+          <label className="form-label mb-3 flex items-center gap-1.5">
+            <ImageIcon size={13} className="text-[#3525cd]" /> Company Logo
+            <span className="text-[0.7rem] font-normal text-[#777587] normal-case tracking-normal">— used in payslips and official documents</span>
+          </label>
+          <div className="flex items-center gap-4">
+            {/* Preview / placeholder */}
+            <div className="w-24 h-24 rounded-xl border-2 border-dashed border-[#c7c4d8] bg-[#f9f9ff] flex items-center justify-center overflow-hidden flex-shrink-0">
+              {logoUploading ? (
+                <span className="w-5 h-5 border-2 border-[#3525cd]/30 border-t-[#3525cd] rounded-full animate-spin" />
+              ) : (logoPreview || form.logo_url || org?.logo_url) ? (
+                <img src={logoPreview || form.logo_url || org?.logo_url} alt="Logo" className="w-full h-full object-contain p-1" />
+              ) : (
+                <ImageIcon size={28} className="text-[#c7c4d8]" />
+              )}
+            </div>
+
+            <div className="space-y-2 flex-1">
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={logoUploading}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:border-[#3525cd] transition-colors disabled:opacity-50">
+                <Upload size={13} /> {logoUploading ? 'Uploading…' : (form.logo_url || org?.logo_url) ? 'Replace Logo' : 'Upload Logo'}
+              </button>
+              {(form.logo_url || org?.logo_url) && (
+                <button type="button"
+                  onClick={() => { set('logo_url', ''); setLogoPreview(null); saveMut.mutate(); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600 px-1">
+                  <X size={12} /> Remove logo
+                </button>
+              )}
+              <p className="text-[0.68rem] text-[#9ca3af]">PNG, JPG or SVG · Max 2 MB · Will be resized to 400px wide</p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <Field label="Company Name">
             <input className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]" value={form.name || ''} readOnly placeholder="Acme Corp" />

@@ -39,6 +39,12 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
     enabled:  Boolean(payslipId),
   });
 
+  const { data: orgData } = useQuery({
+    queryKey: ['org-settings'],
+    queryFn:  () => apiGet('/org/settings'),
+    enabled:  !!slip,
+  });
+
   const { data: statutory } = useQuery({
     queryKey: ['emp-statutory-relitrade', slip?.user_id],
     queryFn:  () => apiGet(`/profile/${slip.user_id}/statutory`),
@@ -139,9 +145,11 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
   <div class="payslip">
     <table style="border:none;margin-bottom:12px">
       <tr>
-        <td style="border:none;width:38%;font-size:16px;font-weight:bold;color:#1a3a6e;vertical-align:top">
-          RELITRADE<sup style="font-size:8px">®</sup>
-          <div style="font-size:8px;color:#555;font-weight:normal;margin-top:2px">We care about your investment</div>
+        <td style="border:none;width:38%;vertical-align:top">
+          ${orgData?.logo_url
+            ? `<img src="${orgData.logo_url}" alt="${orgData?.name || ''}" style="max-width:160px;max-height:60px;object-fit:contain" />`
+            : `<div style="font-size:16px;font-weight:bold;color:#1a3a6e">RELITRADE<sup style="font-size:8px">®</sup></div><div style="font-size:8px;color:#555;font-weight:normal;margin-top:2px">We care about your investment</div>`
+          }
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
           <div style="font-size:12px;font-weight:bold">Relitrade Stock Broking Private Limited</div>
