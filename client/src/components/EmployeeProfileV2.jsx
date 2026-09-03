@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Pencil, UserCheck, Umbrella, Home, Key, Download, Plus,
@@ -1203,7 +1204,11 @@ function ComplianceTab({ empId, onEdit, emp }) {
 // ─── Section: Work Tab ────────────────────────────────────────────────────────
 // Reuses existing query keys so data comes from cache if already loaded
 
-function WorkTab({ empId, isAdmin }) {
+function WorkTab({ empId, isAdmin, emp }) {
+  const { user }  = useAuth();
+  const navigate  = useNavigate();
+  const basePath  = user?.role === 'root_admin' ? '/root' : '';
+
   const { data: assets = [] } = useQuery({
     queryKey: ['emp-assets', empId],
     queryFn: () => apiGet('/assets', { userId: empId }),
@@ -1249,10 +1254,29 @@ function WorkTab({ empId, isAdmin }) {
         )}
       </SectionCard>
 
-      <div className="p-5 bg-[#f0f3ff] rounded-xl border border-[#e7eefe] text-center">
-        <Clock size={24} className="mx-auto mb-2 text-[#3525cd]" />
-        <p className="text-sm font-bold text-[#151c27]">Full Attendance & Leave History</p>
-        <p className="text-xs text-[#777587] mt-1">Switch to the <strong>Leave & Attendance</strong> tab in the existing profile for detailed records, filters, and exports.</p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => navigate(`${basePath}/reports`, { state: { userId: empId, employeeName: emp?.name } })}
+          className="flex items-center gap-3 p-4 bg-white rounded-xl border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:bg-[#f0f3ff] hover:-translate-y-0.5 transition-all text-left group shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] group-hover:bg-[#3525cd] flex items-center justify-center flex-shrink-0 transition-colors">
+            <BarChart3 size={16} className="text-[#3525cd] group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[#151c27]">Attendance Records</p>
+            <p className="text-[0.68rem] text-[#777587] mt-0.5">View reports page →</p>
+          </div>
+        </button>
+        <button
+          onClick={() => navigate(`${basePath}/leaves`, { state: { userId: empId, employeeName: emp?.name } })}
+          className="flex items-center gap-3 p-4 bg-white rounded-xl border border-[#c7c4d8] hover:border-[#3525cd]/40 hover:bg-[#f0f3ff] hover:-translate-y-0.5 transition-all text-left group shadow-sm">
+          <div className="w-9 h-9 rounded-xl bg-[#f0f3ff] group-hover:bg-[#3525cd] flex items-center justify-center flex-shrink-0 transition-colors">
+            <Umbrella size={16} className="text-[#3525cd] group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[#151c27]">Leave History</p>
+            <p className="text-[0.68rem] text-[#777587] mt-0.5">View leaves page →</p>
+          </div>
+        </button>
       </div>
 
       {/* ── Leave Balance ── */}
@@ -1382,15 +1406,28 @@ function SystemTab({ emp, onEdit }) {
 }
 
 // ─── Leave Balance Adjust Modal ───────────────────────────────────────────────
-function AdjustBalanceModal({ empId, leaveType, leaveLabel, curYear, currentAvailable, onClose }) {
+// adjusting = { leave_type (null = multi-select), label, available }
+// balances  = full list — passed so modal can show a leave type dropdown when needed
+function AdjustBalanceModal({ empId, leaveType: initLeaveType, leaveLabel: initLabel, curYear, currentAvailable, balances = [], onClose }) {
   const toast = useToast();
   const qc    = useQueryClient();
+
+  // When opened from the header "Adjust Balance" button, leave_type may be null (multi leave types)
+  const [selectedType, setSelectedType] = useState(initLeaveType || '');
   const [action, setAction] = useState('add');   // 'add' | 'deduct'
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
 
+  const leaveType  = selectedType;
+  const leaveLabel = initLabel || balances.find(b => b.leave_type === selectedType)?.label || selectedType;
+  const selBalance = balances.find(b => b.leave_type === selectedType);
+  const available  = selBalance
+    ? Number(selBalance.allocated) + Number(selBalance.adjustment || 0) - Number(selBalance.used)
+    : currentAvailable;
+
   const mut = useMutation({
     mutationFn: () => {
+      if (!leaveType) throw new Error('Select a leave type');
       const parsed = parseFloat(amount);
       if (!parsed || parsed <= 0) throw new Error('Enter a valid amount (e.g. 1 or 0.5)');
       if (!reason.trim()) throw new Error('Reason is required');
@@ -1411,8 +1448,8 @@ function AdjustBalanceModal({ empId, leaveType, leaveLabel, curYear, currentAvai
 
   const previewDelta = parseFloat(amount) || 0;
   const previewAvail = action === 'add'
-    ? currentAvailable + previewDelta
-    : currentAvailable - previewDelta;
+    ? available + previewDelta
+    : available - previewDelta;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
@@ -1421,7 +1458,7 @@ function AdjustBalanceModal({ empId, leaveType, leaveLabel, curYear, currentAvai
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
           <div>
             <p className="font-black text-[#151c27] text-sm">Adjust Leave Balance</p>
-            <p className="text-xs text-[#777587]">{leaveLabel} · {curYear}</p>
+            <p className="text-xs text-[#777587]">{leaveLabel || 'Select leave type'} · {curYear}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center">
             <X size={15} className="text-[#777587]" />
@@ -1429,6 +1466,17 @@ function AdjustBalanceModal({ empId, leaveType, leaveLabel, curYear, currentAvai
         </div>
 
         <div className="px-5 py-4 space-y-4">
+          {/* Leave type selector — shown only when multiple leave types exist and none pre-selected */}
+          {!initLeaveType && balances.length > 1 && (
+            <div>
+              <p className="text-[0.7rem] font-bold text-[#464555] mb-1">Leave Type <span className="text-rose-500">*</span></p>
+              <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] bg-white">
+                <option value="">— Select leave type —</option>
+                {balances.map(b => <option key={b.leave_type} value={b.leave_type}>{b.label}</option>)}
+              </select>
+            </div>
+          )}
           {/* Add / Deduct toggle */}
           <div>
             <p className="text-[0.7rem] font-bold text-[#464555] mb-1.5">Action</p>
@@ -1526,12 +1574,21 @@ function LeaveBalanceSection({ empId, isAdmin }) {
       <SectionCard
         title={`Leave Balance ${curYear}`}
         icon={Umbrella}
-        action={isAdmin && adjHistory.length > 0 && (
-          <button onClick={() => setShowHistory(s => !s)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
-            <History size={11} />
-            {showHistory ? 'Hide History' : `History (${adjHistory.length})`}
-          </button>
+        action={isAdmin && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAdjusting({ leave_type: balances.length === 1 ? balances[0].leave_type : null, label: balances.length === 1 ? balances[0].label : null, available: balances.length === 1 ? Number(balances[0].allocated) + Number(balances[0].adjustment || 0) - Number(balances[0].used) : 0 })}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#3525cd]/30 bg-[#f0f3ff] text-[0.7rem] font-bold text-[#3525cd] hover:bg-[#3525cd] hover:text-white transition-all">
+              <Plus size={11} /> Adjust Balance
+            </button>
+            {adjHistory.length > 0 && (
+              <button onClick={() => setShowHistory(s => !s)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+                <History size={11} />
+                {showHistory ? 'Hide History' : `History (${adjHistory.length})`}
+              </button>
+            )}
+          </div>
         )}
       >
         {isLoading ? <LoadingSection /> : (
@@ -1553,17 +1610,8 @@ function LeaveBalanceSection({ empId, isAdmin }) {
                 return (
                   <div key={b.leave_type}
                     className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-4 px-3 py-2.5 border-b border-[#f0f3ff] last:border-0 items-center hover:bg-[#fafaff] transition-colors">
-                    {/* Leave type + adjust button */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-[#151c27]">{b.label}</span>
-                      {isAdmin && (
-                        <button
-                          onClick={() => setAdjusting({ leave_type: b.leave_type, label: b.label, available })}
-                          className="px-1.5 py-0.5 rounded text-[0.6rem] font-bold bg-[#f0f3ff] text-[#3525cd] hover:bg-[#3525cd] hover:text-white transition-colors flex-shrink-0">
-                          Adjust
-                        </button>
-                      )}
-                    </div>
+                    {/* Leave type */}
+                    <span className="text-sm font-semibold text-[#151c27]">{b.label}</span>
                     {/* Allocated */}
                     <p className="text-sm text-[#464555] text-right">{b.allocated}</p>
                     {/* Adjustment */}
@@ -1630,6 +1678,7 @@ function LeaveBalanceSection({ empId, isAdmin }) {
           leaveLabel={adjusting.label}
           curYear={curYear}
           currentAvailable={adjusting.available}
+          balances={balances}
           onClose={() => setAdjusting(null)}
         />
       )}
@@ -1894,7 +1943,7 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
           {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
           {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
           {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} />}
+          {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} emp={emp} />}
           {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
           {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
         </div>
