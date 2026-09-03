@@ -7,6 +7,7 @@ import {
   Building2, Award, BookOpen, Activity, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Loader2, X, Save, Eye, EyeOff, Banknote,
   Globe, Fingerprint, Clock, AlarmClock, Timer, Coffee,
+  History, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -1255,7 +1256,7 @@ function WorkTab({ empId, isAdmin }) {
       </div>
 
       {/* ── Leave Balance ── */}
-      <LeaveBalanceSection empId={empId} />
+      <LeaveBalanceSection empId={empId} isAdmin={isAdmin} />
     </div>
   );
 }
@@ -1380,44 +1381,259 @@ function SystemTab({ emp, onEdit }) {
   );
 }
 
-// ─── Circular progress for profile completion ────────────────────────────────
-function LeaveBalanceSection({ empId }) {
+// ─── Leave Balance Adjust Modal ───────────────────────────────────────────────
+function AdjustBalanceModal({ empId, leaveType, leaveLabel, curYear, currentAvailable, onClose }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const [action, setAction] = useState('add');   // 'add' | 'deduct'
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+
+  const mut = useMutation({
+    mutationFn: () => {
+      const parsed = parseFloat(amount);
+      if (!parsed || parsed <= 0) throw new Error('Enter a valid amount (e.g. 1 or 0.5)');
+      if (!reason.trim()) throw new Error('Reason is required');
+      const delta = action === 'add' ? parsed : -parsed;
+      return apiPost('/leaves/balance/adjust', {
+        userId: empId, leave_type: leaveType,
+        delta, reason: reason.trim(), year: curYear,
+      });
+    },
+    onSuccess: () => {
+      toast('Leave balance adjusted', 'success');
+      qc.invalidateQueries({ queryKey: ['emp-balance',      empId, curYear] });
+      qc.invalidateQueries({ queryKey: ['emp-adj-history',  empId, curYear] });
+      onClose();
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const previewDelta = parseFloat(amount) || 0;
+  const previewAvail = action === 'add'
+    ? currentAvailable + previewDelta
+    : currentAvailable - previewDelta;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.55)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-[#c7c4d8]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#e7eefe]">
+          <div>
+            <p className="font-black text-[#151c27] text-sm">Adjust Leave Balance</p>
+            <p className="text-xs text-[#777587]">{leaveLabel} · {curYear}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center">
+            <X size={15} className="text-[#777587]" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Add / Deduct toggle */}
+          <div>
+            <p className="text-[0.7rem] font-bold text-[#464555] mb-1.5">Action</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[['add', 'Add Days', 'text-emerald-700 border-emerald-300 bg-emerald-50'],
+                ['deduct', 'Deduct Days', 'text-rose-700 border-rose-300 bg-rose-50']].map(([v, l, cls]) => (
+                <button key={v} type="button" onClick={() => setAction(v)}
+                  className={`py-2 rounded-xl border-2 text-sm font-bold transition-all ${action === v ? cls + ' ring-2 ring-offset-1 ' + (v === 'add' ? 'ring-emerald-400' : 'ring-rose-400') : 'border-[#c7c4d8] text-[#464555] bg-white hover:bg-[#f9f9ff]'}`}>
+                  {v === 'add' ? <TrendingUp size={13} className="inline mr-1" /> : <TrendingDown size={13} className="inline mr-1" />}
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">
+              Days <span className="font-normal text-[#777587]">(0.5 for half-day)</span>
+            </label>
+            <input
+              type="number" min={0.5} step={0.5} placeholder="e.g. 1 or 0.5"
+              value={amount} onChange={e => setAmount(e.target.value)}
+              onWheel={e => e.target.blur()}
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+            />
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">
+              Reason <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={2} placeholder="e.g. Opening balance correction for FY 2026"
+              value={reason} onChange={e => setReason(e.target.value)}
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] resize-none"
+            />
+          </div>
+
+          {/* Preview */}
+          {previewDelta > 0 && (
+            <div className="rounded-xl bg-[#f0f3ff] border border-[#e7eefe] px-4 py-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-[#777587]">Available after adjustment</span>
+              <span className={`text-base font-black ${previewAvail < 0 ? 'text-rose-600' : 'text-[#3525cd]'}`}>
+                {previewAvail % 1 === 0 ? previewAvail : previewAvail.toFixed(1)} days
+                {previewAvail < 0 && <span className="text-xs font-normal ml-1">(deficit)</span>}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#e7eefe]">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-semibold text-[#464555] border border-[#c7c4d8] rounded-xl hover:bg-[#f0f3ff] transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => mut.mutate()} disabled={mut.isPending || !amount || !reason.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#3525cd] text-white rounded-xl text-sm font-bold hover:bg-[#2a1fb0] disabled:opacity-60 transition-colors">
+            {mut.isPending
+              ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
+              : <><Save size={13} /> Save Adjustment</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Leave Balance Section ────────────────────────────────────────────────────
+function LeaveBalanceSection({ empId, isAdmin }) {
   const curYear = new Date().getFullYear();
+
   const { data, isLoading } = useQuery({
     queryKey: ['emp-balance', empId, curYear],
     queryFn:  () => apiGet('/leaves/balance', { userId: empId, year: curYear }),
     staleTime: 60000,
   });
-  const COLORS = { casual: '#10B981', sick: '#3525cd', annual: '#F59E0B', earned: '#F59E0B', comp_off: '#712ae2', emergency: '#EF4444', maternity: '#EC4899', paternity: '#4f46e5', bereavement: '#94a3b8', unpaid: '#64748b' };
+
+  const { data: adjHistory = [], isLoading: hLoad } = useQuery({
+    queryKey: ['emp-adj-history', empId, curYear],
+    queryFn:  () => apiGet('/leaves/balance/adjustments', { userId: empId, year: curYear }),
+    enabled:  isAdmin,
+    staleTime: 30000,
+  });
+
+  const [adjusting, setAdjusting]     = useState(null);   // { leave_type, label, available }
+  const [showHistory, setShowHistory] = useState(false);
+
   const balances = (data?.balances || []).filter(b => b.leave_type !== 'wfh');
   if (!isLoading && balances.length === 0) return null;
+
   return (
-    <SectionCard title={`Leave Balance ${curYear}`} icon={Umbrella}>
-      {isLoading ? <LoadingSection /> : (
-        <div className="space-y-3">
-          {balances.map(b => {
-            const pct   = b.allocated > 0 ? Math.min(100, Math.round((b.used / b.allocated) * 100)) : 0;
-            const color = COLORS[b.leave_type] || '#94a3b8';
-            const isLow = b.remaining <= 2 && b.allocated > 0;
-            return (
-              <div key={b.leave_type}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-[#464555]">{b.label}</span>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-[#9ca3af]">Alloc: <strong className="text-[#464555]">{b.allocated}</strong></span>
-                    <span className="text-[#9ca3af]">Used: <strong className="text-rose-600">{b.used}</strong></span>
-                    <span className={`font-black ${isLow ? 'text-rose-600' : 'text-emerald-600'}`}>{b.remaining} left</span>
-                  </div>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-[#f0f3ff] overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: isLow ? '#ef4444' : color }} />
-                </div>
+    <>
+      <SectionCard
+        title={`Leave Balance ${curYear}`}
+        icon={Umbrella}
+        action={isAdmin && adjHistory.length > 0 && (
+          <button onClick={() => setShowHistory(s => !s)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
+            <History size={11} />
+            {showHistory ? 'Hide History' : `History (${adjHistory.length})`}
+          </button>
+        )}
+      >
+        {isLoading ? <LoadingSection /> : (
+          <div className="space-y-4">
+            {/* ── Balance Table ── */}
+            <div className="rounded-xl border border-[#e7eefe] overflow-hidden">
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-4 px-3 py-2 bg-[#fafaff] border-b border-[#f0f3ff]">
+                {['Leave Type','Allocated','Adj.','Used','Available'].map(h => (
+                  <p key={h} className="text-[0.62rem] font-black uppercase tracking-wider text-[#9ca3af] text-right first:text-left">{h}</p>
+                ))}
               </div>
-            );
-          })}
-        </div>
+              {/* Rows */}
+              {balances.map(b => {
+                const adj       = Number(b.adjustment || 0);
+                const available = Number(b.allocated) + adj - Number(b.used);
+                const isLow     = available <= 2 && b.allocated > 0;
+                const isDeficit = available < 0;
+                return (
+                  <div key={b.leave_type}
+                    className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-4 px-3 py-2.5 border-b border-[#f0f3ff] last:border-0 items-center hover:bg-[#fafaff] transition-colors">
+                    {/* Leave type + adjust button */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#151c27]">{b.label}</span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => setAdjusting({ leave_type: b.leave_type, label: b.label, available })}
+                          className="px-1.5 py-0.5 rounded text-[0.6rem] font-bold bg-[#f0f3ff] text-[#3525cd] hover:bg-[#3525cd] hover:text-white transition-colors flex-shrink-0">
+                          Adjust
+                        </button>
+                      )}
+                    </div>
+                    {/* Allocated */}
+                    <p className="text-sm text-[#464555] text-right">{b.allocated}</p>
+                    {/* Adjustment */}
+                    <p className={`text-sm font-semibold text-right ${adj > 0 ? 'text-emerald-600' : adj < 0 ? 'text-rose-600' : 'text-[#c7c4d8]'}`}>
+                      {adj > 0 ? '+' : ''}{adj !== 0 ? adj : '—'}
+                    </p>
+                    {/* Used */}
+                    <p className="text-sm font-semibold text-rose-600 text-right">{Number(b.used)}</p>
+                    {/* Available */}
+                    <p className={`text-sm font-black text-right ${isDeficit ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {available % 1 === 0 ? available : available.toFixed(1)}
+                      {isDeficit && <span className="text-[0.6rem] font-normal ml-0.5">⚠</span>}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Pending note ── */}
+            {balances.some(b => b.pending > 0) && (
+              <p className="text-[0.65rem] text-amber-600 flex items-center gap-1">
+                <AlertCircle size={11} />
+                {balances.filter(b => b.pending > 0).map(b => `${b.label}: ${b.pending} day(s) pending approval`).join(' · ')}
+              </p>
+            )}
+
+            {/* ── Adjustment History (admin only, collapsible) ── */}
+            {isAdmin && showHistory && (
+              <div className="space-y-2 pt-1 border-t border-[#f0f3ff]">
+                <p className="text-[0.65rem] font-black uppercase tracking-wider text-[#777587] pt-1">
+                  Adjustment History
+                </p>
+                {hLoad ? <LoadingSection /> : adjHistory.length === 0 ? (
+                  <p className="text-xs text-[#9ca3af] text-center py-3">No adjustments recorded for {curYear}</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {adjHistory.map(h => (
+                      <div key={h.id}
+                        className="flex items-start justify-between gap-3 p-2.5 rounded-lg border border-[#f0f3ff] bg-[#fafaff]">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#151c27] leading-snug">{h.reason}</p>
+                          <p className="text-[0.62rem] text-[#9ca3af] mt-0.5">
+                            {h.leave_type} · {h.adjusted_by_name || 'HR'} · {new Date(h.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
+                        <span className={`text-sm font-black flex-shrink-0 ${Number(h.delta) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {Number(h.delta) > 0 ? '+' : ''}{Number(h.delta) % 1 === 0 ? Number(h.delta) : Number(h.delta).toFixed(1)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Adjust modal — rendered outside SectionCard to avoid z-index issues */}
+      {adjusting && (
+        <AdjustBalanceModal
+          empId={empId}
+          leaveType={adjusting.leave_type}
+          leaveLabel={adjusting.label}
+          curYear={curYear}
+          currentAvailable={adjusting.available}
+          onClose={() => setAdjusting(null)}
+        />
       )}
-    </SectionCard>
+    </>
   );
 }
 
