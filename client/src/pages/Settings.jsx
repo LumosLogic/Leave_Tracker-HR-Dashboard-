@@ -1050,6 +1050,7 @@ function OrgSettingsPanel() {
       const { logo_url } = await res.json();
       setLogoPreview(null);
       toast('Logo uploaded successfully!', 'success');
+      setSaved(true); setTimeout(() => setSaved(false), 3000);
       qc.invalidateQueries({ queryKey: ['org-settings'] });
     } catch (err) {
       toast(err.message, 'error');
@@ -1113,7 +1114,7 @@ function OrgSettingsPanel() {
                 }
               </div>
               <div className="space-y-2">
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                <input ref={fileRef} type="file" accept="image/*" className="opacity-0 absolute w-0 h-0" onChange={handleLogoUpload} />
                 <button type="button" onClick={() => fileRef.current?.click()} disabled={logoUploading}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:border-[#7c3aed] transition-colors disabled:opacity-50">
                   {logoUploading ? '⏳ Uploading…' : currentLogo ? '🔄 Replace Logo' : '⬆ Upload Logo'}
