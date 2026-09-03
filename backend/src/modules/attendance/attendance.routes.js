@@ -51,13 +51,13 @@ router.get('/today', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Fetch the employee's currently active shift start/end times.
-// Returns null when no shift assignment applies today.
-async function getActiveShiftTimes(userId, today) {
+// Fetch the employee's active shift config for a given date (including attendance rule columns).
+// Returns null when no shift assignment applies for that date.
+async function getActiveShiftConfig(userId, today) {
   try {
     const { data } = await db
       .from('shift_assignments')
-      .select('shift:shifts(start_time, end_time)')
+      .select('shift:shifts(start_time, end_time, days_of_week, late_threshold, early_exit_threshold, half_day_hours, full_day_hours, max_early_leave_count)')
       .eq('user_id', userId)
       .lte('effective_from', today)
       .or(`effective_to.is.null,effective_to.gte.${today}`)
@@ -81,9 +81,9 @@ router.post('/checkin', auth, async (req, res) => {
     if (existing?.check_in && !existing?.check_out) return res.status(400).json({ error: 'Already checked in today' });
     if (existing?.check_in && existing?.check_out)  return res.status(400).json({ error: 'You have already checked out today' });
 
-    // Use employee's shift start time if available; fall back to org-wide late_threshold
-    const shift = await getActiveShiftTimes(req.user.id, today);
-    const lateThreshold = shift?.start_time || settings.late_threshold;
+    // Use shift's late_threshold if configured; fall back to org-wide late_threshold
+    const shift = await getActiveShiftConfig(req.user.id, today);
+    const lateThreshold = shift?.late_threshold || settings.late_threshold;
     const is_late = toMinutes(timeStr) > toMinutes(lateThreshold);
 
     let record;
@@ -131,13 +131,16 @@ router.post('/checkout', auth, async (req, res) => {
       breakUpdateFields.total_break_minutes = totalBreakMins;
     }
     const effectiveHours = Math.max(0, grossHours - totalBreakMins / 60);
-    // Use employee's shift end time if available; fall back to org-wide early_exit_threshold
-    const shift = await getActiveShiftTimes(req.user.id, today);
-    const earlyExitThreshold = shift?.end_time || settings.early_exit_threshold;
+    // Use shift-specific config where available; fall back to org-wide settings
+    const shift = await getActiveShiftConfig(req.user.id, today);
+    // Early exit: shift's own early_exit_threshold → shift end_time → org threshold
+    const earlyExitThreshold = shift?.early_exit_threshold || shift?.end_time || settings.early_exit_threshold;
     const is_early_exit = toMinutes(timeStr) < toMinutes(earlyExitThreshold);
-    const fullDayHours  = parseFloat(settings.full_day_hours ?? 8);
+    // Half/full day thresholds: shift-specific → org default
+    const halfDayHours = parseFloat(shift?.half_day_hours ?? settings.half_day_hours ?? 4.5);
+    const fullDayHours = parseFloat(shift?.full_day_hours ?? settings.full_day_hours ?? 8);
     let status;
-    if (effectiveHours < settings.half_day_hours) {
+    if (effectiveHours < halfDayHours) {
       status = 'half_day';
     } else if (effectiveHours < fullDayHours) {
       status = 'early_leave';

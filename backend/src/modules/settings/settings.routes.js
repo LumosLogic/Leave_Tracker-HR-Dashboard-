@@ -39,6 +39,92 @@ router.put('/', auth, hasPermission('settings', 'manage'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Settings: Shift-specific config — GET ───────────────────────────────────
+// Returns shift's own work schedule + attendance rules, falling back to org defaults for null fields.
+router.get('/shift/:shiftId', auth, async (req, res) => {
+  try {
+    const oId     = orgId(req);
+    const shiftId = parseInt(req.params.shiftId, 10);
+    if (!shiftId) return res.status(400).json({ error: 'Invalid shiftId' });
+
+    const [{ data: shift }, { data: orgSchedule }] = await Promise.all([
+      db.from('shifts')
+        .select('id, name, start_time, end_time, days_of_week, late_threshold, early_exit_threshold, half_day_hours, full_day_hours, max_early_leave_count')
+        .eq('id', shiftId)
+        .eq('organization_id', oId)
+        .maybeSingle(),
+      db.from('work_schedule')
+        .select('*')
+        .eq('organization_id', oId)
+        .maybeSingle(),
+    ]);
+
+    if (!shift) return res.status(404).json({ error: 'Shift not found' });
+
+    const config = {
+      shift_id:              shift.id,
+      shift_name:            shift.name,
+      // Work Schedule (always set on the shift)
+      start_time:            shift.start_time,
+      end_time:              shift.end_time,
+      work_days:             shift.days_of_week || orgSchedule?.work_days || '1,2,3,4,5',
+      // Attendance Rules — shift-specific overrides; null = org default
+      late_threshold:        shift.late_threshold        ?? orgSchedule?.late_threshold        ?? null,
+      early_exit_threshold:  shift.early_exit_threshold  ?? orgSchedule?.early_exit_threshold  ?? null,
+      half_day_hours:        shift.half_day_hours        != null ? Number(shift.half_day_hours)        : (orgSchedule?.half_day_hours        != null ? Number(orgSchedule.half_day_hours)        : null),
+      full_day_hours:        shift.full_day_hours        != null ? Number(shift.full_day_hours)        : (orgSchedule?.full_day_hours        != null ? Number(orgSchedule.full_day_hours)        : null),
+      max_early_leave_count: shift.max_early_leave_count != null ? Number(shift.max_early_leave_count) : (orgSchedule?.max_early_leave_count != null ? Number(orgSchedule.max_early_leave_count) : null),
+      // Flags for UI
+      has_shift_override: shift.late_threshold !== null || shift.half_day_hours !== null,
+    };
+
+    res.json({ config });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Settings: Shift-specific config — PUT ───────────────────────────────────
+// Saves work schedule + attendance rules directly onto the shift row.
+// Only updates the fields that are supplied (partial updates allowed).
+router.put('/shift/:shiftId', auth, hasPermission('settings', 'manage'), async (req, res) => {
+  try {
+    const oId     = orgId(req);
+    const shiftId = parseInt(req.params.shiftId, 10);
+    if (!shiftId) return res.status(400).json({ error: 'Invalid shiftId' });
+
+    const { data: shift } = await db.from('shifts')
+      .select('id').eq('id', shiftId).eq('organization_id', oId).maybeSingle();
+    if (!shift) return res.status(404).json({ error: 'Shift not found' });
+
+    const {
+      start_time, end_time, work_days,
+      late_threshold, early_exit_threshold,
+      half_day_hours, full_day_hours, max_early_leave_count,
+    } = req.body;
+
+    const updates = {};
+    if (start_time !== undefined)            updates.start_time            = start_time;
+    if (end_time !== undefined)              updates.end_time              = end_time;
+    if (work_days !== undefined)             updates.days_of_week          = work_days;
+    if (late_threshold !== undefined)        updates.late_threshold        = late_threshold;
+    if (early_exit_threshold !== undefined)  updates.early_exit_threshold  = early_exit_threshold;
+    if (half_day_hours !== undefined)        updates.half_day_hours        = half_day_hours !== null ? parseFloat(half_day_hours) : null;
+    if (full_day_hours !== undefined)        updates.full_day_hours        = full_day_hours !== null ? parseFloat(full_day_hours) : null;
+    if (max_early_leave_count !== undefined) updates.max_early_leave_count = max_early_leave_count !== null ? parseInt(max_early_leave_count, 10) : null;
+
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });
+
+    const { data, error } = await db.from('shifts')
+      .update(updates)
+      .eq('id', shiftId)
+      .eq('organization_id', oId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Settings: Email Automation — GET ────────────────────────────────────────
 router.get('/email-automation', auth, async (req, res) => {
   if (!isRootAdmin(req.user.role)) return res.status(403).json({ error: 'Root admin only' });

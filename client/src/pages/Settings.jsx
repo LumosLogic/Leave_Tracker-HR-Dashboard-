@@ -19,6 +19,44 @@ import { usePushNotification } from '@/hooks/usePushNotification';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// Parse shift days_of_week (JSON array, comma-string, or plain array) → number[]
+function parseShiftWorkDays(daysOfWeek) {
+  if (!daysOfWeek && daysOfWeek !== 0) return [1, 2, 3, 4, 5];
+  if (Array.isArray(daysOfWeek)) return daysOfWeek.map(Number);
+  try {
+    const parsed = JSON.parse(daysOfWeek);
+    if (Array.isArray(parsed)) return parsed.map(Number);
+  } catch { /* not JSON */ }
+  return String(daysOfWeek).split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+}
+
+// Shift selector used in both Work Schedule and Attendance Rules panels
+function ShiftSelector({ shifts, selectedId, onChange, isAdmin }) {
+  return (
+    <div className="mb-5 p-3.5 bg-[#f0f3ff] border border-[#dde1f0] rounded-xl">
+      <label className="form-label !mb-1 text-xs font-bold text-[#464555] uppercase tracking-wide">
+        Configure for Shift
+      </label>
+      <select
+        className="form-control text-sm"
+        value={selectedId ?? ''}
+        onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        disabled={!isAdmin}
+      >
+        <option value="">Organization Default (no shift)</option>
+        {shifts.map(s => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      <p className="text-[0.68rem] text-[#777587] mt-1.5">
+        {selectedId == null
+          ? 'Applies to employees with no shift assignment.'
+          : 'Applies to employees assigned to this shift.'}
+      </p>
+    </div>
+  );
+}
+
 function timeToMinutes(t) {
   if (!t) return null;
   const [h, m] = (t || '').split(':').map(Number);
@@ -109,23 +147,53 @@ function ComingSoonPanel({ group, label, icon: Icon, description }) {
 // PANELS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── 1. Work Schedule (times + working days only) ──────────────────────────────
+// ── 1. Work Schedule (shift-aware) ────────────────────────────────────────────
 function WorkSchedulePanel({ schedule, isAdmin, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState({
-    start_time: schedule?.start_time || '09:00',
-    end_time:   schedule?.end_time   || '18:00',
-    work_days:  (schedule?.work_days || '1,2,3,4,5').split(',').map(Number),
-  });
-  const [errs, setErrs] = useState({});
+  const qc    = useQueryClient();
 
+  const [selectedShiftId, setSelectedShiftId] = useState(null); // null = org default
+  const [shiftConfig,     setShiftConfig]      = useState(null);
+  const [shiftLoading,    setShiftLoading]      = useState(false);
+  const [errs,            setErrs]             = useState({});
+
+  // Fetch all shifts for the selector
+  const { data: shiftsData } = useQuery({
+    queryKey: ['shifts-list'],
+    queryFn:  () => apiGet('/shifts'),
+    staleTime: 60 * 1000,
+  });
+  const shifts = shiftsData?.shifts || (Array.isArray(shiftsData) ? shiftsData : []);
+
+  // When shift selector changes, load that shift's config
   useEffect(() => {
-    if (schedule) setForm({
-      start_time: schedule.start_time || '09:00',
-      end_time:   schedule.end_time   || '18:00',
-      work_days:  (schedule.work_days || '1,2,3,4,5').split(',').map(Number),
+    if (selectedShiftId == null) { setShiftConfig(null); return; }
+    setShiftLoading(true);
+    apiGet(`/settings/shift/${selectedShiftId}`)
+      .then(d => setShiftConfig(d.config || null))
+      .catch(() => setShiftConfig(null))
+      .finally(() => setShiftLoading(false));
+  }, [selectedShiftId]);
+
+  // Effective source: shift config when a shift is selected, else org-level schedule
+  const effective = shiftConfig || schedule;
+
+  const [form, setForm] = useState({
+    start_time: '09:00',
+    end_time:   '18:00',
+    work_days:  [1, 2, 3, 4, 5],
+  });
+
+  // Re-populate form whenever the effective source changes
+  useEffect(() => {
+    if (!effective) return;
+    setForm({
+      start_time: effective.start_time || '09:00',
+      end_time:   effective.end_time   || '18:00',
+      work_days:  parseShiftWorkDays(effective.work_days || effective.days_of_week || '1,2,3,4,5'),
     });
-  }, [schedule]);
+    setErrs({});
+  }, [effective?.shift_id, effective?.start_time, effective?.end_time, effective?.work_days]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -140,96 +208,149 @@ function WorkSchedulePanel({ schedule, isAdmin, onSaved }) {
   }
 
   const mutation = useMutation({
-    mutationFn: () => apiPut('/settings', {
-      start_time:            form.start_time,
-      end_time:              form.end_time,
-      work_days:             form.work_days.join(','),
-      // pass-through — don't overwrite attendance rules
-      late_threshold:        schedule?.late_threshold,
-      early_exit_threshold:  schedule?.early_exit_threshold,
-      half_day_hours:        schedule?.half_day_hours,
-      full_day_hours:        schedule?.full_day_hours,
-      max_early_leave_count: schedule?.max_early_leave_count,
-    }),
-    onSuccess: () => { toast('Work schedule saved!', 'success'); onSaved?.(); },
-    onError:   err => toast(err.message, 'error'),
+    mutationFn: () => {
+      const payload = {
+        start_time: form.start_time,
+        end_time:   form.end_time,
+        work_days:  form.work_days.join(','),
+      };
+      if (selectedShiftId == null) {
+        // Org-level: pass-through attendance rules so they aren't wiped
+        return apiPut('/settings', {
+          ...payload,
+          late_threshold:        schedule?.late_threshold,
+          early_exit_threshold:  schedule?.early_exit_threshold,
+          half_day_hours:        schedule?.half_day_hours,
+          full_day_hours:        schedule?.full_day_hours,
+          max_early_leave_count: schedule?.max_early_leave_count,
+        });
+      }
+      // Shift-specific: only update work schedule fields on the shift
+      return apiPut(`/settings/shift/${selectedShiftId}`, payload);
+    },
+    onSuccess: () => {
+      toast(selectedShiftId == null ? 'Work schedule saved!' : `Work schedule saved for ${shiftConfig?.shift_name || 'shift'}!`, 'success');
+      if (selectedShiftId == null) onSaved?.();
+      else qc.invalidateQueries({ queryKey: ['shifts-list'] });
+    },
+    onError: err => toast(err.message, 'error'),
   });
 
   const toggleDay = i => setForm(f => ({
-    ...f, work_days: f.work_days.includes(i) ? f.work_days.filter(d => d !== i) : [...f.work_days, i].sort((a,b) => a-b),
+    ...f,
+    work_days: f.work_days.includes(i)
+      ? f.work_days.filter(d => d !== i)
+      : [...f.work_days, i].sort((a, b) => a - b),
   }));
 
   return (
     <PanelWrap group="Attendance & Work Rules" label="Work Schedule" icon={Calendar} accentColor="#3525cd">
       <div className="max-w-2xl space-y-6">
-        <div className="grid grid-cols-2 gap-5">
-          <div>
-            <label className="form-label">Work Start Time</label>
-            <input type="time" className={`form-control ${errs.start_time ? 'border-rose-400' : ''}`}
-              value={form.start_time} disabled={!isAdmin} onChange={e => set('start_time', e.target.value)} />
-            {errs.start_time ? <p className="text-xs text-rose-500 mt-1">{errs.start_time}</p> : <p className="form-hint">Official start of the working day</p>}
-          </div>
-          <div>
-            <label className="form-label">Work End Time</label>
-            <input type="time" className={`form-control ${errs.end_time ? 'border-rose-400' : ''}`}
-              value={form.end_time} disabled={!isAdmin} onChange={e => set('end_time', e.target.value)} />
-            {errs.end_time ? <p className="text-xs text-rose-500 mt-1">{errs.end_time}</p> : <p className="form-hint">Official end of the working day</p>}
-          </div>
-        </div>
 
-        <div>
-          <label className="form-label">Working Days</label>
-          <div className="flex gap-2 flex-wrap mt-2">
-            {DAY_LABELS.map((d, i) => (
-              <label key={i} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold select-none transition-all ${form.work_days.includes(i) ? 'bg-[#3525cd] text-white border-[#3525cd]' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/50'} ${isAdmin ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
-                <input type="checkbox" className="sr-only" checked={form.work_days.includes(i)} disabled={!isAdmin} onChange={() => toggleDay(i)} />
-                {d}
-              </label>
-            ))}
-          </div>
-          {errs.work_days && <p className="text-xs text-rose-500 mt-2">{errs.work_days}</p>}
-        </div>
+        <ShiftSelector shifts={shifts} selectedId={selectedShiftId} onChange={id => setSelectedShiftId(id)} isAdmin={isAdmin} />
 
-        {isAdmin && (
-          <div className="pt-2">
-            <button className="btn btn-primary" onClick={() => { if (validate()) mutation.mutate(); }} disabled={mutation.isPending}>
-              {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Work Schedule'}
-            </button>
-          </div>
+        {shiftLoading ? (
+          <div className="flex justify-center py-8"><span className="spinner w-5 h-5" /></div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-5">
+              <div>
+                <label className="form-label">Work Start Time</label>
+                <input type="time" className={`form-control ${errs.start_time ? 'border-rose-400' : ''}`}
+                  value={form.start_time} disabled={!isAdmin} onChange={e => set('start_time', e.target.value)} />
+                {errs.start_time ? <p className="text-xs text-rose-500 mt-1">{errs.start_time}</p> : <p className="form-hint">Official start of the working day</p>}
+              </div>
+              <div>
+                <label className="form-label">Work End Time</label>
+                <input type="time" className={`form-control ${errs.end_time ? 'border-rose-400' : ''}`}
+                  value={form.end_time} disabled={!isAdmin} onChange={e => set('end_time', e.target.value)} />
+                {errs.end_time ? <p className="text-xs text-rose-500 mt-1">{errs.end_time}</p> : <p className="form-hint">Official end of the working day</p>}
+              </div>
+            </div>
+
+            <div>
+              <label className="form-label">Working Days</label>
+              <div className="flex gap-2 flex-wrap mt-2">
+                {DAY_LABELS.map((d, i) => (
+                  <label key={i} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold select-none transition-all ${form.work_days.includes(i) ? 'bg-[#3525cd] text-white border-[#3525cd]' : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/50'} ${isAdmin ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+                    <input type="checkbox" className="sr-only" checked={form.work_days.includes(i)} disabled={!isAdmin} onChange={() => toggleDay(i)} />
+                    {d}
+                  </label>
+                ))}
+              </div>
+              {errs.work_days && <p className="text-xs text-rose-500 mt-2">{errs.work_days}</p>}
+            </div>
+
+            {isAdmin && (
+              <div className="pt-2">
+                <button className="btn btn-primary" onClick={() => { if (validate()) mutation.mutate(); }} disabled={mutation.isPending}>
+                  {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Work Schedule'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </PanelWrap>
   );
 }
 
-// ── 2. Attendance Rules (thresholds + hours) ──────────────────────────────────
+// ── 2. Attendance Rules (shift-aware) ────────────────────────────────────────
 function AttendanceRulesPanel({ schedule, isAdmin, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState({
-    late_threshold:        schedule?.late_threshold        || '09:15',
-    early_exit_threshold:  schedule?.early_exit_threshold  || '17:45',
-    half_day_hours:        schedule?.half_day_hours        || 4,
-    full_day_hours:        schedule?.full_day_hours        ?? 8,
-    max_early_leave_count: schedule?.max_early_leave_count ?? 3,
+  const qc    = useQueryClient();
+
+  const [selectedShiftId, setSelectedShiftId] = useState(null);
+  const [shiftConfig,     setShiftConfig]      = useState(null);
+  const [shiftLoading,    setShiftLoading]      = useState(false);
+  const [errs,            setErrs]             = useState({});
+
+  const { data: shiftsData } = useQuery({
+    queryKey: ['shifts-list'],
+    queryFn:  () => apiGet('/shifts'),
+    staleTime: 60 * 1000,
   });
-  const [errs, setErrs] = useState({});
+  const shifts = shiftsData?.shifts || (Array.isArray(shiftsData) ? shiftsData : []);
 
   useEffect(() => {
-    if (schedule) setForm({
-      late_threshold:        schedule.late_threshold        || '09:15',
-      early_exit_threshold:  schedule.early_exit_threshold  || '17:45',
-      half_day_hours:        schedule.half_day_hours        || 4,
-      full_day_hours:        schedule.full_day_hours        ?? 8,
-      max_early_leave_count: schedule.max_early_leave_count ?? 3,
+    if (selectedShiftId == null) { setShiftConfig(null); return; }
+    setShiftLoading(true);
+    apiGet(`/settings/shift/${selectedShiftId}`)
+      .then(d => setShiftConfig(d.config || null))
+      .catch(() => setShiftConfig(null))
+      .finally(() => setShiftLoading(false));
+  }, [selectedShiftId]);
+
+  // Effective source of truth
+  const effective = shiftConfig || schedule;
+
+  const [form, setForm] = useState({
+    late_threshold:        '',
+    early_exit_threshold:  '',
+    half_day_hours:        4,
+    full_day_hours:        8,
+    max_early_leave_count: 3,
+  });
+
+  useEffect(() => {
+    if (!effective) return;
+    setForm({
+      late_threshold:        effective.late_threshold        || '',
+      early_exit_threshold:  effective.early_exit_threshold  || '',
+      half_day_hours:        effective.half_day_hours        ?? 4,
+      full_day_hours:        effective.full_day_hours        ?? 8,
+      max_early_leave_count: effective.max_early_leave_count ?? 3,
     });
-  }, [schedule]);
+    setErrs({});
+  }, [effective?.shift_id, effective?.late_threshold, effective?.half_day_hours]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   function validate() {
     const e = {};
-    const startMins = timeToMinutes(schedule?.start_time);
-    const endMins   = timeToMinutes(schedule?.end_time);
+    // Use the effective shift's start/end for threshold validation
+    const startMins = timeToMinutes(effective?.start_time);
+    const endMins   = timeToMinutes(effective?.end_time);
     const lateMins  = timeToMinutes(form.late_threshold);
     const earlyMins = timeToMinutes(form.early_exit_threshold);
     const half      = parseFloat(form.half_day_hours);
@@ -256,75 +377,113 @@ function AttendanceRulesPanel({ schedule, isAdmin, onSaved }) {
   }
 
   const mutation = useMutation({
-    mutationFn: () => apiPut('/settings', {
-      late_threshold:        form.late_threshold,
-      early_exit_threshold:  form.early_exit_threshold,
-      half_day_hours:        parseFloat(form.half_day_hours),
-      full_day_hours:        parseFloat(form.full_day_hours),
-      max_early_leave_count: parseInt(form.max_early_leave_count, 10),
-      // pass-through — don't overwrite work schedule
-      start_time: schedule?.start_time,
-      end_time:   schedule?.end_time,
-      work_days:  schedule?.work_days,
-    }),
-    onSuccess: () => { toast('Attendance rules saved!', 'success'); onSaved?.(); },
-    onError:   err => toast(err.message, 'error'),
+    mutationFn: () => {
+      const payload = {
+        late_threshold:        form.late_threshold || null,
+        early_exit_threshold:  form.early_exit_threshold || null,
+        half_day_hours:        parseFloat(form.half_day_hours),
+        full_day_hours:        parseFloat(form.full_day_hours),
+        max_early_leave_count: parseInt(form.max_early_leave_count, 10),
+      };
+      if (selectedShiftId == null) {
+        // Org-level: pass-through work schedule fields so they aren't wiped
+        return apiPut('/settings', {
+          ...payload,
+          start_time: schedule?.start_time,
+          end_time:   schedule?.end_time,
+          work_days:  schedule?.work_days,
+        });
+      }
+      return apiPut(`/settings/shift/${selectedShiftId}`, payload);
+    },
+    onSuccess: () => {
+      toast(selectedShiftId == null ? 'Attendance rules saved!' : `Attendance rules saved for ${shiftConfig?.shift_name || 'shift'}!`, 'success');
+      if (selectedShiftId == null) onSaved?.();
+      else qc.invalidateQueries({ queryKey: ['shifts-list'] });
+    },
+    onError: err => toast(err.message, 'error'),
   });
 
   return (
     <PanelWrap group="Attendance & Work Rules" label="Attendance Rules" icon={SlidersHorizontal} accentColor="#6366f1">
       <div className="max-w-2xl space-y-6">
-        <div>
-          <p className="text-xs font-bold text-[#464555] uppercase tracking-wide mb-3">Entry &amp; Exit Thresholds</p>
-          <div className="grid grid-cols-2 gap-5">
-            <div>
-              <label className="form-label">Late Entry Threshold</label>
-              <input type="time" className={`form-control ${errs.late_threshold ? 'border-rose-400' : ''}`}
-                value={form.late_threshold} disabled={!isAdmin} onChange={e => set('late_threshold', e.target.value)} />
-              {errs.late_threshold ? <p className="text-xs text-rose-500 mt-1">{errs.late_threshold}</p> : <p className="form-hint">Check-in after this = Late</p>}
-            </div>
-            <div>
-              <label className="form-label">Early Exit Threshold</label>
-              <input type="time" className={`form-control ${errs.early_exit_threshold ? 'border-rose-400' : ''}`}
-                value={form.early_exit_threshold} disabled={!isAdmin} onChange={e => set('early_exit_threshold', e.target.value)} />
-              {errs.early_exit_threshold ? <p className="text-xs text-rose-500 mt-1">{errs.early_exit_threshold}</p> : <p className="form-hint">Check-out before this = Early Exit</p>}
-            </div>
-          </div>
-        </div>
 
-        <div>
-          <p className="text-xs font-bold text-[#464555] uppercase tracking-wide mb-3">Hours Classification</p>
-          <div className="grid grid-cols-3 gap-5">
-            <div>
-              <label className="form-label">Half Day (hrs)</label>
-              <input type="number" step="0.5" min="0.5" className={`form-control ${errs.half_day_hours ? 'border-rose-400' : ''}`}
-                value={form.half_day_hours} disabled={!isAdmin}
-                onChange={e => set('half_day_hours', e.target.value)} onWheel={e => e.target.blur()} />
-              {errs.half_day_hours ? <p className="text-xs text-rose-500 mt-1">{errs.half_day_hours}</p> : <p className="form-hint">Below this = Half Day</p>}
-            </div>
-            <div>
-              <label className="form-label">Full Day (hrs)</label>
-              <input type="number" step="0.5" min="0.5" className={`form-control ${errs.full_day_hours ? 'border-rose-400' : ''}`}
-                value={form.full_day_hours} disabled={!isAdmin}
-                onChange={e => set('full_day_hours', e.target.value)} onWheel={e => e.target.blur()} />
-              {errs.full_day_hours ? <p className="text-xs text-rose-500 mt-1">{errs.full_day_hours}</p> : <p className="form-hint">At or above this = Full Day</p>}
-            </div>
-            <div>
-              <label className="form-label">Max Early Leave</label>
-              <input type="number" step="1" min="1" className={`form-control ${errs.max_early_leave_count ? 'border-rose-400' : ''}`}
-                value={form.max_early_leave_count} disabled={!isAdmin}
-                onChange={e => set('max_early_leave_count', e.target.value)} onWheel={e => e.target.blur()} />
-              {errs.max_early_leave_count ? <p className="text-xs text-rose-500 mt-1">{errs.max_early_leave_count}</p> : <p className="form-hint">Excess per period → LOP</p>}
-            </div>
-          </div>
-        </div>
+        <ShiftSelector shifts={shifts} selectedId={selectedShiftId} onChange={id => setSelectedShiftId(id)} isAdmin={isAdmin} />
 
-        {isAdmin && (
-          <div className="pt-2">
-            <button className="btn btn-primary" onClick={() => { if (validate()) mutation.mutate(); }} disabled={mutation.isPending}>
-              {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Attendance Rules'}
-            </button>
-          </div>
+        {shiftLoading ? (
+          <div className="flex justify-center py-8"><span className="spinner w-5 h-5" /></div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs font-bold text-[#464555] uppercase tracking-wide mb-3">Entry &amp; Exit Thresholds</p>
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="form-label">Late Entry Threshold</label>
+                  <input type="time" className={`form-control ${errs.late_threshold ? 'border-rose-400' : ''}`}
+                    value={form.late_threshold} disabled={!isAdmin} onChange={e => set('late_threshold', e.target.value)} />
+                  {errs.late_threshold
+                    ? <p className="text-xs text-rose-500 mt-1">{errs.late_threshold}</p>
+                    : <p className="form-hint">Check-in after this = Late</p>}
+                </div>
+                <div>
+                  <label className="form-label">Early Exit Threshold</label>
+                  <input type="time" className={`form-control ${errs.early_exit_threshold ? 'border-rose-400' : ''}`}
+                    value={form.early_exit_threshold} disabled={!isAdmin} onChange={e => set('early_exit_threshold', e.target.value)} />
+                  {errs.early_exit_threshold
+                    ? <p className="text-xs text-rose-500 mt-1">{errs.early_exit_threshold}</p>
+                    : <p className="form-hint">Check-out before this = Early Exit</p>}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-[#464555] uppercase tracking-wide mb-3">Hours Classification</p>
+              <div className="grid grid-cols-3 gap-5">
+                <div>
+                  <label className="form-label">Half Day (hrs)</label>
+                  <input type="number" step="0.5" min="0.5" className={`form-control ${errs.half_day_hours ? 'border-rose-400' : ''}`}
+                    value={form.half_day_hours} disabled={!isAdmin}
+                    onChange={e => set('half_day_hours', e.target.value)} onWheel={e => e.target.blur()} />
+                  {errs.half_day_hours
+                    ? <p className="text-xs text-rose-500 mt-1">{errs.half_day_hours}</p>
+                    : <p className="form-hint">Below this = Half Day</p>}
+                </div>
+                <div>
+                  <label className="form-label">Full Day (hrs)</label>
+                  <input type="number" step="0.5" min="0.5" className={`form-control ${errs.full_day_hours ? 'border-rose-400' : ''}`}
+                    value={form.full_day_hours} disabled={!isAdmin}
+                    onChange={e => set('full_day_hours', e.target.value)} onWheel={e => e.target.blur()} />
+                  {errs.full_day_hours
+                    ? <p className="text-xs text-rose-500 mt-1">{errs.full_day_hours}</p>
+                    : <p className="form-hint">At or above this = Full Day</p>}
+                </div>
+                <div>
+                  <label className="form-label">Max Early Leave</label>
+                  <input type="number" step="1" min="1" className={`form-control ${errs.max_early_leave_count ? 'border-rose-400' : ''}`}
+                    value={form.max_early_leave_count} disabled={!isAdmin}
+                    onChange={e => set('max_early_leave_count', e.target.value)} onWheel={e => e.target.blur()} />
+                  {errs.max_early_leave_count
+                    ? <p className="text-xs text-rose-500 mt-1">{errs.max_early_leave_count}</p>
+                    : <p className="form-hint">Excess per period → LOP</p>}
+                </div>
+              </div>
+            </div>
+
+            {selectedShiftId != null && effective?.start_time && (
+              <div className="flex items-center gap-2 text-xs text-[#777587] bg-[#f5f4ff] border border-[#dde1f0] rounded-lg px-3 py-2">
+                <Info size={13} className="text-[#3525cd] flex-shrink-0" />
+                Validating thresholds against <strong className="text-[#464555]">{effective.shift_name}</strong>: {effective.start_time} – {effective.end_time}
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="pt-2">
+                <button className="btn btn-primary" onClick={() => { if (validate()) mutation.mutate(); }} disabled={mutation.isPending}>
+                  {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Attendance Rules'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </PanelWrap>

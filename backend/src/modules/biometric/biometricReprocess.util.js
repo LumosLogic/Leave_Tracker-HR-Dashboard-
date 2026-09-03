@@ -23,6 +23,27 @@ const { getOrgPolicy } = require('../../utils/orgPolicy');
 async function applyFILODay(userId, date, orgId, dayLogs, existingAtt, halfDayHours = 4.5, shiftEndTime = '17:30', fullDayHours = 8) {
   if (!dayLogs.length) return;
 
+  // Look up shift-specific thresholds for this employee on this date.
+  // Overrides the org-level values passed as arguments when a shift has its own config.
+  const lookupDate = typeof date === 'string' ? date.slice(0, 10)
+                   : new Date(date).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  try {
+    const shiftRes = await pool.query(
+      `SELECT s.end_time, s.half_day_hours, s.full_day_hours
+         FROM shift_assignments sa
+         JOIN shifts s ON s.id = sa.shift_id
+        WHERE sa.user_id = $1 AND sa.organization_id = $2 AND sa.date = $3
+        LIMIT 1`,
+      [userId, orgId, lookupDate]
+    );
+    if (shiftRes.rows.length) {
+      const sr = shiftRes.rows[0];
+      if (sr.end_time)                shiftEndTime  = sr.end_time;
+      if (sr.half_day_hours != null)  halfDayHours  = parseFloat(sr.half_day_hours);
+      if (sr.full_day_hours != null)  fullDayHours  = parseFloat(sr.full_day_hours);
+    }
+  } catch { /* shifts table or columns absent — use passed org defaults */ }
+
   const sorted = [...dayLogs].sort((a, b) =>
     new Date(a.punch_time) - new Date(b.punch_time)
   );

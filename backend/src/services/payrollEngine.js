@@ -142,10 +142,10 @@ function calculateAttendance({
   shiftDateMap,       // Map<dateStr, { workDays: Set<dow>|null, durationH: number }>
   orgHalfDayHours,    // org-level half_day_hours (from work_schedule) — used for short-shift reclassification
 }) {
-  const schedMins      = toMins(scheduleCheckIn);
+  const orgSchedMins   = toMins(scheduleCheckIn);  // org-level fallback for late threshold
   const g              = Number(graceMins) || 0;
-  const maxEarlyLeave  = Number(maxEarlyLeaveCount) || 3;
-  const halfDayH       = Number(orgHalfDayHours)    || 4.5;
+  const orgMaxEarlyLeave = Number(maxEarlyLeaveCount) || 3;
+  const orgHalfDayH    = Number(orgHalfDayHours)    || 4.5;
 
   let presentFull   = 0;  // full present day (including WFH + early_leave within allowance)
   let presentHalf   = 0;  // half-day attendance record
@@ -166,14 +166,25 @@ function calculateAttendance({
     // and the date's day-of-week is NOT in that shift's configured working days,
     // treat it as a week-off — NOT absent, NOT LOP.
     let effectiveIsWeekend = isWe;
-    let shiftDurationH = 0; // shift's total hours (0 = not known / use org defaults)
+    let shiftDurationH     = 0;    // shift's total hours (0 = not known / use org defaults)
+    let shiftLateThreshMins = null; // null = use org-level fallback
+    let shiftHalfDayH      = null;  // null = use org-level fallback
+    let shiftMaxEarlyLeave = null;  // null = use org-level fallback
     if (shiftDateMap && shiftDateMap.has(ds)) {
-      const shiftInfo = shiftDateMap.get(ds); // { workDays: Set<dow>|null, durationH: number }
+      const shiftInfo = shiftDateMap.get(ds);
       if (shiftInfo.workDays !== null) {
         effectiveIsWeekend = !shiftInfo.workDays.has(dow);
       }
-      shiftDurationH = shiftInfo.durationH || 0;
+      shiftDurationH      = shiftInfo.durationH      || 0;
+      shiftLateThreshMins = shiftInfo.lateThresholdMins ?? null;
+      shiftHalfDayH       = shiftInfo.halfDayH          ?? null;
+      shiftMaxEarlyLeave  = shiftInfo.maxEarlyLeave      ?? null;
     }
+
+    // Resolve per-day effective thresholds: shift-specific → org fallback
+    const dayLateThreshMins = shiftLateThreshMins ?? orgSchedMins;
+    const dayHalfDayH       = shiftHalfDayH       ?? orgHalfDayH;
+    const dayMaxEarlyLeave  = shiftMaxEarlyLeave   ?? orgMaxEarlyLeave;
 
     if (effectiveIsWeekend) {
       weekoff++;
@@ -239,9 +250,10 @@ function calculateAttendance({
       presentFull++;
       daily.push({ date: ds, type: 'present' });
 
-      if (schedMins !== null && att?.check_in) {
+      // Late detection uses shift's late_threshold when configured; falls back to org schedule time
+      if (dayLateThreshMins !== null && att?.check_in) {
         const cin = toMins(att.check_in);
-        if (cin !== null && cin > schedMins + g) lateCount++;
+        if (cin !== null && cin > dayLateThreshMins + g) lateCount++;
       }
       continue;
     }
@@ -253,15 +265,14 @@ function calculateAttendance({
     }
 
     if (status === 'half_day') {
-      // Short-shift reclassification: if the assigned shift's total duration is
-      // less than the org's half_day_hours threshold, a 'half_day' status from
-      // the biometric is misleading — the shift was designed to be a short day.
-      // Reclassify to 'present' when the employee worked ≥ 50% of the shift's duration.
-      // Example: Saturday Shift 10:30–13:30 = 3h < half_day_hours(4.5h).
-      //          Employee worked 2.61h ≥ 3h × 0.5 = 1.5h → reclassify as present.
+      // Short-shift reclassification: if the shift's duration is less than its configured
+      // half_day_hours threshold and the employee worked ≥ 50% of the shift duration,
+      // treat as a full present day. Uses shift-specific half_day_hours when configured.
+      // Example: Saturday Shift 10:30–13:30 = 3h; shift half_day_hours = 2h.
+      //          Employee worked 2.5h ≥ 3h × 0.5 = 1.5h → reclassify as present.
       if (
         shiftDurationH > 0 &&
-        shiftDurationH < halfDayH &&
+        shiftDurationH < dayHalfDayH &&
         Number(att?.work_hours ?? 0) >= shiftDurationH * 0.5
       ) {
         presentFull++;
@@ -274,9 +285,9 @@ function calculateAttendance({
     }
 
     if (status === 'early_leave') {
-      // Within the configured allowance: counts as a full present day.
+      // Within the per-day shift allowance (or org-level): counts as full present day.
       // Beyond the allowance: treated as absent so LOP calculation picks it up.
-      if (earlyLeave < maxEarlyLeave) {
+      if (earlyLeave < dayMaxEarlyLeave) {
         presentFull++;
         earlyLeave++;
         daily.push({ date: ds, type: 'early_leave' });
@@ -564,9 +575,13 @@ async function fetchAllData(oId, uId, month, year) {
       [uId, oId, start, end]
     ).catch(() => ({ rows: [] })),
 
-    // Per-employee shift assignments — working days + shift duration for half-day reclassification.
+    // Per-employee shift assignments — working days, duration, and shift-specific attendance rules.
+    // late_threshold, half_day_hours, full_day_hours, max_early_leave_count may be NULL on older
+    // shifts (pre-migration) — engine falls back to org-level work_schedule values in that case.
     pool.query(
-      `SELECT sa.date::text, s.days_of_week, s.start_time, s.end_time
+      `SELECT sa.date::text, s.days_of_week, s.start_time, s.end_time,
+              s.late_threshold, s.early_exit_threshold,
+              s.half_day_hours, s.full_day_hours, s.max_early_leave_count
          FROM shift_assignments sa
          JOIN shifts s ON s.id = sa.shift_id
         WHERE sa.user_id         = $1
@@ -684,7 +699,15 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     if (sm !== null && em !== null && em > sm) {
       durationH = round2((em - sm) / 60);
     }
-    shiftDateMap.set(row.date, { workDays, durationH });
+    shiftDateMap.set(row.date, {
+      workDays,
+      durationH,
+      // Shift-specific attendance rules (null = use org-level fallback in calculateAttendance)
+      lateThresholdMins:  row.late_threshold        ? toMins(row.late_threshold)              : null,
+      halfDayH:           row.half_day_hours        != null ? Number(row.half_day_hours)        : null,
+      fullDayH:           row.full_day_hours        != null ? Number(row.full_day_hours)        : null,
+      maxEarlyLeave:      row.max_early_leave_count != null ? Number(row.max_early_leave_count) : null,
+    });
   }
 
   // ── Working days (denominator) ────────────────────────────────────────────
@@ -706,7 +729,7 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
 
   const perDaySalary = round2(calculateGross(data.salary) / workingDays);
 
-  // Org half_day_hours — from work_schedule (needed for short-shift reclassification)
+  // Org-level half_day_hours — used as fallback when shift has no shift-specific config
   const orgHalfDayHours = Number(data.schedule?.half_day_hours ?? 4.5);
 
   // ── Attendance ────────────────────────────────────────────────────────────
@@ -716,11 +739,11 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     regularizedSet,
     leaveDateMap,
     countHolidaysAsPaid:  settings.count_holidays_as_paid,
-    scheduleCheckIn:      data.schedule?.check_in ?? null,
+    scheduleCheckIn:      data.schedule?.check_in ?? null,  // org-level late threshold fallback
     graceMins:            settings.grace_minutes,
-    maxEarlyLeaveCount:   Number(data.schedule?.max_early_leave_count ?? 3),
-    shiftDateMap,
-    orgHalfDayHours,
+    maxEarlyLeaveCount:   Number(data.schedule?.max_early_leave_count ?? 3),  // org-level fallback
+    shiftDateMap,         // carries per-day shift-specific rules when configured
+    orgHalfDayHours,      // org-level fallback for half-day reclassification
   });
 
   // ── LOP ───────────────────────────────────────────────────────────────────
