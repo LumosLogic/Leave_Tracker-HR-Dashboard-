@@ -23,6 +23,7 @@ const ATT_STATUS_STYLE = {
   on_leave:         'bg-rose-50 text-rose-600 border-rose-200',
   absent:           'bg-slate-50 text-slate-500 border-slate-200',
   holiday:          'bg-violet-50 text-violet-700 border-violet-200',
+  off_day:          'bg-slate-100 text-slate-500 border-slate-200',
 };
 const LEAVE_STATUS_STYLE = {
   approved:  'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -357,6 +358,8 @@ export default function Reports() {
     : (_attResponse?.data || []);
   const attMeta   = _attResponse?.meta || {};
   const isFiloOrg = attMeta.attendance_policy === 'first_in_last_out';
+  // shift weekoff dates per user_id: { [userId]: [dateStr, ...] }
+  const shiftWeekoffByUser = attMeta.shift_weekoff_by_user || {};
   const leaveRows = Array.isArray(_lvData) ? _lvData : [];
   const empRows   = Array.isArray(_empData) ? _empData : [];
 
@@ -391,13 +394,16 @@ export default function Reports() {
   );
 
   // Full calendar: all working days for the selected employee/month, with statuses filled in.
-  // Approved leaves override absent; past days with no record → absent; future → skipped.
+  // Approved leaves override absent; shift weekoffs show as off_day; past days with no record → absent.
   const fullCalendarRows = useMemo(() => {
     if (!selectedEmpId || active !== 'attendance' || viewMode !== 'monthly') return null;
     const emp = empRows.find(e => String(e.id) === selectedEmpId);
     if (!emp) return null;
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    // Shift weekoff dates for this employee (from backend meta)
+    const empShiftWeekoffs = new Set(shiftWeekoffByUser[selectedEmpId] || []);
 
     // Map date → attendance record
     const attMap = new Map();
@@ -427,9 +433,23 @@ export default function Reports() {
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month - 1, d);
       const dow  = date.getDay(); // 0=Sun … 6=Sat
-      if (!workDays.includes(dow)) continue; // skip non-working days
+      const ds   = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-      const ds  = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      // Shift weekoff: employee's assigned shift says this DOW is off
+      // Show 'off_day' rather than absent, regardless of org-level work_days
+      if (empShiftWeekoffs.has(ds)) {
+        const att = attMap.get(ds);
+        // If an actual record exists for this date, show it; otherwise show off_day
+        result.push(att || {
+          id: `synth-offday-${ds}`, name: emp.name, department: emp.department,
+          date: ds, status: 'off_day', user_id: Number(selectedEmpId),
+          check_in: null, check_out: null, work_hours: 0, gross_hours: 0,
+        });
+        continue;
+      }
+
+      if (!workDays.includes(dow)) continue; // skip org-level non-working days
+
       const att = attMap.get(ds);
       if (att) { result.push(att); continue; }
 
@@ -458,7 +478,7 @@ export default function Reports() {
       }
     }
     return result;
-  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays, holidayDateSet]);
+  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays, holidayDateSet, shiftWeekoffByUser]);
 
   // Effective rows — full calendar when employee selected, otherwise full dataset (filtered by employee if set)
   const effectiveAttRows = useMemo(() => {
@@ -849,6 +869,7 @@ export default function Reports() {
                           <span className={cn('text-[0.68rem] font-bold px-2 py-0.5 rounded-full border capitalize', ATT_STATUS_STYLE[r.status] || 'bg-slate-50 text-slate-500 border-slate-200')}>
                             {r.status === 'holiday'
                               ? (r.holiday_name ? `${r.holiday_type === 'public' ? 'Public ' : ''}Holiday` : 'Holiday')
+                              : r.status === 'off_day' ? 'Off Day'
                               : r.status?.replace(/_/g, ' ') || '—'}
                           </span>
                           {r.status === 'holiday' && r.holiday_name && (

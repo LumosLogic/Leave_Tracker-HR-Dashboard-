@@ -149,16 +149,21 @@ async function runAutoMarkAbsent() {
 
       // Find employees whose assigned shift has today as a day-off.
       // These must NOT be marked absent — it's their configured day off.
+      // Look back 6 days to catch Mon-Fri-only assignments (no Saturday row exists
+      // for the employee, but their most-recent weekday row references the shift
+      // whose days_of_week tells us Saturday is off).
       const todayDow = new Date().getDay(); // 0=Sun ... 6=Sat
       let shiftOffIds = new Set();
       try {
         const { rows: shiftRows } = await pool.query(
-          `SELECT sa.user_id, s.days_of_week
+          `SELECT DISTINCT ON (sa.user_id) sa.user_id, s.days_of_week
              FROM shift_assignments sa
              JOIN shifts s ON s.id = sa.shift_id
-            WHERE sa.organization_id = $1 AND sa.date = $2
-              AND sa.user_id = ANY($3::int[])`,
-          [oId, today, empIds]
+            WHERE sa.organization_id = $1
+              AND sa.user_id = ANY($2::int[])
+              AND sa.date BETWEEN ($3::date - INTERVAL '6 days') AND $3::date
+            ORDER BY sa.user_id, sa.date DESC`,
+          [oId, empIds, today]
         );
         for (const row of shiftRows) {
           if (!row.days_of_week) continue;

@@ -80,6 +80,44 @@ router.get('/attendance', auth, async (req, res) => {
       for (const h of hols || []) holidayMap.set(h.date, h);
     } catch { /* non-critical — degrade gracefully */ }
 
+    // Build a shift weekoff map: { userId_date → true } for dates that are
+    // day-offs per each employee's assigned shift. Absent records on shift weekoff
+    // dates are overridden to 'off_day' so reports show the correct classification.
+    // Also used by the frontend full-calendar to skip synthesizing absent entries.
+    const shiftWeekoffSet = new Set(); // key = `${user_id}_${date}`
+    const shiftWeekoffByUser = {}; // userId → [dateStr, ...]
+    try {
+      const rangeStart = year && month
+        ? `${year}-${String(month).padStart(2,'0')}-01`
+        : year ? `${year}-01-01` : null;
+      const rangeEnd = year && month
+        ? `${year}-${String(month).padStart(2,'0')}-31`
+        : year ? `${year}-12-31` : null;
+
+      if (rangeStart && rangeEnd) {
+        const { rows: saRows } = await pool.query(
+          `SELECT sa.user_id, sa.date::text, s.days_of_week
+             FROM shift_assignments sa
+             JOIN shifts s ON s.id = sa.shift_id
+            WHERE sa.organization_id = $1
+              AND sa.date >= $2 AND sa.date <= $3
+              ${userId ? 'AND sa.user_id = $4' : ''}`,
+          userId ? [oId, rangeStart, rangeEnd, userId] : [oId, rangeStart, rangeEnd]
+        );
+        for (const row of saRows) {
+          if (!row.days_of_week) continue;
+          let wDays;
+          try { wDays = JSON.parse(row.days_of_week); } catch { wDays = String(row.days_of_week).split(',').map(Number); }
+          const dow = new Date(row.date + 'T12:00:00Z').getDay();
+          if (!wDays.map(Number).includes(dow)) {
+            shiftWeekoffSet.add(`${row.user_id}_${row.date}`);
+            if (!shiftWeekoffByUser[row.user_id]) shiftWeekoffByUser[row.user_id] = [];
+            shiftWeekoffByUser[row.user_id].push(row.date);
+          }
+        }
+      }
+    } catch { /* shifts table may not exist — degrade gracefully */ }
+
     const timeNow = nowIST();
 
     const rows = (data || []).map(r => {
@@ -118,7 +156,11 @@ router.get('/attendance', auth, async (req, res) => {
 
       // Override 'absent' with 'holiday' if this date is a configured company holiday
       const holidayInfo = holidayMap.get(r.date);
-      const effectiveStatus = (r.status === 'absent' && holidayInfo) ? 'holiday' : r.status;
+      // Override 'absent' with 'off_day' if this date is a shift-assigned day-off for this employee
+      const isShiftWeekoff = shiftWeekoffSet.has(`${r.user_id}_${r.date}`);
+      const effectiveStatus = isShiftWeekoff && r.status === 'absent'
+        ? 'off_day'
+        : (r.status === 'absent' && holidayInfo) ? 'holiday' : r.status;
 
       return {
         id:                   r.id,
@@ -164,7 +206,7 @@ router.get('/attendance', auth, async (req, res) => {
       res.setHeader('Content-Disposition', `attachment; filename="attendance_report_${year||'all'}_${month||'all'}.csv"`);
       return res.send(csv);
     }
-    res.json({ data: rows, meta: { attendance_policy: policy } });
+    res.json({ data: rows, meta: { attendance_policy: policy, shift_weekoff_by_user: shiftWeekoffByUser } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

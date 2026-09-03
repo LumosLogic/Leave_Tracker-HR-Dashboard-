@@ -1,7 +1,7 @@
-// LeaveTracker Service Worker — handles push notifications
+// HRMS Service Worker — handles push notifications
 
 self.addEventListener('push', event => {
-  let data = { title: 'LeaveTracker', body: 'You have a new notification.' };
+  let data = { title: 'HRMS', body: 'You have a new notification.' };
   try { if (event.data) data = event.data.json(); } catch {}
 
   event.waitUntil(

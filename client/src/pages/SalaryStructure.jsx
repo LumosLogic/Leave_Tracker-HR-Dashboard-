@@ -42,7 +42,7 @@ const COMPONENT_LABELS = {
 };
 
 // ── CTC Mode — auto-calculated salary form ────────────────────────────────────
-function CtcModal({ employee, rules, onClose, onSaved }) {
+function CtcModal({ employee, rules, onClose, onSaved, modeToggle }) {
   const toast = useToast();
   const qc    = useQueryClient();
 
@@ -53,8 +53,33 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
   const isRevising = !!employee.salary_id;
 
   useEffect(() => {
-    if (isRevising && employee.ctc) setCtcInput(String(Number(employee.ctc)));
-    if (isRevising) setNotes(employee.notes || '');
+    if (!isRevising) return;
+    const storedCtc = Number(employee.ctc);
+    if (storedCtc > 0) setCtcInput(String(storedCtc));
+    setNotes(employee.notes || '');
+
+    // Restore manual overrides: compare stored component values against what
+    // calculateFromCTC would auto-produce. Any field that differs was manually set.
+    if (storedCtc > 0) {
+      const autoCalc = calculateFromCTC(storedCtc, rules, {});
+      if (autoCalc) {
+        const overriddenKeys = new Set();
+        const overriddenVals = {};
+        const allKeys = [...EARNING_KEYS, ...DEDUCTION_KEYS, ...EMPLOYER_KEYS];
+        for (const key of allKeys) {
+          const stored = Number(employee[key] ?? 0);
+          const auto   = Number(autoCalc[key]  ?? 0);
+          if (Math.abs(stored - auto) > 0.01 && key !== 'special_allowance') {
+            overriddenKeys.add(key);
+            overriddenVals[key] = stored;
+          }
+        }
+        if (overriddenKeys.size > 0) {
+          setManualKeys(overriddenKeys);
+          setManualVals(overriddenVals);
+        }
+      }
+    }
   }, []);
 
   const ctcNum = Number(ctcInput) || 0;
@@ -181,9 +206,11 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 text-[0.65rem] font-bold px-2 py-1 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
-              <Zap size={10} /> CTC Mode
-            </span>
+            {modeToggle || (
+              <span className="flex items-center gap-1 text-[0.65rem] font-bold px-2 py-1 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+                <Zap size={10} /> CTC Mode
+              </span>
+            )}
             <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center">
               <X size={16} className="text-[#777587]" />
             </button>
@@ -294,7 +321,7 @@ function CtcModal({ employee, rules, onClose, onSaved }) {
 }
 
 // ── Manual Mode ───────────────────────────────────────────────────────────────
-function ManualModal({ employee, onClose, onSaved }) {
+function ManualModal({ employee, onClose, onSaved, modeToggle }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const isRevising = !!employee.salary_id;
@@ -380,9 +407,12 @@ function ManualModal({ employee, onClose, onSaved }) {
               <p className="text-xs text-[#777587]">{employee.name} · {employee.department || 'No Department'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center">
-            <X size={16} className="text-[#777587]" />
-          </button>
+          <div className="flex items-center gap-2">
+            {modeToggle}
+            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#f0f3ff] flex items-center justify-center">
+              <X size={16} className="text-[#777587]" />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
@@ -455,31 +485,46 @@ function ManualModal({ employee, onClose, onSaved }) {
 }
 
 // ── SalaryModal: picks CTC or Manual mode based on org rules ─────────────────
+// Mode toggle is embedded inside the modal header (not floating above it).
 function SalaryModal({ employee, rules, onClose }) {
   const rulesEnabled = rules?.enabled;
   const [mode, setMode] = useState(rulesEnabled ? 'ctc' : 'manual');
 
+  // When mode changes, remount the inner modal with a fresh key
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col">
-      {/* Mode toggle bar — shown above the actual modal */}
-      {rulesEnabled && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-xl shadow-lg px-2 py-1.5">
-          <button onClick={() => setMode('ctc')}
-            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
-              mode === 'ctc' ? 'bg-[#3525cd] text-white' : 'text-[#464555] hover:bg-[#f0f3ff]')}>
-            <Zap size={11} /> CTC-Based
-          </button>
-          <button onClick={() => setMode('manual')}
-            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
-              mode === 'manual' ? 'bg-[#464555] text-white' : 'text-[#464555] hover:bg-[#f0f3ff]')}>
-            <Settings2 size={11} /> Manual
-          </button>
-        </div>
-      )}
+    <>
       {mode === 'ctc'
-        ? <CtcModal employee={employee} rules={rules} onClose={onClose} />
-        : <ManualModal employee={employee} onClose={onClose} />}
-    </div>
+        ? <CtcModal key="ctc" employee={employee} rules={rules} onClose={onClose}
+            modeToggle={rulesEnabled ? (
+              <div className="flex items-center gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-0.5 rounded-lg">
+                <button onClick={() => setMode('ctc')}
+                  className={cn('flex items-center gap-1 px-2.5 py-1 rounded-md text-[0.68rem] font-bold transition-all',
+                    'bg-[#3525cd] text-white')}>
+                  <Zap size={10} /> CTC-Based
+                </button>
+                <button onClick={() => setMode('manual')}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[0.68rem] font-bold text-[#464555] hover:bg-white transition-all">
+                  <Settings2 size={10} /> Manual
+                </button>
+              </div>
+            ) : null}
+          />
+        : <ManualModal key="manual" employee={employee} onClose={onClose}
+            modeToggle={rulesEnabled ? (
+              <div className="flex items-center gap-1 bg-[#f0f3ff] border border-[#c7c4d8] p-0.5 rounded-lg">
+                <button onClick={() => setMode('ctc')}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[0.68rem] font-bold text-[#464555] hover:bg-white transition-all">
+                  <Zap size={10} /> CTC-Based
+                </button>
+                <button onClick={() => setMode('manual')}
+                  className={cn('flex items-center gap-1 px-2.5 py-1 rounded-md text-[0.68rem] font-bold transition-all',
+                    'bg-[#464555] text-white')}>
+                  <Settings2 size={10} /> Manual
+                </button>
+              </div>
+            ) : null}
+          />}
+    </>
   );
 }
 
