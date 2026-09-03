@@ -412,6 +412,10 @@ const SETTING_DEFAULTS = {
   esi_enabled:                  true,
   professional_tax_enabled:     true,
   tds_enabled:                  false,
+  // 'working_days': per-day = gross ÷ non-weekend working days (default)
+  // 'calendar_days': per-day = gross ÷ total calendar days in month (e.g. Aug=31)
+  // LOP day COUNT always uses actual working days regardless of this setting.
+  per_day_salary_basis:         'working_days',
 };
 
 async function fetchAllData(oId, uId, month, year) {
@@ -710,12 +714,11 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     });
   }
 
-  // ── Working days (denominator) ────────────────────────────────────────────
+  // ── Working days (LOP day count denominator) ──────────────────────────────
   // For employees with shift-based weekoffs (e.g. a Saturday date assigned the
   // Weekday Shift which only covers DOW 1–5), that Saturday is excluded from the
-  // denominator so per-day salary and LOP are consistent with their actual schedule.
-  // Employees whose Saturday assignments include DOW 6 (Saturday Shift) retain the
-  // standard calendar count. Fixed-rule orgs are unaffected.
+  // working days count so LOP days are consistent with their actual schedule.
+  // Fixed-rule orgs are unaffected.
   const workingDays = settings.working_days_rule === 'fixed'
     ? Math.max(1, Number(settings.fixed_working_days))
     : Math.max(1, dateMap.reduce((n, d) => {
@@ -727,7 +730,16 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
         return n + 1;
       }, 0));
 
-  const perDaySalary = round2(calculateGross(data.salary) / workingDays);
+  // ── Per-day salary rate ───────────────────────────────────────────────────
+  // 'calendar_days': gross ÷ total calendar days in the month (e.g. Aug = ÷31).
+  //   LOP day COUNT still uses workingDays above; only the per-day RATE differs.
+  //   Used by orgs that follow the Indian calendar-month LOP method.
+  // 'working_days' (default): gross ÷ actual non-weekend working days.
+  const perDayDivisor = settings.per_day_salary_basis === 'calendar_days'
+    ? daysInMonth(y, m)
+    : workingDays;
+
+  const perDaySalary = round2(calculateGross(data.salary) / perDayDivisor);
 
   // Org-level half_day_hours — used as fallback when shift has no shift-specific config
   const orgHalfDayHours = Number(data.schedule?.half_day_hours ?? 4.5);
@@ -842,6 +854,8 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
     },
 
     workingDays,
+    perDayDivisor,
+    perDaySalaryBasis: settings.per_day_salary_basis || 'working_days',
     perDaySalary,
     payableDays: lop.payableDays,
 

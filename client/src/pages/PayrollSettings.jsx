@@ -43,6 +43,7 @@ const DEFAULTS = {
   default_probation_months:       3,
   paid_leave_during_probation:    true,
   probation_scope:                'selected',
+  per_day_salary_basis:           'working_days',
 };
 
 const TIMEZONES = [
@@ -650,6 +651,25 @@ export default function PayrollSettings() {
         </Row>
         <Row label="Count Holidays as Paid" hint="Public/org holidays will not count as LOP">
           <Toggle checked={form.count_holidays_as_paid} onChange={v => set('count_holidays_as_paid', v)} />
+        </Row>
+        <Row
+          label="Per-Day Salary Basis"
+          hint={form.per_day_salary_basis === 'calendar_days'
+            ? 'LOP per-day rate = Gross ÷ calendar days in month (e.g. Aug = ÷31). LOP day count still uses working days.'
+            : 'LOP per-day rate = Gross ÷ actual working (non-weekend) days in month.'}>
+          <div className="flex gap-2">
+            {[['working_days','Working Days'], ['calendar_days','Calendar Days']].map(([val, label]) => (
+              <button key={val} onClick={() => set('per_day_salary_basis', val)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                  form.per_day_salary_basis === val
+                    ? 'bg-[#3525cd] text-white border-[#3525cd]'
+                    : 'bg-white text-[#464555] border-[#c7c4d8] hover:border-[#3525cd]/40'
+                )}>
+                {label}
+              </button>
+            ))}
+          </div>
         </Row>
       </Section>
 

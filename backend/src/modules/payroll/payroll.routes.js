@@ -85,6 +85,10 @@ const SETTINGS_DEFAULTS = {
   default_probation_months:       3,
   paid_leave_during_probation:    true,
   probation_scope:                'selected', // 'selected' | 'all'
+  // Per-day salary rate basis for LOP calculation
+  // 'working_days': gross ÷ non-weekend working days (default)
+  // 'calendar_days': gross ÷ total calendar days in month (e.g. Aug=÷31)
+  per_day_salary_basis:           'working_days',
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);
