@@ -41,6 +41,12 @@ const COMPONENT_LABELS = {
   employer_pf: 'PF (Employer)', employer_esi: 'ESI (Employer)',
 };
 
+// Returns 'YYYY-MM-01' for the first day of the current calendar month.
+function firstOfCurrentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
 // ── CTC Mode — auto-calculated salary form ────────────────────────────────────
 function CtcModal({ employee, rules, onClose, onSaved, modeToggle }) {
   const toast = useToast();
@@ -50,6 +56,12 @@ function CtcModal({ employee, rules, onClose, onSaved, modeToggle }) {
   const [manualKeys, setManualKeys] = useState(new Set());
   const [manualVals, setManualVals] = useState({});
   const [notes, setNotes] = useState('');
+  // Pre-populate from existing record in revision mode; default to 1st of current month for new.
+  const [effectiveFrom, setEffectiveFrom] = useState(
+    !!employee.salary_id && employee.effective_from
+      ? String(employee.effective_from).split('T')[0]
+      : firstOfCurrentMonth()
+  );
   const isRevising = !!employee.salary_id;
 
   useEffect(() => {
@@ -125,12 +137,16 @@ function CtcModal({ employee, rules, onClose, onSaved, modeToggle }) {
   const mut = useMutation({
     mutationFn: () => {
       if (!calc && ctcNum <= 0) throw new Error('Enter a valid monthly CTC');
+      if (!effectiveFrom) throw new Error('Effective From date is required');
       if (isRevising) {
-        return apiPut(`/payroll/salary-structures/${employee.salary_id}`, componentPayload());
+        return apiPut(`/payroll/salary-structures/${employee.salary_id}`, {
+          ...componentPayload(),
+          effective_from: effectiveFrom,
+        });
       }
       return apiPost('/payroll/salary-structures', {
         user_id: employee.id,
-        effective_from: new Date().toISOString().split('T')[0],
+        effective_from: effectiveFrom,
         ...componentPayload(),
       });
     },
@@ -294,11 +310,25 @@ function CtcModal({ employee, rules, onClose, onSaved, modeToggle }) {
             <div className="text-center py-8 text-sm text-[#777587]">No salary rules configured for this organization.</div>
           ) : null}
 
-          <div className="pt-2 border-t border-[#f0f3ff]">
+          <div className="pt-2 border-t border-[#f0f3ff] space-y-3">
+            <div>
+              <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">
+                Effective From <span className="text-rose-500">*</span>
+                <span className="ml-2 text-[0.65rem] font-normal text-[#777587]">
+                  {isRevising
+                    ? 'Shown from existing record — change to backdate for a past payroll month'
+                    : 'First day of the month this salary applies from'}
+                </span>
+              </label>
+              <input type="date" value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)}
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]" />
+            </div>
+            <div>
             <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">Notes (optional)</label>
             <input value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="e.g. Salary structure update"
               className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]" />
+            </div>
           </div>
         </div>
 
@@ -328,6 +358,12 @@ function ManualModal({ employee, onClose, onSaved, modeToggle }) {
 
   const [form, setForm] = useState({
     ...EMPTY_FORM,
+    // Pre-populate effective_from from the stored record so HR can see and correct it.
+    // In revision mode this reflects the actual current effective date (not today).
+    // In create mode, default to 1st of the current month so same-month payroll picks it up.
+    effective_from: isRevising && employee.effective_from
+      ? String(employee.effective_from).split('T')[0]
+      : firstOfCurrentMonth(),
     user_id: employee.id,
     ...(isRevising ? {
       basic: employee.basic || '', hra: employee.hra || '', da: employee.da || '',
@@ -364,8 +400,14 @@ function ManualModal({ employee, onClose, onSaved, modeToggle }) {
         employer_pf: num('employer_pf'), employer_esi: num('employer_esi'),
         notes: form.notes,
       };
+      if (!form.effective_from) throw new Error('Effective From date is required');
       if (isRevising) {
-        return apiPut(`/payroll/salary-structures/${employee.salary_id}`, payload);
+        // Include effective_from so HR can correct a September-dated structure
+        // back to August 1 without needing a new version.
+        return apiPut(`/payroll/salary-structures/${employee.salary_id}`, {
+          ...payload,
+          effective_from: form.effective_from,
+        });
       }
       return apiPost('/payroll/salary-structures', {
         ...payload, user_id: employee.id, effective_from: form.effective_from,
@@ -416,6 +458,24 @@ function ManualModal({ employee, onClose, onSaved, modeToggle }) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {/* Effective From — visible in both create and revision modes so HR can */}
+          {/* set the payroll month this structure applies from (e.g. Aug 1, 2026). */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-[#f9f9ff] rounded-xl border border-[#e7eefe]">
+            <div>
+              <label className="block text-[0.7rem] font-bold text-[#464555] mb-1">
+                Effective From <span className="text-rose-500">*</span>
+              </label>
+              <input type="date" value={form.effective_from}
+                onChange={e => set('effective_from', e.target.value)}
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+              />
+              <p className="text-[0.62rem] text-[#9ca3af] mt-1">
+                {isRevising
+                  ? 'Loaded from existing record. Change to August 1 to fix retroactive payroll.'
+                  : 'First day of the payroll month this structure should apply from.'}
+              </p>
+            </div>
+          </div>
           <div>
             <p className="text-[0.68rem] font-black uppercase tracking-widest text-[#777587] mb-3">Earnings (₹ / month)</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

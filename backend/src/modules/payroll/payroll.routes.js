@@ -493,6 +493,10 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
       retention = 0,
       employer_pf = 0, employer_esi = 0,
       notes,
+      // Optional: HR may supply effective_from to backdate a future-dated structure
+      // (e.g. set Sep-3 structure back to Aug-1 so August payroll can find it).
+      // Null/undefined = keep existing value (COALESCE handles this).
+      effective_from,
     } = req.body;
 
     // Only the currently active record (effective_to IS NULL) can be corrected
@@ -508,6 +512,19 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
       });
     }
 
+    // Validate provided effective_from is a real date
+    if (effective_from) {
+      const parsed = new Date(effective_from + 'T12:00:00Z');
+      if (isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: `Invalid effective_from date: ${effective_from}` });
+      }
+    }
+
+    // Ensure retention column exists in case this DB is behind on migrations
+    await pool.query(
+      `ALTER TABLE employee_salary_structures ADD COLUMN IF NOT EXISTS retention NUMERIC DEFAULT 0`
+    ).catch(() => {});
+
     const gross_salary = parseFloat((
       Number(basic) + Number(hra) + Number(da) +
       Number(transport_allowance) + Number(medical_allowance) +
@@ -516,6 +533,8 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
 
     const ctc = parseFloat((gross_salary + Number(employer_pf) + Number(employer_esi)).toFixed(2));
 
+    // $19 = effective_from (COALESCE: keep existing when not supplied)
+    // $20 = id (WHERE), $21 = oId (WHERE)
     const { rows: updated } = await pool.query(
       `UPDATE employee_salary_structures SET
           basic               = $1,  hra                 = $2,  da                 = $3,
@@ -524,8 +543,9 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
           employee_pf         = $9,  employee_esi        = $10, professional_tax   = $11,
           tds                 = $12, other_deductions    = $13, retention          = $14,
           employer_pf         = $15, employer_esi        = $16, ctc                = $17,
-          notes               = COALESCE($18, notes)
-        WHERE id = $19 AND organization_id = $20
+          notes               = COALESCE($18, notes),
+          effective_from      = COALESCE($19::date, effective_from)
+        WHERE id = $20 AND organization_id = $21
         RETURNING *`,
       [
         Number(basic), Number(hra), Number(da),
@@ -535,6 +555,7 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
         Number(tds), Number(other_deductions), Number(retention),
         Number(employer_pf), Number(employer_esi), ctc,
         notes ?? null,
+        effective_from ?? null,
         id, oId,
       ]
     );
@@ -542,7 +563,10 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
     logPayroll({
       oId, actorId: req.user.id, actorName: req.user.name,
       action: 'salary_updated', entityType: 'salary_structure', entityId: id,
-      targetUserId: existing[0].user_id, newValues: updated[0], ip: req.ip,
+      targetUserId: existing[0].user_id,
+      oldValues: { effective_from: existing[0].effective_from },
+      newValues: updated[0],
+      ip: req.ip,
     });
 
     res.json(updated[0]);
