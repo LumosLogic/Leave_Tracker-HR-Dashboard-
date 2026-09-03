@@ -128,6 +128,7 @@ router.get('/attendance', auth, async (req, res) => {
           let wDays;
           try { wDays = JSON.parse(row.days_of_week); }
           catch { wDays = String(row.days_of_week).split(',').map(Number); }
+          if (!Array.isArray(wDays)) wDays = [wDays]; // single number e.g. JSON.parse("6") → 6
           for (const d of wDays) userWorkingDows[row.user_id].add(Number(d));
         }
 

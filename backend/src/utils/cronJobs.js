@@ -169,6 +169,7 @@ async function runAutoMarkAbsent() {
           if (!userWorkingDows[row.user_id]) userWorkingDows[row.user_id] = new Set();
           let wDays;
           try { wDays = JSON.parse(row.days_of_week); } catch { wDays = String(row.days_of_week).split(',').map(Number); }
+          if (!Array.isArray(wDays)) wDays = [wDays]; // JSON.parse("6") → 6 (number, not array)
           for (const d of wDays) userWorkingDows[row.user_id].add(Number(d));
         }
         for (const uid of Object.keys(userWorkingDows)) {
