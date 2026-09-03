@@ -2034,6 +2034,74 @@ function EmpStatusBadge({ status }) {
   );
 }
 
+// Compact leave balance chips — fetches per-employee, cached by React Query
+function LeaveBalanceChips({ empId }) {
+  const curYear = new Date().getFullYear();
+  const { data } = useQuery({
+    queryKey: ['emp-balance', empId, curYear],
+    queryFn:  () => apiGet('/leaves/balance', { userId: empId, year: curYear }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const balances = (data?.balances || []).filter(b => b.leave_type !== 'wfh' && b.allocated > 0);
+  if (!balances.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {balances.map(b => (
+        <span key={b.leave_type}
+          title={`${b.label}: ${b.remaining} / ${b.allocated} remaining`}
+          className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full border ${
+            b.remaining <= 0 ? 'bg-rose-50 text-rose-600 border-rose-200'
+            : b.remaining <= 2 ? 'bg-amber-50 text-amber-700 border-amber-200'
+            : 'bg-[#f0f3ff] text-[#3525cd] border-[#c7c4d8]'
+          }`}>
+          {b.label.replace(' Leave','').replace('Leave','').trim()}: {b.remaining}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Drawer leave balance — detailed Allocated / Used / Available using API
+function DrawerLeaveBalance({ empId }) {
+  const curYear = new Date().getFullYear();
+  const { data, isLoading } = useQuery({
+    queryKey: ['emp-balance', empId, curYear],
+    queryFn:  () => apiGet('/leaves/balance', { userId: empId, year: curYear }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const balances = (data?.balances || []).filter(b => b.leave_type !== 'wfh' && b.allocated > 0);
+  if (!isLoading && !balances.length) return null;
+  return (
+    <div className="px-5 py-4 border-b border-[#f0f3ff]">
+      <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-3">Leave Balance {curYear}</p>
+      {isLoading ? (
+        <div className="flex justify-center py-3"><span className="w-4 h-4 border-2 border-[#3525cd]/20 border-t-[#3525cd] rounded-full animate-spin" /></div>
+      ) : (
+        <div className="space-y-3">
+          {balances.map(b => (
+            <div key={b.leave_type}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-[#464555]">{b.label}</span>
+                <div className="flex items-center gap-2 text-[0.65rem]">
+                  <span className="text-[#9ca3af]">Used: <strong className="text-[#464555]">{b.used}</strong></span>
+                  <span className={`font-black ${b.remaining <= 0 ? 'text-rose-600' : b.remaining <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {b.remaining}/{b.allocated}
+                  </span>
+                </div>
+              </div>
+              <div className="w-full bg-[#f0f3ff] rounded-full h-1.5">
+                <div className={`h-1.5 rounded-full transition-all ${
+                  b.remaining <= 0 ? 'bg-rose-400' : b.remaining <= b.allocated * 0.25 ? 'bg-amber-400' : 'bg-[#3525cd]'
+                }`} style={{ width: `${b.allocated > 0 ? Math.min(100, (b.remaining / b.allocated) * 100) : 0}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function exportEmployeesCSV(rows, filename = 'employees.csv') {
   const headers = 'Name,Email,Department,Position,Employment Type,Status,Work Mode,Joining Date';
   const lines = rows.map(e =>
@@ -2697,6 +2765,7 @@ export default function Employees() {
                     <span className="text-xs text-[#464555]">Joined {fmtDate(emp.joining_date)}</span>
                   </div>
                 )}
+                <LeaveBalanceChips empId={emp.id} />
               </div>
 
               {/* Actions */}
@@ -2756,6 +2825,7 @@ export default function Employees() {
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Branch</th>
                   <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-black text-[#464555] uppercase tracking-wider whitespace-nowrap">Leave Balance</th>
                   <th className="px-4 py-3 text-left">
                     <button onClick={() => toggleSortBy('joining_date')} className="flex items-center gap-1 text-xs font-black text-[#464555] uppercase tracking-wider hover:text-[#3525cd] transition-colors whitespace-nowrap">
                       Joining Date <ArrowUpDown size={11} className={sortBy === 'joining_date' ? 'text-[#3525cd]' : 'text-[#c7c4d8]'} />
@@ -2795,6 +2865,7 @@ export default function Employees() {
                       {emp.branch_id ? (branchList.find(b => b.id === emp.branch_id)?.name || '—') : '—'}
                     </td>
                     <td className="px-4 py-3"><EmpStatusBadge status={emp.employee_status} /></td>
+                    <td className="px-4 py-3"><LeaveBalanceChips empId={emp.id} /></td>
                     <td className="px-4 py-3 text-xs text-[#464555] whitespace-nowrap">
                       {emp.joining_date ? fmtDate(emp.joining_date) : '—'}
                     </td>
@@ -3024,28 +3095,8 @@ export default function Employees() {
                       </div>
                     </div>
 
-                    {/* Leave Balance */}
-                    {leaveBalance.length > 0 && (
-                      <div className="px-5 py-4 border-b border-[#f0f3ff]">
-                        <p className="text-[0.65rem] font-black text-[#9ca3af] uppercase tracking-widest mb-3">Leave Balance</p>
-                        <div className="space-y-3">
-                          {leaveBalance.map(b => (
-                            <div key={b.type}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-semibold text-[#464555] capitalize">{b.type} Leave</span>
-                                <span className="text-xs text-[#777587]">{b.remaining} / {b.quota}</span>
-                              </div>
-                              <div className="w-full bg-[#f0f3ff] rounded-full h-1.5">
-                                <div
-                                  className={`h-1.5 rounded-full transition-all ${b.remaining === 0 ? 'bg-rose-400' : b.remaining <= b.quota * 0.25 ? 'bg-amber-400' : 'bg-[#3525cd]'}`}
-                                  style={{ width: `${Math.min(100, (b.remaining / b.quota) * 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {/* Leave Balance — uses API balance (includes HR adjustments) */}
+                    <DrawerLeaveBalance empId={profileDrawerEmp.id} />
                   </div>
                 );
               })()}

@@ -1252,6 +1252,10 @@ function WorkTab({ empId, isAdmin }) {
         <Clock size={24} className="mx-auto mb-2 text-[#3525cd]" />
         <p className="text-sm font-bold text-[#151c27]">Full Attendance & Leave History</p>
         <p className="text-xs text-[#777587] mt-1">Switch to the <strong>Leave & Attendance</strong> tab in the existing profile for detailed records, filters, and exports.</p>
+      </SectionCard>
+
+      {/* ── Leave Balance ── */}
+      <LeaveBalanceSection empId={emp.id} />
       </div>
     </div>
   );
@@ -1378,6 +1382,46 @@ function SystemTab({ emp, onEdit }) {
 }
 
 // ─── Circular progress for profile completion ────────────────────────────────
+function LeaveBalanceSection({ empId }) {
+  const curYear = new Date().getFullYear();
+  const { data, isLoading } = useQuery({
+    queryKey: ['emp-balance', empId, curYear],
+    queryFn:  () => apiGet('/leaves/balance', { userId: empId, year: curYear }),
+    staleTime: 60000,
+  });
+  const COLORS = { casual: '#10B981', sick: '#3525cd', annual: '#F59E0B', earned: '#F59E0B', comp_off: '#712ae2', emergency: '#EF4444', maternity: '#EC4899', paternity: '#4f46e5', bereavement: '#94a3b8', unpaid: '#64748b' };
+  const balances = (data?.balances || []).filter(b => b.leave_type !== 'wfh');
+  if (!isLoading && balances.length === 0) return null;
+  return (
+    <SectionCard title={`Leave Balance ${curYear}`} icon={Umbrella}>
+      {isLoading ? <LoadingSection /> : (
+        <div className="space-y-3">
+          {balances.map(b => {
+            const pct   = b.allocated > 0 ? Math.min(100, Math.round((b.used / b.allocated) * 100)) : 0;
+            const color = COLORS[b.leave_type] || '#94a3b8';
+            const isLow = b.remaining <= 2 && b.allocated > 0;
+            return (
+              <div key={b.leave_type}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-[#464555]">{b.label}</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-[#9ca3af]">Alloc: <strong className="text-[#464555]">{b.allocated}</strong></span>
+                    <span className="text-[#9ca3af]">Used: <strong className="text-rose-600">{b.used}</strong></span>
+                    <span className={`font-black ${isLow ? 'text-rose-600' : 'text-emerald-600'}`}>{b.remaining} left</span>
+                  </div>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-[#f0f3ff] overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: isLow ? '#ef4444' : color }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function CircularProgress({ value = 0 }) {
   const r    = 38;
   const circ = 2 * Math.PI * r;
