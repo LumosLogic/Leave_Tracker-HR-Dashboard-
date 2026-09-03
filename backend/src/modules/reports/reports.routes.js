@@ -160,6 +160,23 @@ router.get('/attendance', auth, async (req, res) => {
       }
     } catch { /* shifts table may not exist — degrade gracefully */ }
 
+    // Payroll weekend policy: DOWs that are always weekoffs per payroll_settings.
+    // Used as a second source of truth when no shift assignments exist for a date range.
+    // Matches what calculatePayroll() does so the report is consistent with 0-LOP behaviour.
+    // sat_sun → DOW 0 (Sun) and 6 (Sat) are weekoffs for all employees.
+    // sun_only / alternate_sat → DOW 0 (Sun) only.
+    const payrollWeekendDows = new Set();
+    try {
+      const { rows: psRows } = await pool.query(
+        `SELECT weekend_policy FROM payroll_settings WHERE organization_id = $1 LIMIT 1`,
+        [oId]
+      );
+      const policy = psRows[0]?.weekend_policy || 'sat_sun';
+      if (policy === 'sat_sun') { payrollWeekendDows.add(0); payrollWeekendDows.add(6); }
+      else if (policy === 'sun_only' || policy === 'alternate_sat') { payrollWeekendDows.add(0); }
+      // 'none' → no payroll weekends, no override
+    } catch { /* payroll_settings may not exist — skip */ }
+
     const timeNow = nowIST();
 
     const rows = (data || []).map(r => {
@@ -198,9 +215,13 @@ router.get('/attendance', auth, async (req, res) => {
 
       // Override 'absent' with 'holiday' if this date is a configured company holiday
       const holidayInfo = holidayMap.get(r.date);
-      // Override 'absent' with 'off_day' if this date is a shift-assigned day-off for this employee
-      const isShiftWeekoff = shiftWeekoffSet.has(`${r.user_id}_${r.date}`);
-      const effectiveStatus = isShiftWeekoff && r.status === 'absent'
+      // Override 'absent' → 'off_day' for shift-assigned weekoffs OR payroll weekends.
+      // Payroll weekends (e.g. sat_sun policy) serve as a fallback when no shift rows
+      // exist for the period — ensuring the report matches the 0-LOP payroll outcome.
+      const isShiftWeekoff   = shiftWeekoffSet.has(`${r.user_id}_${r.date}`);
+      const rdow             = new Date(r.date + 'T12:00:00Z').getUTCDay();
+      const isPayrollWeekend = payrollWeekendDows.has(rdow);
+      const effectiveStatus  = (isShiftWeekoff || isPayrollWeekend) && r.status === 'absent'
         ? 'off_day'
         : (r.status === 'absent' && holidayInfo) ? 'holiday' : r.status;
 
@@ -248,7 +269,14 @@ router.get('/attendance', auth, async (req, res) => {
       res.setHeader('Content-Disposition', `attachment; filename="attendance_report_${year||'all'}_${month||'all'}.csv"`);
       return res.send(csv);
     }
-    res.json({ data: rows, meta: { attendance_policy: policy, shift_weekoff_by_user: shiftWeekoffByUser } });
+    res.json({
+      data: rows,
+      meta: {
+        attendance_policy:    policy,
+        shift_weekoff_by_user: shiftWeekoffByUser,
+        payroll_weekend_dows:  [...payrollWeekendDows],
+      },
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

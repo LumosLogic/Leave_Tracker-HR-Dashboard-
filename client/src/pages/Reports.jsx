@@ -359,7 +359,10 @@ export default function Reports() {
   const attMeta   = _attResponse?.meta || {};
   const isFiloOrg = attMeta.attendance_policy === 'first_in_last_out';
   // shift weekoff dates per user_id: { [userId]: [dateStr, ...] }
-  const shiftWeekoffByUser = attMeta.shift_weekoff_by_user || {};
+  const shiftWeekoffByUser  = attMeta.shift_weekoff_by_user  || {};
+  // DOWs that are payroll weekoffs (e.g. [0,6] for sat_sun) — used to skip synthetic absent
+  const payrollWeekendDowsArr = attMeta.payroll_weekend_dows || [];
+  const payrollWeekendDows  = useMemo(() => new Set(payrollWeekendDowsArr), [JSON.stringify(payrollWeekendDowsArr)]);
   const leaveRows = Array.isArray(_lvData) ? _lvData : [];
   const empRows   = Array.isArray(_empData) ? _empData : [];
 
@@ -435,11 +438,13 @@ export default function Reports() {
       const dow  = date.getDay(); // 0=Sun … 6=Sat
       const ds   = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-      // Shift weekoff: employee's assigned shift says this DOW is off
-      // Show 'off_day' rather than absent, regardless of org-level work_days
-      if (empShiftWeekoffs.has(ds)) {
+      // Shift weekoff OR payroll-weekend DOW (e.g. Saturday for sat_sun policy):
+      // Show 'off_day' — consistent with payroll engine (0 LOP).
+      const isWeekoff = empShiftWeekoffs.has(ds) || payrollWeekendDows.has(dow);
+      if (isWeekoff) {
         const att = attMap.get(ds);
-        // If an actual record exists for this date, show it; otherwise show off_day
+        // If actual record exists use it (backend already overrides status to off_day);
+        // otherwise synthesise an off_day row — never synthesise absent.
         result.push(att || {
           id: `synth-offday-${ds}`, name: emp.name, department: emp.department,
           date: ds, status: 'off_day', user_id: Number(selectedEmpId),
@@ -478,7 +483,7 @@ export default function Reports() {
       }
     }
     return result;
-  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays, holidayDateSet, shiftWeekoffByUser]);
+  }, [selectedEmpId, selectedEmpName, active, viewMode, year, month, attRows, leaveRows, empRows, workDays, holidayDateSet, shiftWeekoffByUser, payrollWeekendDows]);
 
   // Effective rows — full calendar when employee selected, otherwise full dataset (filtered by employee if set)
   const effectiveAttRows = useMemo(() => {
