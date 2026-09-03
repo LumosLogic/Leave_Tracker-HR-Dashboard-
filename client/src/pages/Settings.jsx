@@ -959,8 +959,11 @@ function RootAdminsPanel() {
 
 // ── 10. Org Profile & Integrations ───────────────────────────────────────────
 function OrgSettingsPanel() {
-  const toast = useToast();
-  const qc    = useQueryClient();
+  const toast   = useToast();
+  const qc      = useQueryClient();
+  const fileRef = React.useRef(null);
+  const [logoUploading, setLogoUploading] = React.useState(false);
+  const [logoPreview,   setLogoPreview]   = React.useState(null);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['org-settings'],
@@ -1029,7 +1032,50 @@ function OrgSettingsPanel() {
     onError: err => toast(err.message, 'error'),
   });
 
+  async function handleLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast('Please select an image file.', 'error'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast('Logo must be under 2 MB.', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setLogoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch('/api/org/logo', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || 'Upload failed');
+      const { logo_url } = await res.json();
+      setLogoPreview(null);
+      toast('Logo uploaded successfully!', 'success');
+      qc.invalidateQueries({ queryKey: ['org-settings'] });
+    } catch (err) {
+      toast(err.message, 'error');
+      setLogoPreview(null);
+    } finally {
+      setLogoUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function handleLogoRemove() {
+    try {
+      const token = localStorage.getItem('lt_token');
+      await fetch('/api/org/settings', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logo_url: '' }),
+      });
+      toast('Logo removed.', 'success');
+      qc.invalidateQueries({ queryKey: ['org-settings'] });
+    } catch { toast('Failed to remove logo.', 'error'); }
+  }
+
   if (isLoading) return <div className="flex justify-center py-20"><span className="spinner w-6 h-6" /></div>;
+
+  const currentLogo = logoPreview || org?.logo_url;
 
   return (
     <PanelWrap group="Organization & Administration" label="Org Profile & Integrations" icon={Building2} accentColor="#7c3aed">
@@ -1051,6 +1097,38 @@ function OrgSettingsPanel() {
         {/* ── Organization Profile ── */}
         <div>
           <p className="text-xs font-black text-[#464555] uppercase tracking-wide mb-4 pb-2 border-b border-[#f0f3ff]">Organization Profile</p>
+
+          {/* Company Logo */}
+          <div className="mb-5 p-4 bg-[#f9f9ff] border border-[#e7eefe] rounded-xl">
+            <p className="text-xs font-bold text-[#464555] mb-3">Company Logo
+              <span className="ml-2 font-normal text-[#9ca3af]">— shown on payslips and official documents</span>
+            </p>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-xl border-2 border-dashed border-[#c7c4d8] bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+                {logoUploading
+                  ? <span className="w-5 h-5 border-2 border-[#7c3aed]/30 border-t-[#7c3aed] rounded-full animate-spin" />
+                  : currentLogo
+                    ? <img src={currentLogo} alt="Logo" className="w-full h-full object-contain p-1" />
+                    : <Building2 size={26} className="text-[#c7c4d8]" />
+                }
+              </div>
+              <div className="space-y-2">
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={logoUploading}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:border-[#7c3aed] transition-colors disabled:opacity-50">
+                  {logoUploading ? '⏳ Uploading…' : currentLogo ? '🔄 Replace Logo' : '⬆ Upload Logo'}
+                </button>
+                {org?.logo_url && !logoUploading && (
+                  <button type="button" onClick={handleLogoRemove}
+                    className="flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600 px-1">
+                    ✕ Remove logo
+                  </button>
+                )}
+                <p className="text-[0.65rem] text-[#9ca3af]">PNG, JPG or SVG · Max 2 MB</p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="Company Name">
               <input className="form-control bg-[#f5f5f8] cursor-not-allowed text-[#777587]" value={form.name || ''} readOnly />
