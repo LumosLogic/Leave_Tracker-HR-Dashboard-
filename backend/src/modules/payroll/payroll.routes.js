@@ -89,6 +89,12 @@ const SETTINGS_DEFAULTS = {
   // 'working_days': gross ÷ non-weekend working days (default)
   // 'calendar_days': gross ÷ total calendar days in month (e.g. Aug=÷31)
   per_day_salary_basis:           'working_days',
+  // Payslip branding — org-specific details printed on payslips.
+  // Null = not configured; payslip renders gracefully without them.
+  payslip_company_address:        null,
+  payslip_company_cin:            null,
+  payslip_company_registration:   null,
+  payslip_footer_note:            null,
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);

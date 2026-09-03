@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { apiGet } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { MONTHS } from '@/lib/utils';
-import PayslipRelitrade from '@/components/PayslipRelitrade';
+import Payslip from '@/components/Payslip';
 
 const fmtD = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 const fmt  = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
@@ -41,7 +41,7 @@ export default function PayslipDetails() {
   const navigate   = useNavigate();
   const location   = useLocation();
   const { user }   = useAuth();
-  const [showRelitrade, setShowRelitrade] = useState(false);
+  const [showPayslip, setShowPayslip] = useState(false);
 
   const isRootAdmin  = user?.role === 'root_admin';
   const basePath     = isRootAdmin ? '/root' : '';
@@ -122,13 +122,13 @@ export default function PayslipDetails() {
           <ArrowLeft size={15} />
           Back
         </button>
-        <button onClick={() => setShowRelitrade(true)}
+        <button onClick={() => setShowPayslip(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
-          <Printer size={13} /> Print Payslip (Relitrade)
+          <Printer size={13} /> Print Payslip
         </button>
       </div>
-      {showRelitrade && (
-        <PayslipRelitrade payslipId={id} onClose={() => setShowRelitrade(false)} />
+      {showPayslip && (
+        <Payslip payslipId={id} onClose={() => setShowPayslip(false)} />
       )}
 
       {/* ── Header ── */}

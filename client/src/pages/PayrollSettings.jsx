@@ -44,6 +44,10 @@ const DEFAULTS = {
   paid_leave_during_probation:    true,
   probation_scope:                'selected',
   per_day_salary_basis:           'working_days',
+  payslip_company_address:        '',
+  payslip_company_cin:            '',
+  payslip_company_registration:   '',
+  payslip_footer_note:            '',
 };
 
 const TIMEZONES = [
@@ -806,6 +810,61 @@ export default function PayrollSettings() {
             <Toggle checked={form.payslip_auto_email} onChange={v => set('payslip_auto_email', v)} />
           </Row>
         )}
+      </Section>
+
+      {/* Payslip Branding */}
+      <Section icon={<IndianRupee size={16} className="text-[#3525cd]" />}
+        title="Payslip Branding"
+        subtitle="Company details printed on the payslip header and footer. Leave blank if not applicable.">
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-[#151c27] mb-1">Company Address</p>
+            <p className="text-[0.68rem] text-[#777587] mb-1.5">
+              Appears in the top-right of the payslip. Use line breaks for multi-line addresses.
+            </p>
+            <textarea
+              rows={3}
+              value={form.payslip_company_address || ''}
+              onChange={e => set('payslip_company_address', e.target.value)}
+              placeholder="e.g. 2nd Floor, O Block, Mondeal Retail Park&#10;SG Highway, Ahmedabad - 380054"
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd] resize-none"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm font-semibold text-[#151c27] mb-1">CIN / GST Number</p>
+              <p className="text-[0.68rem] text-[#777587] mb-1.5">Company identification number for the payslip header.</p>
+              <input type="text"
+                value={form.payslip_company_cin || ''}
+                onChange={e => set('payslip_company_cin', e.target.value)}
+                placeholder="e.g. CIN No.U67120GJ2012PTC116832"
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#151c27] mb-1">Registration Number</p>
+              <p className="text-[0.68rem] text-[#777587] mb-1.5">Any additional registration / license number.</p>
+              <input type="text"
+                value={form.payslip_company_registration || ''}
+                onChange={e => set('payslip_company_registration', e.target.value)}
+                placeholder="e.g. SEBI Reg: INZ000242435"
+                className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-[#151c27] mb-1">Payslip Footer Note</p>
+            <p className="text-[0.68rem] text-[#777587] mb-1.5">
+              Disclaimer text at the bottom of every payslip. If blank, a generic note is used.
+            </p>
+            <input type="text"
+              value={form.payslip_footer_note || ''}
+              onChange={e => set('payslip_footer_note', e.target.value)}
+              placeholder="e.g. This is a computer generated salary slip and does not require a signature."
+              className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+            />
+          </div>
+        </div>
       </Section>
 
       {/* Footer */}
