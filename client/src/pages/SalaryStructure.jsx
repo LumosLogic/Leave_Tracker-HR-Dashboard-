@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DollarSign, Plus, Clock, ChevronRight, CheckCircle2,
   AlertCircle, Search, History, X, TrendingUp, TrendingDown,
-  Users, IndianRupee, Lock, Unlock, Zap, Settings2, Info,
+  Users, IndianRupee, Lock, Unlock, Zap, Settings2, Info, Download,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
@@ -673,6 +673,56 @@ function HistoryModal({ employee, onClose }) {
   );
 }
 
+// ── CSV Download ──────────────────────────────────────────────────────────────
+function downloadSalaryStructuresCSV(employees) {
+  const configured = employees.filter(e => e.salary_id);
+  if (!configured.length) return;
+
+  const headers = [
+    'Employee ID', 'Name', 'Department',
+    'Basic', 'HRA', 'DA', 'Transport Allowance', 'Medical Allowance',
+    'Special Allowance', 'Other Allowance', 'Gross Salary',
+    'PF (Employee)', 'ESI (Employee)', 'Professional Tax', 'TDS',
+    'Retention', 'Other Deductions', 'Total Deductions',
+    'PF (Employer)', 'ESI (Employer)',
+    'CTC', 'Effective From',
+  ];
+
+  const n = v => Number(v || 0);
+  const rows = configured.map(e => {
+    const gross = n(e.basic) + n(e.hra) + n(e.da) + n(e.transport_allowance) +
+                  n(e.medical_allowance) + n(e.special_allowance) + n(e.other_allowance);
+    const totalDed = n(e.employee_pf) + n(e.employee_esi) + n(e.professional_tax) +
+                     n(e.tds) + n(e.retention) + n(e.other_deductions);
+    return [
+      e.employee_id || '',
+      e.name || '',
+      e.department || '',
+      n(e.basic), n(e.hra), n(e.da), n(e.transport_allowance), n(e.medical_allowance),
+      n(e.special_allowance), n(e.other_allowance), gross,
+      n(e.employee_pf), n(e.employee_esi), n(e.professional_tax), n(e.tds),
+      n(e.retention), n(e.other_deductions), totalDed,
+      n(e.employer_pf), n(e.employer_esi),
+      n(e.ctc) || (gross + n(e.employer_pf) + n(e.employer_esi)),
+      e.effective_from ? String(e.effective_from).split('T')[0] : '',
+    ];
+  });
+
+  const escape = v => {
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const csv = [headers, ...rows].map(r => r.map(escape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `salary-structures-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SalaryStructure() {
   const toast = useToast();
@@ -722,11 +772,22 @@ export default function SalaryStructure() {
             Salary Structures
           </div>
         </div>
-        {salaryRules?.enabled && (
-          <div className="flex items-center gap-1.5 text-[0.7rem] font-bold px-3 py-1.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
-            <Zap size={12} /> CTC-based calculation active
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {salaryRules?.enabled && (
+            <div className="flex items-center gap-1.5 text-[0.7rem] font-bold px-3 py-1.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">
+              <Zap size={12} /> CTC-based calculation active
+            </div>
+          )}
+          {withSalary.length > 0 && (
+            <button
+              onClick={() => downloadSalaryStructuresCSV(employees)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#c7c4d8] text-[0.75rem] font-bold text-[#464555] bg-white hover:bg-[#f0f3ff] hover:border-[#3525cd]/40 hover:text-[#3525cd] transition-all shadow-sm"
+              title="Download salary structures as CSV"
+            >
+              <Download size={13} /> Download CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}

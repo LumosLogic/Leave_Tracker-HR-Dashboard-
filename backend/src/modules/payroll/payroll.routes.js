@@ -583,26 +583,32 @@ router.put('/salary-structures/:id', auth, hasPermission('payroll', 'manage_stru
 // ─── Payroll Structures ───────────────────────────────────────────────────────
 
 // GET /api/payroll/structure?userId=
-// Employees may view their own structure; admins need manage_structures permission.
+// Returns the active salary structure for an employee as a single object.
+// Employees may view their own; admins need manage_structures to view others'.
 router.get('/structure', auth, async (req, res) => {
   try {
     const oId = orgId(req);
     const { userId } = req.query;
-    // Non-admins are always scoped to their own record regardless of userId param
     const targetId = isAdmin(req.user.role) ? (userId || req.user.id) : req.user.id;
     if (isAdmin(req.user.role) && userId && String(userId) !== String(req.user.id)) {
-      // Admin querying another user — require explicit RBAC permission
       const { resolvePermissions, hasPermissionCheck } = require('../../services/permissionService');
       const perms = await resolvePermissions(req.user.id, oId);
       if (!hasPermissionCheck(perms, 'payroll', 'manage_structures')) {
         return res.status(403).json({ error: 'Permission denied. Required: payroll.manage_structures' });
       }
     }
-    const { data, error } = await db.from('payroll_structures')
-      .select('*').eq('user_id', targetId).eq('organization_id', oId)
-      .order('effective_from', { ascending: false });
-    if (error) throw error;
-    res.json(data || []);
+    // Read from employee_salary_structures (the active table).
+    // Return a single object (most recent active record) so the profile UI can
+    // access fields like payroll.basic directly without array indexing.
+    const { rows } = await pool.query(
+      `SELECT * FROM employee_salary_structures
+        WHERE user_id = $1 AND organization_id = $2
+          AND effective_to IS NULL
+        ORDER BY effective_from DESC
+        LIMIT 1`,
+      [Number(targetId), Number(oId)]
+    );
+    res.json(rows[0] || null);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -992,7 +992,17 @@ function CompensationTab({ empId, isAdmin, onEdit, emp }) {
         action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'salary')} />}>
         {pLoad ? <LoadingSection /> : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {[['CTC (Annual)', emp.ctc ? `₹${Number(emp.ctc).toLocaleString('en-IN')}` : null],['Salary Structure', emp.salary_structure],['Salary Basis', emp.salary_on],['Basic', payroll?.basic ? `₹${Number(payroll.basic).toLocaleString('en-IN')}` : null],['HRA', payroll?.hra ? `₹${Number(payroll.hra).toLocaleString('en-IN')}` : null],['Gross', payroll ? `₹${[payroll.basic,payroll.hra,payroll.da,payroll.transport_allowance,payroll.medical_allowance,payroll.other_allowances].filter(Boolean).reduce((s,v)=>s+Number(v),0).toLocaleString('en-IN')}` : null]].map(([l,v])=>(
+            {[
+              ['CTC (Annual)', payroll?.ctc ? `₹${(Number(payroll.ctc) * 12).toLocaleString('en-IN')}` : emp.ctc ? `₹${Number(emp.ctc).toLocaleString('en-IN')}` : null],
+              ['Effective From', payroll?.effective_from ? fmtDate(payroll.effective_from) : null],
+              ['Net Salary', payroll?.gross_salary ? `₹${(Number(payroll.gross_salary) - [payroll.employee_pf,payroll.employee_esi,payroll.professional_tax,payroll.tds,payroll.other_deductions,payroll.retention].reduce((s,v)=>s+Number(v||0),0)).toLocaleString('en-IN')}` : null],
+              ['Basic', payroll?.basic ? `₹${Number(payroll.basic).toLocaleString('en-IN')}` : null],
+              ['HRA', payroll?.hra ? `₹${Number(payroll.hra).toLocaleString('en-IN')}` : null],
+              ['Gross Salary', payroll?.gross_salary ? `₹${Number(payroll.gross_salary).toLocaleString('en-IN')}` : null],
+              ['PF (Employee)', payroll?.employee_pf ? `₹${Number(payroll.employee_pf).toLocaleString('en-IN')}` : null],
+              ['Prof. Tax', payroll?.professional_tax ? `₹${Number(payroll.professional_tax).toLocaleString('en-IN')}` : null],
+              ['Retention', payroll?.retention ? `₹${Number(payroll.retention).toLocaleString('en-IN')}` : null],
+            ].map(([l,v])=>(
               <div key={l} className="bg-[#f9f9ff] rounded-xl p-3 border border-[#f0f3ff]">
                 <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
                 <p className="text-sm font-black text-[#151c27] mt-0.5">{v || '—'}</p>
