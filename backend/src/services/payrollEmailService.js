@@ -185,27 +185,27 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     const W   = 535;      // usable width
     const R   = L + W;    // right edge
 
-    // ── Header: logo left, org info right ────────────────────────────────
+    // ── Header: logo left (slightly larger), company info starts at page midpoint ─
     if (rich.logoBuffer) {
-      try { doc.image(rich.logoBuffer, L, 30, { fit: [110, 50] }); } catch {}
+      try { doc.image(rich.logoBuffer, L, 30, { fit: [130, 60] }); } catch {}
     }
     let ry = 30;
 
-    // Company name spans full width (short single line — no wrap risk)
-    const headerName = rich.companyFullname || rich.orgName;
-    doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
-       .text(headerName, L, ry, { width: W, align: 'right' });
-    // Use doc.y after every text() call — pdfkit sets it to the bottom of the
-    // last rendered line, so we always advance past wrapped multi-line content.
-    ry = doc.y + 2;
-
-    // Address/CIN/contact constrained to right ~55% — never overlaps the logo.
+    // Company name and all address lines start at AX (≈45% from left = page midpoint)
+    // and are LEFT-ALIGNED, matching the reference layout.
     const AX = L + Math.floor(W * 0.45); // x-start: ~45% from left edge
     const AW = R - AX;                    // width: remaining right portion
 
+    const headerName = rich.companyFullname || rich.orgName;
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
+       .text(headerName, AX, ry, { width: AW, align: 'left' });
+    // Use doc.y after every text() call — pdfkit sets it to the actual bottom
+    // of the last rendered line, so we always advance past wrapped content.
+    ry = doc.y + 2;
+
     if (rich.orgCin) {
       doc.font('Helvetica').fontSize(8).fillColor('#444')
-         .text(rich.orgCin, AX, ry, { width: AW, align: 'right' });
+         .text(rich.orgCin, AX, ry, { width: AW, align: 'left' });
       ry = doc.y + 2;
     }
 
@@ -213,32 +213,30 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     if (rich.registeredAddress || rich.corporateAddress || rich.contactDetails) {
       if (rich.registeredAddress) {
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
-           .text('Registered Office', AX, ry, { width: AW, align: 'right' });
+           .text('Registered Office', AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 1;
-        // Draw the full address as one block — pdfkit wraps it and doc.y
-        // reflects the true bottom of ALL wrapped lines.
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.registeredAddress.trim(), AX, ry, { width: AW, align: 'right' });
+           .text(rich.registeredAddress.trim(), AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 3;
       }
       if (rich.corporateAddress) {
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
-           .text('Corporate Office', AX, ry, { width: AW, align: 'right' });
+           .text('Corporate Office', AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 1;
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.corporateAddress.trim(), AX, ry, { width: AW, align: 'right' });
+           .text(rich.corporateAddress.trim(), AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 3;
       }
       if (rich.contactDetails) {
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.contactDetails, AX, ry, { width: AW, align: 'right' });
+           .text(rich.contactDetails, AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 2;
       }
     } else if (rich.orgAddress) {
-      // Fallback: generic address lines, each may wrap — track with doc.y
+      // Fallback: generic address lines, left-aligned from midpoint
       rich.orgAddress.split('\n').forEach(line => {
         doc.font('Helvetica').fontSize(8).fillColor('#444')
-           .text(line.trim(), AX, ry, { width: AW, align: 'right' });
+           .text(line.trim(), AX, ry, { width: AW, align: 'left' });
         ry = doc.y + 1;
       });
     }
