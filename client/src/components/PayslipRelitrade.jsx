@@ -1,49 +1,113 @@
+/**
+ * PayslipRelitrade.jsx — Payslip modal used in the Relitrade portal.
+ *
+ * Identical layout to Payslip.jsx but uses separate React Query keys to avoid
+ * cache collisions when both components are mounted in the same session.
+ *
+ * All company details (name, logo, registered/corporate address, contact) come
+ * from the org's own payroll_settings — nothing is hardcoded for Relitrade.
+ * Other organisations that use this component will automatically see their own
+ * configured details.
+ */
 import React, { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Printer, X } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { MONTHS } from '@/lib/utils';
 
-const num = n => Number(n || 0);
-const fmtAmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const num    = n => Number(n || 0);
+const fmtAmt = n =>
+  Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// ── Number to words (Indian system) ──────────────────────────────────────────
 function toWords(amount) {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
-    'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
+    'Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen',
+    'Seventeen','Eighteen','Nineteen'];
+  const tens  = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
 
   function convert(n) {
-    if (n < 20) return ones[n];
-    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
-    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convert(n % 100) : '');
-    if (n < 100000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + convert(n % 1000) : '');
+    if (n < 20)       return ones[n];
+    if (n < 100)      return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    if (n < 1000)     return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convert(n % 100) : '');
+    if (n < 100000)   return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + convert(n % 1000) : '');
     if (n < 10000000) return convert(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + convert(n % 100000) : '');
     return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + convert(n % 10000000) : '');
   }
 
   const rupees = Math.floor(amount);
   const paise  = Math.round((amount - rupees) * 100);
-  let words = 'Rupees ' + (rupees > 0 ? convert(rupees) : 'Zero');
+  let words    = 'Rupees ' + (rupees > 0 ? convert(rupees) : 'Zero');
   if (paise > 0) words += ' and ' + convert(paise) + ' Paise';
-  words += ' Only';
-  return words;
+  return words + ' Only';
 }
 
+// ── Build right-side company header HTML ─────────────────────────────────────
+// Uses structured fields (Registered/Corporate office, contact) when configured;
+// falls back gracefully to generic address block for orgs that haven't set them.
+function buildOrgHeaderHtml(ps, orgName) {
+  const displayName    = ps?.payslip_company_fullname  || orgName || '';
+  const cin            = ps?.payslip_company_cin        || '';
+  const registeredAddr = ps?.payslip_registered_address || '';
+  const corporateAddr  = ps?.payslip_corporate_address  || '';
+  const contactDetails = ps?.payslip_contact_details    || '';
+  const genericAddress = ps?.payslip_company_address    || '';
+
+  let html = displayName
+    ? `<div style="font-size:12px;font-weight:bold">${displayName}</div>`
+    : '';
+
+  if (cin) {
+    html += `<div style="font-size:9px;color:#444;margin-top:2px">${cin}</div>`;
+  }
+
+  if (registeredAddr || corporateAddr || contactDetails) {
+    if (registeredAddr) {
+      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Registered Office</div>`;
+      registeredAddr.split('\n').forEach(line => {
+        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+      });
+    }
+    if (corporateAddr) {
+      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Corporate Office</div>`;
+      corporateAddr.split('\n').forEach(line => {
+        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+      });
+    }
+    if (contactDetails) {
+      html += `<div style="font-size:8px;color:#444;margin-top:4px">${contactDetails}</div>`;
+    }
+  } else if (genericAddress) {
+    genericAddress.split('\n').forEach(line => {
+      html += `<div style="font-size:9px;color:#444;margin-top:1px">${line.trim()}</div>`;
+    });
+  }
+
+  return html;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function PayslipRelitrade({ payslipId, onClose }) {
   const printRef = useRef(null);
 
+  // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: slip, isLoading } = useQuery({
     queryKey: ['payslip-relitrade', payslipId],
     queryFn:  () => apiGet(`/payroll/payslips/${payslipId}/details`),
     enabled:  Boolean(payslipId),
   });
 
-  const { data: orgData, isFetched: orgFetched } = useQuery({
+  const { data: orgSettings, isFetched: orgFetched } = useQuery({
     queryKey: ['org-settings'],
     queryFn:  () => apiGet('/org/settings'),
     staleTime: 5 * 60 * 1000,
     retry: 1,
+  });
+
+  const { data: payrollSettings } = useQuery({
+    queryKey: ['payroll-settings'],
+    queryFn:  () => apiGet('/payroll/settings'),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: statutory } = useQuery({
@@ -59,6 +123,7 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
   });
   const banking = Array.isArray(bankingData) ? bankingData[0] : bankingData;
 
+  // ── Print handler ─────────────────────────────────────────────────────────
   function handlePrint() {
     const content = printRef.current?.innerHTML;
     if (!content) return;
@@ -80,8 +145,15 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       </style></head><body>${content}</body></html>`);
     win.document.close();
     win.focus();
-    win.print();
-    win.close();
+    const imgs = win.document.images;
+    if (imgs.length === 0) { win.print(); win.close(); return; }
+    let loaded = 0;
+    const total = imgs.length;
+    const done = () => { if (++loaded >= total) { win.print(); win.close(); } };
+    Array.from(imgs).forEach(img => {
+      if (img.complete) { done(); }
+      else { img.onload = done; img.onerror = done; }
+    });
   }
 
   if (isLoading || !orgFetched) return (
@@ -95,16 +167,17 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
 
   if (!slip) return null;
 
+  // ── Computed values ───────────────────────────────────────────────────────
   const monthNum   = typeof slip.month === 'string' ? parseInt(slip.month, 10) : num(slip.month);
   const monthLabel = MONTHS[monthNum - 1] || slip.month;
 
   const earningRows = [
     { label: 'Basic',             value: num(slip.basic) },
     { label: 'HRA',               value: num(slip.hra) },
+    { label: 'DA',                value: num(slip.da) },
     { label: 'Conveyance',        value: num(slip.transport_allowance) },
     { label: 'Medical Allowance', value: num(slip.medical_allowance) },
     { label: 'Special Allowance', value: num(slip.special_allowance || 0) || num(slip.other_allowances || 0) },
-    { label: 'DA',                value: num(slip.da) },
   ].filter(r => r.value > 0);
 
   const deductionRows = [
@@ -114,55 +187,62 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
     { label: 'TDS',              value: num(slip.tds) },
     { label: 'Retention',        value: num(slip.retention) },
     { label: 'Other Deductions', value: num(slip.other_deductions) },
-    { label: `LOP (${num(slip.lop_days)} day${num(slip.lop_days) === 1 ? '' : 's'})`, value: num(slip.lop_amount) },
+    { label: `LOP (${num(slip.lop_days)} day${num(slip.lop_days) === 1 ? '' : 's'})`,
+      value: num(slip.lop_amount) },
   ].filter(r => r.value > 0);
 
-  const maxRows    = Math.max(earningRows.length, deductionRows.length);
+  const maxRows     = Math.max(earningRows.length, deductionRows.length);
   const grossSalary = num(slip.gross_salary);
   const totalDed    = num(slip.total_deductions);
   const netSalary   = num(slip.net_salary);
 
-  const pan       = statutory?.pan_number || '';
-  const uan       = statutory?.uan_no     || '';
-  const esiNo     = statutory?.esi_no     || 'N/A';
-  const pfNo      = statutory?.pf_no      || '';
-  const bankName  = banking?.bank_name    || '';
-  const accNo     = banking?.account_number || '';
-  const maskedAcc = accNo ? accNo.slice(0, -4).replace(/\d/g, '*') + accNo.slice(-4) : '';
+  const pan       = statutory?.pan_number   || '';
+  const uan       = statutory?.uan_no        || '';
+  const esiNo     = statutory?.esi_no        || 'N/A';
+  const pfNo      = statutory?.pf_no         || '';
+  const bankName  = banking?.bank_name        || '';
+  const accNo     = banking?.account_number   || '';
+  const maskedAcc = accNo
+    ? accNo.slice(0, -4).replace(/\d/g, '*') + accNo.slice(-4)
+    : '';
 
   let attSnap = {};
-  try { attSnap = typeof slip.attendance_snapshot === 'string' ? JSON.parse(slip.attendance_snapshot) : (slip.attendance_snapshot || {}); } catch {}
-  const presentFull = attSnap.presentFull  ?? num(slip.present_days);
-  const presentHalf = attSnap.presentHalf  ?? 0;
-  const weekoff     = attSnap.weekoff      ?? 0;
-  const paidHoliday = attSnap.holiday      ?? 0;
-  const paidLeave   = attSnap.paidLeave    ?? num(slip.leave_days);
-  const lopDays     = num(slip.lop_days);
-  // working_days = all non-weekend days (including holidays). Adding weekoff gives full calendar total.
-  // paidHoliday must NOT be added again — it is already counted inside working_days.
-  const totalCalDays = num(slip.working_days) + weekoff;
-  const presentStr  = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
+  try {
+    attSnap = typeof slip.attendance_snapshot === 'string'
+      ? JSON.parse(slip.attendance_snapshot)
+      : (slip.attendance_snapshot || {});
+  } catch {}
 
-  // Build inline HTML for print (avoids React-class issues in print window)
+  const presentFull  = attSnap.presentFull  ?? num(slip.present_days);
+  const presentHalf  = attSnap.presentHalf  ?? 0;
+  const weekoff      = attSnap.weekoff      ?? 0;
+  const paidHoliday  = attSnap.holiday      ?? 0;
+  const paidLeave    = attSnap.paidLeave    ?? num(slip.leave_days);
+  const lopDays      = num(slip.lop_days);
+  // working_days = all non-weekend days (holidays included). weekoff = weekend days.
+  // working_days + weekoff = total calendar days. paidHoliday must NOT be added again.
+  const totalCalDays = num(slip.working_days) + weekoff;
+  const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
+
+  const orgName    = orgSettings?.name || '';
+  const footerNote = payrollSettings?.payslip_footer_note ||
+    'This is a computer generated salary slip and does not require a signature.';
+  const orgLogoUrl = orgSettings?.logo_url
+    || (typeof window !== 'undefined' ? `${window.location.origin}/LogoWithoutName.svg` : '/LogoWithoutName.svg');
+
+  const orgHeaderHtml = buildOrgHeaderHtml(payrollSettings, orgName);
+
+  // ── Print HTML (inline styles — must survive popup window) ───────────────
   const payslipHtml = `
   <div class="payslip">
     <table style="border:none;margin-bottom:12px">
       <tr>
         <td style="border:none;width:38%;vertical-align:top">
-          ${orgData?.logo_url
-            ? `<img src="${orgData.logo_url}" alt="${orgData?.name || ''}" style="max-width:160px;max-height:60px;object-fit:contain" />`
-            : `<div style="font-size:16px;font-weight:bold;color:#1a3a6e">RELITRADE<sup style="font-size:8px">®</sup></div><div style="font-size:8px;color:#555;font-weight:normal;margin-top:2px">We care about your investment</div>`
-          }
+          <img src="${orgLogoUrl}" alt="${orgName}"
+            style="max-width:160px;max-height:60px;object-fit:contain" />
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
-          <div style="font-size:12px;font-weight:bold">Relitrade Stock Broking Pvt. Ltd.</div>
-          <div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Registered Office</div>
-          <div style="font-size:8px;color:#444;margin-top:1px">Office No. 206 &amp; 207, Dalal Street Commercial Co-Operative Society Limited,</div>
-          <div style="font-size:8px;color:#444">Block 53, Zone 5, Road 5E, Gift City, Gandhinagar, Gujarat, India, 382050</div>
-          <div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Corporate Office</div>
-          <div style="font-size:8px;color:#444;margin-top:1px">Relitrade House, 2nd Floor, O Block, Mondeal Retail Park,</div>
-          <div style="font-size:8px;color:#444">Nr. Rajpath Club, S. G. Highway, Ahmedabad, Gujarat – 380059.</div>
-          <div style="font-size:8px;color:#444;margin-top:4px">Office: +91 79681 99999 &nbsp;|&nbsp; Mail: wecare@relitrade.in</div>
+          ${orgHeaderHtml || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
         </td>
       </tr>
     </table>
@@ -289,13 +369,14 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       </tbody>
     </table>
 
-    <div class="note">
-      Note: This is a computer generated salary slip hence no signature required subject to Ahmedabad jurisdiction.
-    </div>
+    <div class="note">${footerNote}</div>
+    <div style="text-align:center;font-size:7.5px;color:#aaa;margin-top:4px">HRMS by Lumos Logic</div>
   </div>`;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(4,6,14,.7)' }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4,6,14,.7)' }}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b border-[#e7eefe] flex-shrink-0">
           <div>

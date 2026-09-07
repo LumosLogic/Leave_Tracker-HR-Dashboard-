@@ -1,16 +1,17 @@
 /**
  * Payslip.jsx — Common org-independent payslip component.
  *
- * Layout based on the Relitrade payslip format (the reference design).
  * All org-specific data is fetched dynamically:
- *   • Org name       ← GET /org/settings           (organizations.name)
- *   • Address / CIN  ← GET /payroll/settings        (payslip_company_*)
- *   • Footer note    ← GET /payroll/settings        (payslip_footer_note)
- *   • System logo    ← /LogoWithoutName.svg          (public asset, not org logo)
+ *   • Org name / logo   ← GET /org/settings           (organizations.name, logo_url)
+ *   • Address / CIN     ← GET /payroll/settings        (payslip_company_*)
+ *   • Footer note       ← GET /payroll/settings        (payslip_footer_note)
+ *   • Structured header ← GET /payroll/settings        (payslip_company_fullname,
+ *                                                        payslip_registered_address,
+ *                                                        payslip_corporate_address,
+ *                                                        payslip_contact_details)
  *
  * Payslip values come exclusively from the stored payslips snapshot — no
- * salary recalculation happens here. The single source of truth is:
- *   Payroll run → payslips snapshot → this component renders it.
+ * salary recalculation happens here.
  */
 import React, { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -45,6 +46,50 @@ function toWords(amount) {
   return words + ' Only';
 }
 
+// ── Build right-side company header HTML ─────────────────────────────────────
+// Uses structured fields (Registered/Corporate office, contact) when configured;
+// falls back gracefully to generic address block for orgs that haven't set them.
+function buildOrgHeaderHtml(ps, orgName) {
+  const displayName     = ps?.payslip_company_fullname  || orgName || '';
+  const cin             = ps?.payslip_company_cin        || '';
+  const registeredAddr  = ps?.payslip_registered_address || '';
+  const corporateAddr   = ps?.payslip_corporate_address  || '';
+  const contactDetails  = ps?.payslip_contact_details    || '';
+  const genericAddress  = ps?.payslip_company_address    || '';
+
+  let html = displayName
+    ? `<div style="font-size:12px;font-weight:bold">${displayName}</div>`
+    : '';
+
+  if (cin) {
+    html += `<div style="font-size:9px;color:#444;margin-top:2px">${cin}</div>`;
+  }
+
+  if (registeredAddr || corporateAddr || contactDetails) {
+    if (registeredAddr) {
+      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Registered Office</div>`;
+      registeredAddr.split('\n').forEach(line => {
+        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+      });
+    }
+    if (corporateAddr) {
+      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Corporate Office</div>`;
+      corporateAddr.split('\n').forEach(line => {
+        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+      });
+    }
+    if (contactDetails) {
+      html += `<div style="font-size:8px;color:#444;margin-top:4px">${contactDetails}</div>`;
+    }
+  } else if (genericAddress) {
+    genericAddress.split('\n').forEach(line => {
+      html += `<div style="font-size:9px;color:#444;margin-top:1px">${line.trim()}</div>`;
+    });
+  }
+
+  return html;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Payslip({ payslipId, onClose }) {
   const printRef = useRef(null);
@@ -56,7 +101,6 @@ export default function Payslip({ payslipId, onClose }) {
     enabled:  Boolean(payslipId),
   });
 
-  // Org name + logo from organizations table
   const { data: orgSettings, isFetched: orgFetched } = useQuery({
     queryKey: ['org-settings'],
     queryFn:  () => apiGet('/org/settings'),
@@ -64,34 +108,24 @@ export default function Payslip({ payslipId, onClose }) {
     retry: 1,
   });
 
-  // Payslip branding fields from payroll_settings
   const { data: payrollSettings } = useQuery({
     queryKey: ['payroll-settings'],
     queryFn:  () => apiGet('/payroll/settings'),
     staleTime: 5 * 60 * 1000,
   });
 
-  // Employee statutory info
   const { data: statutory } = useQuery({
     queryKey: ['emp-statutory', slip?.user_id],
     queryFn:  () => apiGet(`/profile/${slip.user_id}/statutory`),
     enabled:  !!slip?.user_id,
   });
 
-  // Employee banking info
   const { data: bankingData } = useQuery({
     queryKey: ['emp-banking', slip?.user_id],
     queryFn:  () => apiGet(`/profile/${slip.user_id}/banking`),
     enabled:  !!slip?.user_id,
   });
   const banking = Array.isArray(bankingData) ? bankingData[0] : bankingData;
-
-  // ── Org-specific details (dynamic, graceful if unconfigured) ──────────────
-  const orgName    = orgSettings?.name || '';
-  const orgAddress = payrollSettings?.payslip_company_address || '';
-  const orgCin     = payrollSettings?.payslip_company_cin || '';
-  const footerNote = payrollSettings?.payslip_footer_note ||
-    'This is a computer generated salary slip and does not require a signature.';
 
   // ── Print handler ─────────────────────────────────────────────────────────
   function handlePrint() {
@@ -115,7 +149,6 @@ export default function Payslip({ payslipId, onClose }) {
       </style></head><body>${content}</body></html>`);
     win.document.close();
     win.focus();
-    // Wait for all images to load before printing so logo isn't blank
     const imgs = win.document.images;
     if (imgs.length === 0) { win.print(); win.close(); return; }
     let loaded = 0;
@@ -163,7 +196,7 @@ export default function Payslip({ payslipId, onClose }) {
       value: num(slip.lop_amount) },
   ].filter(r => r.value > 0);
 
-  const maxRows    = Math.max(earningRows.length, deductionRows.length);
+  const maxRows     = Math.max(earningRows.length, deductionRows.length);
   const grossSalary = num(slip.gross_salary);
   const totalDed    = num(slip.total_deductions);
   const netSalary   = num(slip.net_salary);
@@ -191,26 +224,20 @@ export default function Payslip({ payslipId, onClose }) {
   const paidHoliday  = attSnap.holiday      ?? 0;
   const paidLeave    = attSnap.paidLeave    ?? num(slip.leave_days);
   const lopDays      = num(slip.lop_days);
-  // working_days = all non-weekend days (including holidays). Adding weekoff = full calendar days.
-  // paidHoliday must NOT be added again — it is already counted inside working_days.
+  // working_days = all non-weekend days (holidays included). weekoff = weekend days.
+  // working_days + weekoff = total calendar days. paidHoliday must NOT be added again.
   const totalCalDays = num(slip.working_days) + weekoff;
   const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
-  // Org logo — use uploaded logo if available, else fall back to system logo
+  const orgName    = orgSettings?.name || '';
+  const footerNote = payrollSettings?.payslip_footer_note ||
+    'This is a computer generated salary slip and does not require a signature.';
   const orgLogoUrl = orgSettings?.logo_url
     || (typeof window !== 'undefined' ? `${window.location.origin}/LogoWithoutName.svg` : '/LogoWithoutName.svg');
 
-  // Build right-side org header lines (graceful degradation when fields are empty)
-  const orgHeaderLines = [
-    orgName    ? `<div style="font-size:12px;font-weight:bold">${orgName}</div>` : '',
-    orgCin     ? `<div style="font-size:9px;color:#444;margin-top:2px">${orgCin}</div>` : '',
-    ...(orgAddress
-      ? orgAddress.split('\n').map(line =>
-          `<div style="font-size:9px;color:#444;margin-top:1px">${line}</div>`)
-      : []),
-  ].filter(Boolean).join('');
+  const orgHeaderHtml = buildOrgHeaderHtml(payrollSettings, orgName);
 
-  // ── Print HTML (inline, no React classes — must survive popup window) ─────
+  // ── Print HTML (inline styles — must survive popup window) ───────────────
   const payslipHtml = `
   <div class="payslip">
     <table style="border:none;margin-bottom:12px">
@@ -220,7 +247,7 @@ export default function Payslip({ payslipId, onClose }) {
             style="max-width:160px;max-height:60px;object-fit:contain" />
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
-          ${orgHeaderLines || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
+          ${orgHeaderHtml || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
         </td>
       </tr>
     </table>
@@ -312,17 +339,40 @@ export default function Payslip({ payslipId, onClose }) {
       </tfoot>
     </table>
 
-    <div style="font-size:8.5px;margin-top:6px;color:#444;border-top:1px solid #ddd;padding-top:4px">
-      P+OD: ${(presentFull + presentHalf * 0.5).toFixed(2)}&nbsp;
-      W/Off: ${weekoff.toFixed(2)}&nbsp;
-      WOP: ${weekoff.toFixed(2)}&nbsp;
-      LWP\\LOP: ${lopDays.toFixed(2)}&nbsp;
-      RHP: 0.00&nbsp;
-      HL: ${paidHoliday.toFixed(2)}&nbsp;
-      C/Off: 0.00&nbsp;
-      CL: ${paidLeave.toFixed(2)}&nbsp;
-      PL: 0.00&nbsp; SL: 0.00&nbsp; AL: 0.00&nbsp; EL: 0.00&nbsp; VL: 0.00
-    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:8px;margin-top:6px;border-top:1px solid #ddd">
+      <thead>
+        <tr style="background:#f0f0f0">
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/Off</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">WOP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">RHP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">C/Off</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">PL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">SL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">AL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">EL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+        </tr>
+      </tbody>
+    </table>
 
     <div class="note">${footerNote}</div>
     <div style="text-align:center;font-size:7.5px;color:#aaa;margin-top:4px">HRMS by Lumos Logic</div>
