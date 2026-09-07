@@ -49,41 +49,43 @@ function toWords(amount) {
 // ── Build right-side company header HTML ─────────────────────────────────────
 // Uses structured fields (Registered/Corporate office, contact) when configured;
 // falls back gracefully to generic address block for orgs that haven't set them.
+// Every element uses display:block explicitly — print popup CSS resets can strip
+// default block behaviour from generic element selectors.
 function buildOrgHeaderHtml(ps, orgName) {
-  const displayName     = ps?.payslip_company_fullname  || orgName || '';
-  const cin             = ps?.payslip_company_cin        || '';
-  const registeredAddr  = ps?.payslip_registered_address || '';
-  const corporateAddr   = ps?.payslip_corporate_address  || '';
-  const contactDetails  = ps?.payslip_contact_details    || '';
-  const genericAddress  = ps?.payslip_company_address    || '';
+  const displayName    = ps?.payslip_company_fullname  || orgName || '';
+  const cin            = ps?.payslip_company_cin        || '';
+  const registeredAddr = ps?.payslip_registered_address || '';
+  const corporateAddr  = ps?.payslip_corporate_address  || '';
+  const contactDetails = ps?.payslip_contact_details    || '';
+  const genericAddress = ps?.payslip_company_address    || '';
 
-  let html = displayName
-    ? `<div style="font-size:12px;font-weight:bold">${displayName}</div>`
-    : '';
+  // Block-level elements with explicit display:block so print-CSS resets can't
+  // inadvertently collapse them to inline.
+  const B = (style, text) => `<div style="display:block;${style}">${text}</div>`;
 
-  if (cin) {
-    html += `<div style="font-size:9px;color:#444;margin-top:2px">${cin}</div>`;
-  }
+  let html = displayName ? B('font-size:12px;font-weight:bold;line-height:1.5', displayName) : '';
+
+  if (cin) html += B('font-size:9px;color:#444;line-height:1.4;margin-top:2px', cin);
 
   if (registeredAddr || corporateAddr || contactDetails) {
     if (registeredAddr) {
-      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Registered Office</div>`;
+      html += B('font-size:8px;color:#222;font-weight:bold;line-height:1.5;margin-top:5px', 'Registered Office');
       registeredAddr.split('\n').forEach(line => {
-        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+        html += B('font-size:8px;color:#444;line-height:1.4', line.trim());
       });
     }
     if (corporateAddr) {
-      html += `<div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Corporate Office</div>`;
+      html += B('font-size:8px;color:#222;font-weight:bold;line-height:1.5;margin-top:5px', 'Corporate Office');
       corporateAddr.split('\n').forEach(line => {
-        html += `<div style="font-size:8px;color:#444;margin-top:1px">${line.trim()}</div>`;
+        html += B('font-size:8px;color:#444;line-height:1.4', line.trim());
       });
     }
     if (contactDetails) {
-      html += `<div style="font-size:8px;color:#444;margin-top:4px">${contactDetails}</div>`;
+      html += B('font-size:8px;color:#444;line-height:1.4;margin-top:5px', contactDetails);
     }
   } else if (genericAddress) {
     genericAddress.split('\n').forEach(line => {
-      html += `<div style="font-size:9px;color:#444;margin-top:1px">${line.trim()}</div>`;
+      html += B('font-size:9px;color:#444;line-height:1.4', line.trim());
     });
   }
 
@@ -240,16 +242,14 @@ export default function Payslip({ payslipId, onClose }) {
   // ── Print HTML (inline styles — must survive popup window) ───────────────
   const payslipHtml = `
   <div class="payslip">
-    <table style="border:none;margin-bottom:12px">
+    <table style="border:none;margin-bottom:8px;width:100%;table-layout:fixed">
       <tr>
-        <td style="border:none;width:38%;vertical-align:top">
+        <td style="border:none;padding:0;width:45%;vertical-align:top">
           <img src="${orgLogoUrl}" alt="${orgName}"
             style="max-width:160px;max-height:60px;object-fit:contain" />
         </td>
-        <td style="border:none;width:62%;text-align:right;vertical-align:top">
-          <div style="padding-left:20%;word-break:break-word;overflow-wrap:break-word;">
-            ${orgHeaderHtml || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
-          </div>
+        <td style="border:none;padding:0;width:55%;text-align:right;vertical-align:top;word-break:break-word;overflow-wrap:break-word">
+          ${orgHeaderHtml || `<div style="display:block;font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
         </td>
       </tr>
     </table>
