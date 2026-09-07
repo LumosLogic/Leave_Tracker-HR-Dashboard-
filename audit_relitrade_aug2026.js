@@ -19,6 +19,7 @@ const fs   = require('fs');
 const path = require('path');
 
 // ── Load .env without dotenv ──────────────────────────────────────────────────
+// Reads .env from the project root using only built-in fs — no external deps.
 (function loadEnv() {
   const envFile = path.join(__dirname, '.env');
   if (!fs.existsSync(envFile)) return;
@@ -30,14 +31,10 @@ const path = require('path');
   });
 })();
 
-// ── Resolve pg — try root node_modules first, then backend's ─────────────────
-let Pool, types;
-try {
-  ({ Pool, types } = require('pg'));
-} catch {
-  const pgPath = path.join(__dirname, 'backend', 'node_modules', 'pg');
-  ({ Pool, types } = require(pgPath));
-}
+// ── Reuse the backend's pool ──────────────────────────────────────────────────
+// require('./backend/src/config/db') resolves 'pg' relative to backend/src/,
+// so it finds backend/node_modules/pg automatically — no install needed.
+const { pool } = require('./backend/src/config/db');
 
 // Preserve DATE columns as 'YYYY-MM-DD' strings (same as db-pg-adapter)
 types.setTypeParser(1082, v => v);
