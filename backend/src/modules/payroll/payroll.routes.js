@@ -1530,6 +1530,44 @@ router.post('/runs/:id/mark-paid', auth, hasPermission('payroll', 'mark_paid'), 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/payroll/runs/:id/send-emails — Manual payslip email dispatch
+router.post('/runs/:id/send-emails', auth, hasPermission('payroll', 'approve'), async (req, res) => {
+  try {
+    const oId   = orgId(req);
+    const runId = parseInt(req.params.id, 10);
+    if (!runId) return res.status(400).json({ error: 'Invalid run ID' });
+
+    const { rows } = await pool.query(
+      `SELECT id, status, month, year FROM payroll_runs WHERE id = $1 AND organization_id = $2`,
+      [runId, oId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payroll run not found' });
+
+    const run = rows[0];
+    if (!['approved', 'locked', 'paid'].includes(run.status)) {
+      return res.status(409).json({
+        error: `Cannot send emails for a run with status '${run.status}'. Run must be approved, locked, or paid.`,
+      });
+    }
+
+    // Publish any payslips still in generated state
+    await pool.query(
+      `UPDATE payslips SET status = 'published'
+         WHERE payroll_run_id = $1 AND organization_id = $2 AND status = 'generated'`,
+      [runId, oId]
+    );
+
+    const result = await sendPayslipsBatch({ organizationId: oId, runId, month: run.month, year: run.year });
+
+    logPayroll({ oId, actorId: req.user.id, actorName: req.user.name,
+      action: 'payslip_emails_sent', entityType: 'payroll_run', entityId: runId,
+      newValues: result, ip: req.ip,
+    });
+
+    res.json({ message: 'Payslip emails dispatched', ...result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE 3.6D — DASHBOARD DATA
 // ═══════════════════════════════════════════════════════════════════════════════

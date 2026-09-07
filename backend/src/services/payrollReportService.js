@@ -83,7 +83,7 @@ async function getSalaryRegister({ organizationId, month, year }) {
   const mStr = month ? padZ(month) : null;
   const { rows } = await pool.query(
     `SELECT
-         u.employee_id,
+         COALESCE(u.employee_id, u.id::text) AS employee_id,
          u.name                   AS employee_name,
          u.department,
          u.position,
@@ -134,7 +134,7 @@ async function getLopReport({ organizationId, month, year }) {
   const mStr = month ? padZ(month) : null;
   const { rows } = await pool.query(
     `SELECT
-         u.employee_id,
+         COALESCE(u.employee_id, u.id::text) AS employee_id,
          u.name            AS employee_name,
          u.department,
          ps.month,

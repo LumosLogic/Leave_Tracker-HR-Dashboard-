@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Lock, Unlock, CheckCircle2, AlertCircle, AlertTriangle,
   Clock, ChevronRight, Users, IndianRupee, ShieldCheck, ThumbsUp,
-  CreditCard, PlusCircle, Trash2, Download,
+  CreditCard, PlusCircle, Trash2, Download, ChevronDown, Mail,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -79,6 +79,51 @@ export default function PayrollRunDetails() {
   });
 
   const [adjOpen, setAdjOpen] = useState(false);
+  const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
+  const bankDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!bankDropdownOpen) return;
+    function handleClick(e) {
+      if (bankDropdownRef.current && !bankDropdownRef.current.contains(e.target)) {
+        setBankDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [bankDropdownOpen]);
+
+  async function downloadBankFile(format) {
+    const token = localStorage.getItem('lt_token');
+    try {
+      const res = await fetch(`/api/payroll/bank-file/${id}?format=${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast(d.error || 'Bank file download failed', 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bank_${format}_run${id}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast('Bank file download failed: ' + e.message, 'error');
+    }
+    setBankDropdownOpen(false);
+  }
+
+  const sendEmailsMut = useMutation({
+    mutationFn: () => apiPost(`/payroll/runs/${id}/send-emails`),
+    onSuccess: d => toast(`Payslips sent: ${d.sent} success, ${d.failed} failed`, d.failed > 0 ? 'warning' : 'success'),
+    onError: e => toast(e.message, 'error'),
+  });
   const [adjForm, setAdjForm] = useState({
     user_id: '', adjustment_category: 'BONUS', amount: '',
     addition_or_deduction: 'addition', remarks: '',
@@ -269,13 +314,43 @@ export default function PayrollRunDetails() {
               <CreditCard size={14} /> Mark Paid
             </button>
           )}
+          {/* Send payslip emails */}
+          {['approved','locked','paid'].includes(run?.status) && isRootAdmin && (
+            <button
+              onClick={() => window.confirm('Send payslip emails to all employees in this run?') && sendEmailsMut.mutate()}
+              disabled={sendEmailsMut.isPending}
+              className="inline-flex items-center gap-2 bg-white border border-[#c7c4d8] text-[#464555] rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#f0f3ff] transition-colors disabled:opacity-50">
+              {sendEmailsMut.isPending
+                ? <span className="w-4 h-4 border-2 border-[#464555]/30 border-t-[#464555] rounded-full animate-spin" />
+                : <Mail size={14} />}
+              Send Payslips
+            </button>
+          )}
           {/* Bank file download */}
           {['locked','approved','paid'].includes(run?.status) && (
-            <a href={`/api/payroll/bank-file/${id}?format=generic`}
-              download
-              className="inline-flex items-center gap-2 bg-white border border-[#c7c4d8] text-[#464555] rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#f0f3ff] transition-colors">
-              <Download size={14} /> Bank File
-            </a>
+            <div ref={bankDropdownRef} className="relative">
+              <button
+                onClick={() => setBankDropdownOpen(o => !o)}
+                className="inline-flex items-center gap-2 bg-white border border-[#c7c4d8] text-[#464555] rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#f0f3ff] transition-colors">
+                <Download size={14} /> Bank File <ChevronDown size={12} />
+              </button>
+              {bankDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-[#e2e0f0] rounded-xl shadow-lg z-20 w-44 overflow-hidden">
+                  {[
+                    ['generic', 'Generic CSV'],
+                    ['hdfc',    'HDFC Format'],
+                    ['icici',   'ICICI Format'],
+                    ['sbi',     'SBI Format'],
+                    ['axis',    'Axis Format'],
+                  ].map(([fmt, label]) => (
+                    <button key={fmt} onClick={() => downloadBankFile(fmt)}
+                      className="w-full text-left px-4 py-2.5 text-sm text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

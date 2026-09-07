@@ -8,6 +8,7 @@ import {
 import { apiGet } from '@/lib/api';
 import { MONTHS, cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 
 const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
 
@@ -46,10 +47,37 @@ function StatusPill({ status }) {
 
 export default function ComplianceDashboard() {
   const { user, isRootAdmin } = useAuth();
+  const toast    = useToast();
   const basePath = isRootAdmin ? '/root' : '';
   const now      = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year,  setYear]  = useState(now.getFullYear());
+
+  async function downloadReport(to, label) {
+    const token = localStorage.getItem('lt_token');
+    try {
+      const params = new URLSearchParams({ format: 'csv', month, year });
+      const res = await fetch(`/api${to}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast(d.error || 'Download failed', 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${label.toLowerCase().replace(/[\s/]+/g, '_')}_${month}_${year}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast('Download failed: ' + e.message, 'error');
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['compliance-summary', month, year],
@@ -134,13 +162,12 @@ export default function ComplianceDashboard() {
         </div>
         <div className="p-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
           {REPORT_LINKS.map(r => (
-            <a key={r.label}
-              href={`/api${r.to}?format=csv&month=${month}&year=${year}`}
-              download
+            <button key={r.label}
+              onClick={() => downloadReport(r.to, r.label)}
               className="flex flex-col items-center gap-2 p-3 rounded-lg border border-[#e2e0f0] hover:bg-[#f0f3ff] hover:border-[#3525cd]/30 transition-all text-center">
               <r.icon size={18} className="text-[#3525cd]" />
               <span className="text-xs font-semibold text-[#464555]">{r.label}</span>
-            </a>
+            </button>
           ))}
         </div>
       </div>
