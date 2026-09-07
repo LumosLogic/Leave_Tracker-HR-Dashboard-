@@ -247,7 +247,9 @@ export default function Payslip({ payslipId, onClose }) {
             style="max-width:160px;max-height:60px;object-fit:contain" />
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
-          ${orgHeaderHtml || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
+          <div style="padding-left:20%;word-break:break-word;overflow-wrap:break-word;">
+            ${orgHeaderHtml || `<div style="font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
+          </div>
         </td>
       </tr>
     </table>
