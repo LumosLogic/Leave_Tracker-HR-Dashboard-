@@ -48,7 +48,7 @@ async function fetchRichData(organizationId, userId, payslipId) {
       [organizationId]
     ),
     pool.query(
-      'SELECT pan_number, uan_no, esi_no, pf_no FROM users WHERE id = $1',
+      'SELECT pan_number, uan_no, esi_no, pf_no, position FROM users WHERE id = $1',
       [userId]
     ),
     pool.query(
@@ -56,7 +56,7 @@ async function fetchRichData(organizationId, userId, payslipId) {
       [userId]
     ),
     payslipId
-      ? pool.query('SELECT position, attendance_snapshot FROM payslips WHERE id = $1', [payslipId])
+      ? pool.query('SELECT attendance_snapshot FROM payslips WHERE id = $1', [payslipId])
       : Promise.resolve({ rows: [] }),
   ]);
 
@@ -90,7 +90,7 @@ async function fetchRichData(organizationId, userId, payslipId) {
     pfNo:     statRes.rows[0]?.pf_no      || '',
     bankName: bankRes.rows[0]?.bank_name  || '',
     maskedAcc,
-    position: slipRes.rows[0]?.position   || '',
+    position: statRes.rows[0]?.position   || '',
     attSnap,
   };
 }
@@ -474,4 +474,4 @@ async function sendPayslipsBatch({ organizationId, runId, month, year }) {
   return { sent, failed, skipped };
 }
 
-module.exports = { sendPayslipsBatch, generatePayslipPDF };
+module.exports = { sendPayslipsBatch, generatePayslipPDF, payslipEmailHtml };
