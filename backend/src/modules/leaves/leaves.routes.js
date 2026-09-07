@@ -667,6 +667,36 @@ router.get('/', auth, async (req, res) => {
       } catch (_) { /* workflow tables not yet migrated — skip */ }
     }
 
+    // Attach approval trail (completed approvals) to each leave in one batch query.
+    // This lets the frontend show "HR - Jane has approved" without extra API calls.
+    try {
+      const leaveIds = result.map(l => l.id);
+      if (leaveIds.length > 0) {
+        const { rows: logRows } = await pool.query(
+          `SELECT leave_id, actor_name, action, level, created_at
+             FROM leave_approval_log
+            WHERE org_id = $1
+              AND leave_id = ANY($2)
+              AND action LIKE '%approved%'
+            ORDER BY leave_id, created_at ASC`,
+          [Number(orgId(req)), leaveIds]
+        );
+        const trailMap = {};
+        for (const row of logRows) {
+          if (!trailMap[row.leave_id]) trailMap[row.leave_id] = [];
+          trailMap[row.leave_id].push({
+            actor_name: row.actor_name,
+            action:     row.action,
+            level:      row.level,
+            created_at: row.created_at,
+          });
+        }
+        for (const l of result) {
+          l.approval_trail = trailMap[l.id] || [];
+        }
+      }
+    } catch (_) { /* leave_approval_log table may not exist — skip */ }
+
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

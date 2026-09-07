@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw, Users, ChevronUp, ChevronDown } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -77,6 +77,45 @@ export default function Leaves() {
       return all.filter(e => e.role === 'employee');
     },
   });
+
+  // ── Feature: Leave balances for card display ─────────────────────────────────
+  const uniqueUserIds = useMemo(() => [...new Set(leaves.map(l => l.user_id))], [leaves]);
+  const curYear = new Date().getFullYear();
+
+  // Admin: batch-fetch balances for every employee visible in the list
+  const { data: adminBalances = {} } = useQuery({
+    queryKey: ['leaves-page-balances', uniqueUserIds.join(','), curYear],
+    queryFn: async () => {
+      const map = {};
+      await Promise.all(uniqueUserIds.map(async uid => {
+        try {
+          const d = await apiGet('/leaves/balance', { userId: uid, year: curYear });
+          map[uid] = {};
+          for (const b of (d?.balances || [])) map[uid][b.leave_type] = b;
+        } catch { map[uid] = {}; }
+      }));
+      return map;
+    },
+    enabled: isAdmin && uniqueUserIds.length > 0,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Non-admin: fetch own balance
+  const { data: myBalanceRaw } = useQuery({
+    queryKey: ['my-leave-balance', user?.id, curYear],
+    queryFn: () => apiGet('/leaves/balance', { year: curYear }),
+    enabled: !isAdmin && !!user?.id,
+    staleTime: 2 * 60 * 1000,
+  });
+  const myBalanceByType = useMemo(() => {
+    const m = {};
+    for (const b of (myBalanceRaw?.balances || [])) m[b.leave_type] = b;
+    return m;
+  }, [myBalanceRaw]);
+
+  const balanceMap = isAdmin
+    ? adminBalances
+    : (user?.id ? { [user.id]: myBalanceByType } : {});
 
   const myLeaves      = leaves.filter(l => l.user_id === user?.id);
   const allLeaves     = isAdmin ? leaves : myLeaves;
@@ -234,6 +273,7 @@ export default function Leaves() {
               policies={policies}
               filterStart={filterStart}
               filterEnd={filterEnd}
+              balanceMap={adminBalances}
             />
           ) : (
             <div className="flex flex-col gap-3">
@@ -241,6 +281,7 @@ export default function Leaves() {
                 ? <div className="empty-state"><Inbox size={36} className="mx-auto mb-2 opacity-30" /><p>{pendingOnly ? 'No pending approvals' : 'No leave records'}</p></div>
                 : displayList.map(l => (
                     <LeaveCard key={l.id} leave={l} isAdmin={isAdmin} user={user}
+                      balanceMap={balanceMap}
                       onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
                       onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
@@ -349,9 +390,12 @@ const STATUS_CARD = {
   withdrawn:        { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
 };
 
-function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete }) {
+function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete, balanceMap }) {
   const sc = STATUS_CARD[l.status] || {};
   const isRootAdmin = user?.role === 'root_admin';
+  const balance = (l.leave_type !== 'wfh' && l.leave_time !== 'wfh')
+    ? balanceMap?.[l.user_id]?.[l.leave_type]
+    : null;
 
   // For new-workflow leaves: can the current user approve at this stage?
   const canApproveNow = (() => {
@@ -392,6 +436,32 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
 
         {l.reason && <div className="text-xs text-[#777587] italic mt-0.5">"{l.reason}"</div>}
         {l.approver_name && <div className="text-xs text-[#777587] mt-0.5">By: {l.approver_name}</div>}
+
+        {/* Balance pill — shows remaining quota for this leave type */}
+        {balance && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-[0.65rem] text-[#9ca3af]">Balance:</span>
+            <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full border ${
+              balance.remaining <= 0 ? 'bg-rose-50 text-rose-600 border-rose-200' :
+              balance.remaining <= 2 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              {balance.remaining} / {balance.allocated} days remaining
+            </span>
+          </div>
+        )}
+
+        {/* Workflow approval trail — who has approved so far */}
+        {l.approval_trail?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {l.approval_trail.map((t, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[0.65rem] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                <CheckCircle2 size={9} /> {t.actor_name} approved
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2 mt-2.5 flex-wrap">
           {/* Old-flow pending — both HR Admin and Root Admin can approve */}
           {isAdmin && l.status === 'pending' && (
@@ -938,10 +1008,33 @@ function EditLeaveModal({ leave: l, isAdmin, onClose, onSuccess }) {
 }
 
 // ── Employee Leave Summary Table ───────────────────────────────────────────────
-function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd }) {
+const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd, balanceMap }) {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
+
+  const { data: orgSettings } = useQuery({
+    queryKey: ['org-settings'],
+    queryFn: () => apiGet('/org/settings'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { cyclePeriod, cycleYear } = useMemo(() => {
+    const startMonth = orgSettings?.leave_year_start_month || 1;
+    const now = new Date();
+    const cm = now.getMonth() + 1;
+    const cy = now.getFullYear();
+    const baseYear = (startMonth > 1 && cm < startMonth) ? cy - 1 : cy;
+    let endMonth, endYear;
+    if (startMonth === 1) { endMonth = 12; endYear = baseYear; }
+    else { endMonth = startMonth - 1; endYear = baseYear + 1; }
+    return {
+      cycleYear: baseYear,
+      cyclePeriod: `${MO[startMonth - 1]} 1, ${baseYear} — ${MO[endMonth - 1]} ${new Date(endYear, endMonth, 0).getDate()}, ${endYear}`,
+    };
+  }, [orgSettings]);
 
   const activePolicies = policies.filter(p => p.active && p.leave_type !== 'wfh');
 
@@ -962,9 +1055,15 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
     activePolicies.forEach(p => {
       byType[p.leave_type] = days(approved.filter(l => l.leave_type === p.leave_type));
     });
+    // Remaining balance per leave type from balanceMap (already fetched by parent)
+    const balByType = {};
+    activePolicies.forEach(p => {
+      balByType[p.leave_type] = balanceMap?.[emp.id]?.[p.leave_type] || null;
+    });
     return {
       id: emp.id, name: emp.name, avatar_color: emp.avatar_color,
-      byType,
+      joiningDate: emp.joining_date,
+      byType, balByType,
       totalApproved: days(approved),
       totalWfh: days(wfhRecs),
       totalPending: days(pending),
@@ -1002,19 +1101,28 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-3">
-        <input
-          type="text"
-          className="form-control w-52 py-1.5 px-3 text-xs"
-          placeholder="Search employee…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <span className="text-xs text-[#777587]">{sorted.length} employee{sorted.length !== 1 ? 's' : ''}</span>
-        {(filterStart || filterEnd) && (
-          <span className="text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] px-2.5 py-1 rounded-full border border-[#c7c4d8]">
-            Filtered by date range
-          </span>
+      {/* Leave cycle period banner */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            className="form-control w-52 py-1.5 px-3 text-xs"
+            placeholder="Search employee…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <span className="text-xs text-[#777587]">{sorted.length} employee{sorted.length !== 1 ? 's' : ''}</span>
+          {(filterStart || filterEnd) && (
+            <span className="text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] px-2.5 py-1 rounded-full border border-[#c7c4d8]">
+              Filtered by date range
+            </span>
+          )}
+        </div>
+        {cyclePeriod && (
+          <div className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-[#464555] bg-[#f8f9ff] border border-[#e7eefe] rounded-lg px-3 py-1.5">
+            <Calendar size={12} className="text-[#3525cd]" />
+            Leave Year: <span className="text-[#3525cd] font-black">{cyclePeriod}</span>
+          </div>
         )}
       </div>
 
@@ -1059,16 +1167,33 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
                 <td className="py-3 px-4 sticky left-0 bg-white hover:bg-[#f8f9ff]">
                   <div className="flex items-center gap-2">
                     <Avatar name={emp.name} color={emp.avatar_color} size={28} />
-                    <span className="font-semibold text-[#151c27] whitespace-nowrap">{emp.name}</span>
+                    <div>
+                      <span className="font-semibold text-[#151c27] whitespace-nowrap">{emp.name}</span>
+                      {emp.joiningDate && (
+                        <p className="text-[0.6rem] text-[#9ca3af]">Joined {fmtDate(emp.joiningDate)}</p>
+                      )}
+                    </div>
                   </div>
                 </td>
-                {activePolicies.map(p => (
-                  <td key={p.leave_type} className="text-center py-3 px-3">
-                    {emp.byType[p.leave_type] > 0
-                      ? <span className="font-bold text-[#151c27]">{emp.byType[p.leave_type]}</span>
-                      : <span className="text-[#d1d5db]">—</span>}
-                  </td>
-                ))}
+                {activePolicies.map(p => {
+                  const used = emp.byType[p.leave_type] || 0;
+                  const bal  = emp.balByType[p.leave_type];
+                  const rem  = bal ? bal.remaining : null;
+                  return (
+                    <td key={p.leave_type} className="text-center py-3 px-3">
+                      <div className="flex flex-col items-center gap-0.5">
+                        {used > 0
+                          ? <span className="font-bold text-[#151c27]">{used} used</span>
+                          : <span className="text-[#d1d5db] text-[0.65rem]">0 used</span>}
+                        {rem !== null && (
+                          <span className={`text-[0.6rem] font-semibold ${rem <= 0 ? 'text-rose-500' : rem <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {rem} left
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
                 <td className="text-center py-3 px-3">
                   {emp.totalWfh > 0
                     ? <span className="font-bold text-blue-600">{emp.totalWfh}</span>
