@@ -677,9 +677,9 @@ router.get('/', auth, async (req, res) => {
              FROM leave_approval_log
             WHERE org_id = $1
               AND leave_id = ANY($2)
-              AND action LIKE '%approved%'
+              AND (action LIKE '%approved%' OR action IN ('dept_approved','root_approved'))
             ORDER BY leave_id, created_at ASC`,
-          [Number(orgId(req)), leaveIds]
+          [Number(orgId(req)), leaveIds.map(Number)]
         );
         const trailMap = {};
         for (const row of logRows) {

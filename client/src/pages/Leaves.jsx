@@ -393,9 +393,12 @@ const STATUS_CARD = {
 function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete, balanceMap }) {
   const sc = STATUS_CARD[l.status] || {};
   const isRootAdmin = user?.role === 'root_admin';
-  const balance = (l.leave_type !== 'wfh' && l.leave_time !== 'wfh')
-    ? balanceMap?.[l.user_id]?.[l.leave_type]
-    : null;
+
+  // All non-WFH leave type balances for this employee — shown as chips on every card
+  const balanceChips = Object.entries(balanceMap?.[l.user_id] || {})
+    .filter(([type, b]) => b && b.allocated > 0 && type !== 'wfh')
+    .map(([type, b]) => ({ type, remaining: b.remaining, allocated: b.allocated }))
+    .sort((a, b) => a.type.localeCompare(b.type));
 
   // For new-workflow leaves: can the current user approve at this stage?
   const canApproveNow = (() => {
@@ -437,17 +440,19 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
         {l.reason && <div className="text-xs text-[#777587] italic mt-0.5">"{l.reason}"</div>}
         {l.approver_name && <div className="text-xs text-[#777587] mt-0.5">By: {l.approver_name}</div>}
 
-        {/* Balance pill — shows remaining quota for this leave type */}
-        {balance && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[0.65rem] text-[#9ca3af]">Balance:</span>
-            <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full border ${
-              balance.remaining <= 0 ? 'bg-rose-50 text-rose-600 border-rose-200' :
-              balance.remaining <= 2 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-              'bg-emerald-50 text-emerald-700 border-emerald-200'
-            }`}>
-              {balance.remaining} / {balance.allocated} days remaining
-            </span>
+        {/* All leave balance chips */}
+        {balanceChips.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className="text-[0.65rem] text-[#9ca3af] shrink-0">Balance:</span>
+            {balanceChips.map(b => (
+              <span key={b.type} className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full border capitalize ${
+                b.remaining <= 0 ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                b.remaining <= 2 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}>
+                {b.type === 'comp_off' ? 'Comp Off' : b.type.charAt(0).toUpperCase() + b.type.slice(1)}: {b.remaining}/{b.allocated}
+              </span>
+            ))}
           </div>
         )}
 
@@ -1021,7 +1026,7 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
     staleTime: 5 * 60 * 1000,
   });
 
-  const { cyclePeriod, cycleYear } = useMemo(() => {
+  const { cyclePeriod } = useMemo(() => {
     const startMonth = orgSettings?.leave_year_start_month || 1;
     const now = new Date();
     const cm = now.getMonth() + 1;
@@ -1031,10 +1036,26 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
     if (startMonth === 1) { endMonth = 12; endYear = baseYear; }
     else { endMonth = startMonth - 1; endYear = baseYear + 1; }
     return {
-      cycleYear: baseYear,
       cyclePeriod: `${MO[startMonth - 1]} 1, ${baseYear} — ${MO[endMonth - 1]} ${new Date(endYear, endMonth, 0).getDate()}, ${endYear}`,
     };
   }, [orgSettings]);
+
+  // Per-employee anniversary-based leave cycle (joining date → next anniversary - 1 day)
+  function getAnniversaryCycle(joiningDateStr) {
+    if (!joiningDateStr) return null;
+    const jd   = new Date(joiningDateStr + 'T12:00:00Z');
+    const today = new Date();
+    const jMonth = jd.getUTCMonth(); // 0-indexed
+    const jDay   = jd.getUTCDate();
+    // Determine which anniversary year the employee is currently in
+    let startYear = today.getFullYear();
+    const thisAnniv = new Date(Date.UTC(startYear, jMonth, jDay));
+    if (today < thisAnniv) startYear--; // cycle started last year
+    const cycleStart = new Date(Date.UTC(startYear, jMonth, jDay));
+    const cycleEnd   = new Date(Date.UTC(startYear + 1, jMonth, jDay - 1));
+    const fmt = d => `${MO[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+    return `${fmt(cycleStart)} — ${fmt(cycleEnd)}`;
+  }
 
   const activePolicies = policies.filter(p => p.active && p.leave_type !== 'wfh');
 
@@ -1171,6 +1192,11 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
                       <span className="font-semibold text-[#151c27] whitespace-nowrap">{emp.name}</span>
                       {emp.joiningDate && (
                         <p className="text-[0.6rem] text-[#9ca3af]">Joined {fmtDate(emp.joiningDate)}</p>
+                      )}
+                      {emp.joiningDate && getAnniversaryCycle(emp.joiningDate) && (
+                        <p className="text-[0.58rem] text-[#3525cd] font-semibold whitespace-nowrap">
+                          {getAnniversaryCycle(emp.joiningDate)}
+                        </p>
                       )}
                     </div>
                   </div>

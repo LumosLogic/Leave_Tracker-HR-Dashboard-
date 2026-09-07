@@ -243,7 +243,7 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
           <img src="${orgLogoUrl}" alt="${orgName}"
             style="max-width:200px;max-height:80px;object-fit:contain" />
         </td>
-        <td style="border:none;padding:0;width:55%;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:break-word">
+        <td style="border:none;padding:0;width:55%;text-align:center;vertical-align:top;word-break:break-word;overflow-wrap:break-word">
           ${orgHeaderHtml || `<div style="display:block;font-size:12px;font-weight:bold">${orgName || 'Organization'}</div>`}
         </td>
       </tr>

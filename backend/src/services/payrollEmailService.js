@@ -192,20 +192,20 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     let ry = 30;
 
     // Company name and all address lines start at AX (≈45% from left = page midpoint)
-    // and are LEFT-ALIGNED, matching the reference layout.
+    // and are CENTER-ALIGNED within the right half.
     const AX = L + Math.floor(W * 0.45); // x-start: ~45% from left edge
     const AW = R - AX;                    // width: remaining right portion
 
     const headerName = rich.companyFullname || rich.orgName;
     doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
-       .text(headerName, AX, ry, { width: AW, align: 'left' });
+       .text(headerName, AX, ry, { width: AW, align: 'center' });
     // Use doc.y after every text() call — pdfkit sets it to the actual bottom
     // of the last rendered line, so we always advance past wrapped content.
     ry = doc.y + 2;
 
     if (rich.orgCin) {
       doc.font('Helvetica').fontSize(8).fillColor('#444')
-         .text(rich.orgCin, AX, ry, { width: AW, align: 'left' });
+         .text(rich.orgCin, AX, ry, { width: AW, align: 'center' });
       ry = doc.y + 2;
     }
 
@@ -213,30 +213,30 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     if (rich.registeredAddress || rich.corporateAddress || rich.contactDetails) {
       if (rich.registeredAddress) {
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
-           .text('Registered Office', AX, ry, { width: AW, align: 'left' });
+           .text('Registered Office', AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 1;
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.registeredAddress.trim(), AX, ry, { width: AW, align: 'left' });
+           .text(rich.registeredAddress.trim(), AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 3;
       }
       if (rich.corporateAddress) {
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
-           .text('Corporate Office', AX, ry, { width: AW, align: 'left' });
+           .text('Corporate Office', AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 1;
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.corporateAddress.trim(), AX, ry, { width: AW, align: 'left' });
+           .text(rich.corporateAddress.trim(), AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 3;
       }
       if (rich.contactDetails) {
         doc.font('Helvetica').fontSize(7.5).fillColor('#444')
-           .text(rich.contactDetails, AX, ry, { width: AW, align: 'left' });
+           .text(rich.contactDetails, AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 2;
       }
     } else if (rich.orgAddress) {
-      // Fallback: generic address lines, left-aligned from midpoint
+      // Fallback: generic address lines, centered within right half
       rich.orgAddress.split('\n').forEach(line => {
         doc.font('Helvetica').fontSize(8).fillColor('#444')
-           .text(line.trim(), AX, ry, { width: AW, align: 'left' });
+           .text(line.trim(), AX, ry, { width: AW, align: 'center' });
         ry = doc.y + 1;
       });
     }
