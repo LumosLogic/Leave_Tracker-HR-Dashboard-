@@ -187,7 +187,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
 
     // ── Header: logo left (slightly larger), company info starts at page midpoint ─
     if (rich.logoBuffer) {
-      try { doc.image(rich.logoBuffer, L, 30, { fit: [130, 60] }); } catch {}
+      try { doc.image(rich.logoBuffer, L, 30, { fit: [150, 70] }); } catch {}
     }
     let ry = 30;
 
