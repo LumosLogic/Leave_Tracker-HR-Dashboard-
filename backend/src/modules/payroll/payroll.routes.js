@@ -96,6 +96,11 @@ const SETTINGS_DEFAULTS = {
   payslip_company_cin:            null,
   payslip_company_registration:   null,
   payslip_footer_note:            null,
+  // Structured header fields (optional, override address block when set)
+  payslip_company_fullname:       null,
+  payslip_registered_address:     null,
+  payslip_corporate_address:      null,
+  payslip_contact_details:        null,
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);

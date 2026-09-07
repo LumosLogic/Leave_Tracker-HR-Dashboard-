@@ -43,10 +43,17 @@ function getTransport() { return getTransporter(); }
 async function fetchRichData(organizationId, userId, payslipId) {
   const [orgRes, psRes, statRes, bankRes, slipRes] = await Promise.all([
     pool.query('SELECT name, logo_url FROM organizations WHERE id = $1', [organizationId]),
+    // Try full query with new structured address fields; fall back to basic query if migration not yet run
     pool.query(
+      `SELECT payslip_company_address, payslip_company_cin, payslip_footer_note,
+              payslip_company_fullname, payslip_registered_address,
+              payslip_corporate_address, payslip_contact_details
+         FROM payroll_settings WHERE organization_id = $1`,
+      [organizationId]
+    ).catch(() => pool.query(
       'SELECT payslip_company_address, payslip_company_cin, payslip_footer_note FROM payroll_settings WHERE organization_id = $1',
       [organizationId]
-    ),
+    )),
     pool.query(
       'SELECT pan_number, uan_no, esi_no, pf_no, position FROM users WHERE id = $1',
       [userId]
@@ -77,13 +84,18 @@ async function fetchRichData(organizationId, userId, payslipId) {
     } catch { /* logo is optional */ }
   }
 
+  const ps = psRes.rows[0] || {};
   return {
-    orgName:    orgRes.rows[0]?.name || '',
+    orgName:             orgRes.rows[0]?.name || '',
     logoBuffer,
-    orgAddress: psRes.rows[0]?.payslip_company_address || '',
-    orgCin:     psRes.rows[0]?.payslip_company_cin     || '',
-    footerNote: psRes.rows[0]?.payslip_footer_note     ||
+    orgAddress:          ps.payslip_company_address    || '',
+    orgCin:              ps.payslip_company_cin         || '',
+    footerNote:          ps.payslip_footer_note         ||
       'This is a computer generated salary slip and does not require a signature.',
+    companyFullname:     ps.payslip_company_fullname    || '',
+    registeredAddress:   ps.payslip_registered_address  || '',
+    corporateAddress:    ps.payslip_corporate_address   || '',
+    contactDetails:      ps.payslip_contact_details     || '',
     pan:      statRes.rows[0]?.pan_number || '',
     uan:      statRes.rows[0]?.uan_no     || '',
     esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
@@ -135,6 +147,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     { label: 'ESI (Employee)',   value: num(payslip.esi_employee) },
     { label: 'PT',               value: num(payslip.professional_tax) },
     { label: 'TDS',              value: num(payslip.tds) },
+    { label: 'Retention',        value: num(payslip.retention) },
     { label: 'Other Deductions', value: num(payslip.other_deductions) },
     { label: `LOP (${num(payslip.lop_days)} days)`, value: num(payslip.lop_amount) },
   ].filter(r => r.value > 0);
@@ -151,7 +164,9 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
   const paidHoliday  = attSnap.holiday     ?? 0;
   const paidLeave    = attSnap.paidLeave   ?? num(payslip.leave_days || 0);
   const lopDays      = num(payslip.lop_days);
-  const totalCalDays = num(payslip.working_days) + weekoff + paidHoliday;
+  // working_days = all non-weekend days (including holidays); adding weekoff gives total calendar days.
+  // paidHoliday must NOT be added again — it is already counted in working_days.
+  const totalCalDays = num(payslip.working_days) + weekoff;
   const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
   const empId   = employee.employee_id || payslip.user_id || '';
@@ -175,15 +190,48 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
       try { doc.image(rich.logoBuffer, L, 30, { fit: [110, 50] }); } catch {}
     }
     let ry = 30;
+
+    // Company name: prefer fullname from payroll_settings, fallback to org name
+    const headerName = rich.companyFullname || rich.orgName;
     doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
-       .text(rich.orgName, L, ry, { width: W, align: 'right' });
+       .text(headerName, L, ry, { width: W, align: 'right' });
     ry += 15;
+
     if (rich.orgCin) {
       doc.font('Helvetica').fontSize(8).fillColor('#444')
          .text(rich.orgCin, L, ry, { width: W, align: 'right' });
       ry += 10;
     }
-    if (rich.orgAddress) {
+
+    // Structured address fields (registered, corporate, contact) take priority over generic address
+    if (rich.registeredAddress || rich.corporateAddress || rich.contactDetails) {
+      if (rich.registeredAddress) {
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
+           .text('Registered Office', L, ry, { width: W, align: 'right' });
+        ry += 9;
+        rich.registeredAddress.split('\n').forEach(line => {
+          doc.font('Helvetica').fontSize(7.5).fillColor('#444')
+             .text(line.trim(), L, ry, { width: W, align: 'right' });
+          ry += 9;
+        });
+      }
+      if (rich.corporateAddress) {
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#222')
+           .text('Corporate Office', L, ry, { width: W, align: 'right' });
+        ry += 9;
+        rich.corporateAddress.split('\n').forEach(line => {
+          doc.font('Helvetica').fontSize(7.5).fillColor('#444')
+             .text(line.trim(), L, ry, { width: W, align: 'right' });
+          ry += 9;
+        });
+      }
+      if (rich.contactDetails) {
+        doc.font('Helvetica').fontSize(7.5).fillColor('#444')
+           .text(rich.contactDetails, L, ry, { width: W, align: 'right' });
+        ry += 9;
+      }
+    } else if (rich.orgAddress) {
+      // Fallback: generic address block
       rich.orgAddress.split('\n').forEach(line => {
         doc.font('Helvetica').fontSize(8).fillColor('#444')
            .text(line.trim(), L, ry, { width: W, align: 'right' });
@@ -287,14 +335,45 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     cellText(fmtAmt(netSalary), 5, y, nH, 'right', true);
     y += nH + 6;
 
-    // ── Attendance row ────────────────────────────────────────────────────
-    const attText =
-      `P+OD: ${(presentFull + presentHalf * 0.5).toFixed(2)}  ` +
-      `W/Off: ${weekoff.toFixed(2)}  WOP: ${weekoff.toFixed(2)}  ` +
-      `LWP\\LOP: ${lopDays.toFixed(2)}  RHP: 0.00  HL: ${paidHoliday.toFixed(2)}  ` +
-      `C/Off: 0.00  CL: ${paidLeave.toFixed(2)}  PL: 0.00  SL: 0.00  AL: 0.00  EL: 0.00  VL: 0.00`;
-    doc.font('Helvetica').fontSize(7.5).fillColor('#444').text(attText, L, y, { width: W });
-    y += 14;
+    // ── Attendance summary — columnar table ───────────────────────────────
+    const attCols = [
+      { label: 'P+OD',     value: (presentFull + presentHalf * 0.5).toFixed(2) },
+      { label: 'W/Off',    value: weekoff.toFixed(2) },
+      { label: 'WOP',      value: weekoff.toFixed(2) },
+      { label: 'LWP/LOP',  value: lopDays.toFixed(2) },
+      { label: 'HL',       value: paidHoliday.toFixed(2) },
+      { label: 'CL',       value: paidLeave.toFixed(2) },
+      { label: 'RHP',      value: '0.00' },
+      { label: 'C/Off',    value: '0.00' },
+      { label: 'PL',       value: '0.00' },
+      { label: 'SL',       value: '0.00' },
+      { label: 'AL',       value: '0.00' },
+      { label: 'EL',       value: '0.00' },
+    ];
+    const attColW = Math.floor(W / attCols.length);
+    const attHdr  = 12;
+    const attRow  = 12;
+
+    // Header row (label)
+    doc.rect(L, y, W, attHdr).fillColor('#f0f0f0').fill();
+    doc.rect(L, y, W, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
+    attCols.forEach((col, i) => {
+      const cx = L + i * attColW;
+      if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attHdr).strokeColor('#aaa').lineWidth(0.3).stroke();
+      doc.font('Helvetica-Bold').fontSize(7).fillColor('#000')
+         .text(col.label, cx + 1, y + (attHdr - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
+    });
+    y += attHdr;
+
+    // Value row
+    doc.rect(L, y, W, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
+    attCols.forEach((col, i) => {
+      const cx = L + i * attColW;
+      if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attRow).strokeColor('#aaa').lineWidth(0.3).stroke();
+      doc.font('Helvetica').fontSize(7.5).fillColor('#000')
+         .text(col.value, cx + 1, y + (attRow - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
+    });
+    y += attRow + 4;
 
     // ── Footer ────────────────────────────────────────────────────────────
     doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor('#ddd').stroke();
@@ -416,7 +495,7 @@ async function sendPayslipsBatch({ organizationId, runId, month, year }) {
             ps.basic, ps.hra, ps.da, ps.transport_allowance, ps.medical_allowance,
             ps.special_allowance, ps.other_allowances,
             ps.pf_employee, ps.esi_employee, ps.professional_tax, ps.tds,
-            ps.other_deductions, ps.lop_days, ps.lop_amount,
+            ps.retention, ps.other_deductions, ps.lop_days, ps.lop_amount,
             ps.working_days, ps.present_days, ps.absent_days, ps.leave_days,
             ps.month, ps.year
        FROM payroll_run_employees pre

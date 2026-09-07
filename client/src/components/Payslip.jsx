@@ -191,7 +191,9 @@ export default function Payslip({ payslipId, onClose }) {
   const paidHoliday  = attSnap.holiday      ?? 0;
   const paidLeave    = attSnap.paidLeave    ?? num(slip.leave_days);
   const lopDays      = num(slip.lop_days);
-  const totalCalDays = num(slip.working_days) + weekoff + paidHoliday;
+  // working_days = all non-weekend days (including holidays). Adding weekoff = full calendar days.
+  // paidHoliday must NOT be added again — it is already counted inside working_days.
+  const totalCalDays = num(slip.working_days) + weekoff;
   const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
   // Org logo — use uploaded logo if available, else fall back to system logo

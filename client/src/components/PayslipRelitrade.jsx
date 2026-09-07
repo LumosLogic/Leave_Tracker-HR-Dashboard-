@@ -138,7 +138,9 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
   const paidHoliday = attSnap.holiday      ?? 0;
   const paidLeave   = attSnap.paidLeave    ?? num(slip.leave_days);
   const lopDays     = num(slip.lop_days);
-  const totalCalDays = num(slip.working_days) + weekoff + paidHoliday;
+  // working_days = all non-weekend days (including holidays). Adding weekoff gives full calendar total.
+  // paidHoliday must NOT be added again — it is already counted inside working_days.
+  const totalCalDays = num(slip.working_days) + weekoff;
   const presentStr  = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
   // Build inline HTML for print (avoids React-class issues in print window)
@@ -153,10 +155,14 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
           }
         </td>
         <td style="border:none;width:62%;text-align:right;vertical-align:top">
-          <div style="font-size:12px;font-weight:bold">Relitrade Stock Broking Private Limited</div>
-          <div style="font-size:9px;color:#444;margin-top:2px">CIN No.U67120GJ2012PTC116832</div>
-          <div style="font-size:9px;color:#444;margin-top:1px">Relitrade House, 2nd Floor, O Block, Mondeal Retail Park Nr. Rajpath Club, S G Highway</div>
-          <div style="font-size:9px;color:#444">Ahmedabad</div>
+          <div style="font-size:12px;font-weight:bold">Relitrade Stock Broking Pvt. Ltd.</div>
+          <div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Registered Office</div>
+          <div style="font-size:8px;color:#444;margin-top:1px">Office No. 206 &amp; 207, Dalal Street Commercial Co-Operative Society Limited,</div>
+          <div style="font-size:8px;color:#444">Block 53, Zone 5, Road 5E, Gift City, Gandhinagar, Gujarat, India, 382050</div>
+          <div style="font-size:8px;color:#222;font-weight:bold;margin-top:4px">Corporate Office</div>
+          <div style="font-size:8px;color:#444;margin-top:1px">Relitrade House, 2nd Floor, O Block, Mondeal Retail Park,</div>
+          <div style="font-size:8px;color:#444">Nr. Rajpath Club, S. G. Highway, Ahmedabad, Gujarat – 380059.</div>
+          <div style="font-size:8px;color:#444;margin-top:4px">Office: +91 79681 99999 &nbsp;|&nbsp; Mail: wecare@relitrade.in</div>
         </td>
       </tr>
     </table>
@@ -248,17 +254,40 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       </tfoot>
     </table>
 
-    <div style="font-size:8.5px;margin-top:6px;color:#444;border-top:1px solid #ddd;padding-top:4px">
-      P+OD: ${(presentFull + presentHalf * 0.5).toFixed(2)}&nbsp;
-      W/Off: ${weekoff.toFixed(2)}&nbsp;
-      WOP: ${weekoff.toFixed(2)}&nbsp;
-      LWP\\LOP: ${lopDays.toFixed(2)}&nbsp;
-      RHP: 0.00&nbsp;
-      HL: ${paidHoliday.toFixed(2)}&nbsp;
-      C/Off: 0.00&nbsp;
-      CL: ${paidLeave.toFixed(2)}&nbsp;
-      PL: 0.00&nbsp; SL: 0.00&nbsp; AL: 0.00&nbsp; EL: 0.00&nbsp; VL: 0.00
-    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:8px;margin-top:6px;border-top:1px solid #ddd">
+      <thead>
+        <tr style="background:#f0f0f0">
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/Off</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">WOP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">RHP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">C/Off</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">PL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">SL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">AL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">EL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
+        </tr>
+      </tbody>
+    </table>
 
     <div class="note">
       Note: This is a computer generated salary slip hence no signature required subject to Ahmedabad jurisdiction.

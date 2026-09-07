@@ -1201,6 +1201,13 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     citizenship:          employee.citizenship          || '',
     height:               employee.height               || '',
     weight:               employee.weight               || '',
+    // Address (loaded async from profile API — field names match DB columns)
+    current_address_line1: '', current_address_line2: '',
+    current_city: '', current_state: '', current_country: '', current_postal_code: '',
+    permanent_address: '', permanent_city: '', permanent_state: '',
+    permanent_country: '', permanent_postal_code: '',
+    // Health (loaded async from profile API)
+    allergies: '', medical_conditions: '', disabilities: '', emergency_medical_notes: '',
     // Probation
     probation_applicable: employee.probation_applicable || false,
     probation_months:     employee.probation_months     || 3,
@@ -1216,6 +1223,13 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     // Personal profile fields defaults
     gender: '', blood_group: '', marital_status: '', nationality: '',
     religion: '', citizenship: '', height: '', weight: '',
+    // Address defaults
+    current_address_line1: '', current_address_line2: '',
+    current_city: '', current_state: '', current_country: '', current_postal_code: '',
+    permanent_address: '', permanent_city: '', permanent_state: '',
+    permanent_country: '', permanent_postal_code: '',
+    // Health defaults
+    allergies: '', medical_conditions: '', disabilities: '', emergency_medical_notes: '',
     // Probation defaults
     probation_applicable: false,
     probation_months: 3,
@@ -1239,6 +1253,52 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     queryFn:  () => apiGet('/documents', { userId: employee?.id }),
     enabled:  isEdit && tab === 'documents' && !!employee?.id,
   });
+
+  // Fetch profile/personal (address) and profile/health for edit mode
+  const { data: profilePersonal = {} } = useQuery({
+    queryKey: ['emp-profile-personal-modal', employee?.id],
+    queryFn:  () => apiGet(`/profile/${employee.id}/personal`),
+    enabled:  isEdit && !!employee?.id,
+  });
+  const { data: profileHealth = {} } = useQuery({
+    queryKey: ['emp-profile-health-modal', employee?.id],
+    queryFn:  () => apiGet(`/profile/${employee.id}/health`),
+    enabled:  isEdit && !!employee?.id,
+  });
+
+  // One-time population of address fields from profile data
+  const addrInited = useRef(false);
+  useEffect(() => {
+    if (!isEdit || addrInited.current || Object.keys(profilePersonal).length === 0) return;
+    addrInited.current = true;
+    setForm(f => ({
+      ...f,
+      current_address_line1: profilePersonal.current_address_line1 || '',
+      current_address_line2: profilePersonal.current_address_line2 || '',
+      current_city:          profilePersonal.current_city          || '',
+      current_state:         profilePersonal.current_state         || '',
+      current_country:       profilePersonal.current_country       || '',
+      current_postal_code:   profilePersonal.current_postal_code   || '',
+      permanent_address:     profilePersonal.permanent_address     || '',
+      permanent_city:        profilePersonal.permanent_city        || '',
+      permanent_state:       profilePersonal.permanent_state       || '',
+      permanent_country:     profilePersonal.permanent_country     || '',
+      permanent_postal_code: profilePersonal.permanent_postal_code || '',
+    }));
+  }, [profilePersonal]);
+
+  const healthInited = useRef(false);
+  useEffect(() => {
+    if (!isEdit || healthInited.current || Object.keys(profileHealth).length === 0) return;
+    healthInited.current = true;
+    setForm(f => ({
+      ...f,
+      allergies:               profileHealth.allergies               || '',
+      medical_conditions:      profileHealth.medical_conditions      || '',
+      disabilities:            profileHealth.disabilities            || '',
+      emergency_medical_notes: profileHealth.emergency_medical_notes || '',
+    }));
+  }, [profileHealth]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -1264,7 +1324,34 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       if (isEdit) {
         const body = { ...form };
         if (!body.password) delete body.password;
-        return apiPut(`/employees/${employee.id}`, body);
+        const [result] = await Promise.all([
+          apiPut(`/employees/${employee.id}`, body),
+          apiPut(`/profile/${employee.id}/personal`, {
+            current_address_line1: form.current_address_line1,
+            current_address_line2: form.current_address_line2,
+            current_city:          form.current_city,
+            current_state:         form.current_state,
+            current_country:       form.current_country,
+            current_postal_code:   form.current_postal_code,
+            permanent_address:     form.permanent_address,
+            permanent_city:        form.permanent_city,
+            permanent_state:       form.permanent_state,
+            permanent_country:     form.permanent_country,
+            permanent_postal_code: form.permanent_postal_code,
+          }).catch(() => {}),
+          // Health upsert always writes all columns — include blood_group/height/weight
+          // from the main form so they are not wiped to null.
+          apiPut(`/profile/${employee.id}/health`, {
+            blood_group:             form.blood_group,
+            height:                  form.height,
+            weight:                  form.weight,
+            allergies:               form.allergies,
+            medical_conditions:      form.medical_conditions,
+            disabilities:            form.disabilities,
+            emergency_medical_notes: form.emergency_medical_notes,
+          }).catch(() => {}),
+        ]);
+        return result;
       }
       return apiPost('/employees', form);
     },
@@ -1274,8 +1361,12 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       // Invalidate profile queries so EmployeeProfileV2 reflects changes immediately
       const empId = data?.id || employee?.id;
       if (empId) {
-        qc.invalidateQueries({ queryKey: ['epv2-professional', empId] });
-        qc.invalidateQueries({ queryKey: ['epv2-overview',    empId] });
+        qc.invalidateQueries({ queryKey: ['epv2-professional',       empId] });
+        qc.invalidateQueries({ queryKey: ['epv2-overview',           empId] });
+        qc.invalidateQueries({ queryKey: ['epv2-personal',           empId] });
+        qc.invalidateQueries({ queryKey: ['epv2-health',             empId] });
+        qc.invalidateQueries({ queryKey: ['emp-profile-personal-modal', empId] });
+        qc.invalidateQueries({ queryKey: ['emp-profile-health-modal',   empId] });
       }
       onSaved?.();
       onClose();
@@ -1518,6 +1609,63 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                       <input className="form-control pr-10" type="number" step="0.1" min="0" placeholder="e.g. 65" value={form.weight} onChange={e => set('weight', e.target.value)} />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.7rem] font-semibold text-[#777587]">kg</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Address */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Current Address</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="form-label">Address Line 1</label>
+                    <input className="form-control" placeholder="Street, area…" value={form.current_address_line1} onChange={e => set('current_address_line1', e.target.value)} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="form-label">Address Line 2</label>
+                    <input className="form-control" placeholder="Building, landmark…" value={form.current_address_line2} onChange={e => set('current_address_line2', e.target.value)} />
+                  </div>
+                  <div><label className="form-label">City</label><input className="form-control" value={form.current_city} onChange={e => set('current_city', e.target.value)} /></div>
+                  <div><label className="form-label">State</label><input className="form-control" value={form.current_state} onChange={e => set('current_state', e.target.value)} /></div>
+                  <div><label className="form-label">Country</label><input className="form-control" value={form.current_country} onChange={e => set('current_country', e.target.value)} /></div>
+                  <div><label className="form-label">Postal Code</label><input className="form-control" value={form.current_postal_code} onChange={e => set('current_postal_code', e.target.value)} /></div>
+                </div>
+              </div>
+
+              {/* Permanent Address */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Permanent Address</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="form-label">Address</label>
+                    <textarea className="form-control" rows={2} placeholder="Full address…" value={form.permanent_address} onChange={e => set('permanent_address', e.target.value)} />
+                  </div>
+                  <div><label className="form-label">City</label><input className="form-control" value={form.permanent_city} onChange={e => set('permanent_city', e.target.value)} /></div>
+                  <div><label className="form-label">State</label><input className="form-control" value={form.permanent_state} onChange={e => set('permanent_state', e.target.value)} /></div>
+                  <div><label className="form-label">Country</label><input className="form-control" value={form.permanent_country} onChange={e => set('permanent_country', e.target.value)} /></div>
+                  <div><label className="form-label">Postal Code</label><input className="form-control" value={form.permanent_postal_code} onChange={e => set('permanent_postal_code', e.target.value)} /></div>
+                </div>
+              </div>
+
+              {/* Health Information */}
+              <div>
+                <p className="text-[0.7rem] font-black text-[#464555] uppercase tracking-wider mb-2">Health Information</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label">Allergies</label>
+                    <input className="form-control" placeholder="e.g. Penicillin, pollen" value={form.allergies} onChange={e => set('allergies', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Medical Conditions</label>
+                    <input className="form-control" placeholder="e.g. Diabetes" value={form.medical_conditions} onChange={e => set('medical_conditions', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Disabilities</label>
+                    <input className="form-control" value={form.disabilities} onChange={e => set('disabilities', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Emergency Medical Notes</label>
+                    <input className="form-control" value={form.emergency_medical_notes} onChange={e => set('emergency_medical_notes', e.target.value)} />
                   </div>
                 </div>
               </div>

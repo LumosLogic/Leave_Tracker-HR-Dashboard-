@@ -583,7 +583,8 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
       </SectionCard>
 
       {/* Org Structure */}
-      <SectionCard title="Organisation Structure" icon={Users}>
+      <SectionCard title="Organisation Structure" icon={Users}
+        action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'employment')} />}>
         <InfoRow label="Joining Date" value={prof.joining_date ? fmtDate(prof.joining_date) : null} />
         <InfoRow label="Confirmation Date" value={prof.confirmation_date ? fmtDate(prof.confirmation_date) : null} />
         <InfoRow label="Reporting Manager" value={prof.manager?.name} icon={User} />
