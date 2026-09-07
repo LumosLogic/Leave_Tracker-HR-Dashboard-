@@ -62,6 +62,31 @@ function StatCard({ label, value, accent }) {
   );
 }
 
+function ConfirmDialog({ title, message, onOk, onCancel, danger = false }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="px-6 pt-6 pb-3">
+          <p className="font-black text-[#151c27] text-base mb-1.5">{title}</p>
+          <p className="text-sm text-[#777587] leading-relaxed">{message}</p>
+        </div>
+        <div className="px-6 pb-5 pt-2 flex gap-2 justify-end">
+          <button onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-bold text-[#464555] border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-colors">
+            Cancel
+          </button>
+          <button onClick={onOk}
+            className={`px-4 py-2 rounded-lg text-sm font-bold text-white transition-colors ${
+              danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#3525cd] hover:bg-[#2a1fb0]'
+            }`}>
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PayrollRunDetails() {
   const { id }   = useParams();
   const navigate = useNavigate();
@@ -79,6 +104,7 @@ export default function PayrollRunDetails() {
   });
 
   const [adjOpen, setAdjOpen] = useState(false);
+  const [confirmDlg, setConfirmDlg] = useState(null); // { title, message, onOk, danger? }
   const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
   const bankDropdownRef = useRef(null);
 
@@ -246,6 +272,15 @@ export default function PayrollRunDetails() {
 
   return (
     <div className="space-y-6">
+      {confirmDlg && (
+        <ConfirmDialog
+          title={confirmDlg.title}
+          message={confirmDlg.message}
+          danger={confirmDlg.danger}
+          onOk={() => { confirmDlg.onOk(); setConfirmDlg(null); }}
+          onCancel={() => setConfirmDlg(null)}
+        />
+      )}
       {/* ── Breadcrumb ── */}
       <div className="flex items-center gap-2 text-sm">
         <button
@@ -276,22 +311,34 @@ export default function PayrollRunDetails() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canVerify && (
-            <button onClick={() => window.confirm('Mark this run as HR-verified?') && verifyMut.mutate()}
+            <button onClick={() => setConfirmDlg({
+                title: 'Verify Payroll Run',
+                message: 'Confirm that all payroll figures are correct. This marks the run as verified and ready for approval.',
+                onOk: () => verifyMut.mutate(),
+              })}
               disabled={verifyMut.isPending}
               className="inline-flex items-center gap-2 bg-violet-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50">
               <ShieldCheck size={14} /> Verify
             </button>
           )}
           {canApprove && (
-            <button onClick={() => window.confirm('Approve this payroll run for payment?') && approveMut.mutate()}
+            <button onClick={() => setConfirmDlg({
+                title: 'Approve Payroll Run',
+                message: 'Approve this payroll run for payment processing. Payslips will be sent to employees if auto-email is enabled.',
+                onOk: () => approveMut.mutate(),
+              })}
               disabled={approveMut.isPending}
               className="inline-flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50">
               <ThumbsUp size={14} /> Approve
             </button>
           )}
           {canLock && (
-            <button
-              onClick={() => window.confirm('Lock this payroll run? Payslips become immutable.') && lockMut.mutate()}
+            <button onClick={() => setConfirmDlg({
+                title: 'Lock Payroll Run',
+                message: 'Lock this run? All payslips will become immutable and cannot be modified.',
+                onOk: () => lockMut.mutate(),
+                danger: true,
+              })}
               disabled={lockMut.isPending}
               className="inline-flex items-center gap-2 bg-slate-800 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-slate-900 transition-colors disabled:opacity-50">
               {lockMut.isPending ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Lock size={14} />}
@@ -299,8 +346,11 @@ export default function PayrollRunDetails() {
             </button>
           )}
           {canUnlock && (
-            <button
-              onClick={() => window.confirm('Unlock this payroll run?') && unlockMut.mutate()}
+            <button onClick={() => setConfirmDlg({
+                title: 'Unlock Payroll Run',
+                message: 'Unlock this run? It will return to editable state.',
+                onOk: () => unlockMut.mutate(),
+              })}
               disabled={unlockMut.isPending}
               className="inline-flex items-center gap-2 bg-amber-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-amber-700 transition-colors disabled:opacity-50">
               {unlockMut.isPending ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Unlock size={14} />}
@@ -308,7 +358,11 @@ export default function PayrollRunDetails() {
             </button>
           )}
           {canPaid && (
-            <button onClick={() => window.confirm('Mark salaries as credited to employees?') && markPaidMut.mutate()}
+            <button onClick={() => setConfirmDlg({
+                title: 'Mark as Paid',
+                message: 'Confirm that salaries have been credited to all employees\' bank accounts.',
+                onOk: () => markPaidMut.mutate(),
+              })}
               disabled={markPaidMut.isPending}
               className="inline-flex items-center gap-2 bg-teal-600 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-teal-700 transition-colors disabled:opacity-50">
               <CreditCard size={14} /> Mark Paid
@@ -317,7 +371,11 @@ export default function PayrollRunDetails() {
           {/* Send payslip emails */}
           {['approved','locked','paid'].includes(run?.status) && isRootAdmin && (
             <button
-              onClick={() => window.confirm('Send payslip emails to all employees in this run?') && sendEmailsMut.mutate()}
+              onClick={() => setConfirmDlg({
+                title: 'Send Payslip Emails',
+                message: `Send payslip emails with PDF attachments to all ${employees.length} employee(s) in this run?`,
+                onOk: () => sendEmailsMut.mutate(),
+              })}
               disabled={sendEmailsMut.isPending}
               className="inline-flex items-center gap-2 bg-white border border-[#c7c4d8] text-[#464555] rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#f0f3ff] transition-colors disabled:opacity-50">
               {sendEmailsMut.isPending
@@ -479,7 +537,12 @@ export default function PayrollRunDetails() {
                   {adj.addition_or_deduction === 'addition' ? '+' : '−'}{fmt2(adj.amount)}
                 </span>
                 {canAddAdj && (
-                  <button onClick={() => window.confirm('Remove this adjustment?') && deleteAdjMut.mutate(adj.id)}
+                  <button onClick={() => setConfirmDlg({
+                      title: 'Remove Adjustment',
+                      message: 'Remove this adjustment? This cannot be undone.',
+                      onOk: () => deleteAdjMut.mutate(adj.id),
+                      danger: true,
+                    })}
                     className="text-[#c7c4d8] hover:text-rose-500 transition-colors ml-1">
                     <Trash2 size={13} />
                   </button>

@@ -6,7 +6,7 @@ import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
-import { DollarSign, Plus, Play, ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { DollarSign, Plus, Play, ChevronDown, ChevronUp, Layers, Download } from 'lucide-react';
 import { MONTHS } from '@/lib/utils';
 
 const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
@@ -85,6 +85,28 @@ function GenerateModal({ open, onClose }) {
 // ── Payslip Card ──────────────────────────────────────────────────────────────
 function PayslipCard({ ps, isAdmin, onPublish }) {
   const [open, setOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadPdf(e) {
+    e.stopPropagation();
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch(`/api/payroll/payslips/${ps.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { alert('Download failed'); return; }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `Payslip_${MONTHS[Number(ps.month)-1]}_${ps.year}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally { setDownloading(false); }
+  }
   const u        = ps.users || {};
   const isDraft  = ps.status === 'draft' || ps.status === 'generated';
   const hasEmployerContrib = Number(ps.pf_employer) > 0 || Number(ps.esi_employer) > 0;
@@ -180,6 +202,18 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
               </div>
             </div>
 
+            {/* Download PDF */}
+            {!isDraft && (
+              <div className="mt-3 flex gap-2">
+                <button onClick={downloadPdf} disabled={downloading}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#3525cd] text-white text-xs font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50">
+                  {downloading
+                    ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Download size={12} />}
+                  Download PDF
+                </button>
+              </div>
+            )}
             {/* Publish button (admin only, draft payslips) */}
             {isAdmin && isDraft && (
               <div className="mt-3">

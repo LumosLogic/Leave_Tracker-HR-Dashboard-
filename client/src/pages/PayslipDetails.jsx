@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Lock, AlertCircle, Printer } from 'lucide-react';
+import { ArrowLeft, Lock, AlertCircle, Printer, Download } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { apiGet } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
@@ -42,6 +42,33 @@ export default function PayslipDetails() {
   const location   = useLocation();
   const { user }   = useAuth();
   const [showPayslip, setShowPayslip] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch(`/api/payroll/payslips/${id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Download failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `Payslip_${slip?.name?.replace(/\s+/g,'_') || 'payslip'}_${slip?.month}_${slip?.year}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const isRootAdmin  = user?.role === 'root_admin';
   const basePath     = isRootAdmin ? '/root' : '';
@@ -122,10 +149,19 @@ export default function PayslipDetails() {
           <ArrowLeft size={15} />
           Back
         </button>
-        <button onClick={() => setShowPayslip(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
-          <Printer size={13} /> Print Payslip
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={downloadPdf} disabled={downloading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#3525cd] text-white text-xs font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50">
+            {downloading
+              ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : <Download size={13} />}
+            Download PDF
+          </button>
+          <button onClick={() => setShowPayslip(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
+            <Printer size={13} /> Print
+          </button>
+        </div>
       </div>
       {showPayslip && (
         <Payslip payslipId={id} onClose={() => setShowPayslip(false)} />

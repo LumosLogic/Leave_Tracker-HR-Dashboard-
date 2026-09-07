@@ -1153,6 +1153,49 @@ router.get('/payslips/:id/details', auth, hasPermission('payroll', 'view'), asyn
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/payroll/payslips/:id/pdf — Download payslip as PDF (same format as email attachment)
+router.get('/payslips/:id/pdf', auth, hasPermission('payroll', 'view'), async (req, res) => {
+  try {
+    const oId       = orgId(req);
+    const payslipId = parseInt(req.params.id, 10);
+    if (!payslipId) return res.status(400).json({ error: 'Invalid payslip ID' });
+
+    const { rows } = await pool.query(
+      `SELECT ps.*, u.name, u.email, u.employee_id, u.department
+         FROM payslips ps
+         JOIN users u ON u.id = ps.user_id
+        WHERE ps.id = $1 AND ps.organization_id = $2`,
+      [payslipId, oId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Payslip not found' });
+
+    const ps = rows[0];
+    if (!isAdmin(req.user.role) && ps.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { generatePayslipPDF } = require('../../services/payrollEmailService');
+    const orgRes  = await pool.query('SELECT name FROM organizations WHERE id = $1', [oId]);
+    const orgName = orgRes.rows[0]?.name || 'Company';
+
+    ps.payslip_id = ps.id;
+    const employee = { name: ps.name, email: ps.email, employee_id: ps.employee_id, department: ps.department };
+    const pdfBuffer = await generatePayslipPDF(ps, employee, orgName, oId);
+
+    if (!pdfBuffer) return res.status(500).json({ error: 'PDF generation failed' });
+
+    const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthNum   = typeof ps.month === 'string' ? parseInt(ps.month, 10) : ps.month;
+    const monthLabel = MONTHS_SHORT[monthNum - 1] || String(ps.month);
+    const safeName   = (ps.employee_id || ps.name || 'employee').replace(/\W+/g, '_');
+    const filename   = `Payslip_${safeName}_${monthLabel}_${ps.year}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE 3.5 — SCHEDULER API
 // ═══════════════════════════════════════════════════════════════════════════════
