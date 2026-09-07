@@ -271,7 +271,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     infoRow('Designation',   pos,                     'UAN No.',         rich.uan);
     infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);
     infoRow('Bank Name',     rich.bankName || '—',    'PAN No.',         rich.pan);
-    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${presentStr} out of ${totalCalDays}`);
+    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
     y += 4;
 
     // ── Salary table ──────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
 
     function cellText(text, col, row, h, align, bold) {
       doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor('#000')
-         .text(text, tc[col] + 2, row + (h - 9) / 2, { width: tw[col] - 4, align: align || 'left', lineBreak: false });
+         .text(text, tc[col] + 5, row + (h - 9) / 2, { width: tw[col] - 10, align: align || 'left', lineBreak: false });
     }
 
     // Header row
@@ -328,11 +328,15 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     y += rH;
 
     // Net salary + amount in words row
+    // Columns 0-3 are a single merged cell (no internal borders) for the words text.
+    // Columns 4 and 5 are individual cells for Net Salary label and value.
     const nH = 18;
-    allCols(y, nH, null);
-    // Merge cols 0-3 for "In Word" text — draw text spanning columns
+    const mergedW = tc[4] - tc[0];  // width of merged cols 0-3
+    doc.rect(tc[0], y, mergedW, nH).strokeColor('#aaa').lineWidth(0.4).stroke();
+    tableRect(y, 4, nH, null);
+    tableRect(y, 5, nH, null);
     doc.font('Helvetica').fontSize(7.5).fillColor('#000')
-       .text('In Word: ' + toWords(netSalary), tc[0] + 2, y + 5, { width: tc[4] - tc[0] - 4, lineBreak: false });
+       .text('Amount in Words: ' + toWords(netSalary), tc[0] + 5, y + (nH - 8) / 2, { width: mergedW - 10, lineBreak: false });
     cellText('Net Salary',      4, y, nH, 'left',  true);
     cellText(fmtAmt(netSalary), 5, y, nH, 'right', true);
     y += nH + 6;

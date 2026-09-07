@@ -140,7 +140,7 @@ export default function Payslip({ payslipId, onClose }) {
         body{font-family:Arial,sans-serif;font-size:10px;color:#000;background:#fff}
         .payslip{max-width:800px;margin:10px auto;padding:20px;border:1px solid #ccc}
         table{width:100%;border-collapse:collapse;font-size:9.5px}
-        th,td{border:1px solid #aaa;padding:3px 6px}
+        th,td{border:1px solid #aaa;padding:4px 10px}
         th{background:#e8e8e8;font-weight:bold;text-align:left}
         .tright{text-align:right}
         .bold{font-weight:bold}
@@ -293,7 +293,7 @@ export default function Payslip({ payslipId, onClose }) {
         <td style="border:none;font-weight:bold;padding:2px 4px">Bank A/c No.</td>
         <td style="border:none;padding:2px 4px">: ${maskedAcc || '—'}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px">Attendance</td>
-        <td style="border:none;padding:2px 4px">: ${presentStr} out of ${totalCalDays}</td>
+        <td style="border:none;padding:2px 4px">: ${totalCalDays} out of ${totalCalDays}</td>
       </tr>
     </table>
 
@@ -332,8 +332,8 @@ export default function Payslip({ payslipId, onClose }) {
           <td class="tright">${fmtAmt(totalDed)}</td>
         </tr>
         <tr>
-          <td colspan="4" style="font-size:9px;font-style:italic">
-            In Word: ${toWords(netSalary)}
+          <td colspan="4" style="font-size:9px;font-style:italic;border-right:none">
+            Amount in Words: ${toWords(netSalary)}
           </td>
           <td class="bold bg">Net Salary</td>
           <td class="tright bold">${fmtAmt(netSalary)}</td>

@@ -668,35 +668,57 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Attach approval trail (completed approvals) to each leave in one batch query.
-    // Uses db (Supabase client) for consistency with logApprovalAction inserts.
-    try {
-      const leaveIds = result.map(l => l.id);
-      if (leaveIds.length > 0) {
-        const { data: logData, error: logErr } = await db.from('leave_approval_log')
-          .select('leave_id, actor_name, action, level, created_at')
-          .eq('org_id', Number(orgId(req)))
-          .in('leave_id', leaveIds)
-          .order('created_at', { ascending: true });
+    // Initialise to empty so the frontend always gets the array (never undefined).
+    for (const l of result) l.approval_trail = [];
 
-        if (!logErr && logData) {
-          // Filter to approved actions only (client-side to avoid LIKE in PostgREST)
-          const approved = logData.filter(r => r.action && r.action.includes('approved'));
-          const trailMap = {};
-          for (const row of approved) {
-            if (!trailMap[row.leave_id]) trailMap[row.leave_id] = [];
-            trailMap[row.leave_id].push({
-              actor_name: row.actor_name,
-              action:     row.action,
-              level:      row.level,
-              created_at: row.created_at,
-            });
-          }
-          for (const l of result) {
-            l.approval_trail = trailMap[l.id] || [];
-          }
+    try {
+      const leaveIds = result.map(l => Number(l.id)).filter(Boolean);
+      if (leaveIds.length > 0) {
+        // Use raw pool.query so we are immune to column-list errors (e.g. if the
+        // `level` column was added in a later migration, SELECT * still works).
+        // Try with level column first; fall back to without it if the column
+        // doesn't exist yet (workflow migration not applied to this database).
+        let logRows = [];
+        try {
+          ({ rows: logRows } = await pool.query(
+            `SELECT leave_id, actor_name, action, level, created_at
+               FROM leave_approval_log
+              WHERE org_id = $1
+                AND leave_id = ANY($2::int[])
+              ORDER BY leave_id, created_at ASC`,
+            [Number(orgId(req)), leaveIds]
+          ));
+        } catch (_colErr) {
+          // level column missing — retry without it
+          ({ rows: logRows } = await pool.query(
+            `SELECT leave_id, actor_name, action, NULL AS level, created_at
+               FROM leave_approval_log
+              WHERE org_id = $1
+                AND leave_id = ANY($2::int[])
+              ORDER BY leave_id, created_at ASC`,
+            [Number(orgId(req)), leaveIds]
+          ));
+        }
+
+        const trailMap = {};
+        for (const row of logRows) {
+          if (!row.action?.includes('approved')) continue;
+          const lid = Number(row.leave_id);
+          if (!trailMap[lid]) trailMap[lid] = [];
+          trailMap[lid].push({
+            actor_name: row.actor_name,
+            action:     row.action,
+            level:      row.level ?? null,
+            created_at: row.created_at,
+          });
+        }
+        for (const l of result) {
+          if (trailMap[l.id]) l.approval_trail = trailMap[l.id];
         }
       }
-    } catch (_) { /* leave_approval_log table may not exist — skip */ }
+    } catch (e) {
+      console.warn('[leaves] approval trail fetch skipped:', e.message);
+    }
 
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
