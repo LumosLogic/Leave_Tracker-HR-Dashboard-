@@ -325,11 +325,11 @@ function payslipEmailHtml(payslip, employee, orgName, period) {
 
   <!-- Header -->
   <div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 100%);padding:20px 28px 18px;border-radius:10px 10px 0 0;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-      <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:6px 12px;display:inline-block;">
+    <div style="margin-bottom:12px;">
+      <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:5px 11px;display:inline-block;margin-bottom:6px;">
         <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.85);font-family:Arial,sans-serif;">HRMS</span>
       </div>
-      <span style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">${orgName}</span>
+      <div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">${orgName}</div>
     </div>
     <h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">Your Payslip</h2>
     <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">Salary statement for ${period}</p>
