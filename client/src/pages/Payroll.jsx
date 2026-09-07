@@ -203,7 +203,7 @@ function PayslipCard({ ps, isAdmin, onPublish }) {
             </div>
 
             {/* Download PDF */}
-            {!isDraft && (
+            {ps.status !== 'draft' && (
               <div className="mt-3 flex gap-2">
                 <button onClick={downloadPdf} disabled={downloading}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#3525cd] text-white text-xs font-bold hover:bg-[#2a1fb0] transition-colors disabled:opacity-50">
