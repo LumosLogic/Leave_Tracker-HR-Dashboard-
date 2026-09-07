@@ -1154,7 +1154,7 @@ router.get('/payslips/:id/details', auth, hasPermission('payroll', 'view'), asyn
 });
 
 // GET /api/payroll/payslips/:id/pdf — Download payslip as PDF (same format as email attachment)
-router.get('/payslips/:id/pdf', auth, hasPermission('payroll', 'view'), async (req, res) => {
+router.get('/payslips/:id/pdf', auth, async (req, res) => {
   try {
     const oId       = orgId(req);
     const payslipId = parseInt(req.params.id, 10);
