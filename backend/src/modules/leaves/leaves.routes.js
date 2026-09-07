@@ -668,31 +668,32 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Attach approval trail (completed approvals) to each leave in one batch query.
-    // This lets the frontend show "HR - Jane has approved" without extra API calls.
+    // Uses db (Supabase client) for consistency with logApprovalAction inserts.
     try {
       const leaveIds = result.map(l => l.id);
       if (leaveIds.length > 0) {
-        const { rows: logRows } = await pool.query(
-          `SELECT leave_id, actor_name, action, level, created_at
-             FROM leave_approval_log
-            WHERE org_id = $1
-              AND leave_id = ANY($2)
-              AND (action LIKE '%approved%' OR action IN ('dept_approved','root_approved'))
-            ORDER BY leave_id, created_at ASC`,
-          [Number(orgId(req)), leaveIds.map(Number)]
-        );
-        const trailMap = {};
-        for (const row of logRows) {
-          if (!trailMap[row.leave_id]) trailMap[row.leave_id] = [];
-          trailMap[row.leave_id].push({
-            actor_name: row.actor_name,
-            action:     row.action,
-            level:      row.level,
-            created_at: row.created_at,
-          });
-        }
-        for (const l of result) {
-          l.approval_trail = trailMap[l.id] || [];
+        const { data: logData, error: logErr } = await db.from('leave_approval_log')
+          .select('leave_id, actor_name, action, level, created_at')
+          .eq('org_id', Number(orgId(req)))
+          .in('leave_id', leaveIds)
+          .order('created_at', { ascending: true });
+
+        if (!logErr && logData) {
+          // Filter to approved actions only (client-side to avoid LIKE in PostgREST)
+          const approved = logData.filter(r => r.action && r.action.includes('approved'));
+          const trailMap = {};
+          for (const row of approved) {
+            if (!trailMap[row.leave_id]) trailMap[row.leave_id] = [];
+            trailMap[row.leave_id].push({
+              actor_name: row.actor_name,
+              action:     row.action,
+              level:      row.level,
+              created_at: row.created_at,
+            });
+          }
+          for (const l of result) {
+            l.approval_trail = trailMap[l.id] || [];
+          }
         }
       }
     } catch (_) { /* leave_approval_log table may not exist — skip */ }

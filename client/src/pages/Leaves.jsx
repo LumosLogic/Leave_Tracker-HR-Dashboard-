@@ -459,11 +459,23 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
         {/* Workflow approval trail — who has approved so far */}
         {l.approval_trail?.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {l.approval_trail.map((t, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[0.65rem] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                <CheckCircle2 size={9} /> {t.actor_name} approved
-              </span>
-            ))}
+            {l.approval_trail.map((t, i) => {
+              // Derive a human-readable role label from the action string
+              // e.g. "level_1_approved" → "Level 1", "dept_approved" → "Dept Head", "root_approved" → "Root Admin"
+              let roleLabel = '';
+              if (t.action === 'dept_approved')   roleLabel = 'Dept Head';
+              else if (t.action === 'root_approved') roleLabel = 'Root Admin';
+              else {
+                const m = t.action?.match(/^level_(\d+)_approved$/);
+                if (m) roleLabel = `Level ${m[1]}`;
+              }
+              return (
+                <span key={i} className="inline-flex items-center gap-1 text-[0.65rem] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <CheckCircle2 size={9} />
+                  {roleLabel ? `${roleLabel}: ` : ''}{t.actor_name} approved
+                </span>
+              );
+            })}
           </div>
         )}
 
