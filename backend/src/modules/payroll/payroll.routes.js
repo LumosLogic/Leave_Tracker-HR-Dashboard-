@@ -1170,7 +1170,7 @@ router.get('/payslips/:id/pdf', auth, hasPermission('payroll', 'view'), async (r
     if (!rows.length) return res.status(404).json({ error: 'Payslip not found' });
 
     const ps = rows[0];
-    if (!isAdmin(req.user.role) && ps.user_id !== req.user.id) {
+    if (!isAdmin(req.user.role) && Number(ps.user_id) !== Number(req.user.id)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
