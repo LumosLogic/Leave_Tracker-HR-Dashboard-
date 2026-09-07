@@ -24,13 +24,13 @@ function amt(v) { return Number(v || 0).toFixed(2); }
 async function fetchDisbursementRows(organizationId, runId) {
   const { rows } = await pool.query(
     `SELECT
-         u.name            AS employee_name,
+         u.name                        AS employee_name,
          u.employee_id,
          u.email,
-         u.bank_account_number,
-         u.bank_ifsc_code,
-         u.bank_name,
          u.department,
+         eba.account_number            AS bank_account_number,
+         eba.ifsc_code                 AS bank_ifsc_code,
+         eba.bank_name,
          ps.net_salary,
          ps.adjustment_total,
          (ps.net_salary + COALESCE(ps.adjustment_total, 0)) AS payable_amount,
@@ -38,6 +38,11 @@ async function fetchDisbursementRows(organizationId, runId) {
          ps.year
        FROM payslips ps
        JOIN users u ON u.id = ps.user_id
+       LEFT JOIN employee_bank_accounts eba
+              ON eba.employee_id = u.id
+             AND eba.organization_id = ps.organization_id
+             AND eba.is_active = true
+             AND eba.is_primary = true
       WHERE ps.payroll_run_id  = $1
         AND ps.organization_id = $2
         AND ps.status IN ('generated', 'published')
