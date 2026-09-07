@@ -6,15 +6,38 @@
  * and compares stored payslip attendance snapshots against recalculated values
  * for every Relitrade employee for August 2026.
  *
- * Run from project root (where .env lives):
+ * Run from project root:
  *   node audit_relitrade_aug2026.js
  *
- * Output: console audit table + per-employee detail for any mismatch.
+ * No extra npm install needed — resolves pg from backend/node_modules and
+ * loads .env with a built-in parser (no dotenv dependency).
+ *
  * Makes ZERO writes to the database.
  */
 
-require('dotenv').config();
-const { Pool, types } = require('pg');
+const fs   = require('fs');
+const path = require('path');
+
+// ── Load .env without dotenv ──────────────────────────────────────────────────
+(function loadEnv() {
+  const envFile = path.join(__dirname, '.env');
+  if (!fs.existsSync(envFile)) return;
+  fs.readFileSync(envFile, 'utf-8').split('\n').forEach(line => {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (m && process.env[m[1]] === undefined) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
+    }
+  });
+})();
+
+// ── Resolve pg — try root node_modules first, then backend's ─────────────────
+let Pool, types;
+try {
+  ({ Pool, types } = require('pg'));
+} catch {
+  const pgPath = path.join(__dirname, 'backend', 'node_modules', 'pg');
+  ({ Pool, types } = require(pgPath));
+}
 
 // Preserve DATE columns as 'YYYY-MM-DD' strings (same as db-pg-adapter)
 types.setTypeParser(1082, v => v);
