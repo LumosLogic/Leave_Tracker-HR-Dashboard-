@@ -394,6 +394,7 @@ async function loadYTDTDS(organizationId, userId, month, year, fyStartMonth = 4)
 async function applyStatutoryCalculations({
   organizationId, userId, month, year, payslipId,
   grossSalary, basicSalary, salary, joiningDate,
+  pfCalcMode = 'fixed', esiCalcMode = 'fixed',
 }) {
   const oId = Number(organizationId);
   const m   = Number(month);
@@ -449,14 +450,20 @@ async function applyStatutoryCalculations({
     },
   };
 
+  // PF/ESI are only overridden here when the employee's calc mode is 'dynamic'.
+  // 'fixed' and 'disabled' modes are already handled correctly by payrollEngine;
+  // overriding them here would replace a zero fixed-PF with a % of basic.
+  const pfOverride  = configs.pf?.enabled  && pfCalcMode  === 'dynamic';
+  const esiOverride = configs.esi?.enabled && esiCalcMode === 'dynamic';
+
   // Values to UPDATE on payslip (only if config is active)
   const updates = {
-    pf_employee:          configs.pf?.enabled  ? pf.employeePF    : undefined,
-    pf_employer:          configs.pf?.enabled  ? pf.totalEmployerPF : undefined,
-    eps_amount:           configs.pf?.enabled  ? pf.employerEPS   : undefined,
-    epf_employer_amount:  configs.pf?.enabled  ? pf.employerEPF   : undefined,
-    esi_employee:         configs.esi?.enabled ? esi.employeeESI  : undefined,
-    esi_employer:         configs.esi?.enabled ? esi.employerESI  : undefined,
+    pf_employee:          pfOverride  ? pf.employeePF      : undefined,
+    pf_employer:          pfOverride  ? pf.totalEmployerPF : undefined,
+    eps_amount:           pfOverride  ? pf.employerEPS     : undefined,
+    epf_employer_amount:  pfOverride  ? pf.employerEPF     : undefined,
+    esi_employee:         esiOverride ? esi.employeeESI    : undefined,
+    esi_employer:         esiOverride ? esi.employerESI    : undefined,
     professional_tax:     configs.pt?.enabled  ? pt.pt            : undefined,
     tds:                  configs.tds?.enabled ? tds.monthlyTDS   : undefined,
     tds_annual_projected: configs.tds?.enabled ? tds.annualTax    : undefined,

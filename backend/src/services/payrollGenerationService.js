@@ -229,6 +229,8 @@ async function generateEmployeePayslip({ organizationId, userId, month, year, pa
       basicSalary:    sal.basic,
       salary:         { basic: sal.basic, da: sal.da },
       joiningDate:    calc.employee?.joining_date || null,
+      pfCalcMode:     sal.pfCalcMode,
+      esiCalcMode:    sal.esiCalcMode,
     });
   } catch (e) {
     // Log but don't fail payslip generation

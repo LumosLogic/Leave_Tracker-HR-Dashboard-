@@ -904,6 +904,8 @@ async function calculatePayroll({ organizationId, userId, month, year }) {
       employerPf:         round2(sal.employer_pf),
       employerEsi:        round2(sal.employer_esi),
       ctc:                round2(sal.ctc),
+      pfCalcMode:         sal.pf_calc_mode  || 'fixed',
+      esiCalcMode:        sal.esi_calc_mode || 'fixed',
     },
 
     payrollSettings: {
