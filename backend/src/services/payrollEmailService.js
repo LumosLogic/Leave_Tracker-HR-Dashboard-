@@ -1,6 +1,6 @@
 'use strict';
 
-const { pool }          = require('../config/db');
+const { pool }           = require('../config/db');
 const { getTransporter } = require('./emailService');
 
 const CHUNK_SIZE     = parseInt(process.env.PAYROLL_EMAIL_CHUNK_SIZE     || '10', 10);
@@ -12,187 +12,379 @@ const MONTHS = [
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function fmtINR(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
+function num(n) { return Number(n || 0); }
+function fmtAmt(n) {
+  return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
-// Uses the shared centralized transporter from emailService — no separate SMTP config.
+function toWords(amount) {
+  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
+    'Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen',
+    'Seventeen','Eighteen','Nineteen'];
+  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  function convert(n) {
+    if (n < 20)       return ones[n];
+    if (n < 100)      return tens[Math.floor(n/10)] + (n%10 ? ' ' + ones[n%10] : '');
+    if (n < 1000)     return ones[Math.floor(n/100)] + ' Hundred' + (n%100 ? ' ' + convert(n%100) : '');
+    if (n < 100000)   return convert(Math.floor(n/1000)) + ' Thousand' + (n%1000 ? ' ' + convert(n%1000) : '');
+    if (n < 10000000) return convert(Math.floor(n/100000)) + ' Lakh' + (n%100000 ? ' ' + convert(n%100000) : '');
+    return convert(Math.floor(n/10000000)) + ' Crore' + (n%10000000 ? ' ' + convert(n%10000000) : '');
+  }
+  const rupees = Math.floor(amount);
+  const paise  = Math.round((amount - rupees) * 100);
+  let words    = 'Rupees ' + (rupees > 0 ? convert(rupees) : 'Zero');
+  if (paise > 0) words += ' and ' + convert(paise) + ' Paise';
+  return words + ' Only';
+}
+
 function getTransport() { return getTransporter(); }
 
-// ─── PDF generation ───────────────────────────────────────────────────────────
-// Requires pdfkit: npm install pdfkit
-// Gracefully returns null if pdfkit is not installed — email is sent without attachment.
-async function generatePayslipPDF(payslip, employee, orgName) {
+// ─── Fetch org, statutory, banking data for rich PDF ─────────────────────────
+async function fetchRichData(organizationId, userId, payslipId) {
+  const [orgRes, psRes, statRes, bankRes, slipRes] = await Promise.all([
+    pool.query('SELECT name, logo_url FROM organizations WHERE id = $1', [organizationId]),
+    pool.query(
+      'SELECT payslip_company_address, payslip_company_cin, payslip_footer_note FROM payroll_settings WHERE organization_id = $1',
+      [organizationId]
+    ),
+    pool.query(
+      'SELECT pan_number, uan_no, esi_no, pf_no FROM users WHERE id = $1',
+      [userId]
+    ),
+    pool.query(
+      'SELECT bank_name, account_number FROM employee_bank_accounts WHERE employee_id = $1 AND is_active = true ORDER BY is_primary DESC LIMIT 1',
+      [userId]
+    ),
+    payslipId
+      ? pool.query('SELECT position, attendance_snapshot FROM payslips WHERE id = $1', [payslipId])
+      : Promise.resolve({ rows: [] }),
+  ]);
+
+  const accNo     = bankRes.rows[0]?.account_number || '';
+  const maskedAcc = accNo ? accNo.slice(0, -4).replace(/\d/g, '*') + accNo.slice(-4) : '';
+
+  const snapRaw = slipRes.rows[0]?.attendance_snapshot;
+  let attSnap = {};
+  try { attSnap = snapRaw ? (typeof snapRaw === 'string' ? JSON.parse(snapRaw) : snapRaw) : {}; } catch {}
+
+  let logoBuffer = null;
+  const logoUrl = orgRes.rows[0]?.logo_url;
+  if (logoUrl) {
+    try {
+      const axios = require('axios');
+      const r = await axios.get(logoUrl, { responseType: 'arraybuffer', timeout: 5000 });
+      logoBuffer = Buffer.from(r.data);
+    } catch { /* logo is optional */ }
+  }
+
+  return {
+    orgName:    orgRes.rows[0]?.name || '',
+    logoBuffer,
+    orgAddress: psRes.rows[0]?.payslip_company_address || '',
+    orgCin:     psRes.rows[0]?.payslip_company_cin     || '',
+    footerNote: psRes.rows[0]?.payslip_footer_note     ||
+      'This is a computer generated salary slip and does not require a signature.',
+    pan:      statRes.rows[0]?.pan_number || '',
+    uan:      statRes.rows[0]?.uan_no     || '',
+    esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
+    pfNo:     statRes.rows[0]?.pf_no      || '',
+    bankName: bankRes.rows[0]?.bank_name  || '',
+    maskedAcc,
+    position: slipRes.rows[0]?.position   || '',
+    attSnap,
+  };
+}
+
+// ─── PDF generation — matches Payslip.jsx print layout ───────────────────────
+async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
   let PDFDocument;
   try { PDFDocument = require('pdfkit'); }
   catch { return null; }
 
+  const monthNum   = typeof payslip.month === 'string' ? parseInt(payslip.month, 10) : num(payslip.month);
+  const monthLabel = MONTHS[monthNum - 1] || String(payslip.month);
+  const period     = `${monthLabel} ${payslip.year}`;
+
+  // Rich data from DB (org logo, address, statutory, banking)
+  let rich = {
+    orgName, logoBuffer: null, orgAddress: '', orgCin: '',
+    footerNote: 'This is a computer generated salary slip and does not require a signature.',
+    pan: '', uan: '', esiNo: 'N/A', pfNo: '', bankName: '', maskedAcc: '', position: '', attSnap: {},
+  };
+  if (organizationId && payslip.user_id) {
+    try {
+      rich = await fetchRichData(organizationId, payslip.user_id, payslip.payslip_id);
+      if (!rich.orgName) rich.orgName = orgName;
+    } catch (e) {
+      console.warn('[PayrollEmail] fetchRichData failed:', e.message);
+    }
+  }
+
+  const earningRows = [
+    { label: 'Basic',             value: num(payslip.basic) },
+    { label: 'HRA',               value: num(payslip.hra) },
+    { label: 'DA',                value: num(payslip.da) },
+    { label: 'Conveyance',        value: num(payslip.transport_allowance) },
+    { label: 'Medical Allowance', value: num(payslip.medical_allowance) },
+    { label: 'Special Allowance', value: num(payslip.special_allowance) },
+    { label: 'Other Allowance',   value: num(payslip.other_allowances) },
+  ].filter(r => r.value > 0);
+
+  const deductionRows = [
+    { label: 'PF (Employee)',    value: num(payslip.pf_employee) },
+    { label: 'ESI (Employee)',   value: num(payslip.esi_employee) },
+    { label: 'PT',               value: num(payslip.professional_tax) },
+    { label: 'TDS',              value: num(payslip.tds) },
+    { label: 'Other Deductions', value: num(payslip.other_deductions) },
+    { label: `LOP (${num(payslip.lop_days)} days)`, value: num(payslip.lop_amount) },
+  ].filter(r => r.value > 0);
+
+  const grossSalary = num(payslip.gross_salary);
+  const totalDed    = num(payslip.total_deductions);
+  const netSalary   = num(payslip.net_salary);
+  const maxRows     = Math.max(earningRows.length, deductionRows.length, 1);
+
+  const attSnap      = rich.attSnap;
+  const presentFull  = attSnap.presentFull ?? num(payslip.present_days);
+  const presentHalf  = attSnap.presentHalf ?? 0;
+  const weekoff      = attSnap.weekoff     ?? 0;
+  const paidHoliday  = attSnap.holiday     ?? 0;
+  const paidLeave    = attSnap.paidLeave   ?? num(payslip.leave_days || 0);
+  const lopDays      = num(payslip.lop_days);
+  const totalCalDays = num(payslip.working_days) + weekoff + paidHoliday;
+  const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
+
+  const empId   = employee.employee_id || payslip.user_id || '';
+  const empName = employee.name || '';
+  const dept    = employee.department || '';
+  const pos     = rich.position || employee.position || '—';
+
   return new Promise((resolve, reject) => {
     const chunks = [];
-
-    const pwdEnabled = process.env.PAYROLL_PDF_PASSWORD_ENABLED === 'true';
-    const usePassword = pwdEnabled && Boolean(employee.employee_id);
-    const password   = usePassword ? `${employee.employee_id}${payslip.year}` : undefined;
-
-    const opts = { margin: 40, size: 'A4', bufferPages: true };
-    if (usePassword) { opts.userPassword = password; opts.ownerPassword = password; }
-
-    const doc = new PDFDocument(opts);
+    const doc = new PDFDocument({ margin: 30, size: 'A4', bufferPages: true });
     doc.on('data',  c => chunks.push(c));
     doc.on('end',   () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const monthLabel = MONTHS[parseInt(String(payslip.month), 10) - 1] || payslip.month;
-    const period     = `${monthLabel} ${payslip.year}`;
-    const W          = 515; // usable width between margins
+    const L   = 30;       // left margin
+    const W   = 535;      // usable width
+    const R   = L + W;    // right edge
 
-    // ── Header ────────────────────────────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(18).fillColor('#3525cd')
-       .text(orgName, 40, 40, { width: W, align: 'center' });
-    doc.font('Helvetica').fontSize(11).fillColor('#464555')
-       .text(`Pay Slip — ${period}`, { width: W, align: 'center' });
-    doc.moveDown(0.4);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(1.5).strokeColor('#3525cd').stroke();
-    doc.moveDown(0.5);
+    // ── Header: logo left, org info right ────────────────────────────────
+    if (rich.logoBuffer) {
+      try { doc.image(rich.logoBuffer, L, 30, { fit: [110, 50] }); } catch {}
+    }
+    let ry = 30;
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
+       .text(rich.orgName, L, ry, { width: W, align: 'right' });
+    ry += 15;
+    if (rich.orgCin) {
+      doc.font('Helvetica').fontSize(8).fillColor('#444')
+         .text(rich.orgCin, L, ry, { width: W, align: 'right' });
+      ry += 10;
+    }
+    if (rich.orgAddress) {
+      rich.orgAddress.split('\n').forEach(line => {
+        doc.font('Helvetica').fontSize(8).fillColor('#444')
+           .text(line.trim(), L, ry, { width: W, align: 'right' });
+        ry += 10;
+      });
+    }
 
-    // ── Employee Block ────────────────────────────────────────────────────────
-    const ey = doc.y;
-    doc.font('Helvetica').fontSize(9).fillColor('#777587');
-    doc.text('Employee Name', 40, ey);
-    doc.text('Employee ID',   40, ey + 14);
-    doc.text('Department',    40, ey + 28);
-    doc.text('Pay Period',   300, ey);
-    doc.font('Helvetica-Bold').fillColor('#151c27');
-    doc.text(employee.name        || '—', 145, ey);
-    doc.text(employee.employee_id || '—', 145, ey + 14);
-    doc.text(employee.department  || '—', 145, ey + 28);
-    doc.text(period,                       370, ey);
-    doc.moveDown(3);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#c7c4d8').stroke();
-    doc.moveDown(0.5);
+    let y = Math.max(ry + 4, 88);
 
-    // ── Table Header ──────────────────────────────────────────────────────────
-    const tY = doc.y;
-    const c1=40, c2=215, c3=295, c4=470;
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#3525cd');
-    doc.text('Earnings',   c1, tY, { width: 170 });
-    doc.text('Amount',     c2, tY, { width: 75, align: 'right' });
-    doc.text('Deductions', c3, tY, { width: 170 });
-    doc.text('Amount',     c4, tY, { width: 80, align: 'right' });
-    doc.moveDown(0.25);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#c7c4d8').stroke();
+    // ── Title bar ─────────────────────────────────────────────────────────
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor('#999').stroke();
+    y += 3;
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
+       .text(`Salary Slip for the Month of ${period}`, L, y, { width: W, align: 'center' });
+    y += 14;
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor('#999').stroke();
+    y += 8;
 
-    const earnings = [
-      ['Basic',             payslip.basic],
-      ['HRA',               payslip.hra],
-      ['Dearness Allow.',   payslip.da],
-      ['Transport Allow.',  payslip.transport_allowance],
-      ['Medical Allow.',    payslip.medical_allowance],
-      ['Special Allow.',    payslip.special_allowance  || 0],
-      ['Other Allow.',      payslip.other_allowances   || 0],
-    ].filter(([, v]) => Number(v) > 0);
+    // ── Employee info (4 columns, no borders) ─────────────────────────────
+    const ic1 = L,       iw1 = 92;
+    const ic2 = ic1+iw1, iw2 = 155;
+    const ic3 = ic2+iw2, iw3 = 110;
+    const ic4 = ic3+iw3;
 
-    const deductions = [
-      ['PF (Employee)',      payslip.pf_employee],
-      ['ESI (Employee)',     payslip.esi_employee],
-      ['Professional Tax',   payslip.professional_tax],
-      ['TDS',                payslip.tds],
-      ['Other Deductions',   payslip.other_deductions],
-      [`LOP (${Number(payslip.lop_days || 0)} day${Number(payslip.lop_days) === 1 ? '' : 's'})`, payslip.lop_amount],
-    ].filter(([, v]) => Number(v) > 0);
+    function infoRow(l1, v1, l2, v2) {
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000').text(l1, ic1, y, { width: iw1 });
+      doc.font('Helvetica').fontSize(8.5).text(': ' + (v1 || ''), ic2, y, { width: iw2 });
+      doc.font('Helvetica-Bold').fontSize(8.5).text(l2, ic3, y, { width: iw3 });
+      doc.font('Helvetica').fontSize(8.5).text(v2 ? ': ' + v2 : '', ic4, y, { width: R - ic4 });
+      y += 13;
+    }
 
-    let rY = doc.y + 5;
-    doc.font('Helvetica').fontSize(9).fillColor('#151c27');
-    const maxRows = Math.max(earnings.length, deductions.length);
+    infoRow('Employee ID',   String(empId),           'Company P.F. No', '');
+    infoRow('Employee Name', empName,                 'P.F. No',         rich.pfNo);
+    infoRow('Designation',   pos,                     'UAN No.',         rich.uan);
+    infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);
+    infoRow('Bank Name',     rich.bankName || '—',    'PAN No.',         rich.pan);
+    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${presentStr} out of ${totalCalDays}`);
+    y += 4;
+
+    // ── Salary table ──────────────────────────────────────────────────────
+    // Columns: Actuals | Amt | Earnings | Amt | Deductions | Amt
+    const tc = [L, L+120, L+188, L+308, L+376, L+471];
+    const tw = [120, 68, 120, 68, 95, R - (L+471)];
+    const rH = 14;
+    const hH = 16;
+
+    function tableRect(row, col, h, fill) {
+      if (fill) doc.rect(tc[col], row, tw[col], h).fillColor(fill).fill();
+      doc.rect(tc[col], row, tw[col], h).strokeColor('#aaa').lineWidth(0.4).stroke();
+    }
+
+    function allCols(row, h, fill) {
+      tw.forEach((_, i) => tableRect(row, i, h, fill));
+    }
+
+    function cellText(text, col, row, h, align, bold) {
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor('#000')
+         .text(text, tc[col] + 2, row + (h - 9) / 2, { width: tw[col] - 4, align: align || 'left', lineBreak: false });
+    }
+
+    // Header row
+    allCols(y, hH, '#e8e8e8');
+    ['Actuals','Amount(Rs)','Earnings','Amount(Rs)','Deductions','Amount(Rs)'].forEach((h, i) => {
+      cellText(h, i, y, hH, i % 2 === 1 ? 'right' : 'left', true);
+    });
+    y += hH;
+
+    // Data rows
     for (let i = 0; i < maxRows; i++) {
-      const e = earnings[i];
-      const d = deductions[i];
-      if (e) {
-        doc.text(e[0], c1, rY, { width: 170 });
-        doc.text(fmtINR(e[1]), c2, rY, { width: 75, align: 'right' });
+      const er = earningRows[i];
+      const dr = deductionRows[i];
+      allCols(y, rH, null);
+      if (er) {
+        cellText(er.label,          0, y, rH, 'left');
+        cellText(fmtAmt(er.value),  1, y, rH, 'right');
+        cellText(er.label,          2, y, rH, 'left');
+        cellText(fmtAmt(er.value),  3, y, rH, 'right');
       }
-      if (d) {
-        doc.text(d[0], c3, rY, { width: 170 });
-        doc.text(fmtINR(d[1]), c4, rY, { width: 80, align: 'right' });
+      if (dr) {
+        cellText(dr.label,          4, y, rH, 'left');
+        cellText(fmtAmt(dr.value),  5, y, rH, 'right');
       }
-      rY += 13;
+      y += rH;
     }
 
-    rY += 4;
-    doc.moveTo(40, rY).lineTo(555, rY).lineWidth(0.5).strokeColor('#c7c4d8').stroke();
-    rY += 6;
+    // Totals row
+    allCols(y, rH, '#f0f0f0');
+    [['Total',fmtAmt(grossSalary),'Gross',fmtAmt(grossSalary),'Deduction',fmtAmt(totalDed)]].forEach(row => {
+      row.forEach((v, i) => cellText(v, i, y, rH, i % 2 === 1 ? 'right' : 'left', true));
+    });
+    y += rH;
 
-    // ── Totals ────────────────────────────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#151c27');
-    doc.text('Gross Salary',      c1, rY, { width: 170 });
-    doc.text(fmtINR(payslip.gross_salary),    c2, rY, { width: 75, align: 'right' });
-    doc.text('Total Deductions',  c3, rY, { width: 170 });
-    doc.text(fmtINR(payslip.total_deductions),c4, rY, { width: 80, align: 'right' });
-    rY += 16;
-    doc.moveTo(40, rY).lineTo(555, rY).lineWidth(2).strokeColor('#3525cd').stroke();
-    rY += 8;
+    // Net salary + amount in words row
+    const nH = 18;
+    allCols(y, nH, null);
+    // Merge cols 0-3 for "In Word" text — draw text spanning columns
+    doc.font('Helvetica').fontSize(7.5).fillColor('#000')
+       .text('In Word: ' + toWords(netSalary), tc[0] + 2, y + 5, { width: tc[4] - tc[0] - 4, lineBreak: false });
+    cellText('Net Salary',      4, y, nH, 'left',  true);
+    cellText(fmtAmt(netSalary), 5, y, nH, 'right', true);
+    y += nH + 6;
 
-    doc.font('Helvetica-Bold').fontSize(13).fillColor('#3525cd');
-    doc.text('Net Salary', c1, rY);
-    doc.text(fmtINR(payslip.net_salary), c1, rY, { width: W, align: 'right' });
-    rY += 26;
+    // ── Attendance row ────────────────────────────────────────────────────
+    const attText =
+      `P+OD: ${(presentFull + presentHalf * 0.5).toFixed(2)}  ` +
+      `W/Off: ${weekoff.toFixed(2)}  WOP: ${weekoff.toFixed(2)}  ` +
+      `LWP\\LOP: ${lopDays.toFixed(2)}  RHP: 0.00  HL: ${paidHoliday.toFixed(2)}  ` +
+      `C/Off: 0.00  CL: ${paidLeave.toFixed(2)}  PL: 0.00  SL: 0.00  AL: 0.00  EL: 0.00  VL: 0.00`;
+    doc.font('Helvetica').fontSize(7.5).fillColor('#444').text(attText, L, y, { width: W });
+    y += 14;
 
-    // ── Attendance summary ────────────────────────────────────────────────────
-    doc.moveTo(40, rY).lineTo(555, rY).lineWidth(0.5).strokeColor('#e2e0f0').stroke();
-    rY += 7;
-    doc.font('Helvetica').fontSize(8).fillColor('#777587');
-    doc.text(
-      `Working Days: ${payslip.working_days || 0}  |  Present: ${Number(payslip.present_days || 0)}  |  ` +
-      `Absent: ${payslip.absent_days || 0}  |  LOP Days: ${Number(payslip.lop_days || 0)}`,
-      40, rY, { width: W, align: 'center' }
-    );
-    rY += 20;
-
-    // ── Footer ────────────────────────────────────────────────────────────────
-    doc.moveTo(40, rY).lineTo(555, rY).lineWidth(0.5).strokeColor('#e2e0f0').stroke();
-    rY += 7;
-    doc.fontSize(7).fillColor('#aaaaaa');
-    doc.text('This is a computer-generated payslip and does not require a signature.', 40, rY, { width: W, align: 'center' });
-    if (usePassword) {
-      doc.moveDown(0.3);
-      doc.text(`PDF password: Employee ID + Year  (e.g. ${employee.employee_id}${payslip.year})`, { width: W, align: 'center' });
-    }
+    // ── Footer ────────────────────────────────────────────────────────────
+    doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor('#ddd').stroke();
+    y += 5;
+    doc.font('Helvetica').fontSize(7.5).fillColor('#555')
+       .text(rich.footerNote, L, y, { width: W, align: 'center' });
+    y += 11;
+    doc.font('Helvetica').fontSize(7).fillColor('#aaa')
+       .text('HRMS by Lumos Logic', L, y, { width: W, align: 'center' });
 
     doc.end();
   });
 }
 
-// ─── HTML email body ──────────────────────────────────────────────────────────
+// ─── HTML email body — matches HRMS branded template ─────────────────────────
 function payslipEmailHtml(payslip, employee, orgName, period) {
-  return `<!DOCTYPE html><html><body style="margin:0;padding:20px;background:#f0f3ff;font-family:Arial,sans-serif;">
-<div style="max-width:560px;margin:0 auto;">
-  <div style="background:#3525cd;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h2 style="color:#fff;margin:0;font-size:17px;">${orgName}</h2>
-    <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:12px;">Payslip for ${period}</p>
+  const row = (label, value) => `
+    <tr>
+      <td style="width:38%;padding:10px 14px;border-bottom:1px solid #e8eaf6;border-right:1px solid #e8eaf6;background:#f7f8ff;vertical-align:middle;">
+        <span style="font-size:11px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">${label}</span>
+      </td>
+      <td style="padding:10px 14px;border-bottom:1px solid #e8eaf6;font-size:14px;font-weight:700;color:#1e1456;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
+    </tr>`;
+
+  return `<!DOCTYPE html>
+<html><body style="margin:0;padding:16px 8px;background:#eef0f8;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:680px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#3525cd 0%,#5a3ce8 100%);padding:20px 28px 18px;border-radius:10px 10px 0 0;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:6px 12px;display:inline-block;">
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:3px;color:rgba(255,255,255,0.85);font-family:Arial,sans-serif;">HRMS</span>
+      </div>
+      <span style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.7);font-family:Arial,sans-serif;">${orgName}</span>
+    </div>
+    <h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#ffffff;font-family:Arial,sans-serif;">Your Payslip</h2>
+    <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.75);font-family:Arial,sans-serif;">Salary statement for ${period}</p>
   </div>
-  <div style="background:#fff;padding:24px;border:1px solid #e2e0f0;border-top:none;border-radius:0 0 8px 8px;">
-    <p style="color:#151c27;margin:0 0 12px;">Dear <strong>${employee.name}</strong>,</p>
-    <p style="color:#464555;margin:0 0 16px;font-size:13px;">Your payslip for <strong>${period}</strong> has been generated. Please find the PDF attached.</p>
-    <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;background:#f9f9ff;">
-      <tr><td style="padding:9px 14px;color:#777587;font-size:12px;">Gross Salary</td>
-          <td style="padding:9px 14px;text-align:right;font-weight:bold;color:#151c27;">${fmtINR(payslip.gross_salary)}</td></tr>
-      <tr style="background:#fff;"><td style="padding:9px 14px;color:#777587;font-size:12px;">Total Deductions</td>
-          <td style="padding:9px 14px;text-align:right;font-weight:bold;color:#e53e3e;">${fmtINR(payslip.total_deductions)}</td></tr>
-      <tr style="border-top:2px solid #3525cd;background:#f0f3ff;">
-          <td style="padding:11px 14px;color:#3525cd;font-weight:900;font-size:14px;">Net Salary</td>
-          <td style="padding:11px 14px;text-align:right;color:#3525cd;font-weight:900;font-size:14px;">${fmtINR(payslip.net_salary)}</td></tr>
-    </table>
-    <p style="margin-top:18px;font-size:11px;color:#777587;">This is an automated email. Please do not reply.</p>
+
+  <!-- Body -->
+  <div style="background:#ffffff;padding:24px 28px;font-family:Arial,sans-serif;color:#1e293b;border-left:1px solid #dde1f0;border-right:1px solid #dde1f0;">
+    <p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#1e1456;font-family:Arial,sans-serif;">Hello ${employee.name},</p>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;line-height:1.7;font-family:Arial,sans-serif;">
+      Your payslip for <strong>${period}</strong> has been generated. Please find the detailed salary slip attached as a PDF.
+    </p>
+
+    <!-- Salary summary table -->
+    <div style="border:1px solid #e8eaf6;border-radius:8px;overflow:hidden;margin:0 0 20px;">
+      <table style="width:100%;border-collapse:collapse;">
+        ${row('Gross Salary',     fmtINR(payslip.gross_salary))}
+        ${row('Total Deductions', '<span style="color:#e53e3e;">' + fmtINR(payslip.total_deductions) + '</span>')}
+        <tr style="background:#f0f3ff;border-top:2px solid #3525cd;">
+          <td style="width:38%;padding:12px 14px;border-right:1px solid #dde1f0;vertical-align:middle;">
+            <span style="font-size:13px;font-weight:800;color:#3525cd;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Net Salary</span>
+          </td>
+          <td style="padding:12px 14px;font-size:16px;font-weight:900;color:#3525cd;font-family:Arial,sans-serif;">${fmtINR(payslip.net_salary)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Note -->
+    <div style="background:#f0f3ff;border-left:4px solid #3525cd;padding:12px 16px;border-radius:4px;font-family:Arial,sans-serif;">
+      <p style="margin:0;font-size:13px;color:#3525cd;">Please open the attached PDF for the full salary breakdown including earnings, deductions, and attendance details.</p>
+    </div>
   </div>
+
+  <!-- Footer -->
+  <div style="background:#f0f3ff;border:1px solid #dde1f0;border-top:none;padding:16px 28px 18px;border-radius:0 0 10px 10px;font-family:Arial,sans-serif;">
+    <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#1e1456;">Need Help?</p>
+    <p style="margin:0 0 12px;font-size:12px;color:#475569;">
+      Portal: <a href="https://hrms.lumoslogic.com/" style="color:#3525cd;text-decoration:none;font-weight:600;">hrms.lumoslogic.com</a>
+    </p>
+    <div style="border-top:1px solid #c7c4d8;margin:0 0 10px;"></div>
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Automated email from HRMS by LumosLogic &nbsp;&middot;&nbsp; Please do not reply &nbsp;&middot;&nbsp; &copy; ${new Date().getFullYear()}</p>
+  </div>
+
 </div></body></html>`;
 }
 
 // ─── Send one payslip email ───────────────────────────────────────────────────
-async function sendOnePayslipEmail({ transport, payslip, employee, orgName, month, year }) {
+async function sendOnePayslipEmail({ transport, payslip, employee, orgName, month, year, organizationId }) {
   const monthLabel = MONTHS[month - 1] || String(month);
   const period     = `${monthLabel} ${year}`;
-  const fromAddr   = process.env.SMTP_FROM || `"${orgName}" <${process.env.SMTP_USER}>`;
+  const fromName   = process.env.SMTP_FROM_NAME || 'Lumos Logic HRMS';
+  const fromAddr   = process.env.SMTP_FROM || `"${fromName}" <${process.env.SMTP_USER}>`;
   const safeName   = (employee.employee_id || employee.name || 'employee').replace(/\W+/g, '_');
   const filename   = `Payslip_${safeName}_${String(month).padStart(2, '0')}_${year}.pdf`;
 
-  const pdfBuffer  = await generatePayslipPDF(payslip, employee, orgName);
+  const pdfBuffer   = await generatePayslipPDF(payslip, employee, orgName, organizationId);
   const attachments = pdfBuffer
     ? [{ filename, content: pdfBuffer, contentType: 'application/pdf' }]
     : [];
@@ -225,10 +417,11 @@ async function sendPayslipsBatch({ organizationId, runId, month, year }) {
             ps.special_allowance, ps.other_allowances,
             ps.pf_employee, ps.esi_employee, ps.professional_tax, ps.tds,
             ps.other_deductions, ps.lop_days, ps.lop_amount,
-            ps.working_days, ps.present_days, ps.absent_days, ps.month, ps.year
+            ps.working_days, ps.present_days, ps.absent_days, ps.leave_days,
+            ps.month, ps.year
        FROM payroll_run_employees pre
-       JOIN  users    u  ON u.id   = pre.user_id
-       JOIN  payslips ps ON ps.id  = pre.payslip_id
+       JOIN  users    u  ON u.id  = pre.user_id
+       JOIN  payslips ps ON ps.id = pre.payslip_id
       WHERE pre.payroll_run_id  = $1
         AND pre.organization_id = $2
         AND pre.status          = 'success'
@@ -251,6 +444,7 @@ async function sendPayslipsBatch({ organizationId, runId, month, year }) {
           orgName,
           month,
           year,
+          organizationId,
         });
 
         await pool.query(
