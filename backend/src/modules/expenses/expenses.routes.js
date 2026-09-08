@@ -56,7 +56,7 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const oId = req.user.organization_id;
-    const { title, category, amount, expense_date, description, receipt_url, user_id } = req.body;
+    const { title, category, amount, expense_date, description, receipt_url, merchant_name, receipt_number, user_id } = req.body;
     if (!title || !amount || !expense_date) return res.status(400).json({ error: 'title, amount and date required' });
     if (Number(amount) <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
 
@@ -79,6 +79,8 @@ router.post('/', auth, async (req, res) => {
         user_id: targetUserId, title, category: category || 'other',
         amount: Number(amount), expense_date,
         description: description || '', receipt_url: receipt_url || '',
+        merchant_name: (merchant_name || '').trim(),
+        receipt_number: (receipt_number || '').trim(),
         organization_id: oId,
         manager_id: managerId,
       })
@@ -107,6 +109,52 @@ router.post('/', auth, async (req, res) => {
       })));
     }
     res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/expenses/check-duplicate
+// Three-tier check. Pass exclude_id on updates to skip the current record.
+//
+// Hard block  — receipt_number + merchant_name both match (same merchant cannot reuse same receipt)
+// Soft warn   — receipt_number matches but no merchant provided (can't confirm; different merchants
+//               can share the same invoice number, so we warn rather than block)
+// Soft warn   — merchant_name + amount + expense_date match (possible duplicate transaction)
+router.post('/check-duplicate', auth, async (req, res) => {
+  try {
+    const oId    = req.user.organization_id;
+    const userId = req.user.id;
+    const { merchant_name, receipt_number, amount, expense_date, exclude_id } = req.body;
+
+    const rn = (receipt_number || '').trim();
+    const mn = (merchant_name  || '').trim();
+
+    const base = () => db.from('expenses')
+      .select('id, title, amount, expense_date, merchant_name, receipt_number')
+      .eq('organization_id', oId)
+      .eq('user_id', userId);
+    const excl = q => exclude_id ? q.neq('id', parseInt(exclude_id)) : q;
+
+    // 1. Hard block: same receipt_number AND same merchant_name
+    if (rn && mn) {
+      const { data } = await excl(base().ilike('receipt_number', rn).ilike('merchant_name', mn));
+      if (data?.length) return res.json({ type: 'hard', existing: data[0] });
+    }
+
+    // 2. Soft warn: receipt_number matches but merchant unknown — cannot confirm it's the same vendor
+    if (rn && !mn) {
+      const { data } = await excl(base().ilike('receipt_number', rn));
+      if (data?.length) return res.json({ type: 'soft', existing: data[0] });
+    }
+
+    // 3. Soft warn: same merchant + amount + date (regardless of receipt_number)
+    if (mn && amount && expense_date) {
+      const { data } = await excl(
+        base().ilike('merchant_name', mn).eq('amount', Number(amount)).eq('expense_date', expense_date)
+      );
+      if (data?.length) return res.json({ type: 'soft', existing: data[0] });
+    }
+
+    res.json({ type: null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -210,9 +258,14 @@ router.put('/:id', auth, async (req, res) => {
       .select('user_id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!exp || (exp.user_id !== req.user.id && !isAdmin(req.user.role))) return res.status(403).json({ error: 'Forbidden' });
     if (exp.status !== 'pending' && !isAdmin(req.user.role)) return res.status(400).json({ error: 'Cannot edit a reviewed expense' });
-    const { title, category, amount, expense_date, description, receipt_url } = req.body;
+    const { title, category, amount, expense_date, description, receipt_url, merchant_name, receipt_number } = req.body;
     const { data, error } = await db.from('expenses')
-      .update({ title, category, amount: Number(amount), expense_date, description: description || '', receipt_url: receipt_url || '' })
+      .update({
+        title, category, amount: Number(amount), expense_date,
+        description: description || '', receipt_url: receipt_url || '',
+        merchant_name: (merchant_name || '').trim(),
+        receipt_number: (receipt_number || '').trim(),
+      })
       .eq('id', req.params.id).eq('organization_id', oId).select().single();
     if (error) throw error;
     res.json(data);

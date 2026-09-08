@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight } from 'lucide-react';
+import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -27,18 +27,33 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
   const qc     = useQueryClient();
   const isEdit = !!expense;
   const fileRef  = useRef();
-  const [uploading,         setUploading]         = useState(false);
-  const [pendingFile,       setPendingFile]       = useState(null);
-  const [amountErr,         setAmountErr]         = useState('');
-  const [dupWarned,         setDupWarned]         = useState(false);
-  const [dupReceiptWarned,  setDupReceiptWarned]  = useState(false);
+  const [uploading,  setUploading]  = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [amountErr,  setAmountErr]  = useState('');
+  const [checking,   setChecking]   = useState(false);
+  const [dupBlock,   setDupBlock]   = useState(null);   // hard duplicate — blocks submit
+  const [dupConfirm, setDupConfirm] = useState(null);   // soft duplicate — requires confirmation
   const today = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState(() => isEdit
-    ? { title: expense.title, category: expense.category, amount: expense.amount, expense_date: expense.expense_date, description: expense.description || '', receipt_url: expense.receipt_url || '' }
-    : { title: '', category: 'travel', amount: '', expense_date: today, description: '', receipt_url: '' });
+    ? {
+        title: expense.title, category: expense.category, amount: expense.amount,
+        expense_date: expense.expense_date, description: expense.description || '',
+        receipt_url: expense.receipt_url || '',
+        merchant_name: expense.merchant_name || '',
+        receipt_number: expense.receipt_number || '',
+      }
+    : {
+        title: '', category: 'travel', amount: '', expense_date: today,
+        description: '', receipt_url: '',
+        merchant_name: '', receipt_number: '',
+      });
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    // Clear hard-block when the user corrects the receipt/merchant fields
+    if (k === 'receipt_number' || k === 'merchant_name') setDupBlock(null);
+    setForm(f => ({ ...f, [k]: v }));
+  };
 
   function validateAmount(val) {
     const n = parseFloat(val);
@@ -54,25 +69,6 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
     const ok = ['application/pdf','image/jpeg','image/png','image/jpg'].includes(file.type);
     if (!ok) { toast('Unsupported file format. Please upload a PDF, JPG, or PNG file.', 'error'); return; }
     if (file.size > maxBytes) { toast('File too large — max 5 MB', 'error'); return; }
-    // BUG_026: Block upload if same receipt filename already used; require explicit second attempt
-    if (allExpenses.length > 0) {
-      const nameStem = file.name.toLowerCase().replace(/\.[^.]+$/, '');
-      const dupClaim = allExpenses.find(exp => {
-        if (!exp.receipt_url) return false;
-        if (isEdit && exp.id === expense?.id) return false;
-        try {
-          const urlPath = decodeURIComponent(new URL(exp.receipt_url).pathname);
-          return urlPath.split('/').pop().toLowerCase().includes(nameStem);
-        } catch { return false; }
-      });
-      if (dupClaim && !dupReceiptWarned) {
-        setDupReceiptWarned(true);
-        toast(`Duplicate receipt: "${file.name}" is already attached to claim "${dupClaim.title}". Select the file again to upload anyway.`, 'warning');
-        if (fileRef.current) fileRef.current.value = '';
-        return;
-      }
-    }
-    setDupReceiptWarned(false);
     setPendingFile(file);
     setUploading(true);
     try {
@@ -98,123 +94,193 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
     onError: e => toast(e.message, 'error'),
   });
 
-  function handleSubmit() {
+  async function runDuplicateCheck() {
+    const rn = form.receipt_number.trim();
+    const mn = form.merchant_name.trim();
+    if (!rn && !mn) return null;   // nothing to check
+    try {
+      return await apiPost('/expenses/check-duplicate', {
+        merchant_name: mn,
+        receipt_number: rn,
+        amount: form.amount,
+        expense_date: form.expense_date,
+        exclude_id: isEdit ? expense.id : undefined,
+      });
+    } catch {
+      return null;   // fail-open: don't block on API error
+    }
+  }
+
+  async function handleSubmit() {
     if (!form.title.trim()) { toast('Enter a title for the expense', 'warning'); return; }
     if (!/[a-zA-Z0-9]/.test(form.title.trim())) { toast('Expense title must contain at least one letter or number.', 'error'); return; }
-    if (!validateAmount(form.amount)) { return; }
+    if (!validateAmount(form.amount)) return;
     if (!form.expense_date) { toast('Select an expense date', 'warning'); return; }
     if (!form.receipt_url) { toast('Receipt is required. Please upload a receipt before submitting.', 'warning'); return; }
-    // BUG_027: Duplicate claim detection — warn first, allow second submit
-    if (!isEdit && !dupWarned && allExpenses.length > 0) {
-      const dupClaim = allExpenses.find(exp =>
-        exp.expense_date?.slice(0, 10) === form.expense_date &&
-        exp.category === form.category &&
-        Number(exp.amount) === Number(form.amount)
-      );
-      if (dupClaim) {
-        setDupWarned(true);
-        toast(`Possible duplicate: A "${CAT_LABELS[form.category]}" claim of ${fmt(form.amount)} on ${fmtDate(form.expense_date)} already exists ("${dupClaim.title}"). Click Submit again to confirm.`, 'warning');
-        return;
-      }
-    }
+
+    setChecking(true);
+    const result = await runDuplicateCheck();
+    setChecking(false);
+
+    if (result?.type === 'hard') { setDupBlock(result.existing); return; }
+    if (result?.type === 'soft') { setDupConfirm(result.existing); return; }
+
     mut.mutate();
   }
 
   const fmtFileSize = b => b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`;
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Expense' : 'Submit Expense Claim'} size="md"
-      footer={
-        <div className="flex justify-end gap-3">
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={mut.isPending || !form.title || !form.amount || !form.receipt_url}>
-            {mut.isPending ? <><span className="spinner w-4 h-4" />Submitting…</> : isEdit ? 'Save Changes' : 'Submit Claim'}
-          </button>
-        </div>
-      }>
-      <div className="space-y-4">
-        {/* Required fields note */}
-        <p className="text-[0.65rem] text-[#9ca3af]"><span className="text-rose-500">*</span> Indicates required fields</p>
-
-        {/* Title with char counter */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="form-label mb-0">Title <span className="text-rose-500">*</span></label>
-            <span className="text-[0.65rem] text-[#9ca3af]">{form.title.length}/80</span>
+    <>
+      <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Expense' : 'Submit Expense Claim'} size="md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSubmit}
+              disabled={mut.isPending || checking || !!dupBlock || !form.title || !form.amount || !form.receipt_url}>
+              {(mut.isPending || checking)
+                ? <><span className="spinner w-4 h-4" />{checking ? 'Checking…' : 'Submitting…'}</>
+                : isEdit ? 'Save Changes' : 'Submit Claim'}
+            </button>
           </div>
-          <input className={`form-control ${form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) ? 'border-rose-400' : ''}`} maxLength={80} placeholder="e.g. Cab to client office" value={form.title}
-            onChange={e => set('title', e.target.value)} />
-          {form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) && (
-            <p className="text-xs text-rose-600 mt-1">Title must contain at least one letter or number.</p>
-          )}
-        </div>
+        }>
+        <div className="space-y-4">
+          <p className="text-[0.65rem] text-[#9ca3af]"><span className="text-rose-500">*</span> Indicates required fields</p>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="form-label">Category</label>
-            <select className="form-control" value={form.category} onChange={e => set('category', e.target.value)}>
-              {CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c]} {CAT_LABELS[c]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Amount (₹) <span className="text-rose-500">*</span></label>
-            <input type="number" className={`form-control ${amountErr ? 'border-rose-400' : ''}`}
-              min={0.01} step={0.01} placeholder="0.00" value={form.amount}
-              onChange={e => { set('amount', e.target.value); validateAmount(e.target.value); }} />
-            {amountErr && <p className="text-[0.65rem] text-rose-500 mt-1">{amountErr}</p>}
-          </div>
-        </div>
-
-        <div>
-          <label className="form-label">Expense Date <span className="text-rose-500">*</span></label>
-          <input type="date" className="form-control" max={today} value={form.expense_date}
-            onChange={e => set('expense_date', e.target.value)} />
-          <p className="text-[0.65rem] text-[#9ca3af] mt-1">Future dates are not allowed</p>
-        </div>
-
-        {/* Description with char counter */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="form-label mb-0">Description <span className="font-normal text-[#777587] text-xs normal-case">(Optional)</span></label>
-            <span className="text-[0.65rem] text-[#9ca3af]">{form.description.length}/200</span>
-          </div>
-          <textarea className="form-control" rows={2} maxLength={200} placeholder="Additional details about this expense…"
-            value={form.description} onChange={e => set('description', e.target.value)} />
-        </div>
-
-        {/* Receipt upload */}
-        <div>
-          <label className="form-label">Receipt <span className="text-rose-500">*</span></label>
-          <div className="flex items-center gap-2 p-2.5 mb-2 rounded-lg bg-[#f0f3ff] border border-[#e7eefe] text-xs text-[#777587]">
-            <span className="text-[#3525cd]">ℹ</span>
-            <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG</strong> · Max size: <strong className="text-[#464555]">5 MB</strong></span>
-          </div>
-          <input type="file" ref={fileRef} className="hidden" accept=".pdf,.jpg,.jpeg,.png"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleReceipt(f); e.target.value = ''; }} />
-          {form.receipt_url ? (
-            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-emerald-700 truncate">{pendingFile?.name || 'Receipt uploaded'}</p>
-                  {pendingFile && <p className="text-[0.65rem] text-emerald-600">{fmtFileSize(pendingFile.size)}</p>}
-                </div>
-                <a href={form.receipt_url} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-[#3525cd] flex items-center gap-1 hover:underline flex-shrink-0">
-                  <ExternalLink size={11} />View
-                </a>
-                <button className="text-xs text-rose-500 hover:underline flex-shrink-0"
-                  onClick={() => { set('receipt_url', ''); setPendingFile(null); }}>Remove</button>
+          {/* Hard-duplicate banner — clears when receipt_number or merchant_name changes */}
+          {dupBlock && (
+            <div className="rounded-lg bg-rose-50 border border-rose-300 p-3 flex gap-2.5 items-start">
+              <AlertTriangle size={15} className="text-rose-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-rose-700">Duplicate Receipt Detected</p>
+                <p className="text-xs text-rose-600 mt-0.5">
+                  {dupBlock.receipt_number
+                    ? <>Receipt <strong>#{dupBlock.receipt_number}</strong> is already used in </>
+                    : <>A matching expense exists in </>}
+                  "<strong>{dupBlock.title}</strong>"
+                  {dupBlock.expense_date && <> ({fmtDate(dupBlock.expense_date)})</>}.
+                  The same receipt cannot be submitted twice.
+                  Update the Receipt / Invoice No. or Merchant Name below if this is a different transaction.
+                </p>
               </div>
             </div>
-          ) : (
-            <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? <><span className="spinner w-3 h-3" />Uploading…</> : <><Upload size={13} />Upload Receipt</>}
-            </button>
           )}
+
+          {/* Title */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="form-label mb-0">Title <span className="text-rose-500">*</span></label>
+              <span className="text-[0.65rem] text-[#9ca3af]">{form.title.length}/80</span>
+            </div>
+            <input className={`form-control ${form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) ? 'border-rose-400' : ''}`}
+              maxLength={80} placeholder="e.g. Cab to client office" value={form.title}
+              onChange={e => set('title', e.target.value)} />
+            {form.title && !/[a-zA-Z0-9]/.test(form.title.trim()) && (
+              <p className="text-xs text-rose-600 mt-1">Title must contain at least one letter or number.</p>
+            )}
+          </div>
+
+          {/* Merchant + Receipt number — used for duplicate detection */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Merchant Name <span className="font-normal text-[#777587] text-xs normal-case">(Optional)</span></label>
+              <input className="form-control" placeholder="e.g. Uber, Swiggy, OYO"
+                value={form.merchant_name} onChange={e => set('merchant_name', e.target.value)} />
+            </div>
+            <div>
+              <label className="form-label">Receipt / Invoice No. <span className="font-normal text-[#777587] text-xs normal-case">(Optional)</span></label>
+              <input className="form-control" placeholder="e.g. INV-00123"
+                value={form.receipt_number} onChange={e => set('receipt_number', e.target.value)} />
+            </div>
+          </div>
+          <p className="text-[0.62rem] text-[#9ca3af] -mt-2">Providing these helps detect duplicate submissions automatically.</p>
+
+          {/* Category + Amount */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Category</label>
+              <select className="form-control" value={form.category} onChange={e => set('category', e.target.value)}>
+                {CATEGORIES.map(c => <option key={c} value={c}>{CAT_ICONS[c]} {CAT_LABELS[c]}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Amount (₹) <span className="text-rose-500">*</span></label>
+              <input type="number" className={`form-control ${amountErr ? 'border-rose-400' : ''}`}
+                min={0.01} step={0.01} placeholder="0.00" value={form.amount}
+                onChange={e => { set('amount', e.target.value); validateAmount(e.target.value); }} />
+              {amountErr && <p className="text-[0.65rem] text-rose-500 mt-1">{amountErr}</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Expense Date <span className="text-rose-500">*</span></label>
+            <input type="date" className="form-control" max={today} value={form.expense_date}
+              onChange={e => set('expense_date', e.target.value)} />
+            <p className="text-[0.65rem] text-[#9ca3af] mt-1">Future dates are not allowed</p>
+          </div>
+
+          {/* Description */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="form-label mb-0">Description <span className="font-normal text-[#777587] text-xs normal-case">(Optional)</span></label>
+              <span className="text-[0.65rem] text-[#9ca3af]">{form.description.length}/200</span>
+            </div>
+            <textarea className="form-control" rows={2} maxLength={200}
+              placeholder="Additional details about this expense…"
+              value={form.description} onChange={e => set('description', e.target.value)} />
+          </div>
+
+          {/* Receipt upload */}
+          <div>
+            <label className="form-label">Receipt <span className="text-rose-500">*</span></label>
+            <div className="flex items-center gap-2 p-2.5 mb-2 rounded-lg bg-[#f0f3ff] border border-[#e7eefe] text-xs text-[#777587]">
+              <span className="text-[#3525cd]">ℹ</span>
+              <span>Accepted: <strong className="text-[#464555]">PDF, JPG, PNG</strong> · Max size: <strong className="text-[#464555]">5 MB</strong></span>
+            </div>
+            <input type="file" ref={fileRef} className="hidden" accept=".pdf,.jpg,.jpeg,.png"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceipt(f); e.target.value = ''; }} />
+            {form.receipt_url ? (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-emerald-700 truncate">{pendingFile?.name || 'Receipt uploaded'}</p>
+                    {pendingFile && <p className="text-[0.65rem] text-emerald-600">{fmtFileSize(pendingFile.size)}</p>}
+                  </div>
+                  <a href={form.receipt_url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-[#3525cd] flex items-center gap-1 hover:underline flex-shrink-0">
+                    <ExternalLink size={11} />View
+                  </a>
+                  <button className="text-xs text-rose-500 hover:underline flex-shrink-0"
+                    onClick={() => { set('receipt_url', ''); setPendingFile(null); }}>Remove</button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                {uploading ? <><span className="spinner w-3 h-3" />Uploading…</> : <><Upload size={13} />Upload Receipt</>}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      {/* Soft-duplicate confirmation — same merchant + amount + date, different receipt number */}
+      {dupConfirm && (
+        <ConfirmModal
+          open
+          title="Possible Duplicate Expense"
+          message={
+            `A similar expense "${dupConfirm.title}"` +
+            (dupConfirm.merchant_name ? ` from ${dupConfirm.merchant_name}` : '') +
+            ` for ${fmt(dupConfirm.amount)} on ${fmtDate(dupConfirm.expense_date)} already exists in your claims.` +
+            ` If this is a genuinely different transaction, click Submit Anyway.`
+          }
+          confirmLabel="Submit Anyway"
+          onConfirm={() => { setDupConfirm(null); mut.mutate(); }}
+          onCancel={() => setDupConfirm(null)}
+        />
+      )}
+    </>
   );
 }
 
