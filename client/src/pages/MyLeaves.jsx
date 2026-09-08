@@ -593,7 +593,7 @@ export default function MyLeaves() {
 
   const counts = { pending: 0, approved: 0, rejected: 0 };
   leaves.filter(l => !isWFHRecord(l)).forEach(l => {
-    if (['pending', 'pending_dept', 'pending_root'].includes(l.status)) counts.pending++;
+    if (['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(l.status)) counts.pending++;
     else if (l.status === 'approved') counts.approved++;
     else if (l.status === 'rejected') counts.rejected++;
   });
