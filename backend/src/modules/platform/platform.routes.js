@@ -459,11 +459,18 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await safe(`DELETE FROM documents    WHERE organization_id = $1`, [orgId]);
 
     // HR modules
+    await safe(`DELETE FROM performance_goal_comments WHERE goal_id IN (SELECT id FROM performance_goals WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM performance_goals    WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM goals                WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM performance_reviews  WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM onboarding_tasks     WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM exit_requests        WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM exit_clearance_items WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM shift_assignments    WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM shifts               WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM workflow_approvals   WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM workflow_levels      WHERE workflow_id IN (SELECT id FROM workflows WHERE organization_id = $1)`, [orgId]);
+    await safe(`DELETE FROM workflows            WHERE organization_id = $1`, [orgId]);
 
     // Employee profile sub-tables — use organization_id (they also have employee_id,
     // not user_id, so deleting by org_id avoids any column-name guessing)
@@ -502,10 +509,11 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     // Delink registration requests (preserve history, unlink from deleted org)
     await safe(`UPDATE org_registration_requests SET organization_id = NULL WHERE organization_id = $1`, [orgId]);
 
-    // Null out audit FK columns that reference users(id) without ON DELETE CASCADE
-    // These are created_by / updated_by / verified_by / changed_by columns added
-    // by employee_profile_v2 migration — they are NOT cascaded so must be cleared first.
-    const auditFkTables = [
+    // Null out every non-cascaded FK column that references users(id) across all tables.
+    // Uses subquery form so it works whether or not the table has organization_id.
+    // safe() silently skips any table or column that doesn't exist in this schema.
+    const userFkCols = [
+      // employee profile v2
       ['employee_qualifications',       ['created_by', 'updated_by']],
       ['employee_experiences',          ['created_by', 'updated_by']],
       ['employee_family_members',       ['created_by', 'updated_by']],
@@ -519,18 +527,34 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
       ['employee_training',             ['created_by', 'updated_by']],
       ['employee_certifications',       ['created_by', 'updated_by']],
       ['profile_audit_log',             ['changed_by']],
+      // performance & goals
+      ['performance_goals',             ['created_by', 'updated_by', 'assigned_to', 'reviewed_by']],
+      ['performance_reviews',           ['created_by', 'updated_by', 'reviewer_id']],
+      ['goals',                         ['created_by', 'updated_by', 'assigned_to']],
+      // comms & docs
+      ['notifications_log',             ['sent_by']],
+      ['announcements',                 ['created_by', 'updated_by']],
+      ['documents',                     ['created_by', 'updated_by', 'approved_by']],
+      // assets & finance
+      ['assets',                        ['assigned_to', 'created_by', 'updated_by']],
+      ['expenses',                      ['reviewed_by']],
+      // HR
+      ['leaves',                        ['reviewed_by']],
+      ['exit_requests',                 ['reviewed_by', 'created_by']],
+      ['onboarding_tasks',              ['assigned_to', 'created_by', 'completed_by']],
+      ['workflows',                     ['created_by', 'updated_by']],
+      ['workflow_approvals',            ['approved_by']],
+      // users self-ref (reporting_to handled by cascade; updated_by is not)
       ['users',                         ['updated_by']],
     ];
-    for (const [table, cols] of auditFkTables) {
-      const sets = cols.map(c => `${c} = NULL`).join(', ');
-      await safe(`UPDATE ${table} SET ${sets} WHERE organization_id = $1`, [orgId]);
+    for (const [table, cols] of userFkCols) {
+      for (const col of cols) {
+        await safe(
+          `UPDATE ${table} SET ${col} = NULL WHERE ${col} IN (SELECT id FROM users WHERE organization_id = $1)`,
+          [orgId]
+        );
+      }
     }
-    // users.updated_by has no organization_id — null it out by matching org users
-    await safe(`UPDATE users SET updated_by = NULL WHERE organization_id = $1`, [orgId]);
-    // profile_audit_log.changed_by — null for all rows belonging to this org
-    await safe(`UPDATE profile_audit_log SET changed_by = NULL WHERE organization_id = $1`, [orgId]);
-    // notifications_log.sent_by FK → users(id) has no cascade — clear it before user deletion
-    await safe(`UPDATE notifications_log SET sent_by = NULL WHERE sent_by IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
 
     // Users (after all child tables)
     await client.query(`DELETE FROM users WHERE organization_id = $1`, [orgId]);
