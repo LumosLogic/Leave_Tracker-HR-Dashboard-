@@ -1318,13 +1318,38 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
         if (form.password.length < 6) throw new Error('Temporary Password must be at least 6 characters.');
         if (!form.position.trim()) throw new Error('Job Title / Position is required.');
       } else {
-        // BUG_058: Validate Edit Employee fields
-        if (form.name && form.name.trim().length < 2) throw new Error('Full Name must be at least 2 characters.');
-        if (form.name && !/[a-zA-Z]/.test(form.name.trim())) throw new Error('Full Name must contain at least one letter.');
-        if (form.phone && !/^\d{10}$/.test(form.phone.trim())) throw new Error('Mobile number must be exactly 10 digits.');
-        if (form.personal_email && form.personal_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) {
+        // Full Name — required even in edit (display breaks without a name)
+        if (!form.name?.trim()) throw new Error('Full Name is required.');
+        if (form.name.trim().length < 2) throw new Error('Full Name must be at least 2 characters.');
+        if (!/[a-zA-Z]/.test(form.name.trim())) throw new Error('Full Name must contain at least one letter.');
+        // Company Email — required and must be valid
+        if (!form.email?.trim()) throw new Error('Company Email is required.');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error('Company Email must be a valid email address.');
+        // Mobile — strip formatting chars then check 10 digits
+        if (form.phone?.trim()) {
+          const mobileDigits = form.phone.replace(/\D/g, '');
+          if (mobileDigits.length !== 10) throw new Error('Mobile number must be exactly 10 digits.');
+        }
+        // Personal Email
+        if (form.personal_email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email.trim())) {
           throw new Error('Personal Email must be a valid email address.');
         }
+        // Password reset — enforce minimum length if a new password is entered
+        if (form.password && form.password.length < 6) throw new Error('New password must be at least 6 characters.');
+        // Date of Birth — no future dates
+        if (form.date_of_birth && form.date_of_birth > new Date().toISOString().split('T')[0]) {
+          throw new Error('Date of Birth cannot be in the future.');
+        }
+        // CTC — non-negative
+        if (form.ctc !== '' && form.ctc != null && Number(form.ctc) < 0) throw new Error('CTC cannot be negative.');
+        // Work hours — 1 to 24
+        if (form.work_hours_per_day != null && form.work_hours_per_day !== '') {
+          const wh = Number(form.work_hours_per_day);
+          if (isNaN(wh) || wh < 1 || wh > 24) throw new Error('Work hours per day must be between 1 and 24.');
+        }
+        // Height / Weight — non-negative
+        if (form.height !== '' && form.height != null && Number(form.height) < 0) throw new Error('Height cannot be negative.');
+        if (form.weight !== '' && form.weight != null && Number(form.weight) < 0) throw new Error('Weight cannot be negative.');
       }
       if (isEdit) {
         const body = { ...form };
@@ -1505,7 +1530,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                     <label className="form-label">Mobile</label>
-                    <input className="form-control" type="tel" placeholder="+91 9876543210" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                    <input className="form-control" type="tel" placeholder="10-digit mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} />
                   </div>
                   <div>
                     <label className="form-label">Personal Email</label>
