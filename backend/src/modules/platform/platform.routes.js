@@ -473,6 +473,11 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
       'employee_skills','employee_banking','employee_nominees',
       'employee_government_docs','employee_immigration','employee_statutory',
       'employee_health','employee_training','employee_certifications',
+      // v2 normalized tables
+      'employee_qualifications','employee_experiences',
+      'employee_family_members','employee_bank_accounts',
+      'employee_government_documents','employee_certifications',
+      'profile_audit_log',
     ];
     for (const t of profileTables) {
       await safe(`DELETE FROM ${t} WHERE organization_id = $1`, [orgId]);
@@ -496,6 +501,34 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
 
     // Delink registration requests (preserve history, unlink from deleted org)
     await safe(`UPDATE org_registration_requests SET organization_id = NULL WHERE organization_id = $1`, [orgId]);
+
+    // Null out audit FK columns that reference users(id) without ON DELETE CASCADE
+    // These are created_by / updated_by / verified_by / changed_by columns added
+    // by employee_profile_v2 migration — they are NOT cascaded so must be cleared first.
+    const auditFkTables = [
+      ['employee_qualifications',       ['created_by', 'updated_by']],
+      ['employee_experiences',          ['created_by', 'updated_by']],
+      ['employee_family_members',       ['created_by', 'updated_by']],
+      ['employee_emergency_contacts',   ['created_by', 'updated_by']],
+      ['employee_nominees',             ['created_by', 'updated_by']],
+      ['employee_bank_accounts',        ['created_by', 'updated_by']],
+      ['employee_government_documents', ['created_by', 'updated_by', 'verified_by']],
+      ['employee_immigration',          ['created_by', 'updated_by']],
+      ['employee_skills',               ['created_by', 'updated_by']],
+      ['employee_health',               ['created_by', 'updated_by']],
+      ['employee_training',             ['created_by', 'updated_by']],
+      ['employee_certifications',       ['created_by', 'updated_by']],
+      ['profile_audit_log',             ['changed_by']],
+      ['users',                         ['updated_by']],
+    ];
+    for (const [table, cols] of auditFkTables) {
+      const sets = cols.map(c => `${c} = NULL`).join(', ');
+      await safe(`UPDATE ${table} SET ${sets} WHERE organization_id = $1`, [orgId]);
+    }
+    // users.updated_by has no organization_id — null it out by matching org users
+    await safe(`UPDATE users SET updated_by = NULL WHERE organization_id = $1`, [orgId]);
+    // profile_audit_log.changed_by — null for all rows belonging to this org
+    await safe(`UPDATE profile_audit_log SET changed_by = NULL WHERE organization_id = $1`, [orgId]);
 
     // Users (after all child tables)
     await client.query(`DELETE FROM users WHERE organization_id = $1`, [orgId]);

@@ -1204,10 +1204,27 @@ function EducationSection({ empId }) {
   function openAdd() { setEditing(null); setForm(EDU_BLANK); setModalOpen(true); }
   function openEdit(r) {
     setEditing(r);
-    setForm({ degree_level: r.degree_level||'', institution: r.institution||'', board_university: r.board_university||'', specialization: r.specialization||'', from_year: r.from_year||'', to_year: r.to_year||'', year_of_passing: r.year_of_passing||'', result_type: r.result_type||'percentage', percentage: r.percentage||'', cgpa: r.cgpa||'', degree_class: r.degree_class||'', education_mode: r.education_mode||'', education_country: r.education_country||'India', enrollment_number: r.enrollment_number||'', remarks: r.remarks||'' });
+    setForm({ degree_level: r.degree_level||'', institution: r.institution||'', board_university: r.board_university||'', specialization: r.specialization||'', from_year: r.from_year?String(r.from_year):'', to_year: r.to_year?String(r.to_year):'', year_of_passing: r.year_of_passing?String(r.year_of_passing):'', result_type: r.result_type||'percentage', percentage: r.percentage||'', cgpa: r.cgpa||'', degree_class: r.degree_class||'', education_mode: r.education_mode||'', education_country: r.education_country||'India', enrollment_number: r.enrollment_number||'', remarks: r.remarks||'' });
     setModalOpen(true);
   }
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function handleSaveEdu() {
+    const errs = [];
+    if (!form.institution?.trim()) { errs.push('Institution name is required.'); }
+    else if (!/[a-zA-Z]/.test(form.institution)) { errs.push('Institution name must contain at least one letter.'); }
+    if (form.board_university && !/[a-zA-Z]/.test(form.board_university)) { errs.push('Board / University must contain at least one letter.'); }
+    if (form.specialization && !/[a-zA-Z]/.test(form.specialization)) { errs.push('Specialization must contain at least one letter.'); }
+    if (form.from_year && form.to_year && Number(form.to_year) < Number(form.from_year)) { errs.push('To Year cannot be before From Year.'); }
+    if (form.year_of_passing) {
+      if (form.from_year && Number(form.year_of_passing) < Number(form.from_year)) { errs.push('Year of Passing cannot be before From Year.'); }
+      if (form.to_year && Number(form.year_of_passing) > Number(form.to_year)) { errs.push('Year of Passing cannot be after To Year.'); }
+    }
+    if (form.result_type === 'percentage' && form.percentage !== '' && (Number(form.percentage) < 0 || Number(form.percentage) > 100)) { errs.push('Percentage must be between 0 and 100.'); }
+    if (form.result_type === 'cgpa' && form.cgpa !== '' && (Number(form.cgpa) < 0 || Number(form.cgpa) > 10)) { errs.push('CGPA must be between 0 and 10.'); }
+    if (errs.length > 0) { toast(errs[0], 'error'); return; }
+    saveMut.mutate();
+  }
 
   if (isLoading) return <Spinner />;
 
@@ -1256,7 +1273,7 @@ function EducationSection({ empId }) {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Qualification' : 'Add Qualification'} size="lg"
-        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !form.institution}>{saveMut.isPending ? 'Saving…' : 'Save Qualification'}</button></>}>
+        footer={<><button className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button><button className="btn btn-primary" onClick={handleSaveEdu} disabled={saveMut.isPending || !form.institution}>{saveMut.isPending ? 'Saving…' : 'Save Qualification'}</button></>}>
         <div className="grid grid-cols-2 gap-4">
           <div><label className="form-label">Degree Level</label>
             <select className="form-control" value={form.degree_level} onChange={e=>setF('degree_level',e.target.value)}>
@@ -1285,13 +1302,22 @@ function EducationSection({ empId }) {
             </select>
           </div>
           <div><label className="form-label">From Year</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2018" value={form.from_year} onChange={e=>setF('from_year',e.target.value)}/>
+            <select className="form-control" value={form.from_year} onChange={e=>setF('from_year',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()+5-1950+1},(_,i)=>new Date().getFullYear()+5-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           <div><label className="form-label">To Year</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2022" value={form.to_year} onChange={e=>setF('to_year',e.target.value)}/>
+            <select className="form-control" value={form.to_year} onChange={e=>setF('to_year',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()+5-1950+1},(_,i)=>new Date().getFullYear()+5-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           <div><label className="form-label">Year of Passing</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} value={form.year_of_passing} onChange={e=>setF('year_of_passing',e.target.value)}/>
+            <select className="form-control" value={form.year_of_passing} onChange={e=>setF('year_of_passing',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()-1950+1},(_,i)=>new Date().getFullYear()-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           <div><label className="form-label">Enrollment / Roll Number</label>
             <input className="form-control" placeholder="Optional" value={form.enrollment_number} onChange={e=>setF('enrollment_number',e.target.value)}/>

@@ -746,7 +746,7 @@ function EducationTab({ empId, isAdmin }) {
   const delTrain = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/training/${id}`),         onSuccess: () => qc.invalidateQueries({queryKey:['epv2-training',empId]}) });
   const delCert  = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/certifications/${id}`),   onSuccess: () => qc.invalidateQueries({queryKey:['epv2-certs',empId]}) });
 
-  const openEdu   = (r={}) => { setForm({degree_level:r.degree_level||'',institution:r.institution||'',board_university:r.board_university||'',specialization:r.specialization||'',from_year:r.from_year||'',to_year:r.to_year||'',year_of_passing:r.year_of_passing||'',result_type:r.result_type||'percentage',percentage:r.percentage||'',cgpa:r.cgpa||'',degree_class:r.degree_class||'',education_mode:r.education_mode||'',education_country:r.education_country||'India',enrollment_number:r.enrollment_number||'',remarks:r.remarks||''}); setEduModal(r); };
+  const openEdu   = (r={}) => { setForm({degree_level:r.degree_level||'',institution:r.institution||'',board_university:r.board_university||'',specialization:r.specialization||'',from_year:r.from_year?String(r.from_year):'',to_year:r.to_year?String(r.to_year):'',year_of_passing:r.year_of_passing?String(r.year_of_passing):'',result_type:r.result_type||'percentage',percentage:r.percentage||'',cgpa:r.cgpa||'',degree_class:r.degree_class||'',education_mode:r.education_mode||'',education_country:r.education_country||'India',enrollment_number:r.enrollment_number||'',remarks:r.remarks||''}); setEduModal(r); };
   const openTrain = (r={}) => { setForm({training_name:r.training_name||'',training_type:r.training_type||'other',training_provider:r.training_provider||'',start_date:r.start_date||'',end_date:r.end_date||'',duration_hours:r.duration_hours||'',completion_status:r.completion_status||'in_progress',score:r.score||'',certificate_url:r.certificate_url||'',remarks:r.remarks||''}); setTrainModal(r); };
   const openCert  = (r={}) => { setForm({certification_name:r.certification_name||'',issuing_authority:r.issuing_authority||'',issue_date:r.issue_date||'',expiry_date:r.expiry_date||'',certification_number:r.certification_number||'',file_url:r.file_url||'',is_lifetime:r.is_lifetime||false}); setCertModal(r); };
 
@@ -837,11 +837,11 @@ function EducationTab({ empId, isAdmin }) {
           else if (!/[a-zA-Z]/.test(form.institution)) { errs.push('Institution name must contain at least one letter.'); }
           if (form.board_university && !/[a-zA-Z]/.test(form.board_university)) { errs.push('Board / University must contain at least one letter.'); }
           if (form.specialization && !/[a-zA-Z]/.test(form.specialization)) { errs.push('Specialization must contain at least one letter.'); }
-          const curYear = new Date().getFullYear();
           if (form.from_year && form.to_year && Number(form.to_year) < Number(form.from_year)) { errs.push('To Year cannot be before From Year.'); }
-          if (form.from_year && (Number(form.from_year) < 1950 || Number(form.from_year) > curYear + 5)) { errs.push('From Year is out of valid range.'); }
-          if (form.to_year && (Number(form.to_year) < 1950 || Number(form.to_year) > curYear + 5)) { errs.push('To Year is out of valid range.'); }
-          if (form.year_of_passing && (Number(form.year_of_passing) < 1950 || Number(form.year_of_passing) > curYear + 5)) { errs.push('Year of Passing is out of valid range.'); }
+          if (form.year_of_passing) {
+            if (form.from_year && Number(form.year_of_passing) < Number(form.from_year)) { errs.push('Year of Passing cannot be before From Year.'); }
+            if (form.to_year && Number(form.year_of_passing) > Number(form.to_year)) { errs.push('Year of Passing cannot be after To Year.'); }
+          }
           if (form.result_type === 'percentage' && form.percentage !== '' && (Number(form.percentage) < 0 || Number(form.percentage) > 100)) { errs.push('Percentage must be between 0 and 100.'); }
           if (form.result_type === 'cgpa' && form.cgpa !== '' && (Number(form.cgpa) < 0 || Number(form.cgpa) > 10)) { errs.push('CGPA must be between 0 and 10.'); }
           if (errs.length > 0) { toast(errs[0], 'error'); return; }
@@ -882,14 +882,23 @@ function EducationTab({ empId, isAdmin }) {
           </div>
           {/* From Year / To Year */}
           <div><label className="form-label">From Year</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2018" value={form.from_year||''} onChange={e=>set('from_year',e.target.value)}/>
+            <select className="form-control" value={form.from_year||''} onChange={e=>set('from_year',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()+5-1950+1},(_,i)=>new Date().getFullYear()+5-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           <div><label className="form-label">To Year</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} placeholder="e.g. 2022" value={form.to_year||''} onChange={e=>set('to_year',e.target.value)}/>
+            <select className="form-control" value={form.to_year||''} onChange={e=>set('to_year',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()+5-1950+1},(_,i)=>new Date().getFullYear()+5-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           {/* Year of Passing */}
           <div><label className="form-label">Year of Passing</label>
-            <input className="form-control" type="number" min="1950" max={new Date().getFullYear()} value={form.year_of_passing||''} onChange={e=>set('year_of_passing',e.target.value)}/>
+            <select className="form-control" value={form.year_of_passing||''} onChange={e=>set('year_of_passing',e.target.value)}>
+              <option value="">— Select —</option>
+              {Array.from({length:new Date().getFullYear()-1950+1},(_,i)=>new Date().getFullYear()-i).map(y=><option key={y} value={String(y)}>{y}</option>)}
+            </select>
           </div>
           {/* Enrollment Number */}
           <div><label className="form-label">Enrollment / Roll Number</label>
