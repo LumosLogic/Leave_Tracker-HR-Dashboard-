@@ -378,7 +378,7 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
 
     <!-- Company logo watermark — absolutely covers the full payslip area -->
     <div style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden">
-      <img src="${orgLogoUrl}" alt="" style="width:340px;max-width:65%;object-fit:contain;opacity:0.07" />
+      <img src="${orgLogoUrl}" alt="" style="width:480px;max-width:80%;object-fit:contain;opacity:0.13" />
     </div>
   </div>`;
 
