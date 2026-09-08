@@ -217,8 +217,8 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
       try {
         doc.save();
         doc.opacity(0.13);
-        const wmW = 380;
-        const wmH = 220;
+        const wmW = 480;
+        const wmH = 280;
         const wmX = L + (W - wmW) / 2;
         const wmY = (doc.page.height - wmH) / 2;
         doc.image(rich.logoBuffer, wmX, wmY, { fit: [wmW, wmH] });
