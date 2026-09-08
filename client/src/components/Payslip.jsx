@@ -215,15 +215,15 @@ export default function Payslip({ payslipId, onClose }) {
   const totalDed    = num(slip.total_deductions);
   const netSalary   = num(slip.net_salary);
 
-  const pan       = statutory?.pan_number   || '';
-  const uan       = statutory?.uan_no        || '';
+  const pan       = statutory?.pan_number   || 'N/A';
+  const uan       = statutory?.uan_no        || 'N/A';
   const esiNo     = statutory?.esi_no        || 'N/A';
-  const pfNo      = statutory?.pf_no         || '';
-  const bankName  = banking?.bank_name        || '';
+  const pfNo      = statutory?.pf_no         || 'N/A';
+  const bankName  = banking?.bank_name        || 'N/A';
   const accNo     = banking?.account_number   || '';
   const maskedAcc = accNo
     ? accNo.slice(0, -4).replace(/\d/g, '*') + accNo.slice(-4)
-    : '';
+    : 'N/A';
 
   let attSnap = {};
   try {
@@ -299,7 +299,7 @@ export default function Payslip({ payslipId, onClose }) {
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Bank Name</td>
-        <td style="border:none;padding:2px 4px">: ${bankName || '—'}</td>
+        <td style="border:none;padding:2px 4px">: ${bankName}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px">PAN No.</td>
         <td style="border:none;padding:2px 4px">: ${pan}</td>
       </tr>

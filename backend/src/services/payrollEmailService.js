@@ -118,17 +118,17 @@ async function fetchRichData(organizationId, userId, payslipId) {
     contactDetails:      ps.payslip_contact_details     || '',
     companyPfNo:         ps.payslip_company_pf_no        || '',
     companyEsiNo:        ps.payslip_company_esic_no      || '',
-    pan:      statRes.rows[0]?.pan_number || '',
+    pan:      statRes.rows[0]?.pan_number || 'N/A',
     clBalance: (() => {
       const r = clRes.rows[0];
       if (!r) return '0.00';
       return Math.max(0, Number(r.annual_quota) + Number(r.adj) - Number(r.used)).toFixed(2);
     })(),
-    uan:      statRes.rows[0]?.uan_no     || '',
+    uan:      statRes.rows[0]?.uan_no     || 'N/A',
     esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
-    pfNo:     statRes.rows[0]?.pf_no      || '',
-    bankName: bankRes.rows[0]?.bank_name  || '',
-    maskedAcc,
+    pfNo:     statRes.rows[0]?.pf_no      || 'N/A',
+    bankName: bankRes.rows[0]?.bank_name  || 'N/A',
+    maskedAcc: maskedAcc || 'N/A',
     position: statRes.rows[0]?.position   || '',
     attSnap,
   };
@@ -148,7 +148,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
   let rich = {
     orgName, logoBuffer: null, orgAddress: '', orgCin: '',
     footerNote: 'This is a computer generated salary slip and does not require a signature.',
-    pan: '', uan: '', esiNo: 'N/A', pfNo: '', bankName: '', maskedAcc: '', position: '', attSnap: {},
+    pan: 'N/A', uan: 'N/A', esiNo: 'N/A', pfNo: 'N/A', bankName: 'N/A', maskedAcc: 'N/A', position: '', attSnap: {},
   };
   if (organizationId && payslip.user_id) {
     try {
@@ -297,8 +297,8 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     infoRow('Employee Name', empName,                 'Company ESI No',  rich.companyEsiNo);
     infoRow('Designation',   pos,                     'P.F. No',         rich.pfNo);
     infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);
-    infoRow('Bank Name',     rich.bankName || '—',    'PAN No.',         rich.pan);
-    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
+    infoRow('Bank Name',     rich.bankName,   'PAN No.',    rich.pan);
+    infoRow('Bank A/c No.', rich.maskedAcc,  'Attendance', `${totalCalDays} out of ${totalCalDays}`);
     y += 4;
 
     // ── Salary table ──────────────────────────────────────────────────────

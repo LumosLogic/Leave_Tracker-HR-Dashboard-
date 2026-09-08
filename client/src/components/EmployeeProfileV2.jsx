@@ -1754,32 +1754,60 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
     staleTime: 60000,
   });
 
-  const todayRecord  = curAttendance.find(r => r.date === today);
-  const presentCount = curAttendance.filter(r => ['present','half_day','wfh'].includes(r.status)).length;
-  const leaveCount   = curLeaves.filter(l => l.status === 'approved').length;
-  const lateCount    = curAttendance.filter(r => r.is_late).length;
+  const { data: curHolidays = [] } = useQuery({
+    queryKey: ['holidays', curYear],
+    queryFn:  () => apiGet('/holidays', { year: curYear }),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: workSchedule } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings/schedule'),
+    staleTime: 5 * 60 * 1000,
+  });
+  // 0=Sun,1=Mon,...,6=Sat; default Mon-Fri
+  const workDaySet = new Set(
+    workSchedule?.work_days ? workSchedule.work_days.split(',').map(Number) : [1,2,3,4,5]
+  );
+
+  // Holiday dates in the current month as a Set for O(1) lookup
+  const curMonthPrefix = `${curYear}-${String(curMonth).padStart(2,'0')}`;
+  const holidaySet = new Set(curHolidays.filter(h => h.date?.startsWith(curMonthPrefix)).map(h => h.date));
+
+  const todayRecord = curAttendance.find(r => r.date === today);
+
+  // Only count present days on actual working days (not weekends or public holidays)
+  const presentCount = curAttendance.filter(r => {
+    if (!['present','half_day','wfh'].includes(r.status)) return false;
+    const d = new Date(r.date + 'T12:00:00');
+    return workDaySet.has(d.getDay()) && !holidaySet.has(r.date);
+  }).length;
+
+  const leaveCount = curLeaves.filter(l => l.status === 'approved').length;
+  const lateCount  = curAttendance.filter(r => r.is_late).length;
 
   const empName   = [emp.salutation, emp.name, emp.middle_name, emp.surname].filter(Boolean).join(' ');
   const deptLabel = emp.departments?.length > 0 ? emp.departments.map(d => d.name).join(', ') : emp.department || '—';
   const statusKey = emp.employee_status || 'active';
   const statusCfg = PROFILE_STATUS_CFG[statusKey] || PROFILE_STATUS_CFG.active;
 
-  const TABS          = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
-  // Count Mon–Fri working days from the 1st of the current month up to and including today.
-  // Using this as the denominator instead of curAttendance.length (record count) avoids
-  // inflated percentages when some days have no attendance record yet.
+  const TABS = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
+
+  // Working days elapsed = configured work days from month start to today, excluding public holidays
   const workingDaysElapsed = (() => {
     let count = 0;
     const first = new Date(curYear, curMonth - 1, 1);
     const last  = new Date(curYear, curMonth - 1, now.getDate());
     for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
-      const dow = d.getDay();
-      if (dow !== 0 && dow !== 6) count++;
+      const ds = d.toISOString().split('T')[0];
+      if (workDaySet.has(d.getDay()) && !holidaySet.has(ds)) count++;
     }
     return count;
   })();
+
+  // Cap at 100% — can't be present more than 100% of working days
   const attendancePct = workingDaysElapsed > 0
-    ? Math.round((presentCount / workingDaysElapsed) * 100)
+    ? Math.min(100, Math.round((presentCount / workingDaysElapsed) * 100))
     : 0;
 
   const STAT_CARDS = [
