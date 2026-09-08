@@ -350,45 +350,27 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       </tfoot>
     </table>
 
-    <table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid #ddd">
-      <tr>
-        <td style="border:none;padding:0;vertical-align:top">
-          <table style="width:100%;border-collapse:collapse;font-size:8px">
-            <thead>
-              <tr style="background:#f0f0f0">
-                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
-                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/OFF</th>
-                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
-                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
-                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
-                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
-                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
-                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
-                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </td>
-        <td style="border:none;padding:0 0 0 0;vertical-align:top;width:1%">
-          <table style="border-collapse:collapse;font-size:8px;white-space:nowrap">
-            <thead>
-              <tr style="background:#f0f0f0">
-                <th style="border:1px solid #aaa;padding:2px 8px;text-align:center;font-weight:bold">Available CL Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border:1px solid #aaa;padding:2px 8px;text-align:center">${clBalance} Days</td>
-              </tr>
-            </tbody>
-          </table>
-        </td>
-      </tr>
+    <table style="width:100%;border-collapse:collapse;font-size:8px;margin-top:6px;border-top:1px solid #ddd">
+      <thead>
+        <tr style="background:#f0f0f0">
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/OFF</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
+          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
+          <th style="border:1px solid #aaa;padding:2px 8px;text-align:center;font-weight:bold">Available CL Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
+          <td style="border:1px solid #aaa;padding:2px 8px;text-align:center">${clBalance} Days</td>
+        </tr>
+      </tbody>
     </table>
 
     <div class="note">${footerNote}</div>

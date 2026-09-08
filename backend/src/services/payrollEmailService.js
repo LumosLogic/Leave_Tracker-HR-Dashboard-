@@ -368,55 +368,48 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     cellText(fmtAmt(netSalary), 5, y, nH, 'right', true);
     y += nH + 6;
 
-    // ── Attendance summary — 5-column table + Available CL Balance ───────────
+    // ── Attendance summary — 6-column table (5 att cols + CL balance) ────────
     const attCols = [
-      { label: 'P+OD',    value: (presentFull + presentHalf * 0.5).toFixed(2) },
-      { label: 'W/OFF',   value: weekoff.toFixed(2) },
-      { label: 'LWP/LOP', value: lopDays.toFixed(2) },
-      { label: 'HL',      value: paidHoliday.toFixed(2) },
-      { label: 'CL',      value: paidLeave.toFixed(2) },
+      { label: 'P+OD',                value: (presentFull + presentHalf * 0.5).toFixed(2) },
+      { label: 'W/OFF',               value: weekoff.toFixed(2) },
+      { label: 'LWP/LOP',             value: lopDays.toFixed(2) },
+      { label: 'HL',                  value: paidHoliday.toFixed(2) },
+      { label: 'CL',                  value: paidLeave.toFixed(2) },
+      { label: 'Available CL Balance', value: `${rich.clBalance} Days`, wide: true },
     ];
-    // CL balance label takes ~160pt on the right; att table uses remaining width
-    const clLabelW = 160;
-    const attW     = W - clLabelW - 8;
-    const attColW  = Math.floor(attW / attCols.length);
-    const attHdr   = 12;
-    const attRow   = 12;
+    // The last column (CL Balance) is given 1.8× the width of other columns
+    const regularCols  = attCols.length - 1;
+    const wideWeight   = 1.8;
+    const totalWeights = regularCols + wideWeight;
+    const unitW        = W / totalWeights;
+    const colWidths    = attCols.map((_, i) => i < regularCols ? unitW : unitW * wideWeight);
+    const colX         = colWidths.reduce((acc, w, i) => {
+      acc.push(i === 0 ? L : acc[i - 1] + colWidths[i - 1]);
+      return acc;
+    }, []);
 
-    // Header row (label)
-    doc.rect(L, y, attW, attHdr).fillColor('#f0f0f0').fill();
-    doc.rect(L, y, attW, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
+    const attHdr = 12;
+    const attRow = 12;
+
+    // Header row
+    doc.rect(L, y, W, attHdr).fillColor('#f0f0f0').fill();
+    doc.rect(L, y, W, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
     attCols.forEach((col, i) => {
-      const cx = L + i * attColW;
-      if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attHdr).strokeColor('#aaa').lineWidth(0.3).stroke();
+      if (i > 0) doc.moveTo(colX[i], y).lineTo(colX[i], y + attHdr).strokeColor('#aaa').lineWidth(0.3).stroke();
       doc.font('Helvetica-Bold').fontSize(7).fillColor('#000')
-         .text(col.label, cx + 1, y + (attHdr - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
+         .text(col.label, colX[i] + 1, y + (attHdr - 7) / 2,
+               { width: colWidths[i] - 2, align: 'center', lineBreak: false });
     });
     y += attHdr;
 
     // Value row
-    doc.rect(L, y, attW, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
+    doc.rect(L, y, W, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
     attCols.forEach((col, i) => {
-      const cx = L + i * attColW;
-      if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attRow).strokeColor('#aaa').lineWidth(0.3).stroke();
+      if (i > 0) doc.moveTo(colX[i], y).lineTo(colX[i], y + attRow).strokeColor('#aaa').lineWidth(0.3).stroke();
       doc.font('Helvetica').fontSize(7.5).fillColor('#000')
-         .text(col.value, cx + 1, y + (attRow - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
+         .text(col.value, colX[i] + 1, y + (attRow - 7) / 2,
+               { width: colWidths[i] - 2, align: 'center', lineBreak: false });
     });
-    // Available CL Balance — boxed cell to the right of the attendance table
-    const clBoxX  = L + attW;          // x-start of the CL balance box
-    const clBoxW  = R - clBoxX;        // fills remaining width to right margin
-    const clHdrY  = y - attRow - attHdr; // top of the header row
-    // Header cell (same grey fill as att header)
-    doc.rect(clBoxX, clHdrY, clBoxW, attHdr).fillColor('#f0f0f0').fill();
-    doc.rect(clBoxX, clHdrY, clBoxW, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
-    doc.font('Helvetica-Bold').fontSize(7).fillColor('#000')
-       .text('Available CL Balance', clBoxX + 2, clHdrY + (attHdr - 7) / 2,
-             { width: clBoxW - 4, align: 'center', lineBreak: false });
-    // Value cell
-    doc.rect(clBoxX, clHdrY + attHdr, clBoxW, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
-    doc.font('Helvetica').fontSize(7.5).fillColor('#000')
-       .text(`${rich.clBalance} Days`, clBoxX + 2, clHdrY + attHdr + (attRow - 7) / 2,
-             { width: clBoxW - 4, align: 'center', lineBreak: false });
     y += attRow + 4;
 
     // ── Footer ────────────────────────────────────────────────────────────
