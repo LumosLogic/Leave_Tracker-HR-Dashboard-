@@ -1329,6 +1329,11 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
       if (isEdit) {
         const body = { ...form };
         if (!body.password) delete body.password;
+        // Consolidate name: merge First + Middle + Last into a single name field
+        // so all pages that display users.name show the full name.
+        body.name = [form.name, form.middle_name, form.surname].filter(s => s?.trim()).join(' ').trim();
+        body.middle_name = null;
+        body.surname     = null;
         const [result] = await Promise.all([
           apiPut(`/employees/${employee.id}`, body),
           apiPut(`/profile/${employee.id}/personal`, {
@@ -1478,8 +1483,8 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     </select>
                   </div>
                   <div className="col-span-3">
-                    <label className="form-label">First Name <span className="text-rose-500">*</span></label>
-                    <input className="form-control" placeholder="First name only" value={form.name} onChange={e => set('name', e.target.value)} />
+                    <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
+                    <input className="form-control" placeholder="Full name" value={form.name} onChange={e => set('name', e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
