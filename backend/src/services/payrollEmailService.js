@@ -41,7 +41,7 @@ function getTransport() { return getTransporter(); }
 
 // ─── Fetch org, statutory, banking data for rich PDF ─────────────────────────
 async function fetchRichData(organizationId, userId, payslipId) {
-  const [orgRes, psRes, statRes, bankRes, slipRes] = await Promise.all([
+  const [orgRes, psRes, statRes, bankRes, slipRes, clRes] = await Promise.all([
     pool.query('SELECT name, logo_url FROM organizations WHERE id = $1', [organizationId]),
     // Try full query with new structured address fields; fall back to basic query if migration not yet run
     pool.query(
@@ -66,6 +66,25 @@ async function fetchRichData(organizationId, userId, payslipId) {
     payslipId
       ? pool.query('SELECT attendance_snapshot FROM payslips WHERE id = $1', [payslipId])
       : Promise.resolve({ rows: [] }),
+    // CL (casual leave) remaining balance for this employee
+    pool.query(`
+      SELECT lp.annual_quota,
+        COALESCE((SELECT SUM(lba.delta) FROM leave_balance_adjustments lba
+                  WHERE lba.user_id = $1 AND lba.org_id = $2
+                    AND lba.leave_type = lp.leave_type
+                    AND lba.year = EXTRACT(YEAR FROM NOW())::int), 0) AS adj,
+        COALESCE((SELECT SUM(CASE WHEN l.leave_time = 'half' THEN 0.5
+                                  ELSE (l.end_date::date - l.start_date::date + 1)::numeric END)
+                  FROM leaves l
+                  WHERE l.user_id = $1 AND l.organization_id = $2
+                    AND l.status = 'approved' AND l.leave_time != 'wfh'
+                    AND l.leave_type = lp.leave_type), 0) AS used
+      FROM leave_policies lp
+      WHERE lp.organization_id = $2
+        AND lp.active = true AND lp.annual_quota > 0
+        AND (lp.leave_type ILIKE 'casual%' OR lp.label ILIKE '%casual%')
+      LIMIT 1
+    `, [userId, organizationId]).catch(() => ({ rows: [] })),
   ]);
 
   const accNo     = bankRes.rows[0]?.account_number || '';
@@ -100,6 +119,11 @@ async function fetchRichData(organizationId, userId, payslipId) {
     companyPfNo:         ps.payslip_company_pf_no        || '',
     companyEsiNo:        ps.payslip_company_esic_no      || '',
     pan:      statRes.rows[0]?.pan_number || '',
+    clBalance: (() => {
+      const r = clRes.rows[0];
+      if (!r) return '0.00';
+      return Math.max(0, Number(r.annual_quota) + Number(r.adj) - Number(r.used)).toFixed(2);
+    })(),
     uan:      statRes.rows[0]?.uan_no     || '',
     esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
     pfNo:     statRes.rows[0]?.pf_no      || '',
@@ -272,10 +296,9 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     infoRow('Employee ID',   String(empId),           'Company P.F. No', rich.companyPfNo);
     infoRow('Employee Name', empName,                 'Company ESI No',  rich.companyEsiNo);
     infoRow('Designation',   pos,                     'P.F. No',         rich.pfNo);
-    infoRow('Department',    dept || '—',             'UAN No.',         rich.uan);
-    infoRow('Bank Name',     rich.bankName || '—',    'ESI No.',         rich.esiNo);
-    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'PAN No.',         rich.pan);
-    infoRow('',              '',                      'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
+    infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);
+    infoRow('Bank Name',     rich.bankName || '—',    'PAN No.',         rich.pan);
+    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
     y += 4;
 
     // ── Salary table ──────────────────────────────────────────────────────
@@ -345,28 +368,24 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     cellText(fmtAmt(netSalary), 5, y, nH, 'right', true);
     y += nH + 6;
 
-    // ── Attendance summary — columnar table ───────────────────────────────
+    // ── Attendance summary — 5-column table + Available CL Balance ───────────
     const attCols = [
-      { label: 'P+OD',     value: (presentFull + presentHalf * 0.5).toFixed(2) },
-      { label: 'W/Off',    value: weekoff.toFixed(2) },
-      { label: 'WOP',      value: weekoff.toFixed(2) },
-      { label: 'LWP/LOP',  value: lopDays.toFixed(2) },
-      { label: 'HL',       value: paidHoliday.toFixed(2) },
-      { label: 'CL',       value: paidLeave.toFixed(2) },
-      { label: 'RHP',      value: '0.00' },
-      { label: 'C/Off',    value: '0.00' },
-      { label: 'PL',       value: '0.00' },
-      { label: 'SL',       value: '0.00' },
-      { label: 'AL',       value: '0.00' },
-      { label: 'EL',       value: '0.00' },
+      { label: 'P+OD',    value: (presentFull + presentHalf * 0.5).toFixed(2) },
+      { label: 'W/OFF',   value: weekoff.toFixed(2) },
+      { label: 'LWP/LOP', value: lopDays.toFixed(2) },
+      { label: 'HL',      value: paidHoliday.toFixed(2) },
+      { label: 'CL',      value: paidLeave.toFixed(2) },
     ];
-    const attColW = Math.floor(W / attCols.length);
-    const attHdr  = 12;
-    const attRow  = 12;
+    // CL balance label takes ~160pt on the right; att table uses remaining width
+    const clLabelW = 160;
+    const attW     = W - clLabelW - 8;
+    const attColW  = Math.floor(attW / attCols.length);
+    const attHdr   = 12;
+    const attRow   = 12;
 
     // Header row (label)
-    doc.rect(L, y, W, attHdr).fillColor('#f0f0f0').fill();
-    doc.rect(L, y, W, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
+    doc.rect(L, y, attW, attHdr).fillColor('#f0f0f0').fill();
+    doc.rect(L, y, attW, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
     attCols.forEach((col, i) => {
       const cx = L + i * attColW;
       if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attHdr).strokeColor('#aaa').lineWidth(0.3).stroke();
@@ -376,13 +395,19 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     y += attHdr;
 
     // Value row
-    doc.rect(L, y, W, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
+    doc.rect(L, y, attW, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
     attCols.forEach((col, i) => {
       const cx = L + i * attColW;
       if (i > 0) doc.moveTo(cx, y).lineTo(cx, y + attRow).strokeColor('#aaa').lineWidth(0.3).stroke();
       doc.font('Helvetica').fontSize(7.5).fillColor('#000')
          .text(col.value, cx + 1, y + (attRow - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
     });
+    // Available CL Balance — right of the attendance table, vertically centred
+    const clLabelY = y - attRow - attHdr + (attHdr + attRow) / 2 - 4;
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000')
+       .text('Available CL Balance:', L + attW + 8, clLabelY, { lineBreak: false });
+    doc.font('Helvetica').fontSize(7.5).fillColor('#000')
+       .text(` ${rich.clBalance} Days`, L + attW + 8, clLabelY + 9, { lineBreak: false });
     y += attRow + 4;
 
     // ── Footer ────────────────────────────────────────────────────────────

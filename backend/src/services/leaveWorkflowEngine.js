@@ -264,7 +264,6 @@ async function getMyPendingLeaves(userId, userRole, oId) {
      WHERE l.organization_id = $1
        AND l.status = 'pending_approval'
        AND l.workflow_id IS NOT NULL
-       AND l.deleted_at IS NULL
        AND (
          (wl.role_type IN ('reporting_manager','department_head','specific_user')
           AND l.current_approver_id = $2)

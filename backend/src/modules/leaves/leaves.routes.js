@@ -572,7 +572,6 @@ router.get('/pending-department', auth, async (req, res) => {
         .select('*, users!leaves_user_id_fkey(id, name, email, department, avatar_color, position)')
         .eq('organization_id', oId)
         .eq('status', 'pending_dept')
-        .is('deleted_at', null)
         .in('user_id', allEmpIds)
         .order('created_at', { ascending: false });
       legacyLeaves = (data || []).map(l => ({ ...l, ...l.users, users: undefined, _flow: 'legacy' }));
@@ -602,7 +601,6 @@ router.get('/pending-root', auth, hasPermission('leaves', 'approve'), async (req
       .select('*, users!leaves_user_id_fkey(id, name, email, department, avatar_color, position)')
       .eq('organization_id', oId)
       .eq('status', 'pending_root')
-      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     const legacyLeaves = (legacy || []).map(l => ({ ...l, ...l.users, users: undefined, _flow: 'legacy' }));

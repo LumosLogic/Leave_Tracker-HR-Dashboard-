@@ -1765,8 +1765,21 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
   const statusCfg = PROFILE_STATUS_CFG[statusKey] || PROFILE_STATUS_CFG.active;
 
   const TABS          = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
-  const attendancePct = curAttendance.length > 0
-    ? Math.round((presentCount / curAttendance.length) * 100)
+  // Count Mon–Fri working days from the 1st of the current month up to and including today.
+  // Using this as the denominator instead of curAttendance.length (record count) avoids
+  // inflated percentages when some days have no attendance record yet.
+  const workingDaysElapsed = (() => {
+    let count = 0;
+    const first = new Date(curYear, curMonth - 1, 1);
+    const last  = new Date(curYear, curMonth - 1, now.getDate());
+    for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) count++;
+    }
+    return count;
+  })();
+  const attendancePct = workingDaysElapsed > 0
+    ? Math.round((presentCount / workingDaysElapsed) * 100)
     : 0;
 
   const STAT_CARDS = [

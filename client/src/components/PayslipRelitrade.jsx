@@ -125,6 +125,18 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
   });
   const banking = Array.isArray(bankingData) ? bankingData[0] : bankingData;
 
+  const { data: leaveBalanceData } = useQuery({
+    queryKey: ['emp-leave-balance-relitrade', slip?.user_id],
+    queryFn:  () => apiGet('/leaves/balance', { userId: slip.user_id }),
+    enabled:  !!slip?.user_id,
+    staleTime: 5 * 60 * 1000,
+  });
+  const clBalance = (() => {
+    const balances = leaveBalanceData?.balances || [];
+    const cl = balances.find(b => b.leave_type === 'casual' || b.label?.toLowerCase().includes('casual'));
+    return cl ? cl.remaining.toFixed(2) : '0.00';
+  })();
+
   // ── Print handler ─────────────────────────────────────────────────────────
   function handlePrint() {
     const content = printRef.current?.innerHTML;
@@ -277,24 +289,18 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Department</td>
         <td style="border:none;padding:2px 4px">: ${slip.department || '—'}</td>
-        <td style="border:none;font-weight:bold;padding:2px 4px">UAN No.</td>
-        <td style="border:none;padding:2px 4px">: ${uan}</td>
-      </tr>
-      <tr>
-        <td style="border:none;font-weight:bold;padding:2px 4px">Bank Name</td>
-        <td style="border:none;padding:2px 4px">: ${bankName || '—'}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px">ESI No.</td>
         <td style="border:none;padding:2px 4px">: ${esiNo}</td>
       </tr>
       <tr>
-        <td style="border:none;font-weight:bold;padding:2px 4px">Bank A/c No.</td>
-        <td style="border:none;padding:2px 4px">: ${maskedAcc || '—'}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">Bank Name</td>
+        <td style="border:none;padding:2px 4px">: ${bankName || '—'}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px">PAN No.</td>
         <td style="border:none;padding:2px 4px">: ${pan}</td>
       </tr>
       <tr>
-        <td style="border:none;padding:2px 4px"></td>
-        <td style="border:none;padding:2px 4px"></td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">Bank A/c No.</td>
+        <td style="border:none;padding:2px 4px">: ${maskedAcc || '—'}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px">Attendance</td>
         <td style="border:none;padding:2px 4px">: ${totalCalDays} out of ${totalCalDays}</td>
       </tr>
@@ -344,39 +350,34 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
       </tfoot>
     </table>
 
-    <table style="width:100%;border-collapse:collapse;font-size:8px;margin-top:6px;border-top:1px solid #ddd">
-      <thead>
-        <tr style="background:#f0f0f0">
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/Off</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">WOP</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">RHP</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">C/Off</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">PL</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">SL</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">AL</th>
-          <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">EL</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-          <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">0.00</td>
-        </tr>
-      </tbody>
+    <table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid #ddd">
+      <tr>
+        <td style="border:none;padding:0;vertical-align:top">
+          <table style="width:100%;border-collapse:collapse;font-size:8px">
+            <thead>
+              <tr style="background:#f0f0f0">
+                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">P+OD</th>
+                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">W/OFF</th>
+                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">LWP/LOP</th>
+                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">HL</th>
+                <th style="border:1px solid #aaa;padding:2px 4px;text-align:center;font-weight:bold">CL</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${(presentFull + presentHalf * 0.5).toFixed(2)}</td>
+                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${weekoff.toFixed(2)}</td>
+                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${lopDays.toFixed(2)}</td>
+                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidHoliday.toFixed(2)}</td>
+                <td style="border:1px solid #aaa;padding:2px 4px;text-align:center">${paidLeave.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+        <td style="border:none;padding:2px 0 2px 12px;vertical-align:middle;white-space:nowrap;font-size:8px">
+          <span style="font-weight:bold">Available CL Balance:</span> ${clBalance} Days
+        </td>
+      </tr>
     </table>
 
     <div class="note">${footerNote}</div>
