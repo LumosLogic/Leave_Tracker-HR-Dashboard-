@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Megaphone, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, Megaphone, MessageSquare, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -13,7 +13,7 @@ const TITLE_MAX   = 100;
 const CONTENT_MAX = 2000;
 
 const TYPE_CFG = {
-  general:     { icon: <Megaphone size={15} />,     bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',  border: 'border-[#c7c4d8]',  strip: '#3525cd', label: 'General' },
+  general:     { icon: <MessageSquare size={15} />, bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',  border: 'border-[#c7c4d8]',  strip: '#3525cd', label: 'General' },
   urgent:      { icon: <AlertTriangle size={15} />, bg: 'bg-rose-50',    text: 'text-rose-700',   border: 'border-rose-200',   strip: '#EF4444', label: 'Urgent' },
   policy:      { icon: <Info size={15} />,          bg: 'bg-amber-50',   text: 'text-amber-700',  border: 'border-amber-200',  strip: '#F59E0B', label: 'Policy' },
   celebration: { icon: <PartyPopper size={15} />,   bg: 'bg-emerald-50', text: 'text-emerald-700',border: 'border-emerald-200',strip: '#10B981', label: 'Celebration' },
