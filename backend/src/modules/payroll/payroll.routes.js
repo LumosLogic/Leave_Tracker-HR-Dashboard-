@@ -101,6 +101,8 @@ const SETTINGS_DEFAULTS = {
   payslip_registered_address:     null,
   payslip_corporate_address:      null,
   payslip_contact_details:        null,
+  // Company-level statutory reference — separate from the employee's own PF number
+  payslip_company_pf_no:          null,
 };
 
 const SETTINGS_FIELDS = Object.keys(SETTINGS_DEFAULTS);

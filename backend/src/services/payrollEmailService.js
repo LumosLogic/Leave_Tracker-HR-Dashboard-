@@ -47,7 +47,8 @@ async function fetchRichData(organizationId, userId, payslipId) {
     pool.query(
       `SELECT payslip_company_address, payslip_company_cin, payslip_footer_note,
               payslip_company_fullname, payslip_registered_address,
-              payslip_corporate_address, payslip_contact_details
+              payslip_corporate_address, payslip_contact_details,
+              payslip_company_pf_no
          FROM payroll_settings WHERE organization_id = $1`,
       [organizationId]
     ).catch(() => pool.query(
@@ -96,6 +97,7 @@ async function fetchRichData(organizationId, userId, payslipId) {
     registeredAddress:   ps.payslip_registered_address  || '',
     corporateAddress:    ps.payslip_corporate_address   || '',
     contactDetails:      ps.payslip_contact_details     || '',
+    companyPfNo:         ps.payslip_company_pf_no       || '',
     pan:      statRes.rows[0]?.pan_number || '',
     uan:      statRes.rows[0]?.uan_no     || '',
     esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
@@ -266,7 +268,7 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
       y += 13;
     }
 
-    infoRow('Employee ID',   String(empId),           'Company P.F. No', '');
+    infoRow('Employee ID',   String(empId),           'Company P.F. No', rich.companyPfNo);
     infoRow('Employee Name', empName,                 'P.F. No',         rich.pfNo);
     infoRow('Designation',   pos,                     'UAN No.',         rich.uan);
     infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);

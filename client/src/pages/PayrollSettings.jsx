@@ -52,6 +52,7 @@ const DEFAULTS = {
   payslip_company_cin:            '',
   payslip_company_registration:   '',
   payslip_footer_note:            '',
+  payslip_company_pf_no:          '',
 };
 
 const TIMEZONES = [
@@ -928,10 +929,24 @@ export default function PayrollSettings() {
                 <input type="text"
                   value={form.payslip_company_cin || ''}
                   onChange={e => set('payslip_company_cin', e.target.value)}
-                  placeholder="e.g. CIN No.U67120GJ2012PTC116832"
+                  placeholder="e.g. CIN No.: U67120GJ2012PTC116832"
                   className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
                 />
               </div>
+              <div>
+                <p className="text-sm font-semibold text-[#151c27] mb-1">Company P.F. No.</p>
+                <p className="text-[0.68rem] text-[#777587] mb-1.5">
+                  Company-level PF registration number printed on all payslips (different from individual employee PF numbers).
+                </p>
+                <input type="text"
+                  value={form.payslip_company_pf_no || ''}
+                  onChange={e => set('payslip_company_pf_no', e.target.value)}
+                  placeholder="e.g. GJAHM0001234000"
+                  className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-semibold text-[#151c27] mb-1">Registration Number</p>
                 <p className="text-[0.68rem] text-[#777587] mb-1.5">

@@ -226,11 +226,12 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
   const totalCalDays = num(slip.working_days) + weekoff;
   const presentStr   = (presentFull + presentHalf * 0.5).toFixed(presentHalf ? 1 : 0);
 
-  const orgName    = orgSettings?.name || '';
-  const footerNote = payrollSettings?.payslip_footer_note ||
+  const orgName     = orgSettings?.name || '';
+  const footerNote  = payrollSettings?.payslip_footer_note ||
     'This is a computer generated salary slip and does not require a signature.';
-  const orgLogoUrl = orgSettings?.logo_url
+  const orgLogoUrl  = orgSettings?.logo_url
     || (typeof window !== 'undefined' ? `${window.location.origin}/LogoWithoutName.svg` : '/LogoWithoutName.svg');
+  const companyPfNo = payrollSettings?.payslip_company_pf_no || '';
 
   const orgHeaderHtml = buildOrgHeaderHtml(payrollSettings, orgName);
 
@@ -258,7 +259,7 @@ export default function PayslipRelitrade({ payslipId, onClose }) {
         <td style="border:none;font-weight:bold;padding:2px 4px;width:15%">Employee ID</td>
         <td style="border:none;padding:2px 4px;width:35%">: ${slip.employee_id || slip.user_id}</td>
         <td style="border:none;font-weight:bold;padding:2px 4px;width:18%">Company P.F. No</td>
-        <td style="border:none;padding:2px 4px"></td>
+        <td style="border:none;padding:2px 4px">${companyPfNo ? ': ' + companyPfNo : ''}</td>
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Employee Name</td>
