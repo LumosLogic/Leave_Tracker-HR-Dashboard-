@@ -511,10 +511,9 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     // Delink registration requests (preserve history, unlink from deleted org)
     await safe(`UPDATE org_registration_requests SET organization_id = NULL WHERE organization_id = $1`, [orgId]);
 
-    // Dynamically discover every nullable FK column that references users(id) and null
-    // it out before the user rows are deleted. This is future-proof — any new table
-    // with a users FK will be handled automatically without touching this file.
-    const { rows: userFkRefs } = await client.query(`
+    // ── Step A: NOT NULL FK columns → DELETE the rows (cannot be nulled out) ──
+    // e.g. document_shares.shared_with_user_id, any junction/share table
+    const { rows: notNullFkRefs } = await client.query(`
       SELECT DISTINCT c.relname AS table_name, a.attname AS column_name
       FROM pg_constraint con
       JOIN pg_class     c  ON c.oid  = con.conrelid
@@ -523,12 +522,37 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
       JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = ANY(con.confkey)
       JOIN pg_namespace n  ON n.oid = c.relnamespace
       WHERE con.contype = 'f'
-        AND fc.relname  = 'users'
-        AND fa.attname  = 'id'
-        AND a.attnotnull = false
-        AND n.nspname   = 'public'
+        AND fc.relname   = 'users'
+        AND fa.attname   = 'id'
+        AND a.attnotnull = true
+        AND n.nspname    = 'public'
+        AND c.relname   <> 'users'
     `);
-    for (const { table_name, column_name } of userFkRefs) {
+    for (const { table_name, column_name } of notNullFkRefs) {
+      await safe(
+        `DELETE FROM "${table_name}" ` +
+        `WHERE "${column_name}" IN (SELECT id FROM users WHERE organization_id = $1)`,
+        [orgId]
+      );
+    }
+
+    // ── Step B: NULLABLE FK columns → SET NULL (preserve the row, clear the ref) ──
+    // e.g. created_by, updated_by, reviewed_by, sent_by, etc.
+    const { rows: nullableFkRefs } = await client.query(`
+      SELECT DISTINCT c.relname AS table_name, a.attname AS column_name
+      FROM pg_constraint con
+      JOIN pg_class     c  ON c.oid  = con.conrelid
+      JOIN pg_class     fc ON fc.oid = con.confrelid
+      JOIN pg_attribute a  ON a.attrelid = c.oid  AND a.attnum = ANY(con.conkey)
+      JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = ANY(con.confkey)
+      JOIN pg_namespace n  ON n.oid = c.relnamespace
+      WHERE con.contype = 'f'
+        AND fc.relname   = 'users'
+        AND fa.attname   = 'id'
+        AND a.attnotnull = false
+        AND n.nspname    = 'public'
+    `);
+    for (const { table_name, column_name } of nullableFkRefs) {
       await safe(
         `UPDATE "${table_name}" SET "${column_name}" = NULL ` +
         `WHERE "${column_name}" IN (SELECT id FROM users WHERE organization_id = $1)`,
