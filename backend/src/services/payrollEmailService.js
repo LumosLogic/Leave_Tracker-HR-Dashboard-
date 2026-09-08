@@ -402,12 +402,21 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
       doc.font('Helvetica').fontSize(7.5).fillColor('#000')
          .text(col.value, cx + 1, y + (attRow - 7) / 2, { width: attColW - 2, align: 'center', lineBreak: false });
     });
-    // Available CL Balance — right of the attendance table, vertically centred
-    const clLabelY = y - attRow - attHdr + (attHdr + attRow) / 2 - 4;
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000')
-       .text('Available CL Balance:', L + attW + 8, clLabelY, { lineBreak: false });
+    // Available CL Balance — boxed cell to the right of the attendance table
+    const clBoxX  = L + attW;          // x-start of the CL balance box
+    const clBoxW  = R - clBoxX;        // fills remaining width to right margin
+    const clHdrY  = y - attRow - attHdr; // top of the header row
+    // Header cell (same grey fill as att header)
+    doc.rect(clBoxX, clHdrY, clBoxW, attHdr).fillColor('#f0f0f0').fill();
+    doc.rect(clBoxX, clHdrY, clBoxW, attHdr).strokeColor('#aaa').lineWidth(0.4).stroke();
+    doc.font('Helvetica-Bold').fontSize(7).fillColor('#000')
+       .text('Available CL Balance', clBoxX + 2, clHdrY + (attHdr - 7) / 2,
+             { width: clBoxW - 4, align: 'center', lineBreak: false });
+    // Value cell
+    doc.rect(clBoxX, clHdrY + attHdr, clBoxW, attRow).strokeColor('#aaa').lineWidth(0.4).stroke();
     doc.font('Helvetica').fontSize(7.5).fillColor('#000')
-       .text(` ${rich.clBalance} Days`, L + attW + 8, clLabelY + 9, { lineBreak: false });
+       .text(`${rich.clBalance} Days`, clBoxX + 2, clHdrY + attHdr + (attRow - 7) / 2,
+             { width: clBoxW - 4, align: 'center', lineBreak: false });
     y += attRow + 4;
 
     // ── Footer ────────────────────────────────────────────────────────────

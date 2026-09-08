@@ -379,8 +379,19 @@ export default function Payslip({ payslipId, onClose }) {
             </tbody>
           </table>
         </td>
-        <td style="border:none;padding:2px 0 2px 12px;vertical-align:middle;white-space:nowrap;font-size:8px">
-          <span style="font-weight:bold">Available CL Balance:</span> ${clBalance} Days
+        <td style="border:none;padding:0 0 0 0;vertical-align:top;width:1%">
+          <table style="border-collapse:collapse;font-size:8px;white-space:nowrap">
+            <thead>
+              <tr style="background:#f0f0f0">
+                <th style="border:1px solid #aaa;padding:2px 8px;text-align:center;font-weight:bold">Available CL Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="border:1px solid #aaa;padding:2px 8px;text-align:center">${clBalance} Days</td>
+              </tr>
+            </tbody>
+          </table>
         </td>
       </tr>
     </table>
