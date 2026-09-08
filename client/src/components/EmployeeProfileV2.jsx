@@ -1776,11 +1776,19 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
 
   const todayRecord = curAttendance.find(r => r.date === today);
 
-  // Only count present days on actual working days (not weekends or public holidays)
+  // "Present Days" stat card — full-day physical presence on working days (excludes weekends/holidays)
   const presentCount = curAttendance.filter(r => {
     if (!['present','half_day','wfh'].includes(r.status)) return false;
     const d = new Date(r.date + 'T12:00:00');
     return workDaySet.has(d.getDay()) && !holidaySet.has(r.date);
+  }).length;
+
+  // Attendance % numerator — any day the employee physically came in, including late-arrival days
+  // (late entries are recorded as is_late=true even if payroll marks the day absent due to cut-off)
+  const attendanceDays = curAttendance.filter(r => {
+    const d = new Date(r.date + 'T12:00:00');
+    if (!workDaySet.has(d.getDay()) || holidaySet.has(r.date)) return false;
+    return ['present','half_day','wfh','early_leave'].includes(r.status) || r.is_late === true;
   }).length;
 
   const leaveCount = curLeaves.filter(l => l.status === 'approved').length;
@@ -1793,21 +1801,25 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
 
   const TABS = TABS_ALL.filter(t => (!t.adminOnly || isAdmin) && (!t.rootOnly || isRoot));
 
-  // Working days elapsed = configured work days from month start to today, excluding public holidays
+  // Denominator: working days elapsed this month. Exclude today if no attendance record
+  // exists yet for today (day still in progress — don't penalise for an unrecorded current day).
+  const lastDay = todayRecord
+    ? new Date(curYear, curMonth - 1, now.getDate())
+    : new Date(curYear, curMonth - 1, now.getDate() - 1);
+
   const workingDaysElapsed = (() => {
     let count = 0;
     const first = new Date(curYear, curMonth - 1, 1);
-    const last  = new Date(curYear, curMonth - 1, now.getDate());
-    for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(first); d <= lastDay; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().split('T')[0];
       if (workDaySet.has(d.getDay()) && !holidaySet.has(ds)) count++;
     }
     return count;
   })();
 
-  // Cap at 100% — can't be present more than 100% of working days
+  // Cap at 100% — attendance cannot exceed 100% of working days
   const attendancePct = workingDaysElapsed > 0
-    ? Math.min(100, Math.round((presentCount / workingDaysElapsed) * 100))
+    ? Math.min(100, Math.round((attendanceDays / workingDaysElapsed) * 100))
     : 0;
 
   const STAT_CARDS = [
