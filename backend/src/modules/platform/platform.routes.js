@@ -529,6 +529,8 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await safe(`UPDATE users SET updated_by = NULL WHERE organization_id = $1`, [orgId]);
     // profile_audit_log.changed_by — null for all rows belonging to this org
     await safe(`UPDATE profile_audit_log SET changed_by = NULL WHERE organization_id = $1`, [orgId]);
+    // notifications_log.sent_by FK → users(id) has no cascade — clear it before user deletion
+    await safe(`UPDATE notifications_log SET sent_by = NULL WHERE sent_by IN (SELECT id FROM users WHERE organization_id = $1)`, [orgId]);
 
     // Users (after all child tables)
     await client.query(`DELETE FROM users WHERE organization_id = $1`, [orgId]);
