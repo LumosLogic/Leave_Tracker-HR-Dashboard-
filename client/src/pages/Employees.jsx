@@ -1473,8 +1473,8 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     </select>
                   </div>
                   <div className="col-span-3">
-                    <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
-                    <input className="form-control" value={form.name} onChange={e => set('name', e.target.value)} />
+                    <label className="form-label">First Name <span className="text-rose-500">*</span></label>
+                    <input className="form-control" placeholder="First name only" value={form.name} onChange={e => set('name', e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
