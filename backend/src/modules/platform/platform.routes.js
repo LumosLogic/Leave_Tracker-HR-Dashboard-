@@ -444,10 +444,12 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     await safe(`DELETE FROM leaves           WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM leave_policies   WHERE organization_id = $1`, [orgId]);
 
-    // Payroll (payslips has organization_id directly, no payroll_run_id FK)
-    await safe(`DELETE FROM payslips         WHERE organization_id = $1`, [orgId]);
-    await safe(`DELETE FROM payroll_runs     WHERE organization_id = $1`, [orgId]);
+    // Payroll
+    await safe(`DELETE FROM payslips          WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM payroll_runs      WHERE organization_id = $1`, [orgId]);
     await safe(`DELETE FROM salary_structures WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM payroll_settings  WHERE organization_id = $1`, [orgId]);
+    await safe(`DELETE FROM payroll_adjustments WHERE organization_id = $1`, [orgId]);
 
     // Finance
     await safe(`DELETE FROM expenses    WHERE organization_id = $1`, [orgId]);
@@ -509,51 +511,29 @@ router.delete('/organizations/:id', platformAdminAuth, async (req, res) => {
     // Delink registration requests (preserve history, unlink from deleted org)
     await safe(`UPDATE org_registration_requests SET organization_id = NULL WHERE organization_id = $1`, [orgId]);
 
-    // Null out every non-cascaded FK column that references users(id) across all tables.
-    // Uses subquery form so it works whether or not the table has organization_id.
-    // safe() silently skips any table or column that doesn't exist in this schema.
-    const userFkCols = [
-      // employee profile v2
-      ['employee_qualifications',       ['created_by', 'updated_by']],
-      ['employee_experiences',          ['created_by', 'updated_by']],
-      ['employee_family_members',       ['created_by', 'updated_by']],
-      ['employee_emergency_contacts',   ['created_by', 'updated_by']],
-      ['employee_nominees',             ['created_by', 'updated_by']],
-      ['employee_bank_accounts',        ['created_by', 'updated_by']],
-      ['employee_government_documents', ['created_by', 'updated_by', 'verified_by']],
-      ['employee_immigration',          ['created_by', 'updated_by']],
-      ['employee_skills',               ['created_by', 'updated_by']],
-      ['employee_health',               ['created_by', 'updated_by']],
-      ['employee_training',             ['created_by', 'updated_by']],
-      ['employee_certifications',       ['created_by', 'updated_by']],
-      ['profile_audit_log',             ['changed_by']],
-      // performance & goals
-      ['performance_goals',             ['created_by', 'updated_by', 'assigned_to', 'reviewed_by']],
-      ['performance_reviews',           ['created_by', 'updated_by', 'reviewer_id']],
-      ['goals',                         ['created_by', 'updated_by', 'assigned_to']],
-      // comms & docs
-      ['notifications_log',             ['sent_by']],
-      ['announcements',                 ['created_by', 'updated_by']],
-      ['documents',                     ['created_by', 'updated_by', 'approved_by']],
-      // assets & finance
-      ['assets',                        ['assigned_to', 'created_by', 'updated_by']],
-      ['expenses',                      ['reviewed_by']],
-      // HR
-      ['leaves',                        ['reviewed_by']],
-      ['exit_requests',                 ['reviewed_by', 'created_by']],
-      ['onboarding_tasks',              ['assigned_to', 'created_by', 'completed_by']],
-      ['workflows',                     ['created_by', 'updated_by']],
-      ['workflow_approvals',            ['approved_by']],
-      // users self-ref (reporting_to handled by cascade; updated_by is not)
-      ['users',                         ['updated_by']],
-    ];
-    for (const [table, cols] of userFkCols) {
-      for (const col of cols) {
-        await safe(
-          `UPDATE ${table} SET ${col} = NULL WHERE ${col} IN (SELECT id FROM users WHERE organization_id = $1)`,
-          [orgId]
-        );
-      }
+    // Dynamically discover every nullable FK column that references users(id) and null
+    // it out before the user rows are deleted. This is future-proof — any new table
+    // with a users FK will be handled automatically without touching this file.
+    const { rows: userFkRefs } = await client.query(`
+      SELECT DISTINCT c.relname AS table_name, a.attname AS column_name
+      FROM pg_constraint con
+      JOIN pg_class     c  ON c.oid  = con.conrelid
+      JOIN pg_class     fc ON fc.oid = con.confrelid
+      JOIN pg_attribute a  ON a.attrelid = c.oid  AND a.attnum = ANY(con.conkey)
+      JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = ANY(con.confkey)
+      JOIN pg_namespace n  ON n.oid = c.relnamespace
+      WHERE con.contype = 'f'
+        AND fc.relname  = 'users'
+        AND fa.attname  = 'id'
+        AND a.attnotnull = false
+        AND n.nspname   = 'public'
+    `);
+    for (const { table_name, column_name } of userFkRefs) {
+      await safe(
+        `UPDATE "${table_name}" SET "${column_name}" = NULL ` +
+        `WHERE "${column_name}" IN (SELECT id FROM users WHERE organization_id = $1)`,
+        [orgId]
+      );
     }
 
     // Users (after all child tables)
