@@ -19,6 +19,11 @@ import {
 
 const AVATAR_COLORS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
+// Build the full display name from separate name fields.
+// Handles employees where `name` = first name only (middle_name/surname stored separately).
+const empFullName = (emp) =>
+  [emp?.name, emp?.middle_name, emp?.surname].filter(Boolean).join(' ');
+
 // ── Clockify integration removed 2026-07-22 ───────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function _removedClockifyTimeline() {
@@ -436,12 +441,12 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
             {/* Left: Avatar + Name + Contact */}
             <div className="flex items-start gap-5 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
-                <Avatar name={emp.name} color={emp.avatar_color} size={80} />
+                <Avatar name={empFullName(emp)} color={emp.avatar_color} size={80} />
                 <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <h1 className="text-xl font-black text-[#151c27] tracking-tight uppercase">{emp.name}</h1>
+                  <h1 className="text-xl font-black text-[#151c27] tracking-tight uppercase">{empFullName(emp)}</h1>
                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${statusColor}`}>
                     {statusLabel}
                   </span>
@@ -556,7 +561,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                 {[
-                  { label: 'Full Name',       value: emp.name },
+                  { label: 'Full Name',       value: empFullName(emp) },
                   { label: 'Date of Birth',   value: emp.date_of_birth ? fmtDate(emp.date_of_birth) : '—' },
                   { label: 'Personal Email',  value: emp.personal_email || '—' },
                   { label: 'Phone',           value: emp.phone || '—' },
@@ -896,10 +901,10 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                     <>
                       {leaves.filter(l => l.leave_time !== 'wfh' && l.leave_type !== 'wfh').map(l => (
                         <div key={l.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4 flex items-start gap-3">
-                          <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                          <Avatar name={empFullName(emp)} color={emp.avatar_color} size={32} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                              <span className="font-semibold text-sm text-[#151c27]">{empFullName(emp)}</span>
                               {(l.leave_time === 'wfh' || l.leave_type === 'wfh') ? <StatusBadge status="wfh" /> : <LeaveTypeBadge type={l.leave_type} />}
                               {l.leave_time === 'half' && l.leave_type !== 'wfh' ? (
                                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">
@@ -918,10 +923,10 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
                       ))}
                       {absentRecords.map(r => (
                         <div key={r.id} className="bg-white rounded-xl border border-[#e7eefe] shadow-sm p-4 flex items-start gap-3">
-                          <Avatar name={emp.name} color={emp.avatar_color} size={32} />
+                          <Avatar name={empFullName(emp)} color={emp.avatar_color} size={32} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <span className="font-semibold text-sm text-[#151c27]">{emp.name}</span>
+                              <span className="font-semibold text-sm text-[#151c27]">{empFullName(emp)}</span>
                               <StatusBadge status="absent" />
                             </div>
                             <div className="text-xs text-[#464555]">{fmtDate(r.date)}</div>
@@ -1004,7 +1009,7 @@ function EmployeeProfile({ emp, onBack, onEdit }) {
         <Modal open={adjModal} onClose={() => setAdjModal(false)} title="Adjust Leave Balance">
           <div className="space-y-4 p-1">
             <p className="text-xs text-[#777587]">
-              Grant extra days or deduct days from <span className="font-bold text-[#151c27]">{emp.name}</span>'s {curYear} leave balance.
+              Grant extra days or deduct days from <span className="font-bold text-[#151c27]">{empFullName(emp)}</span>'s {curYear} leave balance.
               This is recorded as an HR adjustment and shown separately from approved leaves.
             </p>
 
@@ -1416,7 +1421,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
   ];
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Employee — ${employee.name}` : 'Add Employee'} size="lg" disableOutsideClick
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Employee — ${empFullName(employee)}` : 'Add Employee'} size="lg" disableOutsideClick
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
@@ -2548,7 +2553,7 @@ export default function Employees() {
     }
   }
 
-  function handleDelete(emp) { setConfirmDel({ id: emp.id, name: emp.name }); }
+  function handleDelete(emp) { setConfirmDel({ id: emp.id, name: empFullName(emp) }); }
 
   function toggleSortBy(col) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -2865,9 +2870,9 @@ export default function Employees() {
               {/* Header */}
               <div className="bg-gradient-to-br from-[#f0f3ff] to-[#e7eefe] px-5 pt-5 pb-4 flex items-center gap-3.5 cursor-pointer"
                 onClick={() => openProfile(emp)}>
-                <Avatar name={emp.name} color={emp.avatar_color} size={50} className="ring-2 ring-white shadow-sm flex-shrink-0" />
+                <Avatar name={empFullName(emp)} color={emp.avatar_color} size={50} className="ring-2 ring-white shadow-sm flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="font-black text-[#151c27] text-sm leading-tight truncate">{emp.name}</div>
+                  <div className="font-black text-[#151c27] text-sm leading-tight truncate">{empFullName(emp)}</div>
                   <div className="text-xs font-medium text-[#464555] truncate mt-0.5">{emp.position || '—'}</div>
                   <div className="flex flex-wrap items-center gap-1 mt-1.5">
                     <EmpStatusBadge status={emp.employee_status} />
@@ -2993,9 +2998,9 @@ export default function Employees() {
                     </td>
                     <td className="px-4 py-3 cursor-pointer" onClick={() => { setProfileDrawerEmp(emp); setDrawerTab('overview'); }}>
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={emp.name} color={emp.avatar_color} size={34} />
+                        <Avatar name={empFullName(emp)} color={emp.avatar_color} size={34} />
                         <div>
-                          <p className="font-bold text-[#151c27] text-sm leading-tight group-hover:text-[#3525cd] transition-colors">{emp.name}</p>
+                          <p className="font-bold text-[#151c27] text-sm leading-tight group-hover:text-[#3525cd] transition-colors">{empFullName(emp)}</p>
                           <p className="text-xs text-[#9ca3af] truncate max-w-[160px]">{emp.email}</p>
                         </div>
                       </div>
