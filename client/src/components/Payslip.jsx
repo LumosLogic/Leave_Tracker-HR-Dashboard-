@@ -236,7 +236,8 @@ export default function Payslip({ payslipId, onClose }) {
     'This is a computer generated salary slip and does not require a signature.';
   const orgLogoUrl   = orgSettings?.logo_url
     || (typeof window !== 'undefined' ? `${window.location.origin}/LogoWithoutName.svg` : '/LogoWithoutName.svg');
-  const companyPfNo  = payrollSettings?.payslip_company_pf_no || '';
+  const companyPfNo  = payrollSettings?.payslip_company_pf_no  || '';
+  const companyEsiNo = payrollSettings?.payslip_company_esic_no || '';
 
   const orgHeaderHtml = buildOrgHeaderHtml(payrollSettings, orgName);
 
@@ -269,30 +270,36 @@ export default function Payslip({ payslipId, onClose }) {
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Employee Name</td>
         <td style="border:none;padding:2px 4px">: ${slip.name}</td>
-        <td style="border:none;font-weight:bold;padding:2px 4px">P.F. No</td>
-        <td style="border:none;padding:2px 4px">: ${pfNo}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">Company ESI No</td>
+        <td style="border:none;padding:2px 4px">${companyEsiNo ? ': ' + companyEsiNo : ''}</td>
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Designation</td>
         <td style="border:none;padding:2px 4px">: ${slip.position || '—'}</td>
-        <td style="border:none;font-weight:bold;padding:2px 4px">UAN No.</td>
-        <td style="border:none;padding:2px 4px">: ${uan}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">P.F. No</td>
+        <td style="border:none;padding:2px 4px">: ${pfNo}</td>
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Department</td>
         <td style="border:none;padding:2px 4px">: ${slip.department || '—'}</td>
-        <td style="border:none;font-weight:bold;padding:2px 4px">ESI No.</td>
-        <td style="border:none;padding:2px 4px">: ${esiNo}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">UAN No.</td>
+        <td style="border:none;padding:2px 4px">: ${uan}</td>
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Bank Name</td>
         <td style="border:none;padding:2px 4px">: ${bankName || '—'}</td>
-        <td style="border:none;font-weight:bold;padding:2px 4px">PAN No.</td>
-        <td style="border:none;padding:2px 4px">: ${pan}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">ESI No.</td>
+        <td style="border:none;padding:2px 4px">: ${esiNo}</td>
       </tr>
       <tr>
         <td style="border:none;font-weight:bold;padding:2px 4px">Bank A/c No.</td>
         <td style="border:none;padding:2px 4px">: ${maskedAcc || '—'}</td>
+        <td style="border:none;font-weight:bold;padding:2px 4px">PAN No.</td>
+        <td style="border:none;padding:2px 4px">: ${pan}</td>
+      </tr>
+      <tr>
+        <td style="border:none;padding:2px 4px"></td>
+        <td style="border:none;padding:2px 4px"></td>
         <td style="border:none;font-weight:bold;padding:2px 4px">Attendance</td>
         <td style="border:none;padding:2px 4px">: ${totalCalDays} out of ${totalCalDays}</td>
       </tr>

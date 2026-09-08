@@ -48,7 +48,7 @@ async function fetchRichData(organizationId, userId, payslipId) {
       `SELECT payslip_company_address, payslip_company_cin, payslip_footer_note,
               payslip_company_fullname, payslip_registered_address,
               payslip_corporate_address, payslip_contact_details,
-              payslip_company_pf_no
+              payslip_company_pf_no, payslip_company_esic_no
          FROM payroll_settings WHERE organization_id = $1`,
       [organizationId]
     ).catch(() => pool.query(
@@ -97,7 +97,8 @@ async function fetchRichData(organizationId, userId, payslipId) {
     registeredAddress:   ps.payslip_registered_address  || '',
     corporateAddress:    ps.payslip_corporate_address   || '',
     contactDetails:      ps.payslip_contact_details     || '',
-    companyPfNo:         ps.payslip_company_pf_no       || '',
+    companyPfNo:         ps.payslip_company_pf_no        || '',
+    companyEsiNo:        ps.payslip_company_esic_no      || '',
     pan:      statRes.rows[0]?.pan_number || '',
     uan:      statRes.rows[0]?.uan_no     || '',
     esiNo:    statRes.rows[0]?.esi_no     || 'N/A',
@@ -269,11 +270,12 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     }
 
     infoRow('Employee ID',   String(empId),           'Company P.F. No', rich.companyPfNo);
-    infoRow('Employee Name', empName,                 'P.F. No',         rich.pfNo);
-    infoRow('Designation',   pos,                     'UAN No.',         rich.uan);
-    infoRow('Department',    dept || '—',             'ESI No.',         rich.esiNo);
-    infoRow('Bank Name',     rich.bankName || '—',    'PAN No.',         rich.pan);
-    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
+    infoRow('Employee Name', empName,                 'Company ESI No',  rich.companyEsiNo);
+    infoRow('Designation',   pos,                     'P.F. No',         rich.pfNo);
+    infoRow('Department',    dept || '—',             'UAN No.',         rich.uan);
+    infoRow('Bank Name',     rich.bankName || '—',    'ESI No.',         rich.esiNo);
+    infoRow('Bank A/c No.',  rich.maskedAcc || '—',   'PAN No.',         rich.pan);
+    infoRow('',              '',                      'Attendance',      `${totalCalDays} out of ${totalCalDays}`);
     y += 4;
 
     // ── Salary table ──────────────────────────────────────────────────────

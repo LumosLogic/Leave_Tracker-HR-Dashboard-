@@ -53,6 +53,7 @@ const DEFAULTS = {
   payslip_company_registration:   '',
   payslip_footer_note:            '',
   payslip_company_pf_no:          '',
+  payslip_company_esic_no:        '',
 };
 
 const TIMEZONES = [
@@ -947,6 +948,18 @@ export default function PayrollSettings() {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-semibold text-[#151c27] mb-1">Company ESI No.</p>
+                <p className="text-[0.68rem] text-[#777587] mb-1.5">
+                  Company-level ESIC registration number printed on all payslips (different from individual employee ESI numbers).
+                </p>
+                <input type="text"
+                  value={form.payslip_company_esic_no || ''}
+                  onChange={e => set('payslip_company_esic_no', e.target.value)}
+                  placeholder="e.g. 37001945660000999"
+                  className="w-full border border-[#c7c4d8] rounded-lg px-3 py-2 text-sm text-[#151c27] focus:outline-none focus:border-[#3525cd]"
+                />
+              </div>
               <div>
                 <p className="text-sm font-semibold text-[#151c27] mb-1">Registration Number</p>
                 <p className="text-[0.68rem] text-[#777587] mb-1.5">
