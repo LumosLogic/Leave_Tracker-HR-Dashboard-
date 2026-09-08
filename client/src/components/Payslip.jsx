@@ -255,7 +255,7 @@ export default function Payslip({ payslipId, onClose }) {
 
   // ── Print HTML (inline styles — must survive popup window) ───────────────
   const payslipHtml = `
-  <div class="payslip">
+  <div class="payslip" style="position:relative;overflow:hidden">
     <table style="border:none;margin-bottom:8px;width:100%;table-layout:fixed">
       <tr>
         <td style="border:none;padding:0;width:45%;vertical-align:top">
@@ -380,6 +380,11 @@ export default function Payslip({ payslipId, onClose }) {
 
     <div class="note">${footerNote}</div>
     <div style="text-align:center;font-size:7.5px;color:#aaa;margin-top:4px">HRMS by Lumos Logic</div>
+
+    <!-- Company logo watermark — absolutely covers the full payslip area -->
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden">
+      <img src="${orgLogoUrl}" alt="" style="width:340px;max-width:65%;object-fit:contain;opacity:0.07" />
+    </div>
   </div>`;
 
   // ── Render ─────────────────────────────────────────────────────────────────

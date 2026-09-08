@@ -212,6 +212,20 @@ async function generatePayslipPDF(payslip, employee, orgName, organizationId) {
     const W   = 535;      // usable width
     const R   = L + W;    // right edge
 
+    // ── Watermark: logo centred on page, drawn FIRST so all content renders on top ─
+    if (rich.logoBuffer) {
+      try {
+        doc.save();
+        doc.opacity(0.07);
+        const wmW = 280;
+        const wmH = 160;
+        const wmX = L + (W - wmW) / 2;
+        const wmY = (doc.page.height - wmH) / 2;
+        doc.image(rich.logoBuffer, wmX, wmY, { fit: [wmW, wmH] });
+        doc.restore();
+      } catch {}
+    }
+
     // ── Header: logo left (slightly larger), company info starts at page midpoint ─
     if (rich.logoBuffer) {
       try { doc.image(rich.logoBuffer, L, 30, { fit: [150, 70] }); } catch {}
