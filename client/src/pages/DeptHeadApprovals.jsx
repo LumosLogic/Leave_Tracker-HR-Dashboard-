@@ -306,7 +306,7 @@ export default function DeptHeadApprovals() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="space-y-5">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2.5 mb-1">

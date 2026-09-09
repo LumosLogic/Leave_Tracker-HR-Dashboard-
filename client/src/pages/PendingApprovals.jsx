@@ -175,10 +175,14 @@ export default function PendingApprovals() {
   const [reviewExpense, setReviewExpense] = useState(null);
 
   // ── Queries ─────────────────────────────────────────────────────────────────
-  const { data: _leaves = [], isLoading: loadLeaves } = useQuery({
+  // Fetch ALL leaves in any pending state so root/HR admin see the full picture.
+  // Includes both old-flow ('pending','pending_root') and new-flow ('pending_approval','pending_dept').
+  const { data: _allLeaves = [], isLoading: loadLeaves } = useQuery({
     queryKey: ['pending-approvals-leaves'],
     queryFn:  () => apiGet('/leaves').catch(() => []),
-    select:   d  => (Array.isArray(d) ? d : []).filter(l => l.status === 'pending'),
+    select:   d  => (Array.isArray(d) ? d : []).filter(l =>
+      ['pending', 'pending_approval', 'pending_dept', 'pending_root'].includes(l.status)
+    ),
     refetchInterval: 30000,
   });
 
@@ -189,6 +193,8 @@ export default function PendingApprovals() {
     refetchInterval: 30000,
   });
 
+  // my-approvals returns leaves where THIS user must act (enriched with current_level_* fields).
+  // We show ALL of them regardless of which role type is required — root admin has full visibility.
   const { data: _myApprovals = [], isLoading: loadMyApprovals } = useQuery({
     queryKey: ['my-workflow-approvals'],
     queryFn:  () => apiGet('/leaves/my-approvals').catch(() => []),
@@ -214,6 +220,7 @@ export default function PendingApprovals() {
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ['pending-approvals-leaves'] });
+    qc.invalidateQueries({ queryKey: ['pending-approvals-all-leaves'] });
     qc.invalidateQueries({ queryKey: ['pending-root-leaves'] });
     qc.invalidateQueries({ queryKey: ['my-workflow-approvals'] });
     qc.invalidateQueries({ queryKey: ['pending-approvals-regs'] });
@@ -251,38 +258,63 @@ export default function PendingApprovals() {
   const isWfh = l => l.leave_type === 'wfh' || l.leave_time === 'wfh';
 
   // ── Unified list ─────────────────────────────────────────────────────────────
-  const leaves       = _leaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name,      _dept: l.department || '',      _flow: 'old_pending' }));
-  const rootLeaves   = _rootLeaves.map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name,  _dept: l.department || '',      _flow: 'old_root' }));
-  const workflowLeaves = _myApprovals
-    .filter(l => ['hr_admin','root_admin'].includes(l.current_level_role_type))
-    .map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name,             _dept: l.department || '',      _flow: 'new' }));
-  const regs         = _regs.map(r => ({ ...r, _kind: 'reg',     _name: r.user_name,  _dept: r.user_department || '', _flow: 'reg' }));
-  const expenses     = _expenses.map(e => ({ ...e, _kind: 'expense', _name: e.user_name, _dept: '',       _flow: 'expense' }));
+  // my-approvals has enriched current_level_* data. Use that as the authoritative
+  // source for workflow leaves; fall back to _allLeaves for any not returned there.
+  const myApprovalIds = new Set(_myApprovals.map(l => l.id));
 
-  const all = [...leaves, ...rootLeaves, ...workflowLeaves, ...regs, ...expenses]
+  // Workflow leaves from my-approvals (no level restriction — root admin sees all)
+  const workflowLeaves = _myApprovals.map(l => ({
+    ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'new',
+  }));
+
+  // All pending leaves that didn't come through my-approvals (old-flow + any missed new-flow)
+  const otherLeaves = _allLeaves
+    .filter(l => !myApprovalIds.has(l.id)) // deduplicate — already covered above
+    .map(l => ({
+      ...l,
+      _kind: isWfh(l) ? 'wfh' : 'leave',
+      _name: l.name,
+      _dept: l.department || '',
+      // Map by actual status so they land on the right tab
+      _flow: ['pending_approval','pending_dept'].includes(l.status)
+        ? 'new'
+        : l.status === 'pending_root' ? 'old_root'
+        : 'old_pending',
+    }));
+
+  // Legacy pending_root leaves from the dedicated endpoint (may have extra data)
+  const rootLeavesExtra = _rootLeaves
+    .filter(l => !myApprovalIds.has(l.id) && !otherLeaves.find(o => o.id === l.id))
+    .map(l => ({ ...l, _kind: isWfh(l) ? 'wfh' : 'leave', _name: l.name, _dept: l.department || '', _flow: 'old_root' }));
+
+  const regs     = _regs.map(r => ({ ...r, _kind: 'reg',     _name: r.user_name,  _dept: r.user_department || '', _flow: 'reg' }));
+  const expenses = _expenses.map(e => ({ ...e, _kind: 'expense', _name: e.user_name, _dept: '', _flow: 'expense' }));
+
+  const all = [...workflowLeaves, ...otherLeaves, ...rootLeavesExtra, ...regs, ...expenses]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const expenseCount   = expenses.length;
-  const workflowCount  = workflowLeaves.length;
-  const oldRootCount   = rootLeaves.length;
-  const regCount       = regs.length;
-  const totalCount     = all.length;
+  const newWorkflowCount = [...workflowLeaves, ...otherLeaves.filter(l => l._flow === 'new')].length;
+  const oldRootCount     = [...otherLeaves.filter(l => l._flow === 'old_root'), ...rootLeavesExtra].length;
+  const legacyLeaveCount = otherLeaves.filter(l => l._flow === 'old_pending' && l._kind === 'leave').length;
+  const expenseCount     = expenses.length;
+  const regCount         = regs.length;
+  const totalCount       = all.length;
 
   const summaryCards = [
-    { label: 'Total Pending',       value: totalCount,    bg: 'bg-amber-50',    text: 'text-amber-700',    icon: <ClipboardList size={16} />, tabKey: 'all'      },
-    { label: 'Workflow Approvals',  value: workflowCount, bg: 'bg-[#f0f3ff]',   text: 'text-[#3525cd]',    icon: <CheckCircle2 size={16} />,  tabKey: 'workflow' },
-    { label: 'Legacy Pending Root', value: oldRootCount,  bg: 'bg-violet-50',   text: 'text-violet-700',   icon: <Clock size={16} />,         tabKey: 'root'     },
-    { label: 'Regularization',      value: regCount,      bg: 'bg-orange-50',   text: 'text-orange-700',   icon: <Clock size={16} />,         tabKey: 'reg'      },
-    { label: 'Expense Claims',       value: expenseCount, bg: 'bg-emerald-50',  text: 'text-emerald-700',  icon: <Receipt size={16} />,       tabKey: 'expense'  },
+    { label: 'Total Pending',       value: totalCount,        bg: 'bg-amber-50',   text: 'text-amber-700',   icon: <ClipboardList size={16} />, tabKey: 'all'      },
+    { label: 'Leave / WFH',         value: newWorkflowCount + legacyLeaveCount + oldRootCount,
+                                                               bg: 'bg-[#f0f3ff]',  text: 'text-[#3525cd]',   icon: <CheckCircle2 size={16} />,  tabKey: 'workflow' },
+    { label: 'Regularization',      value: regCount,          bg: 'bg-orange-50',  text: 'text-orange-700',  icon: <Clock size={16} />,         tabKey: 'reg'      },
+    { label: 'Expense Claims',       value: expenseCount,     bg: 'bg-emerald-50', text: 'text-emerald-700', icon: <Receipt size={16} />,       tabKey: 'expense'  },
   ];
 
   const TABS = [
     { key: 'all',      label: `All (${totalCount})` },
-    { key: 'workflow', label: `New Workflow (${workflowCount})`, highlight: workflowCount > 0 },
+    { key: 'workflow', label: `Workflow Leaves (${newWorkflowCount})`, highlight: newWorkflowCount > 0 },
     { key: 'root',     label: `Pending Final (${oldRootCount})` },
-    { key: 'leave',    label: `Legacy Leave (${leaves.filter(l=>l._kind==='leave').length})` },
+    { key: 'leave',    label: `Legacy Leave (${legacyLeaveCount})` },
     { key: 'reg',      label: `Regularization (${regCount})` },
-    { key: 'expense',  label: `Expenses (${expenseCount})`,      highlight: expenseCount > 0 },
+    { key: 'expense',  label: `Expenses (${expenseCount})`,            highlight: expenseCount > 0 },
   ];
 
   const depts = [...new Set(all.map(r => r._dept).filter(Boolean))].sort();
@@ -331,7 +363,12 @@ export default function PendingApprovals() {
       );
     }
     if (item._flow === 'new') {
-      const levelLabel = item.current_level_label || item.current_level_role_type?.replace(/_/g, ' ') || 'Your Approval';
+      // For leaves from _allLeaves (no current_level_* enrichment), fall back to status
+      const levelLabel = item.current_level_label
+        || (item.current_level_role_type
+            ? item.current_level_role_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            : item.status === 'pending_dept' ? 'Dept Head Review'
+            : 'Pending Workflow');
       return (
         <div className="space-y-0.5 max-w-full overflow-hidden">
           <span title={levelLabel} className="inline-flex items-center gap-1 text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8] max-w-full truncate">

@@ -326,12 +326,12 @@ function RoleCard({ role, onDelete, onClick, onEdit }) {
   return (
     <>
       <div
-        className="bg-white border border-[#e7eefe] rounded-xl p-4 hover:border-[#3525cd]/30 hover:shadow-sm transition-all cursor-pointer group relative"
+        className="bg-white border border-[#e7eefe] rounded-xl p-4 hover:border-[#3525cd]/30 hover:shadow-sm transition-all cursor-pointer group relative overflow-hidden"
         onClick={() => onClick(role)}
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', colors.bg, 'border', colors.border)}>
               {role.is_system_role
                 ? <Lock size={15} className={colors.text} />
@@ -340,7 +340,7 @@ function RoleCard({ role, onDelete, onClick, onEdit }) {
             </div>
             {/* BUG_143: prevent long name/description causing horizontal scroll */}
             <div className="min-w-0 flex-1 overflow-hidden">
-              <p title={role.name} className="font-bold text-[0.88rem] text-[#151c27] leading-tight break-words line-clamp-2">{role.name}</p>
+              <p title={role.name} className="font-bold text-[0.88rem] text-[#151c27] leading-tight break-all line-clamp-2">{role.name}</p>
               <span className={cn(
                 'inline-flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full mt-0.5',
                 role.is_system_role ? cn(colors.bg, colors.text) : 'bg-[#f0f3ff] text-[#3525cd]'
@@ -376,7 +376,7 @@ function RoleCard({ role, onDelete, onClick, onEdit }) {
 
         {/* Description */}
         {role.description && (
-          <p title={role.description} className="text-xs text-[#777587] mb-3 line-clamp-2 leading-relaxed break-words overflow-hidden">{role.description}</p>
+          <p title={role.description} className="text-xs text-[#777587] mb-3 line-clamp-2 leading-relaxed break-all overflow-hidden">{role.description}</p>
         )}
 
         {/* Stats */}

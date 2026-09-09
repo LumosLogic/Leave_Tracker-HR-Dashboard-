@@ -206,10 +206,11 @@ function WeekBarChart({ recentAttendance, today }) {
   );
 }
 
-function TeamDonut({ todayTeamLeaves, user }) {
+function TeamDonut({ todayTeamLeaves, user, teamCount }) {
   const isWFHLeave  = (l) => l.leave_time === 'wfh' || l.leave_type === 'wfh';
   const onLeave     = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id).length;
   const onWfh       = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id).length;
+  const inOffice    = teamCount != null ? Math.max(0, teamCount - onLeave - onWfh) : null;
   const total       = todayTeamLeaves.length || 1;
 
   const segments = [
@@ -265,7 +266,7 @@ function TeamDonut({ todayTeamLeaves, user }) {
               <div className="w-2 h-2 rounded-full bg-[#f0f3ff] border border-[#c7c4d8]" />
               <span className="text-xs text-[#464555]">In Office</span>
             </div>
-            <span className="text-xs font-bold text-[#151c27]">—</span>
+            <span className="text-xs font-bold text-[#151c27]">{inOffice != null ? inOffice : '—'}</span>
           </div>
         </div>
       </div>
@@ -671,7 +672,7 @@ export default function EmployeeHome() {
       {/* ═══════════════════════════════════════════════════════════════════
           2. THREE-COLUMN INFO SECTION
       ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid lg:grid-cols-3 gap-5">
+      <div className={`grid ${isDeptHead ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-5`}>
 
         {/* ── Col 1: Today's Overview ── */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
@@ -774,73 +775,58 @@ export default function EmployeeHome() {
           </div>
         </div>
 
-        {/* ── Col 3: My Team ── */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          {isDeptHead && teamDashboard?.is_dept_head ? (
-            <>
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
-                <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-                  <Users size={13} className="text-[#3525cd]" />
-                  My Team — {teamDashboard.department?.name}
-                </h2>
-                <Link to="/portal/dept-approvals" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline flex items-center gap-1">
-                  {teamDashboard.pending_approvals > 0 && (
-                    <span className="bg-amber-500 text-white text-[0.58rem] font-black px-1.5 py-0.5 rounded-full">
-                      {teamDashboard.pending_approvals}
-                    </span>
-                  )}
-                  Team Approvals →
-                </Link>
-              </div>
-              <div className="p-5">
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  {[
-                    { label: 'Team Size',      value: teamDashboard.team_count,     icon: '👥', color: 'text-[#3525cd]' },
-                    { label: 'Present Today',  value: teamDashboard.present_today,  icon: '✅', color: 'text-emerald-700' },
-                    { label: 'On Leave',       value: teamDashboard.on_leave_today, icon: '🏖️', color: 'text-amber-700' },
-                    { label: 'Not Checked In', value: teamDashboard.not_checked_in, icon: '⏰', color: 'text-slate-500' },
-                  ].map(({ label, value, icon, color }) => (
-                    <div key={label} className="rounded-xl border border-[#e7eefe] p-3 text-center">
-                      <p className="text-base mb-0.5">{icon}</p>
-                      <p className={`text-xl font-black leading-none ${color}`}>{value ?? 0}</p>
-                      <p className="text-[0.58rem] text-[#777587] font-semibold mt-1 uppercase tracking-wide">{label}</p>
-                    </div>
-                  ))}
-                </div>
-                {teamDashboard.upcoming_leaves?.length > 0 ? (
-                  <div>
-                    <p className="text-[0.6rem] font-black uppercase tracking-wider text-[#777587] mb-2">Upcoming Leaves (Next 7 Days)</p>
-                    <div className="space-y-1.5">
-                      {teamDashboard.upcoming_leaves.slice(0, 3).map((l, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg bg-[#f9f9ff]">
-                          <span className="font-bold text-[#151c27] flex-1 truncate">{l.name}</span>
-                          <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full capitalize">
-                            {l.leave_time === 'wfh' ? 'WFH' : l.leave_type}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-[#9ca3af] text-center py-2">No upcoming leaves in the next 7 days.</p>
+        {/* ── Col 3: My Team — only for dept heads ── */}
+        {isDeptHead && teamDashboard?.is_dept_head && (
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+              <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+                <Users size={13} className="text-[#3525cd]" />
+                My Team — {teamDashboard.department?.name}
+              </h2>
+              <Link to="/portal/dept-approvals" className="text-[0.68rem] font-bold text-[#3525cd] hover:underline flex items-center gap-1">
+                {teamDashboard.pending_approvals > 0 && (
+                  <span className="bg-amber-500 text-white text-[0.58rem] font-black px-1.5 py-0.5 rounded-full">
+                    {teamDashboard.pending_approvals}
+                  </span>
                 )}
+                Team Approvals →
+              </Link>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {[
+                  { label: 'Team Size',      value: teamDashboard.team_count,     icon: '👥', color: 'text-[#3525cd]' },
+                  { label: 'Present Today',  value: teamDashboard.present_today,  icon: '✅', color: 'text-emerald-700' },
+                  { label: 'On Leave',       value: teamDashboard.on_leave_today, icon: '🏖️', color: 'text-amber-700' },
+                  { label: 'Not Checked In', value: teamDashboard.not_checked_in, icon: '⏰', color: 'text-slate-500' },
+                ].map(({ label, value, icon, color }) => (
+                  <div key={label} className="rounded-xl border border-[#e7eefe] p-3 text-center">
+                    <p className="text-base mb-0.5">{icon}</p>
+                    <p className={`text-xl font-black leading-none ${color}`}>{value ?? 0}</p>
+                    <p className="text-[0.58rem] text-[#777587] font-semibold mt-1 uppercase tracking-wide">{label}</p>
+                  </div>
+                ))}
               </div>
-            </>
-          ) : (
-            <>
-              <div className="px-5 py-4 border-b border-[#f0f3ff]">
-                <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-                  <Users size={13} className="text-[#3525cd]" /> My Team
-                </h2>
-              </div>
-              <div className="flex flex-col items-center justify-center py-10 px-5 text-center gap-2">
-                <div className="w-12 h-12 rounded-2xl bg-[#f0f3ff] flex items-center justify-center text-2xl">👥</div>
-                <p className="text-sm font-semibold text-[#464555]">No team assigned</p>
-                <p className="text-xs text-[#9ca3af]">You are not assigned as a department head.</p>
-              </div>
-            </>
-          )}
-        </div>
+              {teamDashboard.upcoming_leaves?.length > 0 ? (
+                <div>
+                  <p className="text-[0.6rem] font-black uppercase tracking-wider text-[#777587] mb-2">Upcoming Leaves (Next 7 Days)</p>
+                  <div className="space-y-1.5">
+                    {teamDashboard.upcoming_leaves.slice(0, 3).map((l, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg bg-[#f9f9ff]">
+                        <span className="font-bold text-[#151c27] flex-1 truncate">{l.name}</span>
+                        <span className="text-[0.6rem] font-bold text-[#3525cd] bg-[#f0f3ff] px-1.5 py-0.5 rounded-full capitalize">
+                          {l.leave_time === 'wfh' ? 'WFH' : l.leave_type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-[#9ca3af] text-center py-2">No upcoming leaves in the next 7 days.</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
 
@@ -912,7 +898,7 @@ export default function EmployeeHome() {
       {/* ═══════════════════════════════════════════════════════════════════
           4. RECENT ACTIVITY + TEAM STATUS
       ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className={`grid ${isDeptHead ? 'lg:grid-cols-2' : 'grid-cols-1'} gap-5`}>
 
         {/* ── Left: My Recent Activity ── */}
         <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
@@ -945,67 +931,69 @@ export default function EmployeeHome() {
           </div>
         </div>
 
-        {/* ── Right: My Team Status ── */}
-        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
-            <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
-              <Users size={13} className="text-[#3525cd]" /> My Team Status
-            </h2>
-          </div>
-          <div className="p-5">
-            {(todayHoliday || isWeekend) ? (
-              <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
-                <span className="text-3xl">{todayHoliday ? '🏖️' : '🌟'}</span>
-                <p className="text-sm font-black text-[#151c27]">{todayHoliday ? todayHoliday.name : 'Weekend'}</p>
-                <p className="text-[0.7rem] text-[#777587]">Attendance not applicable today</p>
-              </div>
-            ) : (
-              <>
-                <TeamDonut todayTeamLeaves={todayTeamLeaves} user={user} />
-
-                {/* member lists */}
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[0.6rem] font-black text-amber-600 uppercase tracking-wider mb-2">
-                      On Leave ({teamOnLeave.length})
-                    </p>
-                    {teamOnLeave.length === 0 ? (
-                      <p className="text-[0.7rem] text-[#9ca3af] italic">Everyone's in</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {teamOnLeave.slice(0, 3).map(l => (
-                          <div key={l.id} className="flex items-center gap-1.5">
-                            <Avatar name={l.name} color={l.avatar_color} size={22} />
-                            <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
-                          </div>
-                        ))}
-                        {teamOnLeave.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamOnLeave.length - 3} more</p>}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-[0.6rem] font-black text-cyan-600 uppercase tracking-wider mb-2">
-                      WFH ({teamWfh.length})
-                    </p>
-                    {teamWfh.length === 0 ? (
-                      <p className="text-[0.7rem] text-[#9ca3af] italic">No WFH today</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {teamWfh.slice(0, 3).map(l => (
-                          <div key={l.id} className="flex items-center gap-1.5">
-                            <Avatar name={l.name} color={l.avatar_color} size={22} />
-                            <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
-                          </div>
-                        ))}
-                        {teamWfh.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamWfh.length - 3} more</p>}
-                      </div>
-                    )}
-                  </div>
+        {/* ── Right: My Team Status — only for dept heads ── */}
+        {isDeptHead && (
+          <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f3ff]">
+              <h2 className="text-[0.65rem] font-black text-[#777587] uppercase tracking-widest flex items-center gap-2">
+                <Users size={13} className="text-[#3525cd]" /> My Team Status
+              </h2>
+            </div>
+            <div className="p-5">
+              {(todayHoliday || isWeekend) ? (
+                <div className="flex flex-col items-center justify-center text-center py-6 gap-2">
+                  <span className="text-3xl">{todayHoliday ? '🏖️' : '🌟'}</span>
+                  <p className="text-sm font-black text-[#151c27]">{todayHoliday ? todayHoliday.name : 'Weekend'}</p>
+                  <p className="text-[0.7rem] text-[#777587]">Attendance not applicable today</p>
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  <TeamDonut todayTeamLeaves={todayTeamLeaves} user={user} teamCount={teamDashboard?.team_count} />
+
+                  {/* member lists */}
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[0.6rem] font-black text-amber-600 uppercase tracking-wider mb-2">
+                        On Leave ({teamOnLeave.length})
+                      </p>
+                      {teamOnLeave.length === 0 ? (
+                        <p className="text-[0.7rem] text-[#9ca3af] italic">Everyone's in</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {teamOnLeave.slice(0, 3).map(l => (
+                            <div key={l.id} className="flex items-center gap-1.5">
+                              <Avatar name={l.name} color={l.avatar_color} size={22} />
+                              <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
+                            </div>
+                          ))}
+                          {teamOnLeave.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamOnLeave.length - 3} more</p>}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[0.6rem] font-black text-cyan-600 uppercase tracking-wider mb-2">
+                        WFH ({teamWfh.length})
+                      </p>
+                      {teamWfh.length === 0 ? (
+                        <p className="text-[0.7rem] text-[#9ca3af] italic">No WFH today</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {teamWfh.slice(0, 3).map(l => (
+                            <div key={l.id} className="flex items-center gap-1.5">
+                              <Avatar name={l.name} color={l.avatar_color} size={22} />
+                              <span className="text-[0.68rem] font-medium text-[#151c27] truncate">{l.name}</span>
+                            </div>
+                          ))}
+                          {teamWfh.length > 3 && <p className="text-[0.62rem] text-[#777587]">+{teamWfh.length - 3} more</p>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
