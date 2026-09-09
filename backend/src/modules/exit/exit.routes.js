@@ -189,13 +189,15 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
         type:    'exit', organization_id: oId,
       }).then(() => {});
 
-      // On approval: mark employee inactive + broadcast to all admins for IT/asset/payroll action
+      // On approval: mark employee as resigned (notice period active, not yet blocked).
+      // A daily cron will transition resigned→inactive once last_working_day passes.
       if (updates.status === 'approved') {
         db.from('users')
-          .update({ employee_status: 'inactive' })
+          .update({ employee_status: 'resigned' })
           .eq('id', current.user_id)
           .eq('organization_id', oId)
-          .then(() => {});
+          .then(() => {})
+          .catch(() => {});
 
         // Look up the departing employee's name for the notification message
         db.from('users').select('name').eq('id', current.user_id).maybeSingle()

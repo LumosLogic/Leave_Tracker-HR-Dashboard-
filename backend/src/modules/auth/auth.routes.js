@@ -8,7 +8,7 @@ const cloudinary = require('cloudinary').v2;
 const { authenticator } = require('otplib');
 const qrcode = require('qrcode');
 const { db } = require('../../config/db');
-const { JWT_SECRET, auth } = require('../../middleware/auth');
+const { JWT_SECRET, auth, clearRoleChanged } = require('../../middleware/auth');
 const { orgId, getRecipients } = require('../../utils/helpers');
 const { sendMail, passwordResetHtml } = require('../../services/emailService');
 const { rateLimiter, LIMITS } = require('../../middleware/rateLimiter');
@@ -48,12 +48,11 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
     if (user.status === 'inactive') {
       return res.status(403).json({ error: 'Your account has been deactivated. Please contact HR to restore access.' });
     }
-    // BUG_155: Also block employees with inactive/resigned/terminated employee_status
-    const blockedEmployeeStatuses = ['inactive', 'resigned', 'terminated'];
+    // Block terminated/inactive employees. 'resigned' is excluded — they are in notice period
+    // and must retain login access until their last working day (handled by a daily cron).
+    const blockedEmployeeStatuses = ['inactive', 'terminated'];
     if (blockedEmployeeStatuses.includes(user.employee_status)) {
-      const msg = user.employee_status === 'resigned'
-        ? 'Your account has been deactivated following your resignation. Please contact HR if you believe this is an error.'
-        : user.employee_status === 'terminated'
+      const msg = user.employee_status === 'terminated'
         ? 'Your access has been revoked. Please contact HR for assistance.'
         : 'Your account is inactive. Please contact HR to restore access.';
       return res.status(403).json({ error: msg });
@@ -69,6 +68,8 @@ router.post('/login', rateLimiter(LIMITS.LOGIN), async (req, res) => {
       return res.json({ requires2FA: true, totp_session: totpSession });
     }
 
+    // BUG_217: clear role-change flag before issuing token so stale session is gone
+    clearRoleChanged(user.id);
     const org = user.organizations || {};
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },
@@ -104,13 +105,13 @@ router.get('/me', auth, async (req, res) => {
         .eq('id', req.user.id).single();
       if (!fallback) return res.status(401).json({ error: 'Account not found' });
       // BUG_181: block inactive/resigned/terminated employees
-      if (fallback.role === 'employee' && ['inactive', 'resigned', 'terminated'].includes(fallback.employee_status)) {
+      if (fallback.role === 'employee' && ['inactive', 'terminated'].includes(fallback.employee_status)) {
         return res.status(401).json({ error: 'Your account has been deactivated. Please contact HR.' });
       }
       return res.json(fallback);
     }
     // BUG_181: block inactive/resigned/terminated employees
-    if (data.role === 'employee' && ['inactive', 'resigned', 'terminated'].includes(data.employee_status)) {
+    if (data.role === 'employee' && ['inactive', 'terminated'].includes(data.employee_status)) {
       return res.status(401).json({ error: 'Your account has been deactivated. Please contact HR.' });
     }
     res.json(data);
@@ -416,6 +417,8 @@ router.post('/totp/verify-login', rateLimiter(LIMITS.TOTP_VERIFY), async (req, r
     if (!authenticator.check(totpToken, user.totp_secret))
       return res.status(400).json({ error: 'Invalid authenticator code' });
 
+    // BUG_217: clear role-change flag before issuing token (TOTP path)
+    clearRoleChanged(user.id);
     const org = user.organizations || {};
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name, organization_id: user.organization_id || 1, organization_slug: org.slug || 'lumoslogic' },

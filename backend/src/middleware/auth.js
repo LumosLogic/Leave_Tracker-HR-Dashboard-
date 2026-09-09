@@ -9,13 +9,21 @@ if (!JWT_SECRET) {
 }
 
 // BUG_181: In-memory set of user IDs whose sessions must be invalidated immediately.
-// Populated when an employee's status is changed to inactive/resigned/terminated.
+// Populated when an employee's status is changed to inactive/terminated.
+// 'resigned' is intentionally excluded — employees serve a notice period and must retain access.
 // Cleared on server restart (acceptable — tokens are short-lived; worst case is a single restart).
 const _blockedUsers = new Set();
-const INACTIVE_STATUSES = ['inactive', 'resigned', 'terminated'];
+const INACTIVE_STATUSES = ['inactive', 'terminated'];
 
 function blockUser(userId) { _blockedUsers.add(String(userId)); }
 function unblockUser(userId) { _blockedUsers.delete(String(userId)); }
+
+// BUG_217: Separate set for users whose role was changed by an admin.
+// Their JWT still carries the old role — they must re-authenticate to get a fresh token.
+// Cleared when the user successfully logs in again (new token issued with new role).
+const _roleChangedUsers = new Set();
+function markRoleChanged(userId) { _roleChangedUsers.add(String(userId)); }
+function clearRoleChanged(userId) { _roleChangedUsers.delete(String(userId)); }
 
 const ALLOWED_ORIGINS = [
   'https://hrms.lumoslogic.com',
@@ -40,6 +48,15 @@ async function auth(req, res, next) {
     // BUG_181: Check in-memory blocklist first (instant, no DB cost)
     if (_blockedUsers.has(String(decoded.id))) {
       return res.status(401).json({ error: 'Account access has been revoked. Please contact HR.', code: 'ACCOUNT_INACTIVE' });
+    }
+
+    // BUG_217: Role-change invalidation — the JWT still carries the old role.
+    // Force re-authentication so the client gets a fresh token with the new role.
+    if (_roleChangedUsers.has(String(decoded.id))) {
+      return res.status(401).json({
+        error: 'Your role has been updated by an administrator. Please log in again to apply the new permissions.',
+        code: 'ROLE_CHANGED',
+      });
     }
 
     // BUG_181: For employee-role tokens, do a lightweight DB check on status.
@@ -112,4 +129,4 @@ function platformAdminAuth(req, res, next) {
   } catch { return res.status(401).json({ error: 'Invalid token' }); }
 }
 
-module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth, selfOrAdmin, blockUser, unblockUser };
+module.exports = { JWT_SECRET, ALLOWED_ORIGINS, auth, adminOnly, rootAdminOnly, isAdminRole, platformAdminAuth, selfOrAdmin, blockUser, unblockUser, markRoleChanged, clearRoleChanged };

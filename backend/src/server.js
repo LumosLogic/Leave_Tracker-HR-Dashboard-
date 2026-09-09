@@ -11,7 +11,7 @@ const { featureGate }  = require('./middleware/featureFlag');
 const { rateLimiter, LIMITS } = require('./middleware/rateLimiter');
 const { maintenanceMiddleware } = require('./middleware/maintenanceMode');
 const { biometricSnGuard, biometricAuditLog } = require('./middleware/biometricSecurity');
-const { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent, runProbationExpiryCheck } = require('./utils/cronJobs');
+const { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent, runProbationExpiryCheck, runResignationExpiry } = require('./utils/cronJobs');
 const payrollScheduler          = require('./services/payrollScheduler');
 const attendanceEmailScheduler  = require('./services/attendanceEmailScheduler');
 
@@ -282,6 +282,8 @@ async function start() {
     scheduleDailyAt(23, 30, runAutoMarkAbsent);
     // Probation expiry: promote probation→active at 00:05 daily
     scheduleDailyAt(0, 5, runProbationExpiryCheck);
+    // Resignation expiry: transition resigned→inactive after last_working_day at 00:10 daily
+    scheduleDailyAt(0, 10, runResignationExpiry);
     payrollScheduler.start();
     // Automatic EasyWDMS → HRMS biometric sync (per-org configurable schedule)
     biometricAutoScheduler.start().catch(err =>

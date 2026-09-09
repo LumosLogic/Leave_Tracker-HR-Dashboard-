@@ -8,7 +8,7 @@ import {
   Building2, Award, BookOpen, Activity, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Loader2, X, Save, Eye, EyeOff, Banknote,
   Globe, Fingerprint, Clock, AlarmClock, Timer, Coffee,
-  History, TrendingUp, TrendingDown,
+  History, TrendingUp, TrendingDown, Upload,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -553,10 +553,28 @@ function deriveWeeklyOff(weeklyOffDay, workSchedule) {
 function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [skillModal, setSkillModal] = useState(null);
-  const [expModal, setExpModal]     = useState(null);
-  const [form, setForm]             = useState({});
+  const [skillModal, setSkillModal]   = useState(null);
+  const [expModal, setExpModal]       = useState(null);
+  const [orgStructOpen, setOrgStructOpen] = useState(false);
+  const [form, setForm]               = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => apiGet('/branches'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const orgStructMut = useMutation({
+    mutationFn: (body) => apiPut(`/profile/${empId}/professional`, body),
+    onSuccess: () => {
+      toast('Organisation structure updated', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-professional', empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',     empId] });
+      setOrgStructOpen(false);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
 
   const { data: prof = {}, isLoading } = useQuery({
     queryKey: ['epv2-professional', empId],
@@ -607,6 +625,17 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
     onError: e => toast(e.message, 'error'),
   });
 
+  const openOrgStruct = () => {
+    setForm({
+      joining_date:       prof.joining_date?.slice(0, 10) || '',
+      branch_id:          prof.branch_id || '',
+      location:           prof.location  || '',
+      weekly_off_day:     prof.weekly_off_day     || '',
+      work_hours_per_day: prof.work_hours_per_day || 8,
+    });
+    setOrgStructOpen(true);
+  };
+
   const openSkill = (rec = {}) => { setForm({ skill_name: rec.skill_name||'', skill_category: rec.skill_category||'technical', proficiency_level: rec.proficiency_level||'intermediate', years_of_experience: rec.years_of_experience||'', can_read: rec.can_read||false, can_write: rec.can_write||false, can_speak: rec.can_speak||false }); setSkillModal(rec); };
   const openExp   = (rec = {}) => { setForm({ company_name: rec.company_name||'', designation: rec.designation||'', industry: rec.industry||'', department: rec.department||'', employment_type: rec.employment_type||'', start_date: rec.start_date||'', end_date: rec.end_date||'', last_salary: rec.last_salary||'', manager_name: rec.manager_name||'', reason_leaving: rec.reason_leaving||'' }); setExpModal(rec); };
 
@@ -621,24 +650,22 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
       {/* Employment Details */}
       <SectionCard title="Employment Details" icon={Briefcase}
         action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'employment')} />}>
-        <InfoRow label="Employee ID" value={prof.employee_id || emp.employee_id} />
+        <InfoRow label="Employee ID" value={prof.employee_id || emp?.employee_id || `EMP${String(empId).padStart(3, '0')}`} />
         <InfoRow label="Department" value={prof.departments?.map(d => d.name).join(', ') || prof.department} icon={Building2} />
         <InfoRow label="Designation" value={prof.position} />
         <InfoRow label="Grade" value={prof.grade} />
         <InfoRow label="Pay Cadre" value={prof.pay_cadre} />
         <InfoRow label="Cost Centre" value={prof.cost_centre} />
         <InfoRow label="Division" value={prof.division} />
-        <InfoRow label="Employment Type" value={prof.employment_type} />
-        <InfoRow label="Work Mode" value={prof.work_mode} />
-        <InfoRow label="Status" value={prof.employee_status} />
+        <InfoRow label="Employment Type" value={prof.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} />
+        <InfoRow label="Work Mode" value={prof.work_mode?.replace(/\b\w/g, c => c.toUpperCase())} />
+        <InfoRow label="Status" value={prof.employee_status?.replace(/\b\w/g, c => c.toUpperCase())} />
       </SectionCard>
 
       {/* Org Structure */}
       <SectionCard title="Organisation Structure" icon={Users}
-        action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'employment')} />}>
+        action={isAdmin && <AdminBtn onClick={openOrgStruct} />}>
         <InfoRow label="Joining Date" value={prof.joining_date ? fmtDate(prof.joining_date) : null} />
-        <InfoRow label="Confirmation Date" value={prof.confirmation_date ? fmtDate(prof.confirmation_date) : null} />
-        <InfoRow label="Reporting Manager" value={prof.manager?.name} icon={User} />
         <InfoRow label="HOD" value={prof.hod?.name} />
         <InfoRow label="Branch" value={prof.branch?.name} icon={MapPin} />
         <InfoRow label="Work Location" value={prof.location} />
@@ -646,6 +673,52 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
         <InfoRow label="Work Hours/Day" value={prof.work_hours_per_day ? `${prof.work_hours_per_day}h` : null} />
         {prof.probation_applicable && <InfoRow label="Probation" value={`${prof.probation_months} months`} />}
       </SectionCard>
+
+      {/* Organisation Structure edit modal */}
+      <Modal open={orgStructOpen} onClose={() => setOrgStructOpen(false)} title="Edit Organisation Structure" size="md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={() => setOrgStructOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => orgStructMut.mutate(form)} disabled={orgStructMut.isPending}>
+              {orgStructMut.isPending ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        }>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label className="form-label">Branch</label>
+            <select className="form-control" value={form.branch_id || ''} onChange={e => {
+              const bId = e.target.value;
+              set('branch_id', bId);
+              const branch = branches.find(b => String(b.id) === String(bId));
+              if (branch?.location) set('location', branch.location);
+              else if (!bId) set('location', '');
+            }}>
+              <option value="">— No branch —</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Joining Date</label>
+            <input type="date" className="form-control" value={form.joining_date || ''} onChange={e => set('joining_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Work Location</label>
+            <input className="form-control" placeholder="e.g. Ahmedabad, Gujarat" value={form.location || ''} onChange={e => set('location', e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Weekly Off</label>
+            <select className="form-control" value={form.weekly_off_day || ''} onChange={e => set('weekly_off_day', e.target.value)}>
+              <option value="">— Select —</option>
+              {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Work Hours/Day</label>
+            <input type="number" className="form-control" min="1" max="24" value={form.work_hours_per_day || ''} onChange={e => set('work_hours_per_day', Number(e.target.value))} />
+          </div>
+        </div>
+      </Modal>
 
       {/* Skills */}
       <SectionCard title="Skills" icon={Award}
@@ -723,9 +796,16 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
         )}
       </SectionCard>
 
-      {/* Skill Modal */}
+      {/* Skill Modal — BUG_215: validation */}
       <Modal open={skillModal !== null} onClose={() => setSkillModal(null)} title={skillModal?.id ? 'Edit Skill' : 'Add Skill'} size="md"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setSkillModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => skillMut.mutate(form)} disabled={skillMut.isPending}>{skillMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setSkillModal(null)}>Cancel</button><button className="btn btn-primary" disabled={skillMut.isPending} onClick={() => {
+          const name = (form.skill_name || '').trim();
+          if (!name) { toast('Skill Name is required.', 'error'); return; }
+          if (!/[a-zA-Z]/.test(name)) { toast('Skill Name must contain at least one letter.', 'error'); return; }
+          const yoe = form.years_of_experience;
+          if (yoe !== '' && yoe != null && (isNaN(Number(yoe)) || Number(yoe) < 0 || Number(yoe) > 60)) { toast('Years of Experience must be between 0 and 60.', 'error'); return; }
+          skillMut.mutate(form);
+        }}>{skillMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="space-y-4">
           <div><label className="form-label">Skill Name *</label><input className="form-control" value={form.skill_name||''} onChange={e=>set('skill_name',e.target.value)}/></div>
           <div className="grid grid-cols-2 gap-4">
@@ -989,9 +1069,18 @@ function EducationTab({ empId, isAdmin }) {
         </div>
       </Modal>
 
-      {/* Certification Modal */}
+      {/* Certification Modal — BUG_213: validation */}
       <Modal open={certModal !== null} onClose={() => setCertModal(null)} title={certModal?.id ? 'Edit Certification' : 'Add Certification'} size="md"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setCertModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => certMut.mutate(form)} disabled={certMut.isPending}>{certMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setCertModal(null)}>Cancel</button><button className="btn btn-primary" disabled={certMut.isPending} onClick={() => {
+          const errs = [];
+          if (!(form.certification_name||'').trim()) { errs.push('Certification Name is required.'); }
+          else if (!/[a-zA-Z]/.test(form.certification_name)) { errs.push('Certification Name must contain at least one letter.'); }
+          if (form.issuing_authority && !/[a-zA-Z]/.test(form.issuing_authority)) { errs.push('Issuing Authority must contain at least one letter.'); }
+          if (form.issue_date && form.expiry_date && !form.is_lifetime && form.expiry_date < form.issue_date) { errs.push('Expiry Date cannot be before Issue Date.'); }
+          if (form.file_url && !/^https?:\/\/.+/.test(form.file_url)) { errs.push('Certificate URL must be a valid URL (starting with http/https).'); }
+          if (errs.length) { toast(errs[0], 'error'); return; }
+          certMut.mutate(form);
+        }}>{certMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
           {[['certification_name','Certification Name *'],['issuing_authority','Issuing Authority'],['issue_date','Issue Date','date'],['expiry_date','Expiry Date','date'],['certification_number','Certificate Number'],['file_url','Certificate URL']].map(([k,l,t])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
@@ -1000,9 +1089,18 @@ function EducationTab({ empId, isAdmin }) {
         </div>
       </Modal>
 
-      {/* Training Modal */}
+      {/* Training Modal — BUG_214: validation */}
       <Modal open={trainModal !== null} onClose={() => setTrainModal(null)} title={trainModal?.id ? 'Edit Training' : 'Add Training'} size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setTrainModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => trainMut.mutate(form)} disabled={trainMut.isPending}>{trainMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setTrainModal(null)}>Cancel</button><button className="btn btn-primary" disabled={trainMut.isPending} onClick={() => {
+          const errs = [];
+          if (!(form.training_name||'').trim()) { errs.push('Training Name is required.'); }
+          else if (!/[a-zA-Z]/.test(form.training_name)) { errs.push('Training Name must contain at least one letter.'); }
+          if (form.start_date && form.end_date && form.end_date < form.start_date) { errs.push('End Date cannot be before Start Date.'); }
+          if (form.duration_hours && (isNaN(Number(form.duration_hours)) || Number(form.duration_hours) < 0)) { errs.push('Duration must be a positive number.'); }
+          if (form.certificate_url && !/^https?:\/\/.+/.test(form.certificate_url)) { errs.push('Certificate URL must start with http/https.'); }
+          if (errs.length) { toast(errs[0], 'error'); return; }
+          trainMut.mutate(form);
+        }}>{trainMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2"><label className="form-label">Training Name *</label><input className="form-control" value={form.training_name||''} onChange={e=>set('training_name',e.target.value)}/></div>
           <div><label className="form-label">Type</label>
@@ -1051,6 +1149,12 @@ function CompensationTab({ empId, isAdmin, onEdit, emp }) {
       {/* Salary Overview */}
       <SectionCard title="Salary Overview" icon={Banknote}
         action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'salary')} />}>
+        {isAdmin && (
+          <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg">
+            <Banknote size={13} className="text-[#3525cd] mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-[#464555]">Full salary structure can be configured from the <span className="font-bold text-[#3525cd]">Payroll</span> module.</p>
+          </div>
+        )}
         {pLoad ? <LoadingSection /> : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
@@ -1139,13 +1243,48 @@ function CompensationTab({ empId, isAdmin, onEdit, emp }) {
         </div>
       </Modal>
 
-      {/* Nominee Modal */}
+      {/* Nominee Modal — BUG_207 + BUG_208: validation */}
       <Modal open={nomModal !== null} onClose={() => setNomModal(null)} title={nomModal?.id ? 'Edit Nominee' : 'Add Nominee'} size="md"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setNomModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => nomMut.mutate(form)} disabled={nomMut.isPending}>{nomMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3">
+          <button className="btn btn-outline" onClick={() => setNomModal(null)}>Cancel</button>
+          <button className="btn btn-primary" disabled={nomMut.isPending} onClick={() => {
+            const errs = [];
+            const name = (form.nominee_name || '').trim();
+            const rel  = (form.relationship || '').trim();
+            if (!name) { errs.push('Nominee Name is required.'); }
+            else if (!/[a-zA-Z]/.test(name)) { errs.push('Nominee Name must contain at least one letter.'); }
+            else if (/\d/.test(name)) { errs.push('Nominee Name cannot contain numbers.'); }
+            if (!rel) { errs.push('Relationship is required.'); }
+            else if (!/[a-zA-Z]/.test(rel)) { errs.push('Relationship must contain letters only.'); }
+            const phone = (form.contact_number || '').trim();
+            if (phone && !/^\d{7,15}$/.test(phone)) { errs.push('Contact Number must be 7–15 digits.'); }
+            const dob = form.date_of_birth;
+            if (dob && dob > new Date().toISOString().split('T')[0]) { errs.push('Date of Birth cannot be in the future.'); }
+            const share = parseFloat(form.percentage_share);
+            if (form.percentage_share !== '' && form.percentage_share != null) {
+              if (isNaN(share) || share <= 0 || share > 100) { errs.push('Share % must be between 1 and 100.'); }
+              else {
+                // BUG_207: correct current total — exclude editing nominee's own share
+                const currentTotal = nominees
+                  .filter(n => n.id !== nomModal?.id)
+                  .reduce((s, n) => s + (parseFloat(n.percentage_share) || 0), 0);
+                const newTotal = currentTotal + share;
+                if (newTotal > 100) {
+                  errs.push(`Total nominee share would exceed 100% (current: ${currentTotal}%, adding: ${share}%)`);
+                }
+              }
+            }
+            if (errs.length) { toast(errs[0], 'error'); return; }
+            nomMut.mutate(form);
+          }}>{nomMut.isPending ? 'Saving…' : 'Save'}</button>
+        </div>}>
         <div className="grid grid-cols-2 gap-4">
-          {[['nominee_name','Nominee Name *'],['relationship','Relationship *'],['date_of_birth','Date of Birth','date'],['percentage_share','Share %','number'],['contact_number','Contact Number'],['address','Address']].map(([k,l,t])=>(
-            <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-          ))}
+          <div><label className="form-label">Nominee Name <span className="text-rose-500">*</span></label><input className="form-control" value={form.nominee_name||''} onChange={e=>set('nominee_name',e.target.value)} placeholder="Full name"/></div>
+          <div><label className="form-label">Relationship <span className="text-rose-500">*</span></label><input className="form-control" value={form.relationship||''} onChange={e=>set('relationship',e.target.value)} placeholder="e.g. Spouse, Child"/></div>
+          <div><label className="form-label">Date of Birth</label><input className="form-control" type="date" value={form.date_of_birth||''} onChange={e=>set('date_of_birth',e.target.value)} max={new Date().toISOString().split('T')[0]}/></div>
+          <div><label className="form-label">Share %</label><input className="form-control" type="number" min={1} max={100} value={form.percentage_share||''} onChange={e=>set('percentage_share',e.target.value)} placeholder="0–100"/></div>
+          <div><label className="form-label">Contact Number</label><input className="form-control" type="tel" value={form.contact_number||''} onChange={e=>set('contact_number',e.target.value.replace(/\D/g,''))} placeholder="Digits only"/></div>
+          <div><label className="form-label">Address</label><input className="form-control" value={form.address||''} onChange={e=>set('address',e.target.value)}/></div>
         </div>
       </Modal>
     </div>
@@ -1165,6 +1304,8 @@ function ComplianceTab({ empId, onEdit, emp }) {
   const { data: govDocs = [],  isLoading: dLoad } = useQuery({ queryKey: ['epv2-govdocs',  empId], queryFn: () => apiGet(`/profile/${empId}/government-docs`) });
   const { data: immigration = [] } = useQuery({ queryKey: ['epv2-immig',    empId], queryFn: () => apiGet(`/profile/${empId}/immigration`) });
   const { data: statutory = {} }   = useQuery({ queryKey: ['epv2-stat',     empId], queryFn: () => apiGet(`/profile/${empId}/statutory`) });
+  // BUG_211: also fetch documents the employee uploaded via My Documents portal
+  const { data: empUploadedDocs = [] } = useQuery({ queryKey: ['epv2-emp-docs', empId], queryFn: () => apiGet('/documents', { userId: empId }), staleTime: 30000 });
 
   const docMut  = useMutation({ mutationFn: b => docModal?.id  ? apiPut(`/profile/${empId}/government-docs/${docModal.id}`,b)  : apiPost(`/profile/${empId}/government-docs`,b),  onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-govdocs',empId]}); setDocModal(null); },  onError: e=>toast(e.message,'error') });
   const verifyMut = useMutation({ mutationFn: ({ id, status }) => apiPatch(`/profile/${empId}/government-docs/${id}/verify`, { verification_status: status }), onSuccess: () => qc.invalidateQueries({queryKey:['epv2-govdocs',empId]}), onError: e=>toast(e.message,'error') });
@@ -1210,6 +1351,29 @@ function ComplianceTab({ empId, onEdit, emp }) {
           </div>
         )}
       </SectionCard>
+
+      {/* BUG_211: Employee-uploaded documents from My Documents portal */}
+      {empUploadedDocs.filter(d => d.uploaded_by === empId || d.user_id === empId).length > 0 && (
+        <SectionCard title="Employee Submitted Documents" icon={Upload}>
+          <div className="space-y-3">
+            {empUploadedDocs
+              .filter(d => d.uploaded_by === empId || d.user_id === empId)
+              .map(d => (
+                <div key={d.id} className="p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff] flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-black text-[#151c27]">{d.name || d.file_name || 'Document'}</p>
+                      <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full capitalize ${DOC_VERIFY_COLORS[d.verification_status] || 'bg-amber-50 text-amber-700'}`}>{d.verification_status || d.status || 'pending'}</span>
+                      {d.category && <span className="text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] capitalize">{d.category.replace(/_/g,' ')}</span>}
+                    </div>
+                    <p className="text-[0.68rem] text-[#777587] mt-0.5">Uploaded by employee</p>
+                    {d.file_url && <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-[#3525cd] underline mt-1 flex items-center gap-1"><Download size={10}/> View</a>}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </SectionCard>
+      )}
 
       {/* Statutory */}
       <SectionCard title="Statutory Information" icon={Shield}
@@ -1259,11 +1423,20 @@ function ComplianceTab({ empId, onEdit, emp }) {
         </div>
       </Modal>
 
-      {/* Immigration Modal */}
+      {/* Immigration Modal — BUG_212: validation */}
       <Modal open={immiModal !== null} onClose={() => setImmiModal(null)} title="Immigration Details" size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setImmiModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => immiMut.mutate(form)} disabled={immiMut.isPending}>{immiMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setImmiModal(null)}>Cancel</button><button className="btn btn-primary" disabled={immiMut.isPending} onClick={() => {
+          const errs = [];
+          if (!(form.citizenship||'').trim()) { errs.push('Citizenship is required.'); }
+          if (form.passport_number && !/^[A-Z0-9]{6,20}$/i.test(form.passport_number)) { errs.push('Passport Number must be 6–20 alphanumeric characters.'); }
+          if (form.immigration_no && !/^[A-Z0-9\-\/]{3,30}$/i.test(form.immigration_no)) { errs.push('Immigration No. must be 3–30 alphanumeric characters.'); }
+          if (form.issue_date && form.expiry_date && form.expiry_date < form.issue_date) { errs.push('Expiry Date cannot be before Issue Date.'); }
+          if (form.issue_date && form.issue_date > new Date().toISOString().split('T')[0]) { errs.push('Issue Date cannot be in the future.'); }
+          if (errs.length) { toast(errs[0], 'error'); return; }
+          immiMut.mutate(form);
+        }}>{immiMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
         <div className="grid grid-cols-2 gap-4">
-          {[['citizenship','Citizenship'],['immigration_type','Immigration Type'],['immigration_no','Immigration No.'],['passport_number','Passport Number'],['visa_type','Visa Type'],['issue_date','Issue Date','date'],['expiry_date','Expiry Date','date'],['country','Country'],['remarks','Remarks']].map(([k,l,t])=>(
+          {[['citizenship','Citizenship *'],['immigration_type','Immigration Type'],['immigration_no','Immigration No.'],['passport_number','Passport Number'],['visa_type','Visa Type'],['issue_date','Issue Date','date'],['expiry_date','Expiry Date','date'],['country','Country'],['remarks','Remarks']].map(([k,l,t])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
           ))}
         </div>
@@ -1358,10 +1531,22 @@ function WorkTab({ empId, isAdmin, emp }) {
 
 // ─── Section: Performance Tab ─────────────────────────────────────────────────
 
-function PerformanceTab({ empId }) {
+function PerformanceTab({ empId, isAdmin }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
   const { data: goals   = [], isLoading: gLoad } = useQuery({ queryKey: ['emp-goals',   empId], queryFn: () => apiGet('/performance/goals',   { userId: empId }) });
   const { data: reviews = [] }                   = useQuery({ queryKey: ['emp-reviews', empId], queryFn: () => apiGet('/performance/reviews', { userId: empId }) });
   const { data: exits   = [] }                   = useQuery({ queryKey: ['emp-exit',    empId], queryFn: () => apiGet('/exit',                { userId: empId }) });
+
+  const [reviewModal, setReviewModal] = useState(false);
+  const [rForm, setRForm]             = useState({ review_cycle: '', review_type: 'annual' });
+
+  // BUG_209: create review mutation
+  const reviewMut = useMutation({
+    mutationFn: body => apiPost('/performance/reviews', { ...body, user_id: empId }),
+    onSuccess: () => { toast('Review started', 'success'); qc.invalidateQueries({ queryKey: ['emp-reviews', empId] }); setReviewModal(false); },
+    onError: e => toast(e.message, 'error'),
+  });
 
   const exitReq = exits[0];
 
@@ -1385,8 +1570,9 @@ function PerformanceTab({ empId }) {
         )}
       </SectionCard>
 
-      {/* Reviews */}
-      <SectionCard title="Performance Reviews" icon={Activity}>
+      {/* Reviews — BUG_209: Add Review button for admins */}
+      <SectionCard title="Performance Reviews" icon={Activity}
+        action={isAdmin && <AdminBtn onClick={() => { setRForm({ review_cycle: '', review_type: 'annual' }); setReviewModal(true); }} label="Add Review" />}>
         {reviews.length === 0 ? <EmptyState icon={Activity} text="No reviews recorded" /> : (
           <div className="space-y-3">
             {reviews.map(r => (
@@ -1401,6 +1587,25 @@ function PerformanceTab({ empId }) {
           </div>
         )}
       </SectionCard>
+
+      {/* Add Review Modal */}
+      <Modal open={reviewModal} onClose={() => setReviewModal(false)} title="Start Performance Review" size="sm"
+        footer={<div className="flex justify-end gap-3">
+          <button className="btn btn-outline" onClick={() => setReviewModal(false)}>Cancel</button>
+          <button className="btn btn-primary" disabled={reviewMut.isPending} onClick={() => {
+            if (!(rForm.review_cycle||'').trim()) { toast('Review Cycle is required (e.g. Q1 2026, Annual 2026).', 'error'); return; }
+            reviewMut.mutate(rForm);
+          }}>{reviewMut.isPending ? 'Creating…' : 'Start Review'}</button>
+        </div>}>
+        <div className="space-y-4">
+          <div><label className="form-label">Review Cycle <span className="text-rose-500">*</span></label>
+            <input className="form-control" placeholder="e.g. Q1 2026, Annual 2026" value={rForm.review_cycle} onChange={e => setRForm(f => ({...f, review_cycle: e.target.value}))} /></div>
+          <div><label className="form-label">Review Type</label>
+            <select className="form-control" value={rForm.review_type} onChange={e => setRForm(f => ({...f, review_type: e.target.value}))}>
+              {[['annual','Annual'],['mid_year','Mid-Year'],['quarterly','Quarterly'],['probation','Probation'],['adhoc','Ad-hoc']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+            </select></div>
+        </div>
+      </Modal>
 
       {/* Exit */}
       {exitReq && (
@@ -2068,7 +2273,7 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
           {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
           {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
           {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} emp={emp} />}
-          {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} />}
+          {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} isAdmin={isAdmin} />}
           {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
         </div>
       </div>

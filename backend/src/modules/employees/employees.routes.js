@@ -2,7 +2,8 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const { db, pool } = require('../../config/db');
-const { auth, isAdminRole, blockUser, unblockUser } = require('../../middleware/auth');
+const { auth, isAdminRole, blockUser, unblockUser, markRoleChanged } = require('../../middleware/auth');
+const { clearUserCache } = require('../../services/permissionService');
 const { hasPermission } = require('../../middleware/permissions');
 const { orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml, preOnboardingRequestHtml, credentialsEmailHtml } = require('../../services/emailService');
@@ -316,9 +317,15 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       } catch { /* non-fatal — location stays null */ }
     }
 
-    // Use a transaction when department_ids are provided — DELETE then INSERT must be atomic.
-    // Without it, a crash between DELETE and INSERT leaves the employee with no departments.
+    // BUG_217: Capture the employee's current role BEFORE the update so we can detect
+    // a role change and invalidate their active session immediately.
     const empId = parseInt(req.params.id);
+    let previousRole = null;
+    if (role !== undefined) {
+      const { data: cur } = await db.from('users')
+        .select('role').eq('id', empId).eq('organization_id', orgId(req)).maybeSingle();
+      previousRole = cur?.role ?? null;
+    }
     let data;
 
     if (Array.isArray(department_ids)) {
@@ -413,11 +420,24 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       }
     }
 
-    // BUG_181: If employee status changed to inactive/resigned/terminated, invalidate their session
-    if (employee_status && ['inactive', 'resigned', 'terminated'].includes(employee_status)) {
+    // Revoke active sessions for hard-inactive statuses only.
+    // 'resigned' is excluded — employees in notice period retain login access;
+    // the daily cron transitions them to 'inactive' once last_working_day passes.
+    if (employee_status && ['inactive', 'terminated'].includes(employee_status)) {
       blockUser(empId);
     } else if (employee_status === 'active' || employee_status === 'probation') {
-      unblockUser(empId); // re-allow if re-activated
+      unblockUser(empId);
+    }
+
+    // BUG_217: If the role actually changed, the user's existing JWT still carries
+    // the old role. Mark them for forced re-authentication so their next API call
+    // returns 401 → frontend dispatches auth:expired → user is logged out and must
+    // log back in to get a new token that reflects the updated role.
+    // Also clear their permission cache so the new role's permissions take effect
+    // immediately on re-login rather than waiting for the 5-minute TTL to expire.
+    if (role !== undefined && previousRole !== null && role !== previousRole) {
+      markRoleChanged(empId);
+      clearUserCache(String(empId), orgId(req));
     }
 
     res.json(data);

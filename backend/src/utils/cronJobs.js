@@ -298,4 +298,51 @@ async function runProbationExpiryCheck() {
   }
 }
 
-module.exports = { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent, runProbationExpiryCheck };
+// ── Resignation expiry — runs daily at 00:10 ─────────────────────────────────
+// Finds employees whose last_working_day has passed and transitions them from
+// 'resigned' → 'inactive', blocking login and revoking active sessions.
+async function runResignationExpiry() {
+  const { blockUser } = require('../middleware/auth');
+  const today = localDateStr();
+
+  // Find approved exit requests whose last_working_day is today or earlier
+  const { data: expiredExits } = await db.from('exit_requests')
+    .select('user_id, organization_id, last_working_day')
+    .eq('status', 'approved')
+    .lte('last_working_day', today);
+
+  if (!expiredExits?.length) return;
+
+  const userIds = [...new Set(expiredExits.map(e => e.user_id))];
+
+  // Only affect employees still in 'resigned' state (not already deactivated)
+  const { data: resignedUsers } = await db.from('users')
+    .select('id, organization_id, name')
+    .in('id', userIds)
+    .eq('employee_status', 'resigned');
+
+  if (!resignedUsers?.length) return;
+
+  for (const u of resignedUsers) {
+    try {
+      await db.from('users')
+        .update({ employee_status: 'inactive', status: 'inactive' })
+        .eq('id', u.id)
+        .eq('organization_id', u.organization_id);
+      blockUser(u.id);
+      // Notify HR admins
+      await db.from('notifications').insert({
+        user_id:         u.id,
+        title:           'Access Revoked — Notice Period Ended',
+        message:         'Your last working day has passed. System access has been revoked.',
+        type:            'exit',
+        organization_id: u.organization_id,
+      });
+      console.log(`[ResignationExpiry] Deactivated ${u.name} (id=${u.id}) — LWD passed`);
+    } catch (err) {
+      console.error(`[ResignationExpiry] Error for user ${u.id}:`, err.message);
+    }
+  }
+}
+
+module.exports = { scheduleDailyAt, runDailyNotifications, runAutoMarkAbsent, runProbationExpiryCheck, runResignationExpiry };

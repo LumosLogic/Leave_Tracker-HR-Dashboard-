@@ -63,7 +63,8 @@ const STATUS_CFG = {
   re_upload_requested: { label: 'Re-upload Requested',  cls: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
 };
 
-const INIT_FORM = { name: '', category: '', expiry_date: '', visibility: 'admin_only', targetUserId: '', shareWith: [] };
+// BUG_210: default to 'all' so freshly uploaded shared docs are visible to employees.
+const INIT_FORM = { name: '', category: '', expiry_date: '', visibility: 'all', targetUserId: '', shareWith: [] };
 const PAGE_SIZES = [5, 10, 20, 50];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
