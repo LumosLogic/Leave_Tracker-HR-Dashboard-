@@ -140,9 +140,18 @@ function GoalModal({ open, onClose, goal, employees, isAdmin, currentCycle }) {
           </div>
         </div>
         <div>
-          <label className="form-label">Progress — {form.progress}%</label>
+          <label className="form-label">
+            Progress — {form.progress}%
+            {form.status === 'cancelled' && (
+              <span className="ml-2 text-[0.65rem] font-semibold text-[#777587] normal-case tracking-normal">(locked — goal is cancelled)</span>
+            )}
+          </label>
           <div className="flex items-center gap-3">
-            <input type="range" className="flex-1 accent-[#3525cd]" min={0} max={100} step={5} value={form.progress} onChange={e => set('progress', e.target.value)} />
+            {/* BUG_165: disable slider for cancelled goals — prevents accidental auto-complete on backend */}
+            <input type="range" className={`flex-1 accent-[#3525cd] ${form.status === 'cancelled' ? 'opacity-40 cursor-not-allowed' : ''}`}
+              min={0} max={100} step={5} value={form.progress}
+              disabled={form.status === 'cancelled'}
+              onChange={e => set('progress', e.target.value)} />
             <span className="text-sm font-black text-[#3525cd] min-w-[2.5rem] text-right">{form.progress}%</span>
           </div>
         </div>
@@ -381,8 +390,11 @@ export default function Performance() {
                               {g.target_date && <p className="text-xs text-[#777587] mt-0.5">Target: <span className="font-semibold">{g.target_date}</span></p>}
                             </div>
                             <div className="flex gap-1 flex-shrink-0">
-                              <button className="btn btn-ghost btn-icon text-[#777587] hover:text-[#3525cd]" onClick={() => setEditGoal(g)}><Pencil size={13} /></button>
-                              <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" onClick={() => setConfirmDel({ id: g.id, name: g.title })}><Trash2 size={13} /></button>
+                              {/* Completed goals are locked for employees — admins can still edit */}
+                              {(isAdmin || g.status !== 'completed') && (
+                                <button className="btn btn-ghost btn-icon text-[#777587] hover:text-[#3525cd]" title="Edit goal" onClick={() => setEditGoal(g)}><Pencil size={13} /></button>
+                              )}
+                              <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" title="Delete goal" onClick={() => setConfirmDel({ id: g.id, name: g.title })}><Trash2 size={13} /></button>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">

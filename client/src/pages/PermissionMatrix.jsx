@@ -10,6 +10,17 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useFeature } from '@/context/FeatureFlagContext';
 
+// ─── EHN_RM_005: High-risk permissions that need a confirmation step ──────────
+const HIGH_RISK_ACTIONS = new Set(['delete', 'lock']);
+const HIGH_RISK_COMBOS  = new Set(['payroll:approve', 'payroll:generate', 'employees:delete', 'roles:manage', 'attendance:delete']);
+
+function isHighRisk(perm) {
+  if (!perm) return false;
+  if (HIGH_RISK_ACTIONS.has(perm.action)) return true;
+  if (HIGH_RISK_COMBOS.has(`${perm.module_key}:${perm.action}`)) return true;
+  return false;
+}
+
 // ─── Module label map ─────────────────────────────────────────────────────────
 const MODULE_LABELS = {
   dashboard:     'Dashboard',
@@ -430,11 +441,15 @@ export default function PermissionMatrix() {
   const navigate     = useNavigate();
   const queryClient  = useQueryClient();
 
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [dirty, setDirty]             = useState(false);
-  const [toast, setToast]             = useState(null);
-  const [activeTab, setActiveTab]     = useState('permissions'); // 'permissions' | 'members'
+  const [selectedIds, setSelectedIds]   = useState(new Set());
+  const [dirty, setDirty]               = useState(false);
+  const [toast, setToast]               = useState(null);
+  const [activeTab, setActiveTab]       = useState('permissions'); // 'permissions' | 'members'
   const [showEditRole, setShowEditRole] = useState(false); // BUG_140
+  // EHN_RM_003: permission search
+  const [permSearch, setPermSearch]     = useState('');
+  // EHN_RM_005: high-risk confirmation pending
+  const [riskConfirm, setRiskConfirm]   = useState(null); // { perm, checked }
 
   // Fetch role details (with current permissions + members)
   const { data: role, isLoading: roleLoading, isError: roleError, refetch: refetchRole } = useQuery({
@@ -509,19 +524,30 @@ export default function PermissionMatrix() {
     setTimeout(() => setToast(null), 3500);
   }
 
-  function handleToggle(permId, checked) {
-    // BUG_144/160/161: For system roles (not root_admin), prevent removal of existing permissions.
-    // The backend enforces this too — this gives immediate UI feedback instead of silent revert.
-    if (isSystemRole && !isRootAdmin && !checked && selectedIds.has(permId)) {
-      showToast('System role permissions are protected — you can only grant additional ones, not remove them.', 'error');
-      return;
-    }
+  function applyToggle(permId, checked) {
     setSelectedIds(prev => {
       const next = new Set(prev);
       checked ? next.add(permId) : next.delete(permId);
       return next;
     });
     setDirty(true);
+  }
+
+  function handleToggle(permId, checked) {
+    // BUG_144/160/161: For system roles (not root_admin), prevent removal of existing permissions.
+    if (isSystemRole && !isRootAdmin && !checked && selectedIds.has(permId)) {
+      showToast('System role permissions are protected — you can only grant additional ones, not remove them.', 'error');
+      return;
+    }
+    // EHN_RM_005: intercept newly-granted high-risk permissions
+    if (checked) {
+      const perm = allPermissions.find(p => p.id === permId);
+      if (perm && isHighRisk(perm)) {
+        setRiskConfirm({ perm, permId, checked });
+        return;
+      }
+    }
+    applyToggle(permId, checked);
   }
 
   function handleToggleAll(perms, checked) {
@@ -552,6 +578,17 @@ export default function PermissionMatrix() {
   }
 
 
+
+  // EHN_RM_003: filter permissions + modules by search term
+  const searchLower = permSearch.trim().toLowerCase();
+  const visiblePermissions = searchLower
+    ? allPermissions.filter(p =>
+        p.label?.toLowerCase().includes(searchLower) ||
+        p.action?.toLowerCase().includes(searchLower) ||
+        (MODULE_LABELS[p.module_key] || p.module_key || '').toLowerCase().includes(searchLower)
+      )
+    : allPermissions;
+  const visibleModules = sortedModules.filter(m => visiblePermissions.some(p => p.module_key === m));
 
   // Fix H4: Error state — show a clear error instead of blank page
   if (isError && !isLoading) {
@@ -709,17 +746,35 @@ export default function PermissionMatrix() {
           ))}
         </div>
 
-        {/* Quick select */}
+        {/* EHN_RM_003: Permission search + quick select */}
         {activeTab === 'permissions' && !isRootAdmin && (
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
-            <button onClick={handleSelectAll} className="text-xs font-bold text-[#3525cd] hover:underline">
-              Select All
-            </button>
-            <span className="text-[#c7c4d8]">·</span>
-            <button onClick={handleDeselectAll} className="text-xs font-bold text-[#777587] hover:underline">
-              Deselect All
-            </button>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587]" />
+              <input
+                type="text"
+                value={permSearch}
+                onChange={e => setPermSearch(e.target.value)}
+                placeholder="Search permissions… e.g. Export Payroll"
+                className="w-full pl-8 pr-3 py-2 text-xs border border-[#c7c4d8] rounded-lg focus:outline-none focus:border-[#3525cd] focus:ring-1 focus:ring-[#3525cd]/20"
+              />
+              {permSearch && (
+                <button onClick={() => setPermSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#777587] hover:text-[#464555]">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {!permSearch && (
+              <>
+                <span className="text-xs text-[#777587] font-semibold">Quick select:</span>
+                <button onClick={handleSelectAll} className="text-xs font-bold text-[#3525cd] hover:underline">Select All</button>
+                <span className="text-[#c7c4d8]">·</span>
+                <button onClick={handleDeselectAll} className="text-xs font-bold text-[#777587] hover:underline">Deselect All</button>
+              </>
+            )}
+            {searchLower && (
+              <span className="text-xs text-[#777587]">{visiblePermissions.length} permission{visiblePermissions.length !== 1 ? 's' : ''} found</span>
+            )}
           </div>
         )}
       </div>
@@ -728,11 +783,16 @@ export default function PermissionMatrix() {
       <div className="">
         {activeTab === 'permissions' ? (
           <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
-            {sortedModules.map(module => (
+            {visibleModules.length === 0 && searchLower && (
+              <div className="text-center py-10 text-sm text-[#777587]">
+                No permissions match "<strong>{permSearch}</strong>"
+              </div>
+            )}
+            {visibleModules.map(module => (
               <ModuleSection
                 key={module}
                 module={module}
-                permissions={allPermissions}
+                permissions={visiblePermissions}
                 selectedIds={isRootAdmin ? new Set(allPermissions.map(perm => perm.id)) : (selectedIds || new Set())}
                 onToggle={handleToggle}
                 onToggleAll={handleToggleAll}
@@ -797,6 +857,38 @@ export default function PermissionMatrix() {
           onClose={() => setShowEditRole(false)}
           onSaved={() => { showToast('Role updated', 'success'); }}
         />
+      )}
+
+      {/* EHN_RM_005: High-risk permission confirmation dialog */}
+      {riskConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(4,6,14,.6)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-[#c7c4d8] p-6">
+            <div className="w-11 h-11 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle size={22} className="text-rose-500" />
+            </div>
+            <h3 className="font-black text-[#151c27] text-center mb-1">Grant Sensitive Permission?</h3>
+            <p className="text-xs text-[#777587] text-center mb-1">
+              <span className="font-bold text-[#151c27]">{riskConfirm.perm.label}</span>
+            </p>
+            <p className="text-xs text-[#777587] text-center mb-5">
+              This is a high-risk permission. Granting it gives broad or irreversible access.
+              Are you sure you want to enable it for this role?
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setRiskConfirm(null)}
+                className="flex-1 border border-[#c7c4d8] rounded-lg py-2.5 text-sm font-semibold text-[#464555] hover:bg-[#f0f3ff] transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => { applyToggle(riskConfirm.permId, riskConfirm.checked); setRiskConfirm(null); }}
+                className="flex-1 bg-rose-500 text-white rounded-lg py-2.5 text-sm font-bold hover:bg-rose-600 transition-colors">
+                Yes, Grant Access
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

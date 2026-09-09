@@ -541,6 +541,22 @@ router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (re
 
     clearOrgCache(oId);
 
+    // EHN_RM_007: notify all members of this role that permissions changed
+    try {
+      const { data: roleMembers } = await db.from('user_roles').select('user_id').eq('role_id', roleId);
+      if (roleMembers?.length) {
+        await db.from('notifications').insert(
+          roleMembers.map(m => ({
+            user_id:         m.user_id,
+            organization_id: oId,
+            title:           'Your role permissions have been updated',
+            message:         `The permissions for your "${role.name}" role were updated by an administrator. Your access level may have changed.`,
+            type:            'system',
+          }))
+        );
+      }
+    } catch (_) {}
+
     // Return updated permission list
     const { data } = await db
       .from('role_permissions')

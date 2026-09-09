@@ -438,7 +438,8 @@ export default function RoleManagement() {
 
   function handleCreated(role) {
     queryClient.invalidateQueries({ queryKey: ['roles'] });
-    showToast(`Role "${role.name}" created`, 'success');
+    // EHN_RM_001: drop the admin straight into the new role's Permissions tab
+    navigate(`/root/roles/${role.id}/permissions`);
   }
 
   function handleRoleSaved(updatedRole) {

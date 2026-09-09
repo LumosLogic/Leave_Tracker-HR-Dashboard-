@@ -69,9 +69,9 @@ router.put('/goals/:id', auth, async (req, res) => {
     if (title && title.length > 150) return res.status(400).json({ error: 'Goal Title must be 150 characters or less.' });
     if (description && description.length > 1000) return res.status(400).json({ error: 'Description must be 1000 characters or less.' });
 
-    // Fetch goal first to enforce ownership for employees
+    // Fetch goal first to enforce ownership for employees, and to read current status
     const { data: goal } = await db.from('performance_goals')
-      .select('user_id').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
+      .select('user_id, status').eq('id', req.params.id).eq('organization_id', oId).maybeSingle();
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
 
     if (!isAdmin(req.user.role) && goal.user_id !== req.user.id) {
@@ -79,8 +79,22 @@ router.put('/goals/:id', auth, async (req, res) => {
     }
 
     const cappedProgress = Math.min(100, Math.max(0, Number(progress) || 0));
-    // Auto-complete when progress hits 100
-    const autoStatus = cappedProgress >= 100 ? 'completed' : (status || 'active');
+    // BUG_165: Never auto-promote a cancelled goal to 'completed' when progress hits 100.
+    // A cancelled goal must remain cancelled unless the caller explicitly re-activates it.
+    const incomingStatus      = status;                           // may be undefined
+    const currentlyCancelled  = goal.status === 'cancelled';
+    const beingCancelled      = incomingStatus === 'cancelled';
+    const beingReactivated    = incomingStatus === 'active' || incomingStatus === 'completed';
+    let autoStatus;
+    if (beingCancelled) {
+      autoStatus = 'cancelled';
+    } else if (currentlyCancelled && !beingReactivated) {
+      // Preserve cancelled — ignore auto-complete even if progress reaches 100
+      autoStatus = 'cancelled';
+    } else {
+      // Normal path: auto-complete when 100%, otherwise use explicit or default status
+      autoStatus = cappedProgress >= 100 ? 'completed' : (incomingStatus || 'active');
+    }
 
     let updatePayload;
     // BUG_084: include review_cycle so editing target_date also updates the cycle
