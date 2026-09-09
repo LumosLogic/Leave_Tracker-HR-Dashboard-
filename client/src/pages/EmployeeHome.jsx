@@ -211,7 +211,7 @@ function TeamDonut({ todayTeamLeaves, user, teamCount }) {
   const onLeave     = todayTeamLeaves.filter(l => !isWFHLeave(l) && l.user_id !== user?.id).length;
   const onWfh       = todayTeamLeaves.filter(l =>  isWFHLeave(l) && l.user_id !== user?.id).length;
   const inOffice    = teamCount != null ? Math.max(0, teamCount - onLeave - onWfh) : null;
-  const total       = todayTeamLeaves.length || 1;
+  const total       = teamCount || todayTeamLeaves.length || 1;
 
   const segments = [
     { label: 'On Leave', count: onLeave, color: '#4f46e5', pct: (onLeave / total) * 100 },
@@ -248,7 +248,7 @@ function TeamDonut({ todayTeamLeaves, user, teamCount }) {
               style={{ transform: 'rotate(-90deg)', transformOrigin: `${cx}px ${cy}px` }}
             />
           ))}
-          <text x={cx} y={cy - 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="#151c27">{total}</text>
+          <text x={cx} y={cy - 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="#151c27">{teamCount ?? total}</text>
           <text x={cx} y={cy + 9} textAnchor="middle" fontSize="8" fill="#777587">members</text>
         </svg>
         <div className="space-y-2 flex-1">
