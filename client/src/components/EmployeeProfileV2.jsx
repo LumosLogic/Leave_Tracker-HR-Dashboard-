@@ -1985,7 +1985,7 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
               {[
                 ['Department',   deptLabel,              Building2],
                 ['Position',     emp.position,           Briefcase],
-                ['Employment',   emp.employment_type,    Users],
+                ['Employment',   emp.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), Users],
                 ['Work Mode',    emp.work_mode,          Home],
                 ['Grade',        emp.grade,              Award],
                 ['Branch',       overview.branch?.name,  MapPin],

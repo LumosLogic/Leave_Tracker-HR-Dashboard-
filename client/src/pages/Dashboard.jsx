@@ -535,7 +535,7 @@ function OrgOverviewSection({ analytics, navigate }) {
           </button>
           <button onClick={() => setTab('roles')}
             className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${!isDepts ? 'bg-white text-[#3525cd] shadow-xs' : 'text-[#777587] hover:text-[#151c27]'}`}>
-            Roles ({totalRoleTypes})
+            Positions / Job Title ({totalRoleTypes})
           </button>
         </div>
       </div>

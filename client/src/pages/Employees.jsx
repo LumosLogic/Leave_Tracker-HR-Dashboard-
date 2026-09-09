@@ -1727,23 +1727,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Designation</label>
-                  <select className="form-control" value={form.designation_id} onChange={e => {
-                    const desig = designations.find(d => String(d.id) === e.target.value);
-                    set('designation_id', e.target.value);
-                    if (desig && !form.position) set('position', desig.name);
-                  }}>
-                    <option value="">— Select designation —</option>
-                    {designations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Job Title / Position</label>
-                  <input className="form-control" placeholder="e.g. Senior Developer"
-                    value={form.position} onChange={e => set('position', e.target.value)} />
-                </div>
+              <div>
+                <label className="form-label">Job Title / Position</label>
+                <input className="form-control" placeholder="e.g. Senior Developer"
+                  value={form.position} onChange={e => set('position', e.target.value)} />
               </div>
               <div>
                 <label className="form-label">Joining Date</label>
@@ -2097,17 +2084,6 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               )}
-            </div>
-            <div>
-              <label className="form-label">Designation</label>
-              <select className="form-control" value={form.designation_id} onChange={e => {
-                const desig = designations.find(d => String(d.id) === e.target.value);
-                set('designation_id', e.target.value);
-                if (desig && !form.position) set('position', desig.name);
-              }}>
-                <option value="">— Select designation —</option>
-                {designations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
             </div>
             <div>
               <label className="form-label">Job Title / Position <span className="text-rose-500">*</span></label>
