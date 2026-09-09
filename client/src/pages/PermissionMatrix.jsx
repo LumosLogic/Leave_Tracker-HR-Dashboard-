@@ -923,25 +923,26 @@ export default function PermissionMatrix() {
       {/* ── BODY ──────────────────────────────────────────────────────── */}
       <div className="">
         {activeTab === 'permissions' ? (
-          {/* EHN_RM_002: Smart preset suggestion banner */}
-          {suggestedPreset && selectedIds.size === 0 && (
-            <div className="flex items-center justify-between gap-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl px-4 py-3 mb-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Shield size={14} className="text-[#3525cd] shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-[#151c27]">Suggested starter set: <span className="text-[#3525cd]">{suggestedPreset.label}</span></p>
-                  <p className="text-[0.65rem] text-[#777587]">Based on the role name — covers {Object.keys(suggestedPreset.modules).join(', ')}. You can adjust after applying.</p>
+          <>
+            {/* EHN_RM_002: Smart preset suggestion banner */}
+            {suggestedPreset && selectedIds.size === 0 && (
+              <div className="flex items-center justify-between gap-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl px-4 py-3 mb-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Shield size={14} className="text-[#3525cd] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-[#151c27]">Suggested starter set: <span className="text-[#3525cd]">{suggestedPreset.label}</span></p>
+                    <p className="text-[0.65rem] text-[#777587]">Based on the role name — covers {Object.keys(suggestedPreset.modules).join(', ')}. You can adjust after applying.</p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => applyPreset(suggestedPreset)}
+                  className="shrink-0 text-xs font-bold bg-[#3525cd] text-white px-3 py-1.5 rounded-lg hover:bg-[#2a1fb0] transition-colors">
+                  Apply Preset
+                </button>
               </div>
-              <button
-                onClick={() => applyPreset(suggestedPreset)}
-                className="shrink-0 text-xs font-bold bg-[#3525cd] text-white px-3 py-1.5 rounded-lg hover:bg-[#2a1fb0] transition-colors">
-                Apply Preset
-              </button>
-            </div>
-          )}
+            )}
 
-          <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
+            <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {visibleModules.length === 0 && searchLower && (
               <div className="text-center py-10 text-sm text-[#777587]">
                 No permissions match "<strong>{permSearch}</strong>"
@@ -959,6 +960,7 @@ export default function PermissionMatrix() {
               />
             ))}
           </div>
+          </>
         ) : (
           <div className="bg-white border border-[#e7eefe] rounded-xl p-4">
             <MembersPanel members={role.members} roleId={id} onRefetch={refetchRole} />
