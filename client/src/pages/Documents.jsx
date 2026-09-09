@@ -543,7 +543,8 @@ function UploadSharedDocPanel({ allEmployees, colleagues, isEmployee, onCancel, 
 
 // ── Admin: Shared Documents Tab ───────────────────────────────────────────────
 function SharedDocumentsTab({ onUploadClick }) {
-  const { user, isRootAdmin, isAdmin } = useAuth();
+  const { user, isRootAdmin, isAdmin, can } = useAuth();
+  const canUpload = can('documents', 'upload');
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -2016,7 +2017,8 @@ function SettingsTab() {
 // ── Admin: Main Documents Page ────────────────────────────────────────────────
 function AdminDocumentsPage() {
   const qc = useQueryClient();
-  const { isRootAdmin } = useAuth();
+  const { isRootAdmin, can } = useAuth();
+  const canUpload = can('documents', 'upload');
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'shared';
   const [activeTab, setActiveTab]         = useState(initialTab);
@@ -2047,7 +2049,7 @@ function AdminDocumentsPage() {
 
   // Tab-aware header action — only show relevant button per tab
   const headerAction = {
-    shared:          <button className="btn btn-outline" onClick={() => { setShowUpload(true); setShowCreateReq(false); }}><Upload size={14} /> Upload Document</button>,
+    shared:          canUpload ? <button className="btn btn-outline" onClick={() => { setShowUpload(true); setShowCreateReq(false); }}><Upload size={14} /> Upload Document</button> : null,
     requirements:    <button className="btn btn-primary" onClick={() => { setShowCreateReq(true); setShowUpload(false); }}><Plus size={14} /> Create Requirement</button>,
     verification:    null,
     delete_requests: null,

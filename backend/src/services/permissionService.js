@@ -85,6 +85,9 @@ async function resolvePermissions(userId, orgId) {
 
        UNION
 
+       -- BUG_161 fix: system-role baseline only applies when the user has NO explicit
+       -- user_roles assignment. If a custom role is assigned, its permission set is
+       -- authoritative — the system role fallback must not silently re-grant revoked ones.
        SELECT DISTINCT p.module_key || '.' || p.action AS permission
        FROM users u
        JOIN roles r ON r.org_id = $2
@@ -99,14 +102,15 @@ async function resolvePermissions(userId, orgId) {
        JOIN permissions p       ON p.id = rp.permission_id
        WHERE u.id = $1
          AND u.organization_id = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM user_roles ur2
+           WHERE ur2.user_id = $1 AND ur2.org_id = $2
+         )
 
        UNION
 
-       -- BUG_168/169/172: Department Head system role permissions for users set
-       -- as head_user_id in any department. Dept heads have users.role='employee'
-       -- so the second UNION only gives them employee-level permissions. This third
-       -- UNION automatically grants dept_head permissions based on DB assignment,
-       -- without requiring a manual user_roles row.
+       -- Department Head system role permissions for users set as head_user_id
+       -- in any department — always applied regardless of user_roles assignment.
        SELECT DISTINCT p.module_key || '.' || p.action AS permission
        FROM departments d
        JOIN roles r  ON r.org_id        = d.organization_id

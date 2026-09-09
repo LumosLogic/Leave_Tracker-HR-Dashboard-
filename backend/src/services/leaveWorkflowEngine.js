@@ -149,7 +149,9 @@ function canUserApproveLevel(level, userId, userRole, currentApproverId) {
     case 'reporting_manager':
     case 'department_head':
     case 'specific_user':
-      return currentApproverId !== null && currentApproverId === userId;
+      // BUG_168: PostgreSQL bigint columns come back as strings from the pg driver.
+      // Use Number() coercion so "5" === 5 doesn't silently fail.
+      return currentApproverId != null && Number(currentApproverId) === Number(userId);
     case 'hr_admin':
       return ['admin', 'root_admin'].includes(userRole);
     case 'root_admin':
