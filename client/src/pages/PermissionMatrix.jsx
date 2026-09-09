@@ -4,11 +4,69 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Shield, Lock, Save, CheckSquare, Square,
   Users, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  UserPlus, X, Search, Pencil,
+  UserPlus, X, Search, Pencil, ArrowRightLeft,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useFeature } from '@/context/FeatureFlagContext';
+
+// ─── EHN_RM_004: Tooltips for ambiguous permission actions ───────────────────
+const PERMISSION_TOOLTIPS = {
+  'payroll:lock':                     'Locks a finalised payroll run to prevent further edits. Use before distributing payslips.',
+  'payroll:approve':                  'Final sign-off on a payroll run — marks it ready for payment processing.',
+  'payroll:generate':                 'Runs the payroll engine to compute salaries, deductions, and net pay for a period.',
+  'payroll:manage_adjustments':       'Add one-time bonuses, deductions, or corrections to individual employee payslips.',
+  'payroll:verify':                   'Second-level review step — confirms calculations before the approver acts.',
+  'payroll:export':                   'Download payroll summaries, payslips, and salary data for external processing.',
+  'attendance:manage_structures':     'Edit shift schedules, work-week rules, and attendance policies org-wide.',
+  'attendance:approve_regularization':'Approve or reject employee requests to correct their own attendance records.',
+  'employees:delete':                 'Permanently removes an employee record and all associated data. Cannot be undone.',
+  'roles:manage':                     'Full control over role permissions — effectively allows granting any permission to anyone.',
+  'reports:export':                   'Download all HR data as CSV/Excel, including payroll figures and personal details.',
+  'announcements:broadcast':          'Send a push notification to all employees simultaneously.',
+  'leaves:forward':                   'Forward a leave request to the next approver (e.g. Dept Head → Root Admin).',
+  'assets:assign':                    'Assign company assets (laptops, phones, etc.) to specific employees.',
+  'settings:manage':                  'Change org-wide settings: work schedules, attendance rules, and integrations.',
+  'biometric:manage':                 'Configure and manage biometric device connections and data sync settings.',
+  'biometric:upload':                 'Upload historical attendance data from biometric device exports.',
+  'onboarding:manage':                'Create, edit, and delete onboarding task templates for new joiners.',
+  'payroll:logs':                     'View a full audit trail of payroll changes, approvals, and modifications.',
+};
+
+// ─── EHN_RM_002: Role-name-based smart permission presets ────────────────────
+const ROLE_PRESETS = [
+  {
+    label:    'Finance / Payroll',
+    keywords: ['finance', 'payroll', 'account', 'billing', 'cfo', 'treasurer'],
+    modules:  { payroll: ['view','generate','approve','lock','manage_adjustments','export'], reports: ['view','export'], expenses: ['view','approve','manage'] },
+  },
+  {
+    label:    'HR Manager',
+    keywords: ['hr', 'human resource', 'people', 'talent', 'recruitment'],
+    modules:  { employees: ['view','create','edit'], leaves: ['view','approve','reject'], onboarding: ['view','manage'], documents: ['view','create'], attendance: ['view','edit'], reports: ['view','export'], departments: ['view'] },
+  },
+  {
+    label:    'Department / Team Manager',
+    keywords: ['department', 'dept', 'team', 'manager', 'head', 'supervisor', 'lead'],
+    modules:  { employees: ['view'], leaves: ['view','approve','reject','forward'], attendance: ['view'], reports: ['view'] },
+  },
+  {
+    label:    'Operations / IT Admin',
+    keywords: ['operations', 'operation', 'it admin', 'infrastructure', 'facility', 'admin'],
+    modules:  { employees: ['view'], assets: ['view','create','edit','assign'], settings: ['view'], holidays: ['view','create','edit'] },
+  },
+  {
+    label:    'Compliance / Audit',
+    keywords: ['compliance', 'legal', 'audit', 'statutory'],
+    modules:  { reports: ['view','export'], payroll: ['view','logs'], employees: ['view'], documents: ['view'] },
+  },
+];
+
+function detectPreset(roleName) {
+  if (!roleName) return null;
+  const lower = roleName.toLowerCase();
+  return ROLE_PRESETS.find(p => p.keywords.some(kw => lower.includes(kw))) || null;
+}
 
 // ─── EHN_RM_005: High-risk permissions that need a confirmation step ──────────
 const HIGH_RISK_ACTIONS = new Set(['delete', 'lock']);
@@ -74,10 +132,16 @@ const ACTION_COLORS = {
 
 // ─── Permission Checkbox ──────────────────────────────────────────────────────
 function PermissionCheckbox({ permission, checked, onChange, disabled }) {
-  const actionStr = typeof permission?.action === 'string' ? permission.action : 'unknown';
-  const labelStr = permission?.label || 'Unnamed permission';
-  const permId = permission?.id;
+  const actionStr  = typeof permission?.action === 'string' ? permission.action : 'unknown';
+  const labelStr   = permission?.label || 'Unnamed permission';
+  const permId     = permission?.id;
   const colorClass = ACTION_COLORS[actionStr] || 'bg-slate-50 text-slate-600';
+  // EHN_RM_004: look up tooltip
+  const tooltipKey = `${permission?.module_key}:${actionStr}`;
+  const tooltip    = PERMISSION_TOOLTIPS[tooltipKey];
+  const titleText  = disabled
+    ? 'This permission is protected in system roles and cannot be removed'
+    : tooltip || undefined;
   return (
     <div
       role="checkbox"
@@ -94,7 +158,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
           onChange(permId, !checked);
         }
       }}
-      title={disabled ? 'This permission is protected in system roles and cannot be removed' : undefined}
+      title={titleText}
       className={cn(
         'relative flex items-center gap-2 px-3 py-2 rounded-lg transition-all select-none focus:outline-none focus:ring-2 focus:ring-[#3525cd]/20',
         disabled ? 'cursor-not-allowed bg-amber-50/40 border border-amber-100' : 'cursor-pointer hover:bg-[#f0f3ff]',
@@ -110,9 +174,14 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
         }
       </div>
       <div className="min-w-0">
-        <span className={cn('text-[0.68rem] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wide', colorClass)}>
-          {actionStr.replace(/_/g, ' ')}
-        </span>
+        <div className="flex items-center gap-1">
+          <span className={cn('text-[0.68rem] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wide', colorClass)}>
+            {actionStr.replace(/_/g, ' ')}
+          </span>
+          {tooltip && (
+            <span className="text-[#3525cd]/40 text-[0.6rem]" title={tooltip}>ⓘ</span>
+          )}
+        </div>
         <p className="text-[0.7rem] text-[#777587] mt-0.5 leading-tight truncate" title={labelStr}>
           {labelStr}
         </p>
@@ -278,8 +347,17 @@ function EditRoleModal({ role, onClose, onSaved }) {
 // ─── Members Panel ────────────────────────────────────────────────────────────
 function MembersPanel({ members = [], roleId, onRefetch }) {
   const qc             = useQueryClient();
-  const [search, setSearch]     = useState('');
+  const [search, setSearch]         = useState('');
   const [showPicker, setShowPicker] = useState(false);
+  // EHN_RM_006: track which member's "move to" dropdown is open
+  const [movingId, setMovingId]     = useState(null);
+
+  // All roles for the "Move to" dropdown
+  const { data: allRoles = [] } = useQuery({
+    queryKey: ['roles'],
+    queryFn:  () => apiGet('/roles'),
+    staleTime: 60000,
+  });
 
   // All employees in the org (for the picker)
   const { data: allUsers = [], isLoading: usersLoading } = useQuery({
@@ -299,7 +377,21 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
   const effectiveMembers = (directMembers && directMembers.length > 0) ? directMembers : members;
 
   const [removeError, setRemoveError] = useState('');
-  const [addError, setAddError] = useState('');
+  const [addError, setAddError]       = useState('');
+
+  // EHN_RM_006: move member to a different role
+  const moveMut = useMutation({
+    mutationFn: ({ userId, targetRoleId }) => apiPut(`/roles/user/${userId}`, { role_ids: [targetRoleId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['role'] });
+      qc.invalidateQueries({ queryKey: ['role-members'] });
+      qc.invalidateQueries({ queryKey: ['roles'] });
+      refetchMembers?.();
+      onRefetch?.();
+      setMovingId(null);
+    },
+    onError: (err) => setRemoveError(err.message || 'Failed to move member'),
+  });
 
   // Remove a member from this role
   const removeMut = useMutation({
@@ -408,7 +500,7 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
       ) : (
         <div className="space-y-1">
           {effectiveMembers.map(m => (
-            <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors">
+            <div key={m.id} className="group flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#f0f3ff] transition-colors">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[0.65rem] font-black text-white flex-shrink-0"
                 style={{ background: m.avatar_color || '#3525cd' }}
@@ -419,14 +511,46 @@ function MembersPanel({ members = [], roleId, onRefetch }) {
                 <p className="text-xs font-bold text-[#151c27] truncate">{m.name}</p>
                 <p className="text-[0.65rem] text-[#777587] truncate">{m.department || m.email}</p>
               </div>
-              <button
-                onClick={() => { setRemoveError(''); removeMut.mutate(m.id); }}
-                disabled={removeMut.isPending}
-                title="Remove from role"
-                className="w-5 h-5 rounded flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
-              >
-                <X size={11} />
-              </button>
+              {/* EHN_RM_006: Move to another role */}
+              {movingId === m.id ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <select
+                    autoFocus
+                    defaultValue=""
+                    disabled={moveMut.isPending}
+                    onChange={e => {
+                      if (e.target.value) moveMut.mutate({ userId: m.id, targetRoleId: parseInt(e.target.value) });
+                    }}
+                    className="text-[0.65rem] border border-[#c7c4d8] rounded-lg px-1.5 py-1 max-w-[120px] focus:outline-none focus:border-[#3525cd]"
+                  >
+                    <option value="">Move to…</option>
+                    {allRoles.filter(r => String(r.id) !== String(roleId)).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setMovingId(null)} className="w-5 h-5 rounded flex items-center justify-center text-[#777587] hover:bg-[#f0f3ff] transition-all">
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => setMovingId(m.id)}
+                    title="Move to another role"
+                    className="w-5 h-5 rounded flex items-center justify-center text-[#777587] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all"
+                  >
+                    <ArrowRightLeft size={11} />
+                  </button>
+                  <button
+                    onClick={() => { setRemoveError(''); removeMut.mutate(m.id); }}
+                    disabled={removeMut.isPending}
+                    title="Remove from role"
+                    className="w-5 h-5 rounded flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -578,6 +702,23 @@ export default function PermissionMatrix() {
   }
 
 
+
+  // EHN_RM_002: detect preset for this role name
+  const suggestedPreset = !isSystemRole && role ? detectPreset(role.name) : null;
+
+  function applyPreset(preset) {
+    const matched = allPermissions.filter(p => {
+      const actions = preset.modules[p.module_key];
+      return actions && actions.includes(p.action);
+    });
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      matched.forEach(p => next.add(p.id));
+      return next;
+    });
+    setDirty(true);
+    showToast(`"${preset.label}" preset applied — review and save.`, 'success');
+  }
 
   // EHN_RM_003: filter permissions + modules by search term
   const searchLower = permSearch.trim().toLowerCase();
@@ -782,6 +923,24 @@ export default function PermissionMatrix() {
       {/* ── BODY ──────────────────────────────────────────────────────── */}
       <div className="">
         {activeTab === 'permissions' ? (
+          {/* EHN_RM_002: Smart preset suggestion banner */}
+          {suggestedPreset && selectedIds.size === 0 && (
+            <div className="flex items-center justify-between gap-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl px-4 py-3 mb-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Shield size={14} className="text-[#3525cd] shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-[#151c27]">Suggested starter set: <span className="text-[#3525cd]">{suggestedPreset.label}</span></p>
+                  <p className="text-[0.65rem] text-[#777587]">Based on the role name — covers {Object.keys(suggestedPreset.modules).join(', ')}. You can adjust after applying.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => applyPreset(suggestedPreset)}
+                className="shrink-0 text-xs font-bold bg-[#3525cd] text-white px-3 py-1.5 rounded-lg hover:bg-[#2a1fb0] transition-colors">
+                Apply Preset
+              </button>
+            </div>
+          )}
+
           <div className={cn('space-y-3', dirty && !isRootAdmin ? 'pb-24' : 'pb-6')}>
             {visibleModules.length === 0 && searchLower && (
               <div className="text-center py-10 text-sm text-[#777587]">
