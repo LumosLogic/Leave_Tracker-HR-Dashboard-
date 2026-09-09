@@ -59,25 +59,25 @@ async function findDeptHead(userId, oId) {
 }
 
 function logApprovalAction({ leaveId, oId, actorId, actorName, action, fromStatus, toStatus, notes, level }) {
-  // 'level' column only exists after the workflow migration — omit it safely when null
-  const row = {
-    leave_id:    leaveId,
-    org_id:      oId,
-    actor_id:    actorId,
-    actor_name:  actorName || null,
-    action,
-    from_status: fromStatus || null,
-    to_status:   toStatus   || null,
-    notes:       notes      || null,
-  };
-  if (level != null) row.level = level;
-  return db.from('leave_approval_log').insert(row).then(() => {}).catch(e => console.error('[leave_approval_log] insert failed:', e.message));
+  // Use pool.query directly — the db adapter builder has no .catch() method,
+  // so chaining .catch() on it throws "is not a function". pool.query returns a real Promise.
+  const cols = ['leave_id','org_id','actor_id','actor_name','action','from_status','to_status','notes'];
+  const vals = [leaveId, oId, actorId, actorName || null, action, fromStatus || null, toStatus || null, notes || null];
+  if (level != null) { cols.push('level'); vals.push(level); }
+  const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
+  return pool.query(
+    `INSERT INTO leave_approval_log (${cols.join(', ')}) VALUES (${placeholders})`,
+    vals
+  ).catch(e => console.error('[leave_approval_log] insert failed:', e.message));
 }
 
 function notify(userId, title, message, oId) {
-  db.from('notifications').insert({
-    user_id: userId, title, message, type: 'leave', organization_id: oId,
-  }).then(() => {});
+  // pool.query returns a real Promise — .catch() works correctly here.
+  // db adapter builder has no .catch(), so we avoid chaining on it.
+  pool.query(
+    `INSERT INTO notifications (user_id, title, message, type, organization_id) VALUES ($1, $2, $3, $4, $5)`,
+    [userId, title, message, 'leave', oId]
+  ).catch(() => {}); // fire-and-forget
 }
 
 // BUG_096: notify all HR admins and root admins in the org (fire-and-forget)
@@ -1076,13 +1076,23 @@ router.put('/:id/approve', auth, async (req, res) => {
               .select('name, email, department').eq('id', leave.user_id).maybeSingle();
             const empName = empUser?.name || 'An employee';
             if (roleUsers?.length) {
-              await db.from('notifications').insert(roleUsers.map(u => ({
-                user_id: u.id,
-                title:   `Leave Request Awaiting Your Approval`,
+              // Use pool.query — db adapter builder has no .catch(); pool.query returns a real Promise.
+              const notifRows = roleUsers.map(u => ({
+                user_id: u.id, title: `Leave Request Awaiting Your Approval`,
                 message: `${empName}'s leave request (${leave.start_date} → ${leave.end_date}) requires your approval at the ${nextLabel} stage.`,
-                type:    'leave',
-                organization_id: oId,
-              }))).catch(() => {});
+                type: 'leave', organization_id: oId,
+              }));
+              const nCols = ['user_id','title','message','type','organization_id'];
+              const nVals = []; const nSets = [];
+              notifRows.forEach((r, ri) => {
+                nCols.forEach((c, ci) => { nVals.push(r[c]); nSets.push(`$${ri * nCols.length + ci + 1}`); });
+              });
+              const nPlaceholders = notifRows.map((_, ri) =>
+                `(${nCols.map((_, ci) => `$${ri * nCols.length + ci + 1}`).join(',')})`
+              ).join(',');
+              await pool.query(
+                `INSERT INTO notifications (${nCols.join(',')}) VALUES ${nPlaceholders}`, nVals
+              ).catch(() => {});
               const emailList = roleUsers.map(u => u.email).filter(Boolean);
               if (emailList.length > 0 && typeof leaveForwardedToRootHtml === 'function') {
                 sendMail({

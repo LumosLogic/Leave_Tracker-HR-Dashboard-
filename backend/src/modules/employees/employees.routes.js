@@ -297,6 +297,14 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       update.probation_start_date = null;
       update.probation_end_date   = null;
     }
+
+    // Sync the legacy `status` field with employee_status so the login check stays consistent.
+    // login route blocks on `user.status === 'inactive'` independently of employee_status.
+    const _finalEmpStatus = update.employee_status;
+    if (_finalEmpStatus !== undefined) {
+      update.status = ['inactive', 'resigned', 'terminated'].includes(_finalEmpStatus) ? 'inactive' : 'active';
+    }
+
     // Use a transaction when department_ids are provided — DELETE then INSERT must be atomic.
     // Without it, a crash between DELETE and INSERT leaves the employee with no departments.
     const empId = parseInt(req.params.id);

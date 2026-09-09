@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt   = require('bcryptjs');
 const { db } = require('../../config/db');
-const { auth, adminOnly, rootAdminOnly } = require('../../middleware/auth');
+const { auth, adminOnly, rootAdminOnly, unblockUser } = require('../../middleware/auth');
 const { flat, orgId, getOrgContext } = require('../../utils/helpers');
 const { sendMail, welcomeEmployeeHtml } = require('../../services/emailService');
 const { sendPushToUsers } = require('../../services/pushService');
@@ -529,7 +529,8 @@ router.put('/hr/:id/reactivate', auth, rootAdminOnly, async (req, res) => {
       .maybeSingle();
     if (!user) return res.status(404).json({ error: 'HR admin not found' });
     if (user.status !== 'inactive') return res.status(400).json({ error: 'Account is already active' });
-    await db.from('users').update({ status: 'active' }).eq('id', user.id);
+    await db.from('users').update({ status: 'active', employee_status: 'active' }).eq('id', user.id);
+    unblockUser(user.id);
     res.json({ success: true, message: `${user.name}'s account has been reactivated` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -439,13 +439,24 @@ export default function MyAttendance() {
 
   // Analytics derived from full tableRecords
   const analytics = useMemo(() => {
-    const workingDaysCount = Object.values(recMap).filter(r => {
-      const d = new Date(r.date + 'T12:00:00');
-      return activeWorkDays.includes(d.getDay());
-    }).length;
+    // BUG_197: workingDaysCount must be the count of ALL past calendar working days,
+    // not just days that have an attendance record. Using recMap as the source skips
+    // absent days (no DB row) → absent days vanish from the denominator → 100% shown
+    // even when the employee missed several days.
+    // This mirrors the exact same loop inside the tableRecords useMemo so the
+    // denominator always matches what the table renders.
+    const daysInMonth  = new Date(year, month, 0).getDate();
+    const holidayDates = new Set((holidays || []).map(h => h.date));
+    let workingDaysCount = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const ds = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (ds > todayStr) break;                                        // stop at today
+      const dow = new Date(ds + 'T12:00:00').getDay();
+      if (activeWorkDays.includes(dow) && !holidayDates.has(ds)) workingDaysCount++;
+    }
 
-    const presentCount     = summary.present + summary.early_leave;
-    const halfDayCount     = summary.half_day;
+    const presentCount = summary.present + summary.early_leave;
+    const halfDayCount = summary.half_day;
     const attPct = workingDaysCount > 0
       ? Math.min(100, Math.round(((presentCount + halfDayCount * 0.5) / workingDaysCount) * 100))
       : 0;
@@ -481,7 +492,7 @@ export default function MyAttendance() {
       totalRecords: tableRecords.length,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableRecords, summary, activeWorkDays]);
+  }, [tableRecords, summary, activeWorkDays, holidays, year, month, todayStr]);
 
   // Filtered records (status filter + date search)
   const filteredRecords = useMemo(() => {
