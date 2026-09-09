@@ -408,17 +408,22 @@ function ExitCard({ req, isAdmin }) {
             <div>
               <p className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587] mb-3">Clearance Checklist</p>
               <div className="grid grid-cols-2 gap-2">
-                {CLEARANCE_FIELDS.map(f => (
-                  <div key={f.key}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${req[f.key] ? 'bg-emerald-50 border-emerald-200' : 'bg-[#f9f9ff] border-[#e7eefe]'} ${isAdmin ? 'cursor-pointer hover:shadow-sm' : ''}`}
-                    onClick={() => isAdmin && updateMut.mutate({ [f.key]: !req[f.key] })}>
-                    <span className="text-base">{f.icon}</span>
-                    <span className={`text-xs font-semibold flex-1 ${req[f.key] ? 'text-emerald-700' : 'text-[#464555]'}`}>{f.label}</span>
-                    {req[f.key]
-                      ? <CheckSquare size={15} className="text-emerald-500 flex-shrink-0" />
-                      : <Square size={15} className="text-[#c7c4d8] flex-shrink-0" />}
-                  </div>
-                ))}
+                {CLEARANCE_FIELDS.map(f => {
+                  const canToggle = isAdmin && req.status !== 'rejected';
+                  return (
+                    <div key={f.key}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all
+                        ${req[f.key] ? 'bg-emerald-50 border-emerald-200' : 'bg-[#f9f9ff] border-[#e7eefe]'}
+                        ${canToggle ? 'cursor-pointer hover:shadow-sm' : 'opacity-50 cursor-not-allowed'}`}
+                      onClick={() => canToggle && updateMut.mutate({ [f.key]: !req[f.key] })}>
+                      <span className="text-base">{f.icon}</span>
+                      <span className={`text-xs font-semibold flex-1 ${req[f.key] ? 'text-emerald-700' : 'text-[#464555]'}`}>{f.label}</span>
+                      {req[f.key]
+                        ? <CheckSquare size={15} className="text-emerald-500 flex-shrink-0" />
+                        : <Square size={15} className="text-[#c7c4d8] flex-shrink-0" />}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -444,7 +449,13 @@ function ExitCard({ req, isAdmin }) {
                 {req.status === 'pending' && (
                   <>
                     <button className="btn btn-primary btn-sm" onClick={() => updateMut.mutate({ status: 'approved' })} disabled={updateMut.isPending}>Accept Resignation</button>
-                    <button className="btn btn-outline btn-sm text-rose-600 border-rose-200 hover:bg-rose-50" onClick={() => updateMut.mutate({ status: 'rejected' })} disabled={updateMut.isPending}>Reject</button>
+                    <button className="btn btn-outline btn-sm text-rose-600 border-rose-200 hover:bg-rose-50"
+                      onClick={() => updateMut.mutate({
+                        status: 'rejected',
+                        // Auto-clear all clearance selections on rejection
+                        ...Object.fromEntries(CLEARANCE_FIELDS.map(f => [f.key, false])),
+                      })}
+                      disabled={updateMut.isPending}>Reject</button>
                   </>
                 )}
                 {req.status === 'approved' && clearanceCount === CLEARANCE_FIELDS.length && (
