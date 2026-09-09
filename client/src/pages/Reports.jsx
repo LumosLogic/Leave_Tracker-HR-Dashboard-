@@ -757,7 +757,10 @@ export default function Reports() {
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                 className="form-control w-auto text-xs py-1.5">
                 <option value="">All Statuses</option>
-                {LEAVE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="approved">Approved</option>
+                <option value="all_pending">Pending</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancelled">Cancelled</option>
               </select>
               <select value={leaveTypeFilter} onChange={e => setLeaveTypeFilter(e.target.value)}
                 className="form-control w-auto text-xs py-1.5">
