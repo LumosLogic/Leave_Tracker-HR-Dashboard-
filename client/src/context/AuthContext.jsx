@@ -91,8 +91,28 @@ export function AuthProvider({ children }) {
   // RBAC permission check — use this instead of raw role checks for fine-grained control.
   // Falls back gracefully: if permissions haven't loaded yet (empty array),
   // legacy isAdmin/isRootAdmin flags remain available as a UI fallback.
+  //
+  // Inference rules (mirrors backend permissionService):
+  //   • Any non-view action on module X implies X.view
+  //     (you cannot act on something you cannot see)
+  //   • `manage` implies create, edit and delete for the same module
   const hasPermission = useCallback((module, action) => {
-    return Array.isArray(permissions) && permissions.includes(`${module}.${action}`);
+    if (!Array.isArray(permissions) || permissions.length === 0) return false;
+
+    // 1. Direct match
+    if (permissions.includes(`${module}.${action}`)) return true;
+
+    // 2. Any permission on the module implies 'view'
+    if (action === 'view') {
+      return permissions.some(p => p.startsWith(`${module}.`));
+    }
+
+    // 3. 'manage' implies create / edit / delete
+    if (['create', 'edit', 'delete'].includes(action)) {
+      return permissions.includes(`${module}.manage`);
+    }
+
+    return false;
   }, [permissions]);
 
   // Organization context

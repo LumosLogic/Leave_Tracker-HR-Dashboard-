@@ -293,7 +293,7 @@ function ProfilePrintModal({ empId, open, onClose }) {
               <div className="flex flex-wrap gap-3 mt-3 text-xs text-[#464555]">
                 {ov?.email    && <span><strong>Email:</strong> {ov.email}</span>}
                 {ov?.phone    && <span><strong>Phone:</strong> {ov.phone}</span>}
-                {ov?.employee_id && <span><strong>ID:</strong> {ov.employee_id}</span>}
+                {ov && <span><strong>ID:</strong> {ov.employee_id || ov.device_enrollment_id || `EMP${String(ov.id || '').padStart(3, '0')}`}</span>}
               </div>
             </div>
             <div className="text-right flex-shrink-0">
@@ -308,7 +308,7 @@ function ProfilePrintModal({ empId, open, onClose }) {
             {/* Professional Info */}
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-[0.65rem] font-black text-[#3525cd] uppercase tracking-widest mb-3">Professional Information</p>
-              <Row label="Employee ID"     value={ov?.employee_id} />
+              <Row label="Employee ID"     value={ov ? (ov.employee_id || ov.device_enrollment_id || `EMP${String(ov.id || '').padStart(3, '0')}`) : undefined} />
               <Row label="Department"      value={ov?.department} />
               <Row label="Position"        value={ov?.position} />
               <Row label="Grade"           value={ov?.grade} />
@@ -448,7 +448,7 @@ function ProfileHeaderCard({ empId, onTabChange }) {
 
   const name = data.name || '—';
   const position = data.position || '—';
-  const empNo = data.employee_id || data.device_enrollment_id || '—';
+  const empNo = data.employee_id || data.device_enrollment_id || `EMP${String(data.id || '').padStart(3, '0')}`;
   const department = data.department || '—';
   const branchName = data.branch?.name || null;
   const employmentType = (data.employment_type || 'full_time').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -639,7 +639,7 @@ function OverviewTab({ empId }) {
   ].filter(Boolean).slice(0, 4);
 
   const summaryCards = [
-    { label: 'Employee ID',       value: overview.employee_id || overview.device_enrollment_id || '—', icon: BadgeCheck },
+    { label: 'Employee ID',       value: overview.employee_id || overview.device_enrollment_id || `EMP${String(overview.id || '').padStart(3, '0')}`, icon: BadgeCheck },
     { label: 'Department',        value: overview.department || '—',                          icon: Layers },
     { label: 'Designation',       value: overview.position || overview.designation || '—',    icon: Briefcase },
     { label: 'Joining Date',      value: joiningDate ? fmtDate(joiningDate) : '—',            icon: Calendar },

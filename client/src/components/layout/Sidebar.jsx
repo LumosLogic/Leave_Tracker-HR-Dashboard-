@@ -16,69 +16,75 @@ import { GlobalSearchModal } from '@/components/ui/GlobalSearchModal';
 
 // ── Section definitions ──────────────────────────────────────────────────────
 
+// perm: module name used for hasPermission(perm, 'view') check when RBAC is loaded.
+// Items without `perm` are always shown (subject to adminOnly/rootAdminOnly/featureKey).
+
 const OVERVIEW_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard, perm: 'dashboard' },
 ];
 
 const EMPLOYEE_MGMT_ITEMS = [
-  { to: '/employees',       label: 'Employees',       Icon: Users,      adminOnly: true },
-  { to: '/departments',     label: 'Departments',     Icon: Building2,  adminOnly: true },
-  { to: '/branches',        label: 'Branches',        Icon: Building2,  adminOnly: true, featureKey: 'branches' },
-  { to: '/onboarding',      label: 'Onboarding',      Icon: UserCheck,  adminOnly: true, featureKey: 'onboarding' },
-  { to: '/exit-management', label: 'Exit Management', Icon: Exit,       adminOnly: true, featureKey: 'exit_management' },
+  { to: '/employees',       label: 'Employees',       Icon: Users,      adminOnly: true, perm: 'employees'    },
+  { to: '/departments',     label: 'Departments',     Icon: Building2,  adminOnly: true, perm: 'departments'  },
+  { to: '/branches',        label: 'Branches',        Icon: Building2,  adminOnly: true, featureKey: 'branches',       perm: 'branches'    },
+  { to: '/onboarding',      label: 'Onboarding',      Icon: UserCheck,  adminOnly: true, featureKey: 'onboarding',     perm: 'onboarding'  },
+  { to: '/exit-management', label: 'Exit Management', Icon: Exit,       adminOnly: true, featureKey: 'exit_management',perm: 'exit'        },
 ];
 
 const ATTENDANCE_ITEMS = [
-  { to: '/leaves',         label: 'Leaves',          Icon: FileText },
-  { to: '/calendar',       label: 'Calendar',        Icon: Calendar },
-  { to: '/regularization', label: 'Regularization',  Icon: ClipboardList, featureKey: 'regularization' },
-  { to: '/holidays',       label: 'Holidays',        Icon: CalendarDays, adminOnly: true },
-  { to: '/leave-policies', label: 'Leave Policies',  Icon: Shield,        adminOnly: true, featureKey: 'leave_policies' },
-  { to: '/shifts',         label: 'Shifts & Roster', Icon: Clock,         adminOnly: true, featureKey: 'shifts' },
+  { to: '/leaves',         label: 'Leaves',          Icon: FileText,     perm: 'leaves'     },
+  { to: '/calendar',       label: 'Calendar',        Icon: Calendar,     perm: 'attendance' },
+  { to: '/regularization', label: 'Regularization',  Icon: ClipboardList,featureKey: 'regularization', perm: 'attendance' },
+  { to: '/holidays',       label: 'Holidays',        Icon: CalendarDays, adminOnly: true,              perm: 'holidays'   },
+  { to: '/leave-policies', label: 'Leave Policies',  Icon: Shield,       adminOnly: true, featureKey: 'leave_policies', perm: 'settings'   },
+  { to: '/shifts',         label: 'Shifts & Roster', Icon: Clock,        adminOnly: true, featureKey: 'shifts',         perm: 'shifts'      },
 ];
 
 const BIOMETRIC_ITEMS = [
-  { to: '/biometric/devices',   label: 'Devices',     Icon: Fingerprint, adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/mapping',   label: 'PIN Mapping', Icon: Link2,       adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/logs',      label: 'Punch Logs',  Icon: ScrollText,  adminOnly: true, featureKey: 'biometric' },
-  { to: '/biometric/live-logs', label: 'Live Logs',   Icon: Radio,       adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true },
-  { to: '/biometric/historical-sync',  label: 'Historical Sync', Icon: History,   adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
-  { to: '/biometric/settings',         label: 'Settings',        Icon: Settings,  adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
+  { to: '/biometric/devices',          label: 'Devices',          Icon: Fingerprint, adminOnly: true, featureKey: 'biometric', perm: 'biometric' },
+  { to: '/biometric/mapping',          label: 'PIN Mapping',      Icon: Link2,       adminOnly: true, featureKey: 'biometric', perm: 'biometric' },
+  { to: '/biometric/logs',             label: 'Punch Logs',       Icon: ScrollText,  adminOnly: true, featureKey: 'biometric', perm: 'biometric' },
+  { to: '/biometric/live-logs',        label: 'Live Logs',        Icon: Radio,       adminOnly: true, featureKey: 'biometric', hideFromRootAdmin: true, perm: 'biometric' },
+  { to: '/biometric/historical-sync',  label: 'Historical Sync',  Icon: History,     adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
+  { to: '/biometric/settings',         label: 'Settings',         Icon: Settings,    adminOnly: true, featureKey: 'biometric', rootAdminOnly: true },
 ];
 
 // Payroll sub-items (shown inside dropdown)
 const PAYROLL_SUB_ITEMS = [
-  { to: '/payroll/dashboard', label: 'Payroll Dashboard',  Icon: PieChart,     adminOnly: true },
-  { to: '/payroll/generate',  label: 'Payroll Generation', Icon: Play,         adminOnly: true },
-  { to: '/payroll/reports',   label: 'Payroll Reports',    Icon: FileBarChart, adminOnly: true },
-  { to: '/payroll/salary',    label: 'Salary Structures',  Icon: IndianRupee,  adminOnly: true },
-  { to: '/payroll/settings',  label: 'Payroll Settings',   Icon: Settings,     adminOnly: true },
+  { to: '/payroll/dashboard', label: 'Payroll Dashboard',  Icon: PieChart,     adminOnly: true, perm: 'payroll' },
+  { to: '/payroll/generate',  label: 'Payroll Generation', Icon: Play,         adminOnly: true, perm: 'payroll' },
+  { to: '/payroll/reports',   label: 'Payroll Reports',    Icon: FileBarChart, adminOnly: true, perm: 'payroll' },
+  { to: '/payroll/salary',    label: 'Salary Structures',  Icon: IndianRupee,  adminOnly: true, perm: 'payroll' },
+  { to: '/payroll/settings',  label: 'Payroll Settings',   Icon: Settings,     adminOnly: true, perm: 'payroll' },
 ];
 
 // Non-payroll finance items
 const OTHER_FINANCE_ITEMS = [
+  // statutory items have no `perm` — shown via adminOnly only because statutory.*
+  // permissions are not yet seeded into hr_admin's system role. Adding perm here
+  // would hide them for all HR admins. Add perm once statutory seeding is complete.
   { to: '/statutory/compliance',   label: 'Compliance Dashboard', Icon: ShieldCheck, featureKey: 'payroll', adminOnly: true },
   { to: '/statutory/config',       label: 'Statutory Config',     Icon: Shield,      featureKey: 'payroll', adminOnly: true },
   { to: '/statutory/declarations', label: 'Tax Declarations',     Icon: FileText,    featureKey: 'payroll', adminOnly: true },
-  { to: '/expenses',               label: 'Expenses',             Icon: Receipt,     featureKey: 'expenses' },
-  { to: '/assets',                 label: 'Assets',               Icon: Monitor,     featureKey: 'assets' },
-  { to: '/reports',                label: 'Reports',              Icon: BarChart3,   featureKey: 'reports' },
+  { to: '/expenses', label: 'Expenses', Icon: Receipt, featureKey: 'expenses', perm: 'expenses' },
+  { to: '/assets',   label: 'Assets',   Icon: Monitor, featureKey: 'assets',   perm: 'assets'   },
+  { to: '/reports',  label: 'Reports',  Icon: BarChart3, featureKey: 'reports', perm: 'reports'  },
 ];
 
 const PERFORMANCE_ITEMS = [
-  { to: '/performance', label: 'Performance', Icon: Target,     featureKey: 'performance' },
-  { to: '/documents',   label: 'Documents',   Icon: FolderOpen, featureKey: 'documents' },
+  { to: '/performance', label: 'Performance', Icon: Target,     featureKey: 'performance', perm: 'performance' },
+  { to: '/documents',   label: 'Documents',   Icon: FolderOpen, featureKey: 'documents',   perm: 'documents'   },
 ];
 
 const COMMUNICATION_ITEMS = [
-  { to: '/announcements', label: 'Announcements', Icon: Megaphone, featureKey: 'announcements' },
-  { to: '/notifications', label: 'Notifications', Icon: Bell,      notifBadge: true },
+  { to: '/announcements', label: 'Announcements', Icon: Megaphone, featureKey: 'announcements', perm: 'announcements' },
+  { to: '/notifications', label: 'Notifications', Icon: Bell,      notifBadge: true,            perm: 'notifications' },
 ];
 
 const ADMIN_ITEMS = [
   { to: '/pending-approvals', label: 'Pending Approvals', Icon: ClipboardList, adminOnly: true },
-  { to: '/roles',             label: 'Role Management',   Icon: KeyRound,       rootAdminOnly: true },
-  { to: '/settings', label: 'Settings', Icon: Settings },
+  { to: '/roles',             label: 'Role Management',   Icon: KeyRound,      rootAdminOnly: true },
+  { to: '/settings', label: 'Settings', Icon: Settings, perm: 'settings' },
   { to: '/profile',  label: 'Profile',  Icon: UserCircle },
 ];
 
@@ -108,7 +114,7 @@ function NavItem({ to, label, Icon, badge, onClose }) {
 }
 
 // ── Payroll dropdown group ───────────────────────────────────────────────────
-function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' }) {
+function PayrollGroup({ onClose, isAdmin, isRootAdmin, prefix = '', featureKey = 'payroll', hasPermission, permissionsLoaded }) {
   const featureFlags = useContext(FeatureFlagContext);
   const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
   const location     = useLocation();
@@ -121,6 +127,8 @@ function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' })
   const [open, setOpen] = useState(isChildActive);
 
   if (!payrollEnabled) return null;
+  // BUG_172: hide entire payroll dropdown if user lacks payroll.view
+  if (permissionsLoaded && !isRootAdmin && !hasPermission('payroll', 'view')) return null;
 
   const visibleSubs = PAYROLL_SUB_ITEMS.filter(item => {
     if (item.adminOnly && !isAdmin) return false;
@@ -174,7 +182,7 @@ function PayrollGroup({ onClose, isAdmin, prefix = '', featureKey = 'payroll' })
 }
 
 // ── Generic NavSection ───────────────────────────────────────────────────────
-function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', unreadCount = 0 }) {
+function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', unreadCount = 0, hasPermission, permissionsLoaded }) {
   const featureFlags = useContext(FeatureFlagContext);
   const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
   const filtered = items.filter(i => {
@@ -185,6 +193,11 @@ function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', 
       if (!flagsLoaded) return false; // hide until flags are loaded
       const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
       if (!enabled) return false;
+    }
+    // BUG_172: permission-based visibility when RBAC is loaded and user is not root admin
+    // Root admin always sees everything; for others, check the module permission
+    if (i.perm && permissionsLoaded && !isRootAdmin) {
+      if (!hasPermission(i.perm, 'view')) return false;
     }
     return true;
   });
@@ -206,7 +219,7 @@ function NavSection({ title, items, onClose, isAdmin, isRootAdmin, prefix = '', 
 }
 
 // ── Finance section: Payroll dropdown + other finance items ──────────────────
-function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
+function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '', hasPermission, permissionsLoaded }) {
   const featureFlags = useContext(FeatureFlagContext);
   const flagsLoaded  = useContext(FeatureFlagsLoadedContext);
 
@@ -216,6 +229,10 @@ function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
       if (!flagsLoaded) return false;
       const enabled = i.featureKey in featureFlags ? featureFlags[i.featureKey] : true;
       if (!enabled) return false;
+    }
+    // BUG_172: permission-based visibility
+    if (i.perm && permissionsLoaded && !isRootAdmin) {
+      if (!hasPermission(i.perm, 'view')) return false;
     }
     return true;
   });
@@ -228,7 +245,7 @@ function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
     <div className="mb-3">
       <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-[#777587] px-2.5 py-2">Finance</p>
       <div className="flex flex-col gap-0.5">
-        {payrollEnabled && <PayrollGroup onClose={onClose} isAdmin={isAdmin} prefix={prefix} />}
+        {payrollEnabled && <PayrollGroup onClose={onClose} isAdmin={isAdmin} isRootAdmin={isRootAdmin} prefix={prefix} hasPermission={hasPermission} permissionsLoaded={permissionsLoaded} />}
         {otherFiltered.map(({ to, label, Icon }) => (
           <NavItem key={prefix + to} to={prefix + to} label={label} Icon={Icon} onClose={onClose} />
         ))}
@@ -239,7 +256,7 @@ function FinanceSection({ onClose, isAdmin, isRootAdmin, prefix = '' }) {
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
-  const { user, logout, isAdmin, isRootAdmin } = useAuth();
+  const { user, logout, isAdmin, isRootAdmin, hasPermission, permissions } = useAuth();
   const navigate = useNavigate();
 
   const { data: countData } = useQuery({
@@ -249,9 +266,13 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
   });
   const unread = countData?.count || 0;
 
+  // BUG_172: permissions are considered "loaded" once the array is non-empty
+  // (empty = still fetching or legacy system → fall back to role-based checks)
+  const permissionsLoaded = Array.isArray(permissions) && permissions.length > 0;
+
   function handleLogout() { logout(); navigate('/login'); }
 
-  const sharedProps = { onClose, isAdmin, isRootAdmin, prefix, unreadCount: unread };
+  const sharedProps = { onClose, isAdmin, isRootAdmin, prefix, unreadCount: unread, hasPermission, permissionsLoaded };
 
   return (
     <aside className="w-64 h-full bg-white flex flex-col flex-shrink-0 relative border-r border-[#c7c4d8] shadow-sm">
@@ -299,7 +320,7 @@ export function Sidebar({ onClose, prefix = '', onMenuClick, onSearchOpen }) {
           <NavSection title="Biometric" items={BIOMETRIC_ITEMS} {...sharedProps} />
         </div>
         <div id="tour-nav-finance">
-          <FinanceSection onClose={onClose} isAdmin={isAdmin} isRootAdmin={isRootAdmin} prefix={prefix} />
+          <FinanceSection onClose={onClose} isAdmin={isAdmin} isRootAdmin={isRootAdmin} prefix={prefix} hasPermission={hasPermission} permissionsLoaded={permissionsLoaded} />
         </div>
         <div id="tour-nav-people">
           <NavSection title="Performance" items={PERFORMANCE_ITEMS} {...sharedProps} />

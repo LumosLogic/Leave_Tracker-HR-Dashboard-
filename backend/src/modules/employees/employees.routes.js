@@ -13,7 +13,7 @@ const cloudinary = require('../../config/cloudinary');
 
 // ─── NEW COLUMNS (biometric / Sanghavi) added to the standard employee fields ──
 const EMPLOYEE_PUBLIC_COLS = [
-  'id', 'name', 'email', 'role', 'department', 'position', 'avatar_color',
+  'id', 'name', 'email', 'role', 'department', 'position', 'avatar_color', 'employee_id',
   'date_of_birth', 'created_at', 'phone', 'personal_email', 'joining_date',
   'employment_type', 'work_mode', 'employee_status', 'ctc', 'salary_effective_date',
   // new HRMS columns

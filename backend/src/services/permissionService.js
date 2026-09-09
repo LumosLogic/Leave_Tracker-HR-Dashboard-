@@ -139,9 +139,28 @@ async function resolvePermissions(userId, orgId) {
 /**
  * Checks if a permission array includes module.action.
  * Pure function — no DB, no cache.
+ *
+ * Inference rules (BUG_172):
+ *   • Any non-view action on module X implies X.view
+ *   • `manage` implies create, edit and delete for the same module
  */
 function hasPermissionCheck(permissions, module, action) {
-  return Array.isArray(permissions) && permissions.includes(`${module}.${action}`);
+  if (!Array.isArray(permissions)) return false;
+
+  // 1. Direct match
+  if (permissions.includes(`${module}.${action}`)) return true;
+
+  // 2. Any permission on the module implies 'view'
+  if (action === 'view') {
+    return permissions.some(p => p.startsWith(`${module}.`));
+  }
+
+  // 3. 'manage' implies create / edit / delete
+  if (['create', 'edit', 'delete'].includes(action)) {
+    return permissions.includes(`${module}.manage`);
+  }
+
+  return false;
 }
 
 // ─── Cache invalidation ────────────────────────────────────────────────────────
