@@ -1034,10 +1034,12 @@ router.put('/:id/approve', auth, async (req, res) => {
 
       } else {
         // ── Intermediate level — advance to next ─────────────────────────────
-        await db.from('leaves').update({
-          current_level:       nextInfo.level.level_number,
-          current_approver_id: nextInfo.approverId,
-        }).eq('id', leave.id).eq('organization_id', oId);
+        // Use pool.query so a failure throws and doesn't silently leave current_level stale.
+        await pool.query(
+          `UPDATE leaves SET current_level = $1, current_approver_id = $2
+           WHERE id = $3 AND organization_id = $4`,
+          [nextInfo.level.level_number, nextInfo.approverId ?? null, leave.id, oId]
+        );
 
         const nextLabel = nextInfo.level.level_label || nextInfo.level.role_type.replace(/_/g, ' ');
 

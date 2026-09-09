@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight, AlertTriangle, Download, X as XIcon, FileText } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -284,10 +284,56 @@ function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
   );
 }
 
+// In-page receipt / attachment viewer — no new-tab redirect
+function ReceiptViewer({ url, onClose }) {
+  if (!url) return null;
+  const isPdf = /\.pdf($|\?)/i.test(url) || url.includes('%2Fpdf') || url.includes('application/pdf');
+  return (
+    <div
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4"
+      style={{ background: 'rgba(21,28,39,.80)', backdropFilter: 'blur(10px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl overflow-hidden w-full max-w-3xl flex flex-col shadow-2xl"
+        style={{ maxHeight: '92vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#f0f3ff] flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-[#3525cd]" />
+            <span className="font-black text-sm text-[#151c27]">Receipt</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href={url} download target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:border-[#3525cd] transition-all">
+              <Download size={13} /> Download
+            </a>
+            <button onClick={onClose}
+              className="p-1.5 rounded-lg text-[#777587] hover:text-[#151c27] hover:bg-[#f0f3ff] transition-colors">
+              <XIcon size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto bg-[#151c27] flex items-center justify-center p-4" style={{ minHeight: 200 }}>
+          {isPdf ? (
+            <iframe src={url} title="Receipt" className="w-full rounded-lg"
+              style={{ height: 'calc(92vh - 60px)', border: 'none' }} />
+          ) : (
+            <img src={url} alt="Receipt" className="max-w-full object-contain rounded-lg shadow-xl"
+              style={{ maxHeight: 'calc(92vh - 60px)' }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReviewModal({ open, onClose, expense }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const [notes, setNotes] = useState('');
+  const [viewReceipt, setViewReceipt] = useState(null);
 
   const mut = useMutation({
     mutationFn: status => apiPut(`/expenses/${expense.id}/review`, { status, reviewer_notes: notes }),
@@ -296,30 +342,36 @@ function ReviewModal({ open, onClose, expense }) {
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Review Expense Claim" size="sm"
-      footer={
-        <div className="flex justify-end gap-3">
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-danger" onClick={() => mut.mutate('rejected')} disabled={mut.isPending}>Reject</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate('approved')} disabled={mut.isPending}>Approve</button>
+    <>
+      <Modal open={open} onClose={onClose} title="Review Expense Claim" size="sm"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button className="btn btn-danger" onClick={() => mut.mutate('rejected')} disabled={mut.isPending}>Reject</button>
+            <button className="btn btn-primary" onClick={() => mut.mutate('approved')} disabled={mut.isPending}>Approve</button>
+          </div>
+        }>
+        <div className="space-y-3">
+          <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-2 text-xs">
+            <p className="font-bold text-[#151c27]">{expense.title}</p>
+            <p><span className="text-[#777587]">Amount:</span> <span className="font-black text-[#3525cd] text-base">{fmt(expense.amount)}</span></p>
+            <p><span className="text-[#777587]">Date:</span> <span className="font-semibold">{fmtDate(expense.expense_date)}</span></p>
+            <p><span className="text-[#777587]">Category:</span> <span className="capitalize">{expense.category}</span></p>
+            {expense.receipt_url && (
+              <button type="button" onClick={() => setViewReceipt(expense.receipt_url)}
+                className="flex items-center gap-1 text-[#3525cd] hover:underline mt-1 font-semibold">
+                <Receipt size={11} /> View Receipt
+              </button>
+            )}
+          </div>
+          <div>
+            <label className="form-label">Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(sent to employee)</span></label>
+            <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
         </div>
-      }>
-      <div className="space-y-3">
-        <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-2 text-xs">
-          <p className="font-bold text-[#151c27]">{expense.title}</p>
-          <p><span className="text-[#777587]">Amount:</span> <span className="font-black text-[#3525cd] text-base">{fmt(expense.amount)}</span></p>
-          <p><span className="text-[#777587]">Date:</span> <span className="font-semibold">{fmtDate(expense.expense_date)}</span></p>
-          <p><span className="text-[#777587]">Category:</span> <span className="capitalize">{expense.category}</span></p>
-          {expense.receipt_url && (
-            <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#3525cd] hover:underline mt-1"><ExternalLink size={11} />View Receipt</a>
-          )}
-        </div>
-        <div>
-          <label className="form-label">Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(sent to employee)</span></label>
-          <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
-        </div>
-      </div>
-    </Modal>
+      </Modal>
+      {viewReceipt && <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} />}
+    </>
   );
 }
 
@@ -327,6 +379,7 @@ function ManagerReviewModal({ open, onClose, expense }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const [notes, setNotes] = useState('');
+  const [viewReceipt, setViewReceipt] = useState(null);
 
   const mut = useMutation({
     mutationFn: action => apiPut(`/expenses/${expense.id}/manager-approve`, { action, notes }),
@@ -335,30 +388,36 @@ function ManagerReviewModal({ open, onClose, expense }) {
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Review Expense — Manager Approval" size="sm"
-      footer={
-        <div className="flex justify-end gap-3">
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-danger" onClick={() => mut.mutate('reject')} disabled={mut.isPending}>Reject</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate('approve')} disabled={mut.isPending}>Approve & Forward to HR</button>
+    <>
+      <Modal open={open} onClose={onClose} title="Review Expense — Manager Approval" size="sm"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button className="btn btn-danger" onClick={() => mut.mutate('reject')} disabled={mut.isPending}>Reject</button>
+            <button className="btn btn-primary" onClick={() => mut.mutate('approve')} disabled={mut.isPending}>Approve & Forward to HR</button>
+          </div>
+        }>
+        <div className="space-y-3">
+          <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-2 text-xs">
+            <p className="font-bold text-[#151c27]">{expense.title}</p>
+            <p><span className="text-[#777587]">Amount:</span> <span className="font-black text-[#3525cd] text-base">{fmt(expense.amount)}</span></p>
+            <p><span className="text-[#777587]">Date:</span> <span className="font-semibold">{fmtDate(expense.expense_date)}</span></p>
+            <p><span className="text-[#777587]">Submitted by:</span> <span className="font-semibold">{expense.user_name}</span></p>
+            {expense.receipt_url && (
+              <button type="button" onClick={() => setViewReceipt(expense.receipt_url)}
+                className="flex items-center gap-1 text-[#3525cd] hover:underline mt-1 font-semibold">
+                <Receipt size={11} /> View Receipt
+              </button>
+            )}
+          </div>
+          <div>
+            <label className="form-label">Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — sent to employee)</span></label>
+            <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
         </div>
-      }>
-      <div className="space-y-3">
-        <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-4 space-y-2 text-xs">
-          <p className="font-bold text-[#151c27]">{expense.title}</p>
-          <p><span className="text-[#777587]">Amount:</span> <span className="font-black text-[#3525cd] text-base">{fmt(expense.amount)}</span></p>
-          <p><span className="text-[#777587]">Date:</span> <span className="font-semibold">{fmtDate(expense.expense_date)}</span></p>
-          <p><span className="text-[#777587]">Submitted by:</span> <span className="font-semibold">{expense.user_name}</span></p>
-          {expense.receipt_url && (
-            <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[#3525cd] hover:underline mt-1"><ExternalLink size={11} />View Receipt</a>
-          )}
-        </div>
-        <div>
-          <label className="form-label">Notes <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — sent to employee)</span></label>
-          <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
-        </div>
-      </div>
-    </Modal>
+      </Modal>
+      {viewReceipt && <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} />}
+    </>
   );
 }
 
@@ -374,6 +433,7 @@ export default function ExpensesPage() {
   const [managerReviewExp, setManagerReviewExp] = useState(null);
   const [confirmDel,       setConfirmDel]       = useState(null);
   const [filter,           setFilter]           = useState('all');
+  const [viewReceipt,      setViewReceipt]      = useState(null);
 
   // BUG_094: read ?highlight=X from URL for notification-driven scrolling
   const highlightExpId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
@@ -501,10 +561,10 @@ export default function ExpensesPage() {
                       <div className="text-right flex-shrink-0">
                         <div className="font-black text-xl text-[#3525cd]">{fmt(e.amount)}</div>
                         {e.receipt_url && (
-                          <a href={e.receipt_url} target="_blank" rel="noopener noreferrer"
-                            className="text-[0.68rem] text-[#3525cd] hover:underline flex items-center gap-0.5 justify-end mt-0.5">
-                            <ExternalLink size={10} />Receipt
-                          </a>
+                          <button type="button" onClick={() => setViewReceipt(e.receipt_url)}
+                            className="text-[0.68rem] text-[#3525cd] hover:underline flex items-center gap-0.5 justify-end mt-0.5 font-semibold">
+                            <Receipt size={10} />Receipt
+                          </button>
                         )}
                       </div>
                     </div>
@@ -553,6 +613,7 @@ export default function ExpensesPage() {
       {managerReviewExp  && <ManagerReviewModal open onClose={() => setManagerReviewExp(null)} expense={managerReviewExp} />}
       <ConfirmModal open={!!confirmDel} title="Delete Expense" message={`Delete expense "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
+      {viewReceipt && <ReceiptViewer url={viewReceipt} onClose={() => setViewReceipt(null)} />}
     </div>
   );
 }

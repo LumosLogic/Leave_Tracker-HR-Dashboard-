@@ -431,8 +431,24 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
   // For new-workflow leaves: can the current user approve at this stage?
   const canApproveNow = (() => {
     if (l.status !== 'pending_approval') return false;
+
+    // If the current level already appears as approved in the trail, the advance
+    // to the next level failed silently — block non-root admins from re-approving.
+    // Root Admin is still allowed so they can manually resolve stuck leaves.
+    const currentLevelAlreadyApproved = l.current_level != null &&
+      l.approval_trail?.some(t =>
+        Number(t.level) === Number(l.current_level) && t.action?.includes('_approved')
+      );
+    if (currentLevelAlreadyApproved && !isRootAdmin) return false;
+
     const rt = l.current_level_role_type;
-    if (!rt) return isAdmin; // no enrichment yet — fall back to any admin
+    if (!rt) {
+      // Stale current_level (workflow was edited after submission).
+      // If there's any prior approval in the trail, only Root Admin may finalize.
+      const hasPartialApproval = l.approval_trail?.some(t => t.action?.includes('_approved'));
+      if (hasPartialApproval) return isRootAdmin;
+      return isAdmin; // no enrichment, no trail — fall back to any admin
+    }
     if (rt === 'root_admin') return isRootAdmin;
     if (rt === 'hr_admin') return isAdmin; // admin OR root_admin
     // person-based (reporting_manager, department_head, specific_user)
@@ -522,7 +538,13 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
               <button className="btn btn-danger btn-sm text-xs"  onClick={() => onReject(l.id)}><X size={12} /> Reject</button>
             </>
           )}
-          {isAdmin && l.status === 'pending_approval' && !canApproveNow && l.current_level_role_type === 'root_admin' && (
+          {isAdmin && !isRootAdmin && l.status === 'pending_approval' && !canApproveNow && (
+            l.current_level_role_type === 'root_admin' ||
+            // Stuck leave: current level was already approved but advance failed
+            (l.current_level != null && l.approval_trail?.some(t =>
+              Number(t.level) === Number(l.current_level) && t.action?.includes('_approved')
+            ))
+          ) && (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2.5 py-1 rounded-lg">
               Awaiting Root Admin Decision
             </span>
