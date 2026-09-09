@@ -560,12 +560,11 @@ export default function RootDashboard() {
   // ── Workforce status navigation ───────────────────────────────────────────────
   function navigateWorkforceStatus(urlStatus) {
     const today = new Date().toISOString().split('T')[0];
-    if (urlStatus === 'on_leave') return navigate(`/root/leaves?tab=all&date=${today}`);
-    if (urlStatus === 'wfh')      return navigate(`/root/leaves?tab=wfh&date=${today}`);
-    // present, half_day, absent — open inline day modal instead of navigating away
     const filter = urlStatus === 'present'  ? 'present'
+                 : urlStatus === 'on_leave' ? 'on_leave'
+                 : urlStatus === 'wfh'      ? 'wfh'
                  : urlStatus === 'absent'   ? 'absent'
-                 : urlStatus === 'half_day' ? 'on_leave'  // 'on_leave' tab shows both on_leave and half_day
+                 : urlStatus === 'half_day' ? 'on_leave'
                  : 'all';
     setAttModal({ date: today, filter });
   }
