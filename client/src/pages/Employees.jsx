@@ -1165,8 +1165,37 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     ? employee.departments.map(d => d.id)
     : [];
 
+  // Parse the stored name into first / middle / last for the edit form.
+  // users.name always stores the FULL display name; middle_name and surname are optional
+  // separate columns. We derive first name by stripping the suffix parts from the full name.
+  const _parsedName = (() => {
+    if (!isEdit) return { firstName: '', middleName: '', surname: '' };
+    const storedMiddle  = (employee.middle_name || '').trim();
+    const storedSurname = (employee.surname     || '').trim();
+    const fullName      = (employee.name        || '').trim();
+
+    if (storedMiddle || storedSurname) {
+      // Separate columns are already populated — strip them from the end of the full name
+      // to recover just the first name portion.
+      let firstName = fullName;
+      const suffix = [storedMiddle, storedSurname].filter(Boolean).join(' ');
+      if (suffix && firstName.endsWith(suffix)) {
+        firstName = firstName.slice(0, firstName.length - suffix.length).trim();
+      }
+      return { firstName: firstName || fullName, middleName: storedMiddle, surname: storedSurname };
+    }
+
+    // No separate columns — split the full name by whitespace
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 3) {
+      return { firstName: parts[0], middleName: parts.slice(1, -1).join(' '), surname: parts[parts.length - 1] };
+    }
+    if (parts.length === 2) return { firstName: parts[0], middleName: '', surname: parts[1] };
+    return { firstName: fullName, middleName: '', surname: '' };
+  })();
+
   const [form, setForm] = useState(() => isEdit ? {
-    name:                 employee.name            || '',
+    name:                 _parsedName.firstName,
     email:                employee.email           || '',
     phone:                employee.phone           || '',
     personal_email:       employee.personal_email  || '',
@@ -1188,9 +1217,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     password:             '',
     // Extended profile
     salutation:           employee.salutation           || '',
-    middle_name:          employee.middle_name          || '',
-    surname:              employee.surname              || '',
+    middle_name:          _parsedName.middleName,
+    surname:              _parsedName.surname,
     branch_id:            employee.branch_id            || '',
+    location:             employee.location             || '',
     grade:                employee.grade                || '',
     division:             employee.division             || '',
     sub_division:         employee.sub_division         || '',
@@ -1222,7 +1252,7 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
     phone: '', personal_email: '', joining_date: '', employment_type: 'full_time',
     work_mode: 'office', employee_status: 'active', ctc: '', salary_effective_date: '',
     // Extended profile defaults
-    salutation: '', middle_name: '', surname: '', branch_id: '', grade: '',
+    salutation: '', middle_name: '', surname: '', branch_id: '', location: '', grade: '',
     division: '', sub_division: '', device_enrollment_id: '', weekly_off_day: '',
     work_hours_per_day: 8,
     // Personal profile fields defaults
@@ -1318,10 +1348,10 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
         if (form.password.length < 6) throw new Error('Temporary Password must be at least 6 characters.');
         if (!form.position.trim()) throw new Error('Job Title / Position is required.');
       } else {
-        // Full Name — required even in edit (display breaks without a name)
-        if (!form.name?.trim()) throw new Error('Full Name is required.');
-        if (form.name.trim().length < 2) throw new Error('Full Name must be at least 2 characters.');
-        if (!/[a-zA-Z]/.test(form.name.trim())) throw new Error('Full Name must contain at least one letter.');
+        // First Name — required even in edit (display breaks without a name)
+        if (!form.name?.trim()) throw new Error('First Name is required.');
+        if (form.name.trim().length < 2) throw new Error('First Name must be at least 2 characters.');
+        if (!/[a-zA-Z]/.test(form.name.trim())) throw new Error('First Name must contain at least one letter.');
         // Company Email — required and must be valid
         if (!form.email?.trim()) throw new Error('Company Email is required.');
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error('Company Email must be a valid email address.');
@@ -1356,9 +1386,9 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
         if (!body.password) delete body.password;
         // Consolidate name: merge First + Middle + Last into a single name field
         // so all pages that display users.name show the full name.
-        body.name = [form.name, form.middle_name, form.surname].filter(s => s?.trim()).join(' ').trim();
-        body.middle_name = null;
-        body.surname     = null;
+        body.name        = [form.name, form.middle_name, form.surname].filter(s => s?.trim()).join(' ').trim();
+        body.middle_name = form.middle_name?.trim() || null;
+        body.surname     = form.surname?.trim()     || null;
         const [result] = await Promise.all([
           apiPut(`/employees/${employee.id}`, body),
           apiPut(`/profile/${employee.id}/personal`, {
@@ -1508,8 +1538,8 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                     </select>
                   </div>
                   <div className="col-span-3">
-                    <label className="form-label">Full Name <span className="text-rose-500">*</span></label>
-                    <input className="form-control" placeholder="Full name" value={form.name} onChange={e => set('name', e.target.value)} />
+                    <label className="form-label">First Name <span className="text-rose-500">*</span></label>
+                    <input className="form-control" placeholder="First name" value={form.name} onChange={e => set('name', e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1852,7 +1882,14 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
                     <label className="form-label">Branch</label>
-                    <select className="form-control" value={form.branch_id} onChange={e => set('branch_id', e.target.value)}>
+                    <select className="form-control" value={form.branch_id} onChange={e => {
+                      const bId = e.target.value;
+                      set('branch_id', bId);
+                      // Auto-populate Work Location from branch if location not manually overridden
+                      const branch = branches.find(b => String(b.id) === String(bId));
+                      if (branch?.location) set('location', branch.location);
+                      else if (!bId) set('location', '');
+                    }}>
                       <option value="">— No branch —</option>
                       {branches.map(b => (
                         <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>
@@ -1866,9 +1903,16 @@ function EmployeeFormModal({ open, onClose, employee, onSaved, departments = [],
                 </div>
                 <div className="grid grid-cols-2 gap-4 mt-4">
                   <div>
+                    <label className="form-label">Work Location</label>
+                    <input className="form-control" placeholder="e.g. Ahmedabad, Gujarat"
+                      value={form.location} onChange={e => set('location', e.target.value)} />
+                  </div>
+                  <div>
                     <label className="form-label">Division</label>
                     <input className="form-control" placeholder="e.g. Operations" value={form.division} onChange={e => set('division', e.target.value)} />
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
                   <div>
                     <label className="form-label">Sub Division</label>
                     <input className="form-control" placeholder="e.g. Dispatch" value={form.sub_division} onChange={e => set('sub_division', e.target.value)} />

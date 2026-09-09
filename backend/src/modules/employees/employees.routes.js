@@ -305,6 +305,17 @@ router.put('/:id', auth, hasPermission('employees', 'edit'), async (req, res) =>
       update.status = ['inactive', 'resigned', 'terminated'].includes(_finalEmpStatus) ? 'inactive' : 'active';
     }
 
+    // Auto-derive Work Location from branch when branch_id is being set and no explicit location provided.
+    if (branch_id && !location) {
+      try {
+        const { rows: brRows } = await pool.query(
+          `SELECT location FROM branches WHERE id = $1 AND org_id = $2 LIMIT 1`,
+          [parseInt(branch_id), orgId(req)]
+        );
+        if (brRows[0]?.location) update.location = brRows[0].location;
+      } catch { /* non-fatal — location stays null */ }
+    }
+
     // Use a transaction when department_ids are provided — DELETE then INSERT must be atomic.
     // Without it, a crash between DELETE and INSERT leaves the employee with no departments.
     const empId = parseInt(req.params.id);

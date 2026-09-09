@@ -490,6 +490,36 @@ function PersonalTab({ empId, isAdmin }) {
       {/* Emergency Contact Modal */}
       <Modal open={ecModal !== null} onClose={() => setEcModal(null)} title={ecModal?.id ? 'Edit Emergency Contact' : 'Add Emergency Contact'} size="md"
         footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEcModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => ecMut.mutate(form)} disabled={ecMut.isPending}>{ecMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
+        {/* Import from family — only shown when adding and family members exist */}
+        {!ecModal?.id && family.length > 0 && (
+          <div className="mb-4 p-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg flex items-center gap-3">
+            <Users size={15} className="text-[#3525cd] flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-[#3525cd] mb-1">Import from Family Members</p>
+              <select
+                className="form-control text-sm"
+                defaultValue=""
+                onChange={e => {
+                  const member = family.find(f => String(f.id) === e.target.value);
+                  if (!member) return;
+                  setForm(prev => ({
+                    ...prev,
+                    contact_name:   member.name            || '',
+                    relationship:   member.relationship    || '',
+                    mobile_number:  member.contact_number  || '',
+                  }));
+                }}
+              >
+                <option value="">— Select a family member —</option>
+                {family.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.relationship ? ` (${m.relationship})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           {[['contact_name','Name *'],['relationship','Relationship'],['mobile_number','Mobile *'],['alternate_number','Alternate Number'],['email','Email'],['address','Address']].map(([k,l])=>(
             <div key={k}><label className="form-label">{l}</label><input className="form-control" value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
@@ -506,6 +536,20 @@ function PersonalTab({ empId, isAdmin }) {
 
 // ─── Section: Professional Tab ───────────────────────────────────────────────
 
+// DOW index → short name (0=Sun … 6=Sat)
+const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function deriveWeeklyOff(weeklyOffDay, workSchedule) {
+  if (weeklyOffDay) return weeklyOffDay; // employee-specific override wins
+  // Fall back to org-level work schedule: off days = days NOT in work_days
+  const workDayNums = workSchedule?.work_days
+    ? workSchedule.work_days.split(',').map(Number)
+    : [1, 2, 3, 4, 5]; // default Mon–Fri
+  const offDays = [0,1,2,3,4,5,6].filter(d => !workDayNums.includes(d));
+  if (!offDays.length) return null;
+  return offDays.map(d => DOW_SHORT[d]).join(', ') + ' (Company Default)';
+}
+
 function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -517,6 +561,13 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
   const { data: prof = {}, isLoading } = useQuery({
     queryKey: ['epv2-professional', empId],
     queryFn: () => apiGet(`/profile/${empId}/professional`),
+  });
+
+  // Fetch org work schedule to derive weekly-off fallback (cached globally)
+  const { data: workSchedule } = useQuery({
+    queryKey: ['work-schedule'],
+    queryFn:  () => apiGet('/settings/schedule'),
+    staleTime: 5 * 60 * 1000,
   });
   const { data: skills = [] } = useQuery({
     queryKey: ['epv2-skills', empId],
@@ -591,7 +642,7 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
         <InfoRow label="HOD" value={prof.hod?.name} />
         <InfoRow label="Branch" value={prof.branch?.name} icon={MapPin} />
         <InfoRow label="Work Location" value={prof.location} />
-        <InfoRow label="Weekly Off" value={prof.weekly_off_day} />
+        <InfoRow label="Weekly Off" value={deriveWeeklyOff(prof.weekly_off_day, workSchedule)} />
         <InfoRow label="Work Hours/Day" value={prof.work_hours_per_day ? `${prof.work_hours_per_day}h` : null} />
         {prof.probation_applicable && <InfoRow label="Probation" value={`${prof.probation_months} months`} />}
       </SectionCard>
