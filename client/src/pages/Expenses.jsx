@@ -479,7 +479,7 @@ export default function ExpensesPage() {
           {expenses.map(e => {
             const cfg = STATUS_CFG[e.status] || STATUS_CFG.pending;
             return (
-              <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightExpId === e.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+              <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightExpId != null && String(e.id) === String(highlightExpId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}>
                 <div className="flex items-start gap-4">
                   {isAdmin && <Avatar name={e.user_name || ''} color={e.user_avatar_color} size={38} />}
                   <div className="flex-1 min-w-0">

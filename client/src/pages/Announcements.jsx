@@ -289,7 +289,7 @@ export default function AnnouncementsPage() {
                 <Pin size={12} className="text-[#3525cd]" />
                 <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Pinned</span>
               </div>
-              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId === a.id} />)}
+              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
               {regular.length > 0 && (
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Latest</span>
@@ -298,7 +298,7 @@ export default function AnnouncementsPage() {
               )}
             </>
           )}
-          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId === a.id} />)}
+          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
         </div>
       )}
 
@@ -335,12 +335,13 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHi
   const [lit, setLit] = useState(!!isHighlighted);
   useEffect(() => {
     if (!isHighlighted) return;
+    setLit(true);
     const t = setTimeout(() => setLit(false), 3000);
     return () => clearTimeout(t);
   }, [isHighlighted]);
 
   return (
-    <div id={`ann-${a.id}`} className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''} ${lit ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+    <div id={`ann-${a.id}`} className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''} ${lit ? 'ring-4 ring-[#3525cd] ring-offset-2 bg-[#f0f3ff] border-[#3525cd]/40' : ''}`}>
       <div className="h-1 w-full" style={{ background: cfg.strip }} />
       <div className="p-5">
         <div className="flex items-start gap-3">

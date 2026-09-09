@@ -67,11 +67,21 @@ export default function Leaves() {
     queryFn: () => apiGet('/leaves', userIdParam ? { userId: userIdParam } : {}),
   });
 
-  // BUG_094: scroll to highlighted leave when data loads
+  // BUG_094: switch to correct tab (WFH vs normal) then scroll to highlighted leave
   useEffect(() => {
     if (!highlightId || !leaves.length) return;
-    const el = document.getElementById(`leave-${highlightId}`);
-    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+    const target = leaves.find(l => String(l.id) === String(highlightId));
+    if (!target) return;
+    // WFH records only appear on the WFH tab — switch automatically
+    if (target.leave_time === 'wfh' || target.leave_type === 'wfh') {
+      setTab('wfh');
+    } else if (isAdmin) {
+      setTab('all');
+    }
+    setTimeout(() => {
+      const el = document.getElementById(`leave-${highlightId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
   }, [highlightId, leaves.length]);
 
   const { data: policies = [] } = useQuery({
@@ -294,7 +304,7 @@ export default function Leaves() {
                       onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
                       onDelete={() => setConfirmDel({ id: l.id, name: l.name })}
-                      isHighlighted={highlightId === l.id} />
+                      isHighlighted={highlightId != null && String(l.id) === String(highlightId)} />
                   ))
               }
             </div>
@@ -403,10 +413,11 @@ const STATUS_CARD = {
 function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete, balanceMap, isHighlighted }) {
   const sc = STATUS_CARD[l.status] || {};
   const isRootAdmin = user?.role === 'root_admin';
-  // BUG_094: fade highlight out after 3 seconds
+  // BUG_094: show highlight ring; fade out after 3 seconds
   const [lit, setLit] = useState(!!isHighlighted);
   useEffect(() => {
     if (!isHighlighted) return;
+    setLit(true); // ensure ring shows even if component was already mounted
     const t = setTimeout(() => setLit(false), 3000);
     return () => clearTimeout(t);
   }, [isHighlighted]);
@@ -428,7 +439,7 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
     return Number(l.current_approver_id) === Number(user?.id);
   })();
   return (
-    <div id={`leave-${l.id}`} className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''} ${lit ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+    <div id={`leave-${l.id}`} className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${lit ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : (sc.bg || '')}`}>
       <Avatar name={l.name} color={l.avatar_color} size={36} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

@@ -641,7 +641,10 @@ export default function MyLeaves() {
   useEffect(() => {
     if (!highlightId || !leaves.length) return;
     const el = document.getElementById(`myleave-${highlightId}`);
-    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+    if (el) {
+      setHighlightActive(true);
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+    }
   }, [highlightId, leaves.length]);
   useEffect(() => {
     if (!highlightId) return;
@@ -882,7 +885,7 @@ export default function MyLeaves() {
                       ${l.status === 'approved'     ? 'border-l-4 border-l-emerald-400' : ''}
                       ${l.status === 'rejected'     ? 'border-l-4 border-l-rose-400'    : ''}
                       ${l.status === 'cancelled'    ? 'border-l-4 border-l-slate-300'   : ''}
-                      ${highlightActive && highlightId === l.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}
+                      ${highlightActive && highlightId != null && String(l.id) === String(highlightId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">

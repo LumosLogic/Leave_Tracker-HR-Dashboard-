@@ -935,7 +935,7 @@ export default function Regularization() {
             const updatedLabel = fmtUpdated(updatedAt);
 
             return (
-              <div key={r.id} id={`reg-${r.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${borderCls} ${highlightActive && highlightId === r.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+              <div key={r.id} id={`reg-${r.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${borderCls} ${highlightActive && highlightId != null && String(r.id) === String(highlightId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}>
                 <div className="flex items-start gap-4">
                   <Avatar name={r.user_name || 'Employee'} color={r.user_avatar_color} size={38} />
                   <div className="flex-1 min-w-0">

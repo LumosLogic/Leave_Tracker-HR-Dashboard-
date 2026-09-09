@@ -365,7 +365,7 @@ export default function Performance() {
                 {goals.map(g => {
                   const cfg = GOAL_STATUS_CFG[g.status] || GOAL_STATUS_CFG.active;
                   return (
-                    <div key={g.id} id={`goal-${g.id}`} className={`card p-5 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightGoalId === g.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+                    <div key={g.id} id={`goal-${g.id}`} className={`card p-5 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightGoalId != null && String(g.id) === String(highlightGoalId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}>
                       <div className="flex items-start gap-4">
                         {isAdmin && <Avatar name={g.user_name} color={g.user_avatar_color} size={36} />}
                         <div className="flex-1 min-w-0">
