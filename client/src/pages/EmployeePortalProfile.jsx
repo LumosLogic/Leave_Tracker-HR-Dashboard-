@@ -608,8 +608,8 @@ function OverviewTab({ empId }) {
 
   // BUG_182: compute leave balance from the /leaves/balance API (accurate, respects adjustments)
   const balances = leaveBalanceData?.balances || [];
-  const leaveBalance = balances.reduce((sum, b) => sum + Math.max(0, b.available ?? (b.total - b.used)), 0);
-  const totalAlloc   = balances.reduce((sum, b) => sum + (b.total || 0), 0);
+  const leaveBalance = balances.reduce((sum, b) => sum + (b.remaining ?? 0), 0);
+  const totalAlloc   = balances.reduce((sum, b) => sum + (b.allocated || 0), 0);
 
   // Today's attendance from overview
   const todayAtt = overview.todayAttendance || null;

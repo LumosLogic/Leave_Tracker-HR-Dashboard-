@@ -229,9 +229,11 @@ export default function AnnouncementsPage() {
   });
 
   const today    = new Date().toISOString().split('T')[0];
+  // BUG_179: expired = expires_at <= today (expires ON the date, not after it)
+  const isExpired = (a) => a.expires_at && a.expires_at <= today;
   const filtered = filter === 'all' ? announcements : announcements.filter(a => a.type === filter);
-  const pinned   = filtered.filter(a => a.pinned && (!a.expires_at || a.expires_at >= today));
-  const regular  = filtered.filter(a => !a.pinned || (a.expires_at && a.expires_at < today));
+  const pinned   = filtered.filter(a => a.pinned && !isExpired(a));
+  const regular  = filtered.filter(a => !a.pinned || isExpired(a));
 
   // BUG_094: scroll to highlighted announcement after data loads
   useEffect(() => {
@@ -329,7 +331,7 @@ export default function AnnouncementsPage() {
 
 function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHighlighted }) {
   const cfg     = TYPE_CFG[a.type] || TYPE_CFG.general;
-  const expired = a.expires_at && a.expires_at < today;
+  const expired = a.expires_at && a.expires_at <= today;
   const isImage = a.file_url && (a.file_type?.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif)$/i.test(a.file_url));
   // BUG_094: fade highlight out after 3 seconds
   const [lit, setLit] = useState(!!isHighlighted);

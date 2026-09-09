@@ -53,15 +53,26 @@ router.get('/', auth, async (req, res) => {
       (creators || []).forEach(u => { creatorMap[u.id] = u.name; });
     }
 
-    // Filter expired for non-admins
-    const filtered = isAdmin(req.user.role) ? rows : rows.filter(r => !r.expires_at || r.expires_at >= today);
+    // An announcement is expired when today >= expires_at (i.e. expires_at < today OR expires_at === today)
+    const isExpired = (r) => r.expires_at && r.expires_at <= today;
 
-    // BUG_179: auto-unpin expired announcements in the response so they don't appear
-    // in the Pinned section even for admins who can still see expired announcements.
+    // Filter expired for non-admins
+    const filtered = isAdmin(req.user.role) ? rows : rows.filter(r => !isExpired(r));
+
+    // BUG_179: auto-unpin expired announcements so they never appear in the Pinned section.
+    // Also persist the unpin to the DB so the fix survives page reloads and ordering is correct.
+    const expiredPinnedIds = rows.filter(r => r.pinned && isExpired(r)).map(r => r.id);
+    if (expiredPinnedIds.length) {
+      db.from('announcements').update({ pinned: false })
+        .in('id', expiredPinnedIds)
+        .eq('organization_id', oId)
+        .then(() => {}).catch(() => {});
+    }
+
     res.json(filtered.map(r => ({
       ...r,
       creator_name: creatorMap[r.created_by] || 'Admin',
-      pinned: r.pinned && (!r.expires_at || r.expires_at >= today),
+      pinned: r.pinned && !isExpired(r),
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
