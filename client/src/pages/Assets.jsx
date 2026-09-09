@@ -23,34 +23,94 @@ const CAT_ICONS = {
   access_card: CreditCard,
 };
 
-function AssetModal({ open, onClose, asset, employees }) {
+function AssetModal({ open, onClose, asset, employees, allAssets = [] }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const isEdit = !!asset;
   const empty  = { asset_tag: '', name: '', category: 'laptop', brand: '', model: '', serial_number: '', condition: 'good', status: 'available', assigned_to: '', notes: '' };
-  const [form, setForm] = useState(() => isEdit ? { ...asset, assigned_to: asset.assigned_to || '' } : empty);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [form,   setForm]   = useState(() => {
+    if (isEdit) {
+      // BUG_189/190: strip 'assigned_user' (the nested join object from GET)
+      // before spreading — it is NOT a writable column on the assets table
+      const { assigned_user: _au, ...rest } = asset;
+      return {
+        ...rest,
+        // Normalise nulls → empty strings so React controlled inputs don't warn
+        asset_tag:     rest.asset_tag     || '',
+        name:          rest.name          || '',
+        brand:         rest.brand         || '',
+        model:         rest.model         || '',
+        serial_number: rest.serial_number || '',
+        notes:         rest.notes         || '',
+        assigned_to:   rest.assigned_to   || '',
+      };
+    }
+    return empty;
+  });
+  const [errors, setErrors] = useState({});
+  const set = (k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    // clear the field's error as user types
+    if (errors[k]) setErrors(p => ({ ...p, [k]: '' }));
+  };
 
   const mut = useMutation({
     mutationFn: () => isEdit ? apiPut(`/assets/${asset.id}`, form) : apiPost('/assets', form),
-    onSuccess: () => { toast(isEdit ? 'Asset updated!' : 'Asset added!', 'success'); qc.invalidateQueries({ queryKey: ['assets'] }); onClose(); },
+    onSuccess: () => { toast(isEdit ? 'Asset updated!' : 'Asset added!', 'success'); qc.invalidateQueries({ queryKey: ['assets'] }); qc.invalidateQueries({ queryKey: ['assets-all'] }); onClose(); },
     onError: e => toast(e.message, 'error'),
   });
+
+  function validate() {
+    const errs = {};
+    const tag = form.asset_tag.trim();
+    const sn  = (form.serial_number || '').trim();
+
+    if (!tag) {
+      errs.asset_tag = 'Asset tag is required.';
+    } else {
+      const dup = allAssets.find(a => a.asset_tag === tag && (!asset || String(a.id) !== String(asset.id)));
+      if (dup) errs.asset_tag = `Asset tag '${tag}' is already in use.`;
+    }
+
+    if (!form.name.trim()) errs.name = 'Name is required.';
+
+    if (sn) {
+      const dup = allAssets.find(a => (a.serial_number || '') === sn && (!asset || String(a.id) !== String(asset.id)));
+      if (dup) errs.serial_number = `Serial number '${sn}' is already registered to another asset.`;
+    }
+
+    if (form.status === 'assigned' && !form.assigned_to) {
+      errs.assigned_to = 'Select an employee to assign this asset to.';
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Asset' : 'Add Asset'} size="lg"
       footer={
         <div className="flex justify-end gap-3">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => mut.mutate()} disabled={mut.isPending || !form.asset_tag || !form.name}>
+          <button className="btn btn-primary" onClick={() => { if (validate()) mut.mutate(); }} disabled={mut.isPending}>
             {mut.isPending ? <><span className="spinner w-4 h-4" />Saving…</> : 'Save Asset'}
           </button>
         </div>
       }>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <div><label className="form-label">Asset Tag *</label><input className="form-control" placeholder="ASSET-001" value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} /></div>
-          <div><label className="form-label">Name *</label><input className="form-control" placeholder="MacBook Pro 14" value={form.name} onChange={e => set('name', e.target.value)} /></div>
+          <div>
+            <label className="form-label">Asset Tag *</label>
+            <input className={`form-control ${errors.asset_tag ? 'border-rose-400' : ''}`} placeholder="ASSET-001"
+              value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} />
+            {errors.asset_tag && <p className="text-xs text-rose-500 mt-1">{errors.asset_tag}</p>}
+          </div>
+          <div>
+            <label className="form-label">Name *</label>
+            <input className={`form-control ${errors.name ? 'border-rose-400' : ''}`} placeholder="MacBook Pro 14"
+              value={form.name} onChange={e => set('name', e.target.value)} />
+            {errors.name && <p className="text-xs text-rose-500 mt-1">{errors.name}</p>}
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div><label className="form-label">Category</label><select className="form-control" value={form.category} onChange={e => set('category', e.target.value)}>{CATEGORIES.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}</select></div>
@@ -58,12 +118,28 @@ function AssetModal({ open, onClose, asset, employees }) {
           <div><label className="form-label">Model</label><input className="form-control" placeholder="MNW83HN/A" value={form.model} onChange={e => set('model', e.target.value)} /></div>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <div><label className="form-label">Serial Number</label><input className="form-control" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} /></div>
+          <div>
+            <label className="form-label">
+              Serial Number
+              <span className="ml-1 font-normal text-[#777587] normal-case tracking-normal">(unique if provided)</span>
+            </label>
+            <input className={`form-control ${errors.serial_number ? 'border-rose-400' : ''}`}
+              value={form.serial_number} onChange={e => set('serial_number', e.target.value)} />
+            {errors.serial_number && <p className="text-xs text-rose-500 mt-1">{errors.serial_number}</p>}
+          </div>
           <div><label className="form-label">Condition</label><select className="form-control" value={form.condition} onChange={e => set('condition', e.target.value)}>{CONDITIONS.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}</select></div>
           <div><label className="form-label">Status</label><select className="form-control" value={form.status} onChange={e => { set('status', e.target.value); if (e.target.value !== 'assigned') set('assigned_to', ''); }}><option value="available">Available</option><option value="assigned">Assigned</option><option value="in_repair">In Repair</option><option value="retired">Retired</option></select></div>
         </div>
         {form.status === 'assigned' && (
-          <div><label className="form-label">Assigned To *</label><select className="form-control" value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}><option value="">— Select employee —</option>{(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div>
+            <label className="form-label">Assigned To *</label>
+            <select className={`form-control ${errors.assigned_to ? 'border-rose-400' : ''}`}
+              value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
+              <option value="">— Select employee —</option>
+              {(employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            {errors.assigned_to && <p className="text-xs text-rose-500 mt-1">{errors.assigned_to}</p>}
+          </div>
         )}
         <div><label className="form-label">Notes</label><textarea className="form-control" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
       </div>
@@ -82,9 +158,12 @@ export default function Assets() {
   const [filter,     setFilter]     = useState('all');
 
   const { data: _aData, isLoading } = useQuery({ queryKey: ['assets', filter], queryFn: () => apiGet('/assets', filter !== 'all' ? { status: filter } : {}) });
+  // Unfiltered list used for client-side duplicate validation in the modal
+  const { data: _allAData }         = useQuery({ queryKey: ['assets-all'], queryFn: () => apiGet('/assets'), staleTime: 30000 });
   const { data: _eData }            = useQuery({ queryKey: ['employees'], queryFn: () => apiGet('/employees'), enabled: isAdmin });
-  const assets    = Array.isArray(_aData) ? _aData : [];
-  const employees = Array.isArray(_eData) ? _eData : [];
+  const assets    = Array.isArray(_aData)    ? _aData    : [];
+  const allAssets = Array.isArray(_allAData) ? _allAData : [];
+  const employees = Array.isArray(_eData)    ? _eData    : [];
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/assets/${id}`),
@@ -178,8 +257,8 @@ export default function Assets() {
         </div>
       )}
 
-      {addOpen   && <AssetModal open onClose={() => setAddOpen(false)} employees={employees} />}
-      {editAsset && <AssetModal open onClose={() => setEditAsset(null)} asset={editAsset} employees={employees} />}
+      {addOpen   && <AssetModal open onClose={() => setAddOpen(false)} employees={employees} allAssets={allAssets} />}
+      {editAsset && <AssetModal open onClose={() => setEditAsset(null)} asset={editAsset} employees={employees} allAssets={allAssets} />}
       <ConfirmModal open={!!confirmDel} title="Delete Asset" message={`Permanently delete asset "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
     </div>

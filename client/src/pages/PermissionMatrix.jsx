@@ -68,6 +68,23 @@ function detectPreset(roleName) {
   return ROLE_PRESETS.find(p => p.keywords.some(kw => lower.includes(kw))) || null;
 }
 
+// ─── BUG_193: Minimum core permissions per system role slug (cannot be removed) ─
+const CORE_PERM_KEYS = {
+  hr_admin:  [['dashboard','view'],['employees','view'],['leaves','view'],['attendance','view']],
+  dept_head: [['dashboard','view'],['leaves','view'],['leaves','forward']],
+  employee:  [['dashboard','view'],['leaves','view'],['leaves','create'],['attendance','view']],
+};
+
+function buildCorePermIds(slug, allPermissions) {
+  const keys = CORE_PERM_KEYS[slug] || [];
+  const ids = new Set();
+  for (const [mod, act] of keys) {
+    const p = allPermissions.find(p => p.module_key === mod && p.action === act);
+    if (p) ids.add(p.id);
+  }
+  return ids;
+}
+
 // ─── EHN_RM_005: High-risk permissions that need a confirmation step ──────────
 const HIGH_RISK_ACTIONS = new Set(['delete', 'lock']);
 const HIGH_RISK_COMBOS  = new Set(['payroll:approve', 'payroll:generate', 'employees:delete', 'roles:manage', 'attendance:delete']);
@@ -191,7 +208,7 @@ function PermissionCheckbox({ permission, checked, onChange, disabled }) {
 }
 
 // ─── Module Section ───────────────────────────────────────────────────────────
-function ModuleSection({ module, permissions = [], selectedIds, onToggle, onToggleAll, isSystemRole }) {
+function ModuleSection({ module, permissions = [], selectedIds, onToggle, onToggleAll, isSystemRole, corePermIds = new Set() }) {
   const [collapsed, setCollapsed] = useState(false);
   const safeSelectedIds = (selectedIds && typeof selectedIds.has === 'function') ? selectedIds : new Set();
   
@@ -211,8 +228,8 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={e => { e.stopPropagation(); !isSystemRole && onToggleAll(modulePerms, !allChecked); }}
-            disabled={isSystemRole}
+            onClick={e => { e.stopPropagation(); onToggleAll(modulePerms, !allChecked); }}
+            disabled={false}
             className={cn(
               'flex-shrink-0 transition-colors',
               isSystemRole ? 'cursor-not-allowed' : 'cursor-pointer'
@@ -245,9 +262,8 @@ function ModuleSection({ module, permissions = [], selectedIds, onToggle, onTogg
               permission={permItem}
               checked={safeSelectedIds.has(permItem.id)}
               onChange={onToggle}
-              // BUG_144/160/161: for system roles, checked permissions are locked (can't remove).
-              // Unchecked permissions remain toggleable (can add more).
-              disabled={isSystemRole && safeSelectedIds.has(permItem.id)}
+              // BUG_193: only lock the minimum core permissions; all others are editable.
+              disabled={corePermIds.has(permItem.id)}
             />
           ))}
         </div>
@@ -648,6 +664,11 @@ export default function PermissionMatrix() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  // BUG_193: only lock the minimum core permissions for system roles
+  const corePermIds = (isSystemRole && !isRootAdmin && role)
+    ? buildCorePermIds(role.slug, allPermissions)
+    : new Set();
+
   function applyToggle(permId, checked) {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -658,9 +679,9 @@ export default function PermissionMatrix() {
   }
 
   function handleToggle(permId, checked) {
-    // BUG_144/160/161: For system roles (not root_admin), prevent removal of existing permissions.
-    if (isSystemRole && !isRootAdmin && !checked && selectedIds.has(permId)) {
-      showToast('System role permissions are protected — you can only grant additional ones, not remove them.', 'error');
+    // BUG_193: only block removal of core minimum permissions
+    if (!checked && corePermIds.has(permId)) {
+      showToast('This is a core permission and cannot be removed from this system role.', 'error');
       return;
     }
     // EHN_RM_005: intercept newly-granted high-risk permissions
@@ -675,8 +696,15 @@ export default function PermissionMatrix() {
   }
 
   function handleToggleAll(perms, checked) {
-    if (isSystemRole && !isRootAdmin && !checked) {
-      showToast('System role permissions are protected and cannot be removed.', 'error');
+    if (!checked && corePermIds.size > 0) {
+      // Keep core permissions even when deselecting all in a module
+      const nonCore = perms.filter(p => !corePermIds.has(p.id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        nonCore.forEach(p => next.delete(p.id));
+        return next;
+      });
+      setDirty(true);
       return;
     }
     setSelectedIds(prev => {
@@ -693,11 +721,8 @@ export default function PermissionMatrix() {
   }
 
   function handleDeselectAll() {
-    if (isSystemRole && !isRootAdmin) {
-      showToast('System role permissions are protected and cannot be removed.', 'error');
-      return;
-    }
-    setSelectedIds(new Set());
+    // BUG_193: deselect all except core locked ones
+    setSelectedIds(new Set(corePermIds));
     setDirty(true);
   }
 
@@ -860,8 +885,9 @@ export default function PermissionMatrix() {
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
             <Lock size={15} className="text-amber-500 flex-shrink-0" />
             <p className="text-xs text-amber-700 font-semibold">
-              This is a system role. Pre-loaded (core) permissions are <strong>protected</strong> and cannot be removed.
-              You may grant additional permissions on top of the baseline. The role cannot be deleted or renamed.
+              System role — you can freely add or remove permissions.
+              A small set of <strong>core minimum permissions</strong> (shown with a lock icon) cannot be removed.
+              The role cannot be deleted or renamed.
             </p>
           </div>
         )}
@@ -957,6 +983,7 @@ export default function PermissionMatrix() {
                 onToggle={handleToggle}
                 onToggleAll={handleToggleAll}
                 isSystemRole={isRootAdmin}
+                corePermIds={corePermIds}
               />
             ))}
           </div>

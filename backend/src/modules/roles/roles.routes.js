@@ -169,6 +169,27 @@ router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, 
       }
     }
 
+    // BUG_194: resolve the users.role column value from the assigned system role.
+    // This keeps legacy isAdmin() checks and frontend navigation in sync.
+    const SLUG_TO_ROLE = { root_admin: 'root_admin', hr_admin: 'admin', employee: 'employee' };
+    // dept_head is still users.role='employee'; access comes from departments.head_user_id
+    let newUserRole = null;
+    if (safeRoleIds.length > 0) {
+      const assignedRolesRes = await pool.query(
+        `SELECT slug FROM roles WHERE id = ANY($1::bigint[]) AND org_id = $2 AND is_system_role = true`,
+        [safeRoleIds, oId]
+      );
+      for (const r of assignedRolesRes.rows) {
+        const mapped = SLUG_TO_ROLE[r.slug];
+        if (mapped && (mapped === 'root_admin' || (mapped === 'admin' && newUserRole !== 'root_admin'))) {
+          newUserRole = mapped;
+        }
+      }
+      if (!newUserRole) newUserRole = 'employee'; // custom role or dept_head only
+    } else {
+      newUserRole = 'employee'; // cleared all roles → back to employee
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -188,6 +209,12 @@ router.put('/user/:userId', auth, hasPermission('roles', 'manage'), async (req, 
           [userId, roleId, oId, req.user.id]
         );
       }
+
+      // Sync users.role so legacy isAdmin() checks and frontend navigation stay correct
+      await client.query(
+        `UPDATE users SET role = $1 WHERE id = $2 AND organization_id = $3`,
+        [newUserRole, userId, oId]
+      );
 
       await client.query('COMMIT');
     } catch (err) {
@@ -482,26 +509,41 @@ router.put('/:id/permissions', auth, hasPermission('roles', 'manage'), async (re
       return res.status(400).json({ error: 'The Root Admin role always has all permissions and cannot be restricted.' });
     }
 
-    // BUG_160: For other system roles, only ALLOW adding new permissions — never remove pre-existing ones.
-    // This preserves the minimum required permissions for hr_admin, dept_head, and employee system roles.
+    // BUG_193: System roles now allow full permission editing EXCEPT for a small
+    // set of minimum core permissions that are protected per slug.
+    // Admin can remove any non-core permission (e.g. remove payroll from HR Admin).
     if (role.is_system_role) {
-      // Fetch current permissions for this system role
-      const { data: existingPerms } = await db.from('role_permissions').select('permission_id').eq('role_id', roleId);
-      const existingIds = new Set((existingPerms || []).map(p => p.permission_id));
-      // Merge: keep all existing + add any new ones requested; never remove existing
-      const mergedIds = new Set([...existingIds, ...safeIds]);
-      // Override safeIds to prevent removal
+      // Fetch the permission IDs for this role's minimum core set
+      const CORE_PERMS = {
+        hr_admin:   [['dashboard','view'],['employees','view'],['leaves','view'],['attendance','view']],
+        dept_head:  [['dashboard','view'],['leaves','view'],['leaves','forward']],
+        employee:   [['dashboard','view'],['leaves','view'],['leaves','create'],['attendance','view']],
+        root_admin: [], // root_admin is fully managed separately
+      };
+      const coreList = CORE_PERMS[role.slug] || [];
+      let coreIds = new Set();
+      if (coreList.length) {
+        const coreRes = await pool.query(
+          `SELECT id FROM permissions WHERE (module_key, action) IN (${coreList.map((_, i) => `($${i*2+1},$${i*2+2})`).join(',')})`,
+          coreList.flat()
+        );
+        coreIds = new Set(coreRes.rows.map(r => r.id));
+      }
+      // Final set: everything the admin requested + core permissions (always kept)
+      const finalIds = new Set([...safeIds, ...coreIds]);
+
       const client2 = await pool.connect();
       try {
         await client2.query('BEGIN');
-        if (mergedIds.size > 0) {
-          const mergedArr = Array.from(mergedIds);
-          const values = mergedArr.map((_, i) => `($1, $${i + 2})`).join(', ');
+        await client2.query('DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
+        if (finalIds.size > 0) {
+          const finalArr = Array.from(finalIds);
+          const values   = finalArr.map((_, i) => `($1, $${i + 2})`).join(', ');
           await client2.query(
             `INSERT INTO role_permissions (role_id, permission_id)
              VALUES ${values}
              ON CONFLICT (role_id, permission_id) DO NOTHING`,
-            [roleId, ...mergedArr]
+            [roleId, ...finalArr]
           );
         }
         await client2.query('COMMIT');

@@ -23,18 +23,63 @@ router.get('/', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+const VALID_STATUSES = ['available', 'assigned', 'in_repair', 'retired', 'maintenance'];
+
+// Sanitise an asset body coming from the client before INSERT/UPDATE.
+// Strips joined fields (assigned_user), normalises types, and validates status.
+function sanitiseAssetBody(body) {
+  // BUG_189/190: GET embeds assigned_user as a nested object — remove it so the
+  // UPDATE doesn't try to write to a non-existent column.
+  delete body.assigned_user;
+
+  // BUG_134: empty strings → null for FK/numeric/date columns
+  if (!body.serial_number) body.serial_number = null;
+  if (!body.purchase_value && body.purchase_value !== 0) body.purchase_value = null;
+  if (!body.assigned_to) body.assigned_to = null;
+  if (!body.purchase_date) body.purchase_date = null;
+
+  // BUG_188: normalise status — handle both 'in-repair' (old data) and 'in_repair'
+  if (body.status) body.status = body.status.replace(/-/g, '_');
+
+  // When an asset is not assigned, always clear the assigned_to to keep data consistent
+  if (body.status !== 'assigned') body.assigned_to = null;
+
+  return body;
+}
+
 // POST /api/assets
 router.post('/', auth, hasPermission('assets', 'create'), async (req, res) => {
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const body = { ...req.body, organization_id: oId };
+    const body = sanitiseAssetBody({ ...req.body, organization_id: oId });
     delete body.id; delete body.created_at;
-    // BUG_134: convert empty-string FK/numeric fields to null to avoid bigint/uuid type errors
-    if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
-    if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
-    if (body.assigned_to === '' || body.assigned_to === undefined) body.assigned_to = null;
-    if (body.purchase_date === '' || body.purchase_date === undefined) body.purchase_date = null;
+
+    // ── Status validation ─────────────────────────────────────────────────────
+    if (body.status && !VALID_STATUSES.includes(body.status)) {
+      return res.status(400).json({ error: `Invalid status '${body.status}'. Allowed: ${VALID_STATUSES.join(', ')}.` });
+    }
+
+    // ── BUG_187: assigned_to is mandatory when status = assigned ──────────────
+    if (body.status === 'assigned' && !body.assigned_to) {
+      return res.status(400).json({ error: 'An employee must be selected when asset status is Assigned.' });
+    }
+
+    // ── Uniqueness: asset_tag must be unique within the org ───────────────────
+    const tag = (body.asset_tag || '').trim();
+    if (!tag) return res.status(400).json({ error: 'Asset tag is required.' });
+    const { data: dupTag } = await db.from('assets')
+      .select('id').eq('organization_id', oId).eq('asset_tag', tag).maybeSingle();
+    if (dupTag) return res.status(400).json({ error: `Asset tag '${tag}' is already in use. Asset tags must be unique within the organisation.` });
+
+    // ── Uniqueness: serial_number must be unique when provided ────────────────
+    if (body.serial_number) {
+      const { data: dupSN } = await db.from('assets')
+        .select('id').eq('organization_id', oId).eq('serial_number', body.serial_number).maybeSingle();
+      if (dupSN) return res.status(400).json({ error: `Serial number '${body.serial_number}' is already registered to another asset.` });
+    }
+
+    body.asset_tag = tag;
     const { data, error } = await db.from('assets').insert(body).select().single();
     if (error) throw error;
     res.json(data);
@@ -46,13 +91,34 @@ router.put('/:id', auth, hasPermission('assets', 'manage'), async (req, res) => 
   try {
     if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
     const oId = req.user.organization_id;
-    const body = { ...req.body };
+    const body = sanitiseAssetBody({ ...req.body });
     delete body.id; delete body.created_at; delete body.organization_id;
-    // BUG_134: sanitize bigint/numeric/date FK fields — empty strings cause type errors
-    if (body.serial_number === '' || body.serial_number === undefined) body.serial_number = null;
-    if (body.purchase_value === '' || body.purchase_value === undefined) body.purchase_value = null;
-    if (body.assigned_to === '' || body.assigned_to === undefined) body.assigned_to = null;
-    if (body.purchase_date === '' || body.purchase_date === undefined) body.purchase_date = null;
+
+    // ── Status validation ─────────────────────────────────────────────────────
+    if (body.status && !VALID_STATUSES.includes(body.status)) {
+      return res.status(400).json({ error: `Invalid status '${body.status}'. Allowed: ${VALID_STATUSES.join(', ')}.` });
+    }
+
+    // ── BUG_187: assigned_to is mandatory when status = assigned ──────────────
+    if (body.status === 'assigned' && !body.assigned_to) {
+      return res.status(400).json({ error: 'An employee must be selected when asset status is Assigned.' });
+    }
+
+    // ── Uniqueness: asset_tag must be unique (excluding this asset) ───────────
+    const tag = (body.asset_tag || '').trim();
+    if (!tag) return res.status(400).json({ error: 'Asset tag is required.' });
+    const { data: dupTag } = await db.from('assets')
+      .select('id').eq('organization_id', oId).eq('asset_tag', tag).neq('id', req.params.id).maybeSingle();
+    if (dupTag) return res.status(400).json({ error: `Asset tag '${tag}' is already in use by another asset.` });
+
+    // ── Uniqueness: serial_number must be unique when provided (excluding this asset) ─
+    if (body.serial_number) {
+      const { data: dupSN } = await db.from('assets')
+        .select('id').eq('organization_id', oId).eq('serial_number', body.serial_number).neq('id', req.params.id).maybeSingle();
+      if (dupSN) return res.status(400).json({ error: `Serial number '${body.serial_number}' is already registered to another asset.` });
+    }
+
+    body.asset_tag = tag;
     const { data, error } = await db.from('assets')
       .update(body).eq('id', req.params.id).eq('organization_id', oId)
       .select().single();
