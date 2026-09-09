@@ -56,14 +56,18 @@ function LevelRow({ level, index, total, usedTypes = new Set(), onChange, onDele
 
           {/* Label */}
           <div>
-            <label className="block text-[0.68rem] font-bold text-[#777587] mb-1 uppercase tracking-wide">Display Label</label>
+            <label className="block text-[0.68rem] font-bold text-[#777587] mb-1 uppercase tracking-wide">Display Label <span className="text-rose-500 normal-case">*</span></label>
             <input
               type="text"
               value={level.level_label || ''}
               onChange={e => {
                 const v = e.target.value;
-                // Validate: if not empty it must contain at least one letter, no pure numbers/symbols
-                onChange({ ...level, level_label: v, _labelErr: v.trim() && !/[a-zA-Z]/.test(v) ? 'Must contain at least one letter' : '' });
+                // BUG_105: required; must contain at least one letter; reject pure-numeric/symbol values
+                const trimmed = v.trim();
+                const err = !trimmed ? 'Display label is required'
+                  : !/[a-zA-Z]/.test(trimmed) ? 'Must contain at least one letter'
+                  : '';
+                onChange({ ...level, level_label: v, _labelErr: err });
               }}
               placeholder={roleOption?.label || 'e.g. HR Approval'}
               maxLength={30}
@@ -160,7 +164,7 @@ export default function LeaveWorkflowSettings() {
         level_number:   i + 1,
         role_type:      l.role_type,
         role_reference: l.role_reference || null,
-        level_label:    (l.level_label || '').trim() || null,
+        level_label:    (l.level_label || '').trim(),
         is_required:    l.is_required    !== false,
       })),
     }),
@@ -376,13 +380,20 @@ export default function LeaveWorkflowSettings() {
                 const nameErr = validateWorkflowName(workflowName);
                 if (nameErr) { setWorkflowNameError(nameErr); return; }
                 setWorkflowNameError('');
-                // BUG_105: validate display labels — if provided, must contain a letter
-                for (const lvl of levels) {
-                  const lbl = (lvl.level_label || '').trim();
-                  if (lbl && !/[a-zA-Z]/.test(lbl)) {
-                    toast('Display labels must contain at least one letter.', 'error');
-                    return;
-                  }
+                // BUG_105: display label is required and must contain at least one letter
+                let hasLabelErrors = false;
+                const updatedLevels = levels.map((lvl, i) => {
+                  const trimmed = (lvl.level_label || '').trim();
+                  const err = !trimmed ? 'Display label is required'
+                    : !/[a-zA-Z]/.test(trimmed) ? 'Must contain at least one letter'
+                    : '';
+                  if (err) hasLabelErrors = true;
+                  return { ...lvl, _labelErr: err };
+                });
+                if (hasLabelErrors) {
+                  setLevels(updatedLevels);
+                  toast('All levels must have a valid Display Label.', 'error');
+                  return;
                 }
                 saveMut.mutate();
               }}

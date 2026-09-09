@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw, Users, ChevronUp, ChevronDown } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +34,8 @@ export default function Leaves() {
   const statusParam = searchParams.get('status');
   const typeParam   = searchParams.get('type');
   const userIdParam = searchParams.get('userId');
+  // BUG_094: highlight leave item navigated from a notification
+  const highlightId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
 
   // Initialise tab from URL param; fall back to role-based default
   const [tab, setTab] = useState(() => {
@@ -64,6 +66,13 @@ export default function Leaves() {
     queryKey: ['leaves', userIdParam],
     queryFn: () => apiGet('/leaves', userIdParam ? { userId: userIdParam } : {}),
   });
+
+  // BUG_094: scroll to highlighted leave when data loads
+  useEffect(() => {
+    if (!highlightId || !leaves.length) return;
+    const el = document.getElementById(`leave-${highlightId}`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }, [highlightId, leaves.length]);
 
   const { data: policies = [] } = useQuery({
     queryKey: ['leave-policies'],
@@ -284,7 +293,8 @@ export default function Leaves() {
                       balanceMap={balanceMap}
                       onApprove={approve} onReject={reject} onRevert={(id) => setConfirmRevert(id)} onCancel={cancel}
                       onEdit={() => setEditLeave(l)}
-                      onDelete={() => setConfirmDel({ id: l.id, name: l.name })} />
+                      onDelete={() => setConfirmDel({ id: l.id, name: l.name })}
+                      isHighlighted={highlightId === l.id} />
                   ))
               }
             </div>
@@ -390,9 +400,16 @@ const STATUS_CARD = {
   withdrawn:        { border: 'border-l-4 border-l-slate-400',   bg: 'bg-slate-50/40' },
 };
 
-function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete, balanceMap }) {
+function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onCancel, onEdit, onDelete, balanceMap, isHighlighted }) {
   const sc = STATUS_CARD[l.status] || {};
   const isRootAdmin = user?.role === 'root_admin';
+  // BUG_094: fade highlight out after 3 seconds
+  const [lit, setLit] = useState(!!isHighlighted);
+  useEffect(() => {
+    if (!isHighlighted) return;
+    const t = setTimeout(() => setLit(false), 3000);
+    return () => clearTimeout(t);
+  }, [isHighlighted]);
 
   // All non-WFH leave type balances for this employee — shown as chips on every card
   const balanceChips = Object.entries(balanceMap?.[l.user_id] || {})
@@ -411,7 +428,7 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
     return Number(l.current_approver_id) === Number(user?.id);
   })();
   return (
-    <div className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''}`}>
+    <div id={`leave-${l.id}`} className={`card px-4 py-3.5 flex items-start gap-3.5 hover:border-[#3525cd] hover:shadow-card-hover hover:translate-x-0.5 transition-all duration-150 ${sc.border || ''} ${sc.bg || ''} ${lit ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
       <Avatar name={l.name} color={l.avatar_color} size={36} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">

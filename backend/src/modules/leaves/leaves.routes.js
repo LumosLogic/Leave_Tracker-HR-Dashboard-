@@ -149,10 +149,21 @@ router.put('/workflow-config', auth, hasPermission('settings', 'manage'), async 
         return res.status(400).json({ error: `Approver type '${l.role_type}' can only appear once in the workflow` });
       }
       if (UNIQUE_TYPES.includes(l.role_type)) seenTypes.add(l.role_type);
+      // BUG_105: display label is required and must contain at least one letter
+      const label = (l.level_label || '').trim();
+      if (!label) {
+        return res.status(400).json({ error: `Level ${i + 1}: Display label is required` });
+      }
+      if (!/[a-zA-Z]/.test(label)) {
+        return res.status(400).json({ error: `Level ${i + 1}: Display label must contain at least one letter` });
+      }
+      if (label.length > 30) {
+        return res.status(400).json({ error: `Level ${i + 1}: Display label must be 30 characters or fewer` });
+      }
     }
 
-    // Re-number levels sequentially to prevent gaps
-    const normalised = levels.map((l, i) => ({ ...l, level_number: i + 1 }));
+    // Re-number levels sequentially to prevent gaps; trim labels
+    const normalised = levels.map((l, i) => ({ ...l, level_number: i + 1, level_label: (l.level_label || '').trim() }));
 
     const updated = await engine.updateWorkflow(orgId(req), workflow_name, normalised);
     res.json(updated);

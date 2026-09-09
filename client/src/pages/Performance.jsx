@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Target, Star, TrendingUp, Pencil, Trash2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -254,11 +255,16 @@ export default function Performance() {
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [tab,        setTab]        = useState('goals');
   const [addGoal,    setAddGoal]    = useState(false);
   const [editGoal,   setEditGoal]   = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
   const [cycle,      setCycle]      = useState(String(new Date().getFullYear()));
+
+  // BUG_094: highlight goal navigated from a notification
+  const highlightGoalId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
+  const [highlightActive, setHighlightActive] = useState(true);
 
   const { data: _goalsData,   isLoading: gLoad } = useQuery({ queryKey: ['perf-goals',   cycle], queryFn: () => apiGet('/performance/goals',   { cycle }) });
   const { data: _reviewsData, isLoading: rLoad } = useQuery({ queryKey: ['perf-reviews', cycle], queryFn: () => apiGet('/performance/reviews', { cycle }) });
@@ -266,6 +272,22 @@ export default function Performance() {
   const goals     = Array.isArray(_goalsData)   ? _goalsData   : [];
   const reviews   = Array.isArray(_reviewsData) ? _reviewsData : [];
   const employees = Array.isArray(_empData)     ? _empData     : [];
+
+  // BUG_094: switch to goals tab and scroll to highlighted goal after data loads
+  useEffect(() => {
+    if (!highlightGoalId) return;
+    setTab('goals');
+  }, [highlightGoalId]);
+  useEffect(() => {
+    if (!highlightGoalId || gLoad || goals.length === 0) return;
+    const el = document.getElementById(`goal-${highlightGoalId}`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }, [highlightGoalId, goals.length, gLoad]);
+  useEffect(() => {
+    if (!highlightGoalId) return;
+    const t = setTimeout(() => setHighlightActive(false), 3000);
+    return () => clearTimeout(t);
+  }, [highlightGoalId]);
 
   const delGoal = useMutation({
     mutationFn: id => apiDelete(`/performance/goals/${id}`),
@@ -343,7 +365,7 @@ export default function Performance() {
                 {goals.map(g => {
                   const cfg = GOAL_STATUS_CFG[g.status] || GOAL_STATUS_CFG.active;
                   return (
-                    <div key={g.id} className="card p-5 hover:shadow-card-hover transition-all duration-200">
+                    <div key={g.id} id={`goal-${g.id}`} className={`card p-5 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightGoalId === g.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
                       <div className="flex items-start gap-4">
                         {isAdmin && <Avatar name={g.user_name} color={g.user_avatar_color} size={36} />}
                         <div className="flex-1 min-w-0">

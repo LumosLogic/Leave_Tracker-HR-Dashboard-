@@ -540,6 +540,9 @@ export default function MyLeaves() {
   const [dateFrom, setDateFrom]         = useState('');
   const [dateTo, setDateTo]             = useState('');
   const [sortBy, setSortBy]             = useState('newest');
+  // BUG_094: highlight leave navigated from a notification
+  const highlightId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
+  const [highlightActive, setHighlightActive] = useState(true);
 
   // Auto-open apply panel from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
@@ -633,6 +636,18 @@ export default function MyLeaves() {
       return true;
     })
     .sort(sortComparator);
+
+  // BUG_094: scroll to highlighted leave and fade ring after 3 seconds
+  useEffect(() => {
+    if (!highlightId || !leaves.length) return;
+    const el = document.getElementById(`myleave-${highlightId}`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }, [highlightId, leaves.length]);
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightActive(false), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   // Types that appear in the leave list (for filter dropdown)
   const usedTypes = [...new Set(leaves.map(l => isWFHRecord(l) ? 'wfh' : l.leave_type))];
@@ -859,14 +874,15 @@ export default function MyLeaves() {
                 const wdays = wfh ? 1 : (l.leave_time === 'half' ? 0.5 : countWorkingDaysInRange(l.start_date, l.end_date));
                 const showTimeline = l.status !== 'pending';
                 return (
-                  <div key={l.id}
+                  <div key={l.id} id={`myleave-${l.id}`}
                     className={`bg-white rounded-xl border border-[#c7c4d8] p-4 shadow-card hover:shadow-card-hover transition-all
                       ${l.status === 'pending'      ? 'border-l-4 border-l-amber-400'   : ''}
                       ${l.status === 'pending_dept' ? 'border-l-4 border-l-blue-400'    : ''}
                       ${l.status === 'pending_root' ? 'border-l-4 border-l-violet-400'  : ''}
                       ${l.status === 'approved'     ? 'border-l-4 border-l-emerald-400' : ''}
                       ${l.status === 'rejected'     ? 'border-l-4 border-l-rose-400'    : ''}
-                      ${l.status === 'cancelled'    ? 'border-l-4 border-l-slate-300'   : ''}`}
+                      ${l.status === 'cancelled'    ? 'border-l-4 border-l-slate-300'   : ''}
+                      ${highlightActive && highlightId === l.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">

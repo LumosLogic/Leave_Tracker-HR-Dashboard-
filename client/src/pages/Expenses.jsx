@@ -377,6 +377,7 @@ export default function ExpensesPage() {
 
   // BUG_094: read ?highlight=X from URL for notification-driven scrolling
   const highlightExpId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
+  const [highlightActive, setHighlightActive] = useState(true);
 
   // Auto-open submit form from quick actions; auto-apply status filter from dashboard
   useEffect(() => {
@@ -388,12 +389,17 @@ export default function ExpensesPage() {
   const { data: _expData, isLoading } = useQuery({ queryKey: ['expenses', filter], queryFn: () => apiGet('/expenses', filter !== 'all' ? { status: filter } : {}) });
   const expenses = Array.isArray(_expData) ? _expData : [];
 
-  // BUG_094: scroll to highlighted expense after data loads
+  // BUG_094: scroll to highlighted expense and fade out ring after 3 seconds
   useEffect(() => {
     if (!highlightExpId || !expenses.length) return;
     const el = document.getElementById(`exp-${highlightExpId}`);
     if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   }, [highlightExpId, expenses.length]);
+  useEffect(() => {
+    if (!highlightExpId) return;
+    const t = setTimeout(() => setHighlightActive(false), 3000);
+    return () => clearTimeout(t);
+  }, [highlightExpId]);
   // Fetch all claims (unfiltered) to differentiate "no records for filter" vs "no claims at all"
   const { data: _allExpData } = useQuery({ queryKey: ['expenses', 'all'], queryFn: () => apiGet('/expenses') });
   const allExpenses = Array.isArray(_allExpData) ? _allExpData : [];
@@ -473,7 +479,7 @@ export default function ExpensesPage() {
           {expenses.map(e => {
             const cfg = STATUS_CFG[e.status] || STATUS_CFG.pending;
             return (
-              <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightExpId === e.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
+              <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightExpId === e.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
                 <div className="flex items-start gap-4">
                   {isAdmin && <Avatar name={e.user_name || ''} color={e.user_avatar_color} size={38} />}
                   <div className="flex-1 min-w-0">

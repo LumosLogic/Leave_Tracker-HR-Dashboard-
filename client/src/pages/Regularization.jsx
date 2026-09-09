@@ -609,6 +609,9 @@ export default function Regularization() {
   const wrap = '';
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date') || '';
+  // BUG_094: highlight regularization request navigated from a notification
+  const highlightId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
+  const [highlightActive, setHighlightActive] = useState(true);
 
   const [applyOpen,   setApplyOpen]   = useState(false);
   const [reviewReq,   setReviewReq]   = useState(null);
@@ -646,6 +649,23 @@ export default function Regularization() {
 
   const { data: _regData, isLoading } = useQuery({ queryKey: ['regularization'], queryFn: () => apiGet('/regularization') });
   const requests = Array.isArray(_regData) ? _regData : [];
+
+  // BUG_094: scroll to highlighted request; clear filters so the item is visible
+  useEffect(() => {
+    if (!highlightId || !requests.length) return;
+    setFilter('all');
+    setVisibleCount(requests.length);
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`reg-${highlightId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [highlightId, requests.length]);
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightActive(false), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/regularization/${id}`),
@@ -915,7 +935,7 @@ export default function Regularization() {
             const updatedLabel = fmtUpdated(updatedAt);
 
             return (
-              <div key={r.id} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${borderCls}`}>
+              <div key={r.id} id={`reg-${r.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${borderCls} ${highlightActive && highlightId === r.id ? 'ring-2 ring-[#3525cd] ring-offset-2' : ''}`}>
                 <div className="flex items-start gap-4">
                   <Avatar name={r.user_name || 'Employee'} color={r.user_avatar_color} size={38} />
                   <div className="flex-1 min-w-0">
