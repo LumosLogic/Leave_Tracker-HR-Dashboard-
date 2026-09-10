@@ -1398,9 +1398,9 @@ function ReviewModal({ submission, onClose, onReviewed }) {
   const [saving, setSaving]   = useState(false);
   const [preview, setPreview] = useState(false);
 
-  // HR can act on under_review or re_upload_requested
-  // Root Admin can additionally act on hr_approved (to give final approval)
-  const isHrReviewable   = submission.status === 'under_review' || submission.status === 're_upload_requested';
+  // re_upload_requested = waiting for the employee to re-upload; no admin action available yet.
+  // Review is only possible once the employee has re-uploaded (status → under_review).
+  const isHrReviewable   = submission.status === 'under_review';
   const isRootReviewable = isRootAdmin && (isHrReviewable || submission.status === 'hr_approved');
   const isReviewable     = isRootAdmin ? isRootReviewable : isHrReviewable;
 
@@ -1481,11 +1481,11 @@ function ReviewModal({ submission, onClose, onReviewed }) {
                 <p className="text-xs font-bold text-[#151c27]">{submission.file_name || req?.name}</p>
                 <p className="text-[0.65rem] text-[#9ca3af]">{fmtBytes(submission.file_size)}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-shrink-0">
                 {canPreview(submission.file_type) && (
-                  <button onClick={() => setPreview(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors"><Eye size={12} /> Preview</button>
+                  <button onClick={() => setPreview(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe] transition-colors whitespace-nowrap"><Eye size={12} /> Preview</button>
                 )}
-                <a href={submission.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#777587] border border-[#c7c4d8] hover:bg-[#f9f9ff] transition-colors"><Download size={12} /> Download</a>
+                <a href={submission.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#777587] border border-[#c7c4d8] hover:bg-[#f9f9ff] transition-colors whitespace-nowrap"><Download size={12} /> Download</a>
               </div>
             </div>
             {submission.expiry_date && (
@@ -1601,12 +1601,13 @@ function VerificationQueueTab() {
     return list;
   }, [allSubs, statusFilter, search]);
 
-  // HR can review under_review and re_upload_requested
-  // Root Admin can also review hr_approved submissions (for final approval)
+  // Reviewable = employee has submitted and it needs an admin decision.
+  // re_upload_requested means we are WAITING for the employee to re-upload — not yet reviewable.
+  // Once employee re-uploads the status returns to under_review, which is reviewable.
   const canReview = (sub) => {
-    const baseReviewable = sub.status === 'under_review' || sub.status === 're_upload_requested';
-    if (isRootAdmin) return baseReviewable || sub.status === 'hr_approved';
-    return baseReviewable;
+    if (sub.status === 'under_review') return true;
+    if (isRootAdmin && sub.status === 'hr_approved') return true;
+    return false;
   };
 
   return (
@@ -1689,10 +1690,17 @@ function VerificationQueueTab() {
                         : <span>—</span>}
                     </td>
                     <td className="px-4 py-3.5">
-                      <button onClick={() => setReviewSub(sub)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${canReview(sub) ? 'text-white bg-[#3525cd] hover:bg-[#2a1fb0]' : 'text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe]'}`}>
-                        <Eye size={12} /> {canReview(sub) ? 'Review' : 'View'}
-                      </button>
+                      {sub.status === 're_upload_requested' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 cursor-default">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                          Pending Re-upload
+                        </span>
+                      ) : (
+                        <button onClick={() => setReviewSub(sub)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${canReview(sub) ? 'text-white bg-[#3525cd] hover:bg-[#2a1fb0]' : 'text-[#3525cd] bg-[#f0f3ff] hover:bg-[#e7eefe]'}`}>
+                          <Eye size={12} /> {canReview(sub) ? 'Review' : 'View'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
