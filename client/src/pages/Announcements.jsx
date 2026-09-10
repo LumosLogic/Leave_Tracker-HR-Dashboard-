@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Megaphone, MessageSquare, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, Megaphone, MessageSquare, Pin, AlertTriangle, Info, PartyPopper, Bell, Paperclip, Upload, X, FileText, Download, ExternalLink, Copy, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -19,15 +19,16 @@ const TYPE_CFG = {
   celebration: { icon: <PartyPopper size={15} />,   bg: 'bg-emerald-50', text: 'text-emerald-700',border: 'border-emerald-200',strip: '#10B981', label: 'Celebration' },
 };
 
-function AnnouncementModal({ open, onClose, ann, orgId }) {
+function AnnouncementModal({ open, onClose, ann, duplicate, orgId, pinnedCount = 0, maxPinned = 3 }) {
   const toast  = useToast();
   const qc     = useQueryClient();
   const fileRef = useRef(null);
   const isEdit = !!ann;
+  const source  = ann || duplicate; // for pre-filling (edit or duplicate)
   const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState(() => isEdit
-    ? { title: ann.title, content: ann.content, type: ann.type || 'general', priority: ann.priority || 'normal', target_audience: ann.target_audience || 'all', pinned: !!ann.pinned, expires_at: ann.expires_at || '', file_url: ann.file_url || null, file_name: ann.file_name || null, file_type: ann.file_type || null }
-    : { title: '', content: '', type: 'general', priority: 'normal', target_audience: 'all', pinned: false, expires_at: '', file_url: null, file_name: null, file_type: null });
+  const [form, setForm] = useState(() => source
+    ? { title: isEdit ? source.title : `${source.title} (Copy)`, content: source.content, type: source.type || 'general', priority: source.priority || 'normal', target_audience: source.target_audience || 'all', pinned: isEdit ? !!source.pinned : false, expires_at: source.expires_at || '', file_url: source.file_url || null, file_name: source.file_name || null, file_type: source.file_type || null, scheduled_at: source.scheduled_at || '' }
+    : { title: '', content: '', type: 'general', priority: 'normal', target_audience: 'all', pinned: false, expires_at: '', file_url: null, file_name: null, file_type: null, scheduled_at: '' });
 
   const mut = useMutation({
     mutationFn: () => isEdit
@@ -166,14 +167,39 @@ function AnnouncementModal({ open, onClose, ann, orgId }) {
             <input type="date" className="form-control" value={form.expires_at} onChange={e => set('expires_at', e.target.value)} />
           </div>
         </div>
+        {/* EHN_ANN_002: Schedule for later */}
+        <div className="rounded-xl border border-[#e7eefe] p-3">
+          <div className="flex items-center gap-2.5">
+            <input type="checkbox" className="w-4 h-4 accent-[#3525cd]" id="schedule-toggle"
+              checked={!!form.scheduled_at}
+              onChange={e => set('scheduled_at', e.target.checked ? new Date(Date.now() + 86400000).toISOString().slice(0, 16) : '')} />
+            <label htmlFor="schedule-toggle" className="text-sm font-bold text-[#151c27] cursor-pointer">Schedule for later</label>
+          </div>
+          {form.scheduled_at && (
+            <div className="mt-2">
+              <label className="form-label text-xs">Publish at</label>
+              <input type="datetime-local" className="form-control" value={form.scheduled_at}
+                onChange={e => set('scheduled_at', e.target.value)} />
+              <p className="text-xs text-[#777587] mt-1">The announcement will only appear after this date/time.</p>
+            </div>
+          )}
+        </div>
+
+        {/* EHN_ANN_008: Max pinned limit */}
         <label className="flex items-center gap-2.5 cursor-pointer rounded-xl border border-[#e7eefe] p-3 hover:bg-[#f9f9ff] transition-colors">
           <div className={`w-10 h-5 rounded-full transition-colors relative ${form.pinned ? 'bg-[#3525cd]' : 'bg-[#c7c4d8]'}`}
-            onClick={() => set('pinned', !form.pinned)}>
+            onClick={() => {
+              if (!form.pinned && pinnedCount >= maxPinned && !isEdit) {
+                toast(`Maximum ${maxPinned} announcements can be pinned. Please unpin one first.`, 'error');
+                return;
+              }
+              set('pinned', !form.pinned);
+            }}>
             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.pinned ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </div>
           <div>
             <div className="text-sm font-bold text-[#151c27]">Pin this announcement</div>
-            <div className="text-xs text-[#777587]">Pinned posts appear at the top</div>
+            <div className="text-xs text-[#777587]">Pinned posts appear at the top · Max {maxPinned} pinned · Auto-unpins after 30 days</div>
           </div>
         </label>
       </div>
@@ -201,11 +227,13 @@ export default function AnnouncementsPage() {
   const toast = useToast();
   const qc    = useQueryClient();
   const location = useLocation();
-  const [addOpen,      setAddOpen]      = useState(false);
-  const [editAnn,      setEditAnn]      = useState(null);
-  const [confirmDel,   setConfirmDel]   = useState(null);
-  const [filter,       setFilter]       = useState('all');
-  const [previewMedia, setPreviewMedia] = useState(null);
+  const [addOpen,       setAddOpen]       = useState(false);
+  const [editAnn,       setEditAnn]       = useState(null);
+  const [duplicateAnn,  setDuplicateAnn]  = useState(null); // EHN_ANN_007
+  const [confirmDel,    setConfirmDel]    = useState(null);
+  const [filter,        setFilter]        = useState('all');
+  const [previewMedia,  setPreviewMedia]  = useState(null);
+  const MAX_PINNED = 3; // EHN_ANN_008
 
   // BUG_094: read ?highlight=X from URL — scroll to that announcement when data loads
   const highlightId = useMemo(() => {
@@ -291,7 +319,7 @@ export default function AnnouncementsPage() {
                 <Pin size={12} className="text-[#3525cd]" />
                 <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Pinned</span>
               </div>
-              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
+              {pinned.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} onDuplicate={canCreateAnnouncement ? setDuplicateAnn : null} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
               {regular.length > 0 && (
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <span className="text-[0.7rem] font-black uppercase tracking-widest text-[#777587]">Latest</span>
@@ -300,12 +328,14 @@ export default function AnnouncementsPage() {
               )}
             </>
           )}
-          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
+          {regular.map(a => <AnnouncementCard key={a.id} a={a} isAdmin={isAdmin} today={today} onEdit={setEditAnn} onDelete={setConfirmDel} onPreview={setPreviewMedia} onDuplicate={canCreateAnnouncement ? setDuplicateAnn : null} isHighlighted={highlightId != null && String(a.id) === String(highlightId)} />)}
         </div>
       )}
 
-      {addOpen  && <AnnouncementModal open onClose={() => setAddOpen(false)} orgId={activeOrgId} />}
-      {editAnn  && <AnnouncementModal open onClose={() => setEditAnn(null)} ann={editAnn} orgId={activeOrgId} />}
+      {addOpen        && <AnnouncementModal open onClose={() => setAddOpen(false)} orgId={activeOrgId} pinnedCount={pinned.length} maxPinned={MAX_PINNED} />}
+      {editAnn        && <AnnouncementModal open onClose={() => setEditAnn(null)} ann={editAnn} orgId={activeOrgId} pinnedCount={pinned.length} maxPinned={MAX_PINNED} />}
+      {/* EHN_ANN_007: Duplicate — open modal pre-filled with source data but not as "edit" */}
+      {duplicateAnn   && <AnnouncementModal open onClose={() => setDuplicateAnn(null)} orgId={activeOrgId} duplicate={duplicateAnn} pinnedCount={pinned.length} maxPinned={MAX_PINNED} />}
       <ConfirmModal open={!!confirmDel} title="Delete Announcement" message={`Delete "${confirmDel?.name}"?`}
         confirmLabel="Delete" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
 
@@ -329,18 +359,28 @@ export default function AnnouncementsPage() {
   );
 }
 
-function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHighlighted }) {
+function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, onDuplicate, isHighlighted }) {
   const cfg     = TYPE_CFG[a.type] || TYPE_CFG.general;
   const expired = a.expires_at && a.expires_at <= today;
   const isImage = a.file_url && (a.file_type?.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif)$/i.test(a.file_url));
+  const toast   = useToast();
+  const qc      = useQueryClient();
   // BUG_094: fade highlight out after 3 seconds
   const [lit, setLit] = useState(!!isHighlighted);
+  const [markedRead, setMarkedRead] = useState(false);
   useEffect(() => {
     if (!isHighlighted) return;
     setLit(true);
     const t = setTimeout(() => setLit(false), 3000);
     return () => clearTimeout(t);
   }, [isHighlighted]);
+
+  // EHN_ANN_003: Mark as Read mutation
+  const markReadMut = useMutation({
+    mutationFn: () => apiPost(`/announcements/${a.id}/read`, {}),
+    onSuccess: () => { setMarkedRead(true); toast('Marked as read', 'success'); },
+    onError: e => toast(e.message, 'error'),
+  });
 
   return (
     <div id={`ann-${a.id}`} className={`card overflow-hidden hover:shadow-card-hover transition-all duration-200 ${expired ? 'opacity-60' : ''} ${lit ? 'ring-4 ring-[#3525cd] ring-offset-2 bg-[#f0f3ff] border-[#3525cd]/40' : ''}`}>
@@ -360,6 +400,8 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHi
               </div>
               {isAdmin && (
                 <div className="flex gap-1 flex-shrink-0">
+                  {/* EHN_ANN_007: Duplicate button */}
+                  {onDuplicate && <button className="btn btn-ghost btn-icon text-[#777587] hover:text-emerald-600" title="Duplicate announcement" onClick={() => onDuplicate(a)}><Copy size={13} /></button>}
                   <button className="btn btn-ghost btn-icon text-[#777587] hover:text-[#3525cd]" onClick={() => onEdit(a)}><Pencil size={13} /></button>
                   <button className="btn btn-ghost btn-icon text-[#777587] hover:text-rose-500" onClick={() => onDelete({ id: a.id, name: a.title })}><Trash2 size={13} /></button>
                 </div>
@@ -395,7 +437,18 @@ function AnnouncementCard({ a, isAdmin, today, onEdit, onDelete, onPreview, isHi
               <span>·</span>
               <span>{timeAgo(a.created_at)}</span>
               {a.expires_at && <><span>·</span><span>Expires {a.expires_at}</span></>}
-              <span className="ml-auto badge badge-cancelled capitalize">{a.target_audience}</span>
+              {a.scheduled_at && <><span>·</span><span className="text-amber-600 font-semibold">Scheduled: {new Date(a.scheduled_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</span></>}
+              {/* EHN_ANN_003: Mark as Read for employees */}
+              {!isAdmin && !markedRead && (
+                <button onClick={() => markReadMut.mutate()}
+                  className="ml-auto flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
+                  <CheckCircle2 size={12} />Mark as Read
+                </button>
+              )}
+              {!isAdmin && markedRead && (
+                <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-emerald-600"><CheckCircle2 size={12} />Read</span>
+              )}
+              {isAdmin && <span className="ml-auto badge badge-cancelled capitalize">{a.target_audience}</span>}
             </div>
           </div>
         </div>

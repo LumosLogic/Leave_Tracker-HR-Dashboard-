@@ -186,6 +186,66 @@ router.get('/my-approvals', auth, async (req, res) => {
   }
 });
 
+// ─── ROUTE: GET /my-history ─
+router.get('/my-history', auth, async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    let rows = [];
+    try {
+      const { rows: logRows } = await pool.query("SELECT pal.leave_id, pal.action, pal.notes, pal.created_at, l.leave_type, l.start_date, l.end_date, l.status AS final_status, u.name AS employee_name, u.department, u.avatar_color FROM leave_approval_log pal JOIN leaves l ON l.id = pal.leave_id JOIN users u ON u.id = l.user_id WHERE pal.org_id = $1 AND pal.actor_id = $2 AND (pal.action ILIKE '%approved%' OR pal.action ILIKE '%rejected%') AND pal.created_at >= $3 ORDER BY pal.created_at DESC LIMIT 100", [Number(oId), req.user.id, since]);
+      rows = logRows;
+    } catch (e) { console.warn("[my-history] log query failed:", e.message); }
+    try {
+      const { rows: legacyRows } = await pool.query("SELECT l.id AS leave_id, CASE WHEN l.status = 'rejected' THEN 'root_rejected' ELSE 'root_approved' END AS action, l.remarks AS notes, l.approved_at AS created_at, l.leave_type, l.start_date, l.end_date, l.status AS final_status, u.name AS employee_name, u.department, u.avatar_color FROM leaves l JOIN users u ON u.id = l.user_id WHERE l.organization_id = $1 AND l.approved_by = $2 AND l.status IN ('approved', 'rejected') AND l.approved_at >= $3 ORDER BY l.approved_at DESC LIMIT 100", [Number(oId), req.user.id, since]);
+      const seen = new Set(rows.map(r => String(r.leave_id) + '-' + r.action));
+      for (const r of legacyRows) {
+        const key = String(r.leave_id) + '-' + r.action;
+        if (!seen.has(key)) { rows.push(r); seen.add(key); }
+      }
+      rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } catch (e) { console.warn("[my-history] legacy query failed:", e.message); }
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── ENH_LEAVES_004: Leave Comments ──────────────────────────────────────────
+router.get('/:id/comments', auth, async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { data: leave } = await db.from('leaves').select('user_id, organization_id').eq('id', req.params.id).maybeSingle();
+    if (!leave || leave.organization_id !== oId) return res.status(404).json({ error: 'Not found' });
+    if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+    const { data, error } = await db.from('leave_comments').select('*').eq('leave_id', req.params.id).order('created_at', { ascending: true });
+    if (error) {
+      if (error.message.includes('does not exist')) return res.json([]); // table not yet created
+      throw error;
+    }
+    const rows = data || [];
+    if (!rows.length) return res.json([]);
+    const uIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+    const { data: users } = await db.from('users').select('id, name, avatar_color').in('id', uIds);
+    const uMap = {}; (users || []).forEach(u => { uMap[u.id] = u; });
+    res.json(rows.map(r => ({ ...r, commenter_name: uMap[r.user_id]?.name || 'Unknown', commenter_avatar_color: uMap[r.user_id]?.avatar_color || '' })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/comments', auth, async (req, res) => {
+  try {
+    const oId = orgId(req);
+    const { comment } = req.body;
+    if (!comment?.trim()) return res.status(400).json({ error: 'Comment required' });
+    const { data: leave } = await db.from('leaves').select('user_id, organization_id').eq('id', req.params.id).maybeSingle();
+    if (!leave || leave.organization_id !== oId) return res.status(404).json({ error: 'Not found' });
+    if (!isAdminRole(req.user.role) && leave.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+    const { data, error } = await db.from('leave_comments').insert({
+      leave_id: req.params.id, user_id: req.user.id, comment: comment.trim(), organization_id: oId,
+    }).select().single();
+    if (error) throw error;
+    res.json({ ...data, commenter_name: req.user.name || '' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── ROUTE: GET /date-check ───────────────────────────────────────────────────
 router.get('/date-check', auth, async (req, res) => {
   try {

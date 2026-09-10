@@ -52,6 +52,18 @@ function proficiencyColor(level) {
   return map[level] || 'bg-slate-100 text-slate-700';
 }
 
+// ENH_PROFILE_005: Relationship icons
+function relationshipIcon(rel) {
+  if (!rel) return '👤';
+  const r = rel.toLowerCase();
+  if (r === 'spouse') return '❤️';
+  if (r === 'father' || r === 'mother' || r === 'parent') return '👨‍👩‍👧';
+  if (r === 'child' || r === 'son' || r === 'daughter') return '👶';
+  if (r === 'sibling' || r === 'brother' || r === 'sister') return '👫';
+  if (r === 'friend') return '🤝';
+  return '👤';
+}
+
 function relationshipColor(rel) {
   if (!rel) return 'bg-[#f0f3ff] text-[#3525cd]';
   const r = rel.toLowerCase();
@@ -948,7 +960,20 @@ function PersonalSection({ empId }) {
               </div>
             </div>
             <div>
-              <label className="form-label">Permanent Address</label>
+              {/* ENH_PROFILE_003: Same as Current Address checkbox */}
+              <div className="flex items-center justify-between mb-1">
+                <label className="form-label mb-0">Permanent Address</label>
+                <label className="flex items-center gap-1.5 text-xs text-[#777587] cursor-pointer hover:text-[#3525cd] transition-colors">
+                  <input type="checkbox" className="w-3.5 h-3.5 accent-[#3525cd]"
+                    onChange={e => {
+                      if (e.target.checked) {
+                        const currentAddr = [form.current_address_line1, form.current_address_line2, form.current_city, form.current_state, form.current_country, form.current_postal_code].filter(Boolean).join(', ');
+                        setF('permanent_address', currentAddr);
+                      }
+                    }} />
+                  Same as Current Address
+                </label>
+              </div>
               <textarea className="form-control" rows={3} value={form.permanent_address} onChange={e => setF('permanent_address', e.target.value)} placeholder="Permanent / native address" />
             </div>
             <button onClick={() => {
@@ -1068,9 +1093,15 @@ function FamilySection({ empId }) {
             <div key={m.id} className="border border-[#e8e6f4] rounded-xl p-4 bg-[#fafbff]">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${relationshipColor(m.relationship)}`}>
-                    {m.relationship || '—'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${relationshipColor(m.relationship)} flex items-center gap-1`}>
+                      <span>{relationshipIcon(m.relationship)}</span>{m.relationship || '—'}
+                    </span>
+                    {/* ENH_PROFILE_005: Emergency Contact indicator */}
+                    {m.is_emergency && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">🚨 Emergency Contact</span>
+                    )}
+                  </div>
                   <p className="text-sm font-bold text-[#151c27] mt-2 truncate">{m.name}</p>
                   {m.date_of_birth && <p className="text-xs text-[#777587]">DOB: {fmtDate(m.date_of_birth)}</p>}
                   {m.occupation && <p className="text-xs text-[#777587]">{m.occupation}</p>}
@@ -2572,6 +2603,85 @@ function TabContent({ tab, empId }) {
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
 
+// ENH_PROFILE_001: Profile Completion Progress Bar
+function ProfileCompletionBar({ empId }) {
+  const { data } = useQuery({ queryKey: ['profile-overview', empId], queryFn: () => apiGet(`/profile/${empId}/overview`), enabled: !!empId });
+  const { data: per } = useQuery({ queryKey: ['profile-personal', empId], queryFn: () => apiGet(`/profile/${empId}/personal`), enabled: !!empId });
+  const { data: docs = [] } = useQuery({ queryKey: ['employee-documents', empId], queryFn: () => apiGet(`/profile/${empId}/documents`), enabled: !!empId });
+  const { data: contacts = [] } = useQuery({ queryKey: ['emergency-contacts', empId], queryFn: () => apiGet(`/profile/${empId}/emergency-contacts`), enabled: !!empId });
+  if (!data) return null;
+  const sections = [
+    { label: 'Basic Info',       pct: data.name && data.phone ? 100 : 50,                    color: 'bg-[#3525cd]' },
+    { label: 'Personal',         pct: per?.date_of_birth && per?.gender ? 100 : (per?.date_of_birth || per?.gender ? 50 : 0), color: 'bg-emerald-500' },
+    { label: 'Address',          pct: per?.current_address_line1 ? 100 : 0,                   color: 'bg-amber-500' },
+    { label: 'Professional',     pct: data.department && data.position ? 100 : 50,             color: 'bg-purple-500' },
+    { label: 'Documents',        pct: (Array.isArray(docs) ? docs.length : 0) > 0 ? 100 : 0, color: 'bg-sky-500' },
+    { label: 'Emergency Contact',pct: (Array.isArray(contacts) ? contacts.length : 0) > 0 ? 100 : 0, color: 'bg-rose-500' },
+  ];
+  const overall = Math.round(sections.reduce((s, sec) => s + sec.pct, 0) / sections.length);
+  return (
+    <div className="bg-white border border-[#c7c4d8] rounded-xl shadow-sm p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <p className="text-sm font-black text-[#151c27]">Profile Completeness</p>
+          <p className="text-xs text-[#777587]">{overall}% complete · Fill in missing sections to reach 100%</p>
+        </div>
+        <span className={`text-2xl font-black ${overall >= 80 ? 'text-emerald-600' : overall >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>{overall}%</span>
+      </div>
+      <div className="h-2 bg-[#f0f3ff] rounded-full overflow-hidden mb-3">
+        <div className="h-full bg-[#3525cd] rounded-full transition-all" style={{ width: `${overall}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {sections.map(s => (
+          <div key={s.label} className="flex items-center gap-1.5 text-xs">
+            <div className={`w-2 h-2 rounded-full ${s.pct === 100 ? s.color : 'bg-[#e7eefe]'}`} />
+            <span className={s.pct === 100 ? 'text-[#464555] font-semibold' : 'text-[#9ca3af]'}>{s.label}</span>
+            {s.pct < 100 && <span className="text-[0.6rem] text-rose-500 font-bold">Incomplete</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ENH_PROFILE_008: Profile section search
+function ProfileSectionSearch({ onTabChange }) {
+  const [query, setQuery] = useState('');
+  const SECTION_MAP = [
+    { keywords: ['overview','summary','basic'], tab: 'overview', label: 'Overview' },
+    { keywords: ['personal','address','contact','phone','email','date of birth','gender'], tab: 'personal', label: 'Personal & Contact' },
+    { keywords: ['skills','education','work history','experience','qualification'], tab: 'skills', label: 'Skills & Experience' },
+    { keywords: ['documents','id','aadhaar','pan','passport'], tab: 'documents', label: 'Documents' },
+    { keywords: ['emergency','family','nominee','dependent'], tab: 'family', label: 'Family & Emergency' },
+    { keywords: ['bank','salary','account','ifsc'], tab: 'banking', label: 'Banking' },
+    { keywords: ['statutory','pf','esi','tax','tds'], tab: 'statutory', label: 'Statutory' },
+  ];
+  const matched = query.trim()
+    ? SECTION_MAP.filter(s => s.keywords.some(k => k.includes(query.toLowerCase()) || s.label.toLowerCase().includes(query.toLowerCase())))
+    : [];
+  return (
+    <div className="relative mb-3">
+      <div className="relative">
+        <input type="text" className="w-full pl-8 pr-4 py-2 text-sm border border-[#c7c4d8] rounded-xl focus:border-[#3525cd] focus:outline-none bg-white"
+          placeholder="Search profile sections… (e.g. Skills, Documents, Bank)"
+          value={query} onChange={e => setQuery(e.target.value)} />
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af]">🔍</span>
+      </div>
+      {matched.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-[#c7c4d8] rounded-xl shadow-lg overflow-hidden">
+          {matched.map(s => (
+            <button key={s.tab} onClick={() => { onTabChange(s.tab); setQuery(''); }}
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#f0f3ff] text-[#151c27] transition-colors border-b border-[#f0f3ff] last:border-0">
+              <span className="font-semibold">{s.label}</span>
+              <span className="text-xs text-[#777587] ml-2">{s.keywords.slice(0,3).join(', ')}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EmployeePortalProfile() {
   const { user } = useAuth();
   const empId = user?.id;
@@ -2579,6 +2689,10 @@ export default function EmployeePortalProfile() {
 
   return (
     <div className="w-full space-y-5 pb-10">
+      {/* ENH_PROFILE_001: Profile Completion Bar */}
+      <ProfileCompletionBar empId={empId} />
+      {/* ENH_PROFILE_008: Profile Section Search */}
+      <ProfileSectionSearch onTabChange={setActiveTab} />
       {/* Profile Header Card — always visible */}
       <ProfileHeaderCard empId={empId} onTabChange={setActiveTab} />
 

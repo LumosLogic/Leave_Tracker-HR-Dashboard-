@@ -105,6 +105,9 @@ export default function MyProfile() {
 
   // ── Tab state ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'security' | 'privacy'
+  // EHN_PROF_006: Login history pagination
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PER_PAGE = 10;
 
   // ── Profile form state ────────────────────────────────────────────────────
   const [name,     setName]     = useState(user?.name  || '');
@@ -114,11 +117,12 @@ export default function MyProfile() {
   const [uploading, setUploading] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false); // BUG_110
 
-  // Unsaved changes tracking
+  // Unsaved changes tracking (ENH_PROFILE_006)
   const [savedName,     setSavedName]     = useState(user?.name || '');
   const [savedEmail,    setSavedEmail]    = useState(user?.email || '');
   const [savedColor,    setSavedColor]    = useState(user?.avatar_color || '#3525cd');
   const [savedPhotoUrl, setSavedPhotoUrl] = useState(user?.avatar_url || '');
+  const profileIsDirty = name !== savedName || email !== savedEmail || color !== savedColor;
 
   // ── Password state ────────────────────────────────────────────────────────
   const [curPw,    setCurPw]   = useState('');
@@ -171,6 +175,14 @@ export default function MyProfile() {
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const isDirty = name !== savedName || email !== savedEmail || color !== savedColor || photoUrl !== savedPhotoUrl;
+
+  // ENH_PROFILE_006: Warn before leaving page with unsaved changes
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = e => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
   // BUG_036: Name must contain at least one alphabetic character
   const nameValid = name.trim().length >= 2 && name.trim().length <= 60 && /[a-zA-Z]/.test(name);
 
@@ -400,8 +412,10 @@ export default function MyProfile() {
                 <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd] border border-[#c7c4d8]">{roleLabel}</span>
                 {user?.employee_id && <span className="text-[0.65rem] font-semibold px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">ID: {user.employee_id}</span>}
                 {user?.email_verified ? (
-                  <span className="flex items-center gap-1 text-[0.65rem] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-                    <ShieldCheck size={10} /> Verified
+                  /* EHN_PROF_003: Tooltip on Verified badge */
+                  <span title="Your email address has been verified. If you update your email, you may need to re-verify it to confirm ownership."
+                    className="flex items-center gap-1 text-[0.65rem] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold cursor-help">
+                    <ShieldCheck size={10} /> Verified ⓘ
                   </span>
                 ) : (
                   <button onClick={() => sendVerifyCode.mutate()} disabled={sendVerifyCode.isPending}
@@ -674,17 +688,32 @@ export default function MyProfile() {
 
           {/* Section C: Login History */}
           <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-6">
-            <h2 className="text-xs font-black text-[#777587] uppercase tracking-wider flex items-center gap-2 mb-5">
-              <History size={13} className="text-[#3525cd]" /> Login History
-            </h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xs font-black text-[#777587] uppercase tracking-wider flex items-center gap-2">
+                <History size={13} className="text-[#3525cd]" /> Login History
+              </h2>
+              {/* EHN_PROF_005: Sign out of all other sessions */}
+              <button onClick={async () => {
+                try {
+                  await apiPost('/auth/logout-all-devices', {});
+                  toast('Signed out from all other devices', 'success');
+                } catch { toast('Could not sign out other devices. Try again.', 'error'); }
+              }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors">
+                <Shield size={12} />Sign out all other devices
+              </button>
+            </div>
 
             <p className="text-[0.68rem] text-[#777587] mb-3">Showing all login activity — successful logins and failed attempts for your account.</p>
             {loginHistory.length === 0 ? (
               <p className="text-sm text-[#777587] text-center py-4">No login history yet.</p>
             ) : (
+              <>
               <div className="space-y-2">
-                {loginHistory.slice(0, 15).map((entry, idx) => (
-                  <div key={entry.id || idx} className={`flex items-center gap-3 py-2.5 px-3 rounded-xl border ${entry.status === 'failed' ? 'bg-rose-50 border-rose-100' : 'bg-[#f9f9ff] border-[#f0f3ff]'}`}>
+                {/* EHN_PROF_006: Paginated login history */}
+                {loginHistory.slice((historyPage - 1) * HISTORY_PER_PAGE, historyPage * HISTORY_PER_PAGE).map((entry, idx) => {
+                  const globalIdx = (historyPage - 1) * HISTORY_PER_PAGE + idx;
+                  return (
+                  <div key={entry.id || globalIdx} className={`flex items-center gap-3 py-2.5 px-3 rounded-xl border ${entry.status === 'failed' ? 'bg-rose-50 border-rose-100' : 'bg-[#f9f9ff] border-[#f0f3ff]'}`}>
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${entry.status === 'failed' ? 'bg-rose-100' : 'bg-[#f0f3ff]'}`}>
                       {parseDevice(entry.user_agent) === 'Mobile'
                         ? <Smartphone size={14} className={entry.status === 'failed' ? 'text-rose-500' : 'text-[#3525cd]'} />
@@ -695,7 +724,7 @@ export default function MyProfile() {
                         <span className="text-xs font-bold text-[#151c27]">
                           {entry.logged_in_at ? new Date(entry.logged_in_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                         </span>
-                        {idx === 0 && entry.status !== 'failed' && (
+                        {globalIdx === 0 && entry.status !== 'failed' && (
                           <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-[#3525cd] text-white">Current Device</span>
                         )}
                       </div>
@@ -712,8 +741,20 @@ export default function MyProfile() {
                       {entry.status === 'failed' ? 'Failed' : 'Success'}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
+              {/* Pagination for login history */}
+              {loginHistory.length > HISTORY_PER_PAGE && (
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#f0f3ff]">
+                  <span className="text-xs text-[#777587]">Page {historyPage} of {Math.ceil(loginHistory.length / HISTORY_PER_PAGE)}</span>
+                  <div className="flex gap-1.5">
+                    <button disabled={historyPage === 1} onClick={() => setHistoryPage(p => p - 1)} className="px-3 py-1.5 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] disabled:opacity-40">Prev</button>
+                    <button disabled={historyPage >= Math.ceil(loginHistory.length / HISTORY_PER_PAGE)} onClick={() => setHistoryPage(p => p + 1)} className="px-3 py-1.5 rounded-lg border border-[#c7c4d8] text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] disabled:opacity-40">Next</button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

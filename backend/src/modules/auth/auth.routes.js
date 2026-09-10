@@ -441,15 +441,30 @@ router.post('/totp/verify-login', rateLimiter(LIMITS.TOTP_VERIFY), async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Login History ────────────────────────────────────────────────────────────
+// ─── Login History (EHN_PROF_006: increased limit for pagination) ─────────────
 router.get('/login-history', auth, async (req, res) => {
   try {
     const { data } = await db.from('login_history')
       .select('id, ip_address, user_agent, status, logged_in_at')
       .eq('user_id', req.user.id)
       .order('logged_in_at', { ascending: false })
-      .limit(15);
+      .limit(100);
     res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Sign out of all other devices/sessions (EHN_PROF_005) ───────────────────
+router.post('/logout-all-devices', auth, async (req, res) => {
+  try {
+    // Record this action in login history as a logout event
+    await db.from('login_history').insert({
+      user_id: req.user.id, organization_id: req.user.organization_id,
+      ip_address: req.ip, user_agent: req.headers['user-agent'] || '',
+      status: 'logout_all',
+    }).catch(() => {});
+    // Bump the user's token_version or last_password_change to invalidate old JWTs
+    await db.from('users').update({ last_password_changed_at: new Date().toISOString() }).eq('id', req.user.id);
+    res.json({ ok: true, message: 'All other sessions have been invalidated.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

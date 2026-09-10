@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Target, Star, TrendingUp, Pencil, Trash2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { Plus, Target, Star, TrendingUp, Pencil, Trash2, ChevronDown, ChevronUp, CheckCircle2, Search, X, Filter, Paperclip, MessageSquare, Send } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -151,8 +151,16 @@ function GoalModal({ open, onClose, goal, employees, isAdmin, currentCycle }) {
             <input type="range" className={`flex-1 accent-[#3525cd] ${form.status === 'cancelled' ? 'opacity-40 cursor-not-allowed' : ''}`}
               min={0} max={100} step={5} value={form.progress}
               disabled={form.status === 'cancelled'}
-              onChange={e => set('progress', e.target.value)} />
-            <span className="text-sm font-black text-[#3525cd] min-w-[2.5rem] text-right">{form.progress}%</span>
+              onChange={e => set('progress', Number(e.target.value))} />
+            {/* EHN_PR_001: Numeric input that syncs bidirectionally with slider */}
+            <input type="number" min={0} max={100}
+              className={`form-control w-20 text-center font-black text-[#3525cd] text-sm ${form.status === 'cancelled' ? 'opacity-40 cursor-not-allowed' : ''}`}
+              disabled={form.status === 'cancelled'}
+              value={form.progress}
+              onChange={e => {
+                const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                set('progress', v);
+              }} />
           </div>
         </div>
         {isEdit && (
@@ -259,17 +267,86 @@ function ReviewCard({ rv }) {
   );
 }
 
+// ENH_PERF_001/002: Goal comments + attachments panel
+function GoalDetailsPanel({ goalId, isAdmin, newComment, setNewComment, onCommentPost }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const { data: comments = [] } = useQuery({ queryKey: ['goal-comments', goalId], queryFn: () => apiGet(`/performance/goals/${goalId}/comments`).catch(() => []) });
+  const { data: attachments = [] } = useQuery({ queryKey: ['goal-attachments', goalId], queryFn: () => apiGet(`/performance/goals/${goalId}/attachments`).catch(() => []) });
+  const commentMut = useMutation({
+    mutationFn: () => apiPost(`/performance/goals/${goalId}/comments`, { comment: newComment }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['goal-comments', goalId] }); onCommentPost(); toast('Comment added', 'success'); },
+    onError: e => toast(e.message, 'error'),
+  });
+  return (
+    <div className="mt-2 pt-3 border-t border-[#f0f3ff] space-y-3">
+      {/* Comments */}
+      <div>
+        <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wide mb-2 flex items-center gap-1"><MessageSquare size={10} /> Manager Comments</p>
+        {comments.length === 0 ? (
+          <p className="text-xs text-[#9ca3af] italic">No manager comments yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {comments.map(c => (
+              <div key={c.id} className="bg-[#f9f9ff] border border-[#f0f3ff] rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-bold text-[#151c27]">{c.reviewer_name || 'Manager'}</span>
+                  <span className="text-[0.6rem] text-[#9ca3af]">{new Date(c.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                </div>
+                <p className="text-xs text-[#464555]">{c.comment}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {isAdmin && (
+          <div className="flex gap-2 mt-2">
+            <input className="form-control flex-1 py-1.5 text-xs" placeholder="Add a comment…" value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && newComment.trim()) commentMut.mutate(); }} />
+            <button className="btn btn-primary btn-sm" onClick={() => commentMut.mutate()} disabled={!newComment.trim() || commentMut.isPending}>
+              <Send size={12} />
+            </button>
+          </div>
+        )}
+      </div>
+      {/* Attachments */}
+      {attachments.length > 0 && (
+        <div>
+          <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wide mb-2 flex items-center gap-1"><Paperclip size={10} /> Attachments</p>
+          <div className="flex flex-wrap gap-2">
+            {attachments.map(a => (
+              <a key={a.id} href={a.file_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#3525cd] bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg px-2.5 py-1 hover:bg-[#e0e7ff] transition-colors">
+                <Paperclip size={10} />{a.file_name || 'Attachment'}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Performance() {
   const { isAdmin, isEmployee } = useAuth();
   const wrap = '';
   const toast = useToast();
   const qc    = useQueryClient();
   const [searchParams] = useSearchParams();
-  const [tab,        setTab]        = useState('goals');
-  const [addGoal,    setAddGoal]    = useState(false);
-  const [editGoal,   setEditGoal]   = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
-  const [cycle,      setCycle]      = useState(String(new Date().getFullYear()));
+  const [tab,           setTab]          = useState('goals');
+  const [expandedGoalId, setExpandedGoalId] = useState(null); // for comments/attachments
+  const [newComment,    setNewComment]   = useState('');
+  const [addGoal,       setAddGoal]      = useState(false);
+  const [editGoal,      setEditGoal]     = useState(null);
+  const [confirmDel,    setConfirmDel]   = useState(null);
+  const [cycle,         setCycle]        = useState(String(new Date().getFullYear()));
+  // EHN_PR_003: goal filter state
+  const [gFilterTitle,  setGFilterTitle]  = useState('');
+  const [gFilterCat,    setGFilterCat]    = useState('');
+  const [gFilterStatus, setGFilterStatus] = useState('');
+  const [gFilterEmp,    setGFilterEmp]    = useState('');
+  const [gSortBy,       setGSortBy]       = useState('');
+  const todayDate = new Date(); todayDate.setHours(0,0,0,0);
 
   // BUG_094: highlight goal navigated from a notification
   const highlightGoalId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
@@ -309,6 +386,24 @@ export default function Performance() {
     onSuccess: () => { toast('Review started!', 'success'); qc.invalidateQueries({ queryKey: ['perf-reviews'] }); },
     onError: e => toast(e.message, 'error'),
   });
+
+  // EHN_PR_003: filtered + sorted goals
+  const filteredGoals = goals.filter(g => {
+    if (gFilterTitle  && !g.title.toLowerCase().includes(gFilterTitle.toLowerCase())) return false;
+    if (gFilterCat    && g.category !== gFilterCat)    return false;
+    if (gFilterEmp    && String(g.user_id) !== String(gFilterEmp)) return false;
+    if (gFilterStatus === 'overdue') {
+      if (!(g.status === 'active' && g.target_date && new Date(g.target_date) < todayDate)) return false;
+    } else if (gFilterStatus && g.status !== gFilterStatus) return false;
+    return true;
+  }).sort((a, b) => {
+    if (gSortBy === 'target_asc')  return (a.target_date || '').localeCompare(b.target_date || '');
+    if (gSortBy === 'target_desc') return (b.target_date || '').localeCompare(a.target_date || '');
+    if (gSortBy === 'prog_asc')    return (Number(a.progress)||0) - (Number(b.progress)||0);
+    if (gSortBy === 'prog_desc')   return (Number(b.progress)||0) - (Number(a.progress)||0);
+    return 0;
+  });
+  const isGoalFilterActive = !!(gFilterTitle || gFilterCat || gFilterStatus || gFilterEmp || gSortBy);
 
   // BUG_165: exclude cancelled goals/reviews from all KPI calculations
   const activeGoals    = goals.filter(g => g.status !== 'cancelled');
@@ -370,9 +465,53 @@ export default function Performance() {
         gLoad ? <div className="loading"><div className="spinner" />Loading…</div>
           : goals.length === 0
             ? <div className="empty-state"><Target size={48} className="mx-auto mb-3 text-[#c7c4d8]" /><p className="font-semibold text-[#464555] mb-1">No goals for {cycle}</p><p className="text-sm">Set goals to track your progress and achievements</p><button className="btn btn-primary mt-4" onClick={() => setAddGoal(true)}><Plus size={14} />Add First Goal</button></div>
-            : <div className="flex flex-col gap-3">
-                {goals.map(g => {
+            : <>
+                {/* EHN_PR_003: Filter bar */}
+                <div className="bg-white border border-[#c7c4d8] rounded-xl p-3 mb-3 flex flex-wrap gap-2 items-center">
+                  <Filter size={13} className="text-[#777587]" />
+                  <div className="relative flex-1 min-w-[150px]">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777587]" />
+                    <input className="form-control pl-7 py-1.5 text-xs" placeholder="Search title…"
+                      value={gFilterTitle} onChange={e => setGFilterTitle(e.target.value)} />
+                  </div>
+                  <select className="form-control py-1.5 text-xs w-auto" value={gFilterCat} onChange={e => setGFilterCat(e.target.value)}>
+                    <option value="">All Categories</option>
+                    <option value="individual">Individual</option>
+                    <option value="team">Team</option>
+                    <option value="department">Department</option>
+                  </select>
+                  <select className="form-control py-1.5 text-xs w-auto" value={gFilterStatus} onChange={e => setGFilterStatus(e.target.value)}>
+                    <option value="">All Statuses</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
+                  {isAdmin && employees.length > 0 && (
+                    <select className="form-control py-1.5 text-xs w-auto" value={gFilterEmp} onChange={e => setGFilterEmp(e.target.value)}>
+                      <option value="">All Employees</option>
+                      {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  )}
+                  <select className="form-control py-1.5 text-xs w-auto" value={gSortBy} onChange={e => setGSortBy(e.target.value)}>
+                    <option value="">Default Sort</option>
+                    <option value="target_asc">Target Date ↑</option>
+                    <option value="target_desc">Target Date ↓</option>
+                    <option value="prog_asc">Progress ↑</option>
+                    <option value="prog_desc">Progress ↓</option>
+                  </select>
+                  {isGoalFilterActive && (
+                    <button className="flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-1.5 rounded-lg border border-rose-200 bg-rose-50"
+                      onClick={() => { setGFilterTitle(''); setGFilterCat(''); setGFilterStatus(''); setGFilterEmp(''); setGSortBy(''); }}>
+                      <X size={11} />Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3">
+                {filteredGoals.map(g => {
                   const cfg = GOAL_STATUS_CFG[g.status] || GOAL_STATUS_CFG.active;
+                  // EHN_PR_002: overdue detection
+                  const isOverdue = g.status === 'active' && g.target_date && new Date(g.target_date) < todayDate;
                   return (
                     <div key={g.id} id={`goal-${g.id}`} className={`card p-5 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightGoalId != null && String(g.id) === String(highlightGoalId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}>
                       <div className="flex items-start gap-4">
@@ -384,10 +523,12 @@ export default function Performance() {
                                 {isAdmin && <span className="text-xs text-[#777587] flex-shrink-0">{g.user_name}</span>}
                                 <span className="font-black text-[#151c27] break-all line-clamp-2 min-w-0">{g.title}</span>
                                 <span className={`badge ${cfg.cls} flex-shrink-0`}>{cfg.label}</span>
+                                {/* EHN_PR_002: Overdue badge */}
+                                {isOverdue && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200 flex-shrink-0">Overdue</span>}
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).cls}`}>{(CATEGORY_CFG[g.category] || CATEGORY_CFG.individual).label}</span>
                               </div>
                               {g.description && <p className="text-xs text-[#777587] mt-1 break-all line-clamp-3">{g.description}</p>}
-                              {g.target_date && <p className="text-xs text-[#777587] mt-0.5">Target: <span className="font-semibold">{g.target_date}</span></p>}
+                              {g.target_date && <p className={`text-xs mt-0.5 ${isOverdue ? 'text-orange-600 font-semibold' : 'text-[#777587]'}`}>Target: <span className="font-semibold">{g.target_date}</span></p>}
                             </div>
                             <div className="flex gap-1 flex-shrink-0">
                               {/* Completed goals are locked for employees — admins can still edit */}
@@ -404,12 +545,22 @@ export default function Performance() {
                             <span className="text-xs font-black min-w-[2.5rem] text-right" style={{ color: g.status === 'completed' ? '#059669' : '#3525cd' }}>{Math.min(100, Math.max(0, Number(g.progress) || 0))}%</span>
                             {g.status === 'completed' && <CheckCircle2 size={14} className="text-emerald-500" />}
                           </div>
+                          {/* ENH_PERF_001/002: Expand for comments & attachments */}
+                          <button onClick={() => setExpandedGoalId(expandedGoalId === g.id ? null : g.id)}
+                            className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#777587] hover:text-[#3525cd] transition-colors">
+                            {expandedGoalId === g.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            Comments & Attachments
+                          </button>
+                          {expandedGoalId === g.id && (
+                            <GoalDetailsPanel goalId={g.id} isAdmin={isAdmin} newComment={newComment} setNewComment={setNewComment} onCommentPost={() => setNewComment('')} />
+                          )}
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
+              </>
       )}
 
       {/* Reviews */}

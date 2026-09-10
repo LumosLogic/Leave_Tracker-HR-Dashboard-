@@ -80,4 +80,19 @@ router.put('/:id', auth, hasPermission('settings', 'manage'), async (req, res) =
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── EHN_LP_001: Leave Policy Audit Log ──────────────────────────────────────
+router.get('/:type/history', auth, async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+    const { data, error } = await db.from('leave_policy_audit_log')
+      .select('*').eq('organization_id', oId).eq('leave_type', req.params.type)
+      .order('created_at', { ascending: false }).limit(50);
+    if (error) {
+      if (error.message.includes('does not exist')) return res.json([]);
+      throw error;
+    }
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

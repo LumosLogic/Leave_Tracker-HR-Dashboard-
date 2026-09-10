@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock, Home, Umbrella, UserCheck, XCircle, Timer, Play, Pause, Square, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Home, Umbrella, UserCheck, XCircle, Timer, Play, Pause, Square, ChevronDown, ChevronUp, Download, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -25,6 +25,9 @@ export default function Calendar() {
   const [dayModal, setDayModal] = useState(null);
   const [dayModalInitialTab, setDayModalInitialTab] = useState(null);
   const [editModal, setEditModal] = useState(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false); // ENH_CALENDER_003
+  const [weekSearch,      setWeekSearch]      = useState('');    // ENH_CALENDER_006
+  const monthPickerRef = useRef(null);
 
   function openDayModal(dateStr, initialTab = null) {
     setDayModal(dateStr);
@@ -166,13 +169,34 @@ export default function Calendar() {
     <div>
       {/* Toolbar */}
       <div className="card px-5 py-3.5 mb-5 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative" ref={monthPickerRef}>
           <button className="btn btn-outline btn-icon p-1.5" onClick={navPrev}><ChevronLeft size={18} /></button>
-          <span className="text-base font-black min-w-[200px] text-center tracking-tight"
-            style={{ background: 'linear-gradient(135deg, #151c27 30%, #3525cd)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+          {/* ENH_CALENDER_003: Clickable title opens month-year picker */}
+          <button className="text-base font-black min-w-[200px] text-center tracking-tight hover:opacity-80 transition-opacity cursor-pointer px-2 py-1 rounded-lg hover:bg-[#f0f3ff]"
+            style={{ background: 'linear-gradient(135deg, #151c27 30%, #3525cd)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}
+            onClick={() => setMonthPickerOpen(o => !o)}>
             {titleText}
-          </span>
+          </button>
           <button className="btn btn-outline btn-icon p-1.5" onClick={navNext}><ChevronRight size={18} /></button>
+          {/* Month-year picker dropdown */}
+          {monthPickerOpen && (
+            <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-[#c7c4d8] rounded-xl shadow-xl p-4 min-w-[280px]">
+              <div className="flex items-center gap-2 mb-3">
+                <input type="number" className="form-control py-1 text-sm w-24 text-center font-bold"
+                  value={date.getFullYear()} min={2020} max={2030}
+                  onChange={e => { const y = Number(e.target.value); if (y >= 2020 && y <= 2030) setDate(new Date(y, date.getMonth(), 1)); }} />
+                <span className="text-xs text-[#777587]">Year</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {MONTHS.map((m, i) => (
+                  <button key={m} onClick={() => { setDate(new Date(date.getFullYear(), i, 1)); setMonthPickerOpen(false); }}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-colors ${date.getMonth() === i ? 'bg-[#3525cd] text-white' : 'text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd]'}`}>
+                    {m.substring(0, 3)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <button className="btn btn-outline btn-sm" onClick={() => { setDate(new Date()); openDayModal(todayStr()); }}>Today</button>
         <div className="flex bg-[#f0f3ff] border border-[#c7c4d8] rounded-xl p-1 gap-1">
@@ -183,6 +207,34 @@ export default function Calendar() {
             </button>
           ))}
         </div>
+        {/* ENH_CALENDER_006: Search for week view */}
+        {mode === 'week' && isAdmin && (
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777587]" />
+            <input className="form-control pl-7 py-1.5 text-xs w-36" placeholder="Filter employee…"
+              value={weekSearch} onChange={e => setWeekSearch(e.target.value)} />
+          </div>
+        )}
+        {/* ENH_CALENDER_005: Export attendance */}
+        {mode === 'month' && (
+          <button className="btn btn-outline btn-sm" title="Export month attendance"
+            onClick={() => {
+              const rows = [['Date','Employee','Status','Check In','Check Out']];
+              Object.entries(grouped).forEach(([d, recs]) => {
+                recs.forEach(r => {
+                  rows.push([d, r.name || r.user_name || '', r.status || '', r.check_in || '', r.check_out || '']);
+                });
+              });
+              const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `attendance_${year}_${String(month).padStart(2,'0')}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}>
+            <Download size={13} />Export
+          </button>
+        )}
         {/* BUG_071/073: Legend with matching colors — Half Day uses cyan (#06B6D4) to match badge */}
         <div className="hidden lg:flex items-center gap-3.5 ml-auto flex-wrap">
           {[['#10B981','Present'],['#EF4444','Absent'],['#F59E0B','On Leave'],['#06B6D4','Half Day'],['#3525cd','WFH']].map(([c, l]) => (
@@ -196,7 +248,7 @@ export default function Calendar() {
       {/* Calendar Body */}
       {mode === 'month'
         ? <MonthView year={year} month={month - 1} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} holidayMap={holidayMap} workingDayNumbers={workingDayNumbers} />
-        : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} getLeaveForDate={getLeaveForDate} />
+        : <WeekView weekDates={weekDates} grouped={grouped} employees={employees} user={user} isAdmin={isAdmin} onDayClick={openDayModal} getLeaveForDate={getLeaveForDate} searchQuery={weekSearch} />
       }
 
       {/* Day Modal */}
@@ -349,7 +401,7 @@ function EmpCellContent({ records, userId }) {
 // BUG_073: half_day uses cyan (#06B6D4) to match the legend and badge colors
 const STATUS_COLORS_MAP = { present: '#10B981', early_leave: '#F97316', absent: '#EF4444', on_leave: '#F59E0B', half_day: '#06B6D4', wfh: '#3525cd' };
 
-function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, getLeaveForDate }) {
+function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, getLeaveForDate, searchQuery = '' }) {
   const today = todayStr();
   return (
     <div className="grid grid-cols-7 gap-2.5">
@@ -357,7 +409,10 @@ function WeekView({ weekDates, grouped, employees, user, isAdmin, onDayClick, ge
         const ds      = toISODate(d);
         const isToday = ds === today;
         const records  = grouped[ds] || [];
-        const displayRecords = isAdmin ? records.slice(0, 8) : records.filter(r => r.user_id === user?.id);
+        // ENH_CALENDER_006: filter by search query in week view
+        const displayRecords = isAdmin
+          ? records.filter(r => !searchQuery || (r.name || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 8)
+          : records.filter(r => r.user_id === user?.id);
 
         return (
           <div key={ds} className={cn('card overflow-hidden hover:translate-y-[-4px] hover:shadow-card-hover transition-all duration-200', isToday && 'ring-2 ring-[#3525cd]/30')}>

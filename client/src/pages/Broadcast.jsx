@@ -77,6 +77,12 @@ export default function Broadcast() {
 
   // BUG_138: confirmation dialog state
   const [confirm, setConfirm] = useState({ open: false, type: null });
+  // EHN_BROAD_009: Draft storage (localStorage)
+  const NOTIF_DRAFT_KEY = 'broadcast_notif_draft';
+  const EMAIL_DRAFT_KEY = 'broadcast_email_draft';
+  // EHN_BROAD_010: Recipient count preview
+  const nRecipientCount = nTarget ? 1 : employees.length;
+  const eRecipientCount = eTarget ? 1 : employees.length;
 
   function validateNotif() {
     const errs = {};
@@ -217,6 +223,11 @@ export default function Broadcast() {
               </label>
               <input className="form-control" placeholder="/portal/home" value={nUrl} onChange={e => setNUrl(e.target.value)} />
             </div>
+            {/* EHN_BROAD_010: Recipient count preview */}
+            <div className="text-xs text-[#777587] bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg px-3 py-2">
+              Recipients: <strong className="text-[#3525cd]">{nRecipientCount} employee{nRecipientCount !== 1 ? 's' : ''}</strong>
+              {nTarget && <span> — {employees.find(e => String(e.id) === nTarget)?.name}</span>}
+            </div>
             <div className="flex items-center gap-3 pt-1 border-t border-[#f0f3ff]">
               <button
                 onClick={handleSendNotificationClick}
@@ -226,11 +237,21 @@ export default function Broadcast() {
                 {nSending ? <span className="spinner w-4 h-4" /> : <Send size={14} />}
                 {nTarget ? 'Send to Employee' : 'Broadcast to All'}
               </button>
-              <span className="text-xs text-[#777587]">
-                {nTarget
-                  ? `→ ${employees.find(e => String(e.id) === nTarget)?.name || 'selected'}`
-                  : `→ ${employees.length} employee${employees.length !== 1 ? 's' : ''}`}
-              </span>
+              {/* EHN_BROAD_009: Save as Draft for push notification */}
+              <button onClick={() => {
+                localStorage.setItem(NOTIF_DRAFT_KEY, JSON.stringify({ nTitle, nBody, nUrl, nTarget }));
+                toast('Draft saved!', 'success');
+              }} className="btn btn-outline btn-sm">Save Draft</button>
+              {localStorage.getItem(NOTIF_DRAFT_KEY) && (
+                <button onClick={() => {
+                  const draft = JSON.parse(localStorage.getItem(NOTIF_DRAFT_KEY) || '{}');
+                  if (draft.nTitle) setNTitle(draft.nTitle);
+                  if (draft.nBody) setNBody(draft.nBody);
+                  if (draft.nUrl) setNUrl(draft.nUrl);
+                  if (draft.nTarget) setNTarget(draft.nTarget);
+                  toast('Draft loaded!', 'success');
+                }} className="text-xs text-[#3525cd] font-semibold hover:underline">Load Draft</button>
+              )}
             </div>
           </div>
         </Section>
@@ -272,6 +293,11 @@ export default function Broadcast() {
               />
               <FieldError msg={eErrors.message} />
             </div>
+            {/* EHN_BROAD_010: Recipient count preview for email */}
+            <div className="text-xs text-[#777587] bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              Recipients: <strong className="text-emerald-700">{eRecipientCount} employee{eRecipientCount !== 1 ? 's' : ''}</strong>
+              {eTarget && <span> — {employees.find(e => String(e.id) === eTarget)?.name}</span>}
+            </div>
             <div className="flex items-center gap-3 pt-1 border-t border-[#f0f3ff]">
               <button
                 onClick={handleSendEmailClick}
@@ -281,11 +307,20 @@ export default function Broadcast() {
                 {eSending ? <span className="spinner w-4 h-4" /> : <Send size={14} />}
                 {eTarget ? 'Send Email' : 'Email All'}
               </button>
-              <span className="text-xs text-[#777587]">
-                {eTarget
-                  ? `→ ${employees.find(e => String(e.id) === eTarget)?.name || 'selected'}`
-                  : `→ ${employees.length} recipient${employees.length !== 1 ? 's' : ''}`}
-              </span>
+              {/* EHN_BROAD_009: Save as Draft for email */}
+              <button onClick={() => {
+                localStorage.setItem(EMAIL_DRAFT_KEY, JSON.stringify({ eSubject, eMessage, eTarget }));
+                toast('Draft saved!', 'success');
+              }} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold border border-[#c7c4d8] text-[#464555] hover:bg-[#f0f3ff]">Save Draft</button>
+              {localStorage.getItem(EMAIL_DRAFT_KEY) && (
+                <button onClick={() => {
+                  const draft = JSON.parse(localStorage.getItem(EMAIL_DRAFT_KEY) || '{}');
+                  if (draft.eSubject) setESubject(draft.eSubject);
+                  if (draft.eMessage) setEMessage(draft.eMessage);
+                  if (draft.eTarget) setETarget(draft.eTarget);
+                  toast('Draft loaded!', 'success');
+                }} className="text-xs text-emerald-600 font-semibold hover:underline">Load Draft</button>
+              )}
             </div>
           </div>
         </Section>

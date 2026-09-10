@@ -87,6 +87,16 @@ export default function PayrollDashboard() {
   const dept    = data?.deptBreakdown || [];
   const trend   = data?.trend        || [];
 
+  // EHN_PAYROLL_005: Compute month-on-month delta for KPI display
+  const momDelta = (() => {
+    if (trend.length < 2) return null;
+    const latest = trend[trend.length - 1];
+    const prev   = trend[trend.length - 2];
+    if (!prev?.total_gross || Number(prev.total_gross) === 0) return null;
+    const pct = Math.round(((Number(latest.total_gross) - Number(prev.total_gross)) / Number(prev.total_gross)) * 100);
+    return pct;
+  })();
+
   // ── Monthly trend chart ───────────────────────────────────────────────────
   const trendChart = {
     labels: trend.map(r => `${MONTHS[r.month - 1].slice(0,3)} ${r.year}`),
@@ -174,7 +184,7 @@ export default function PayrollDashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={IndianRupee}  label="Total Gross Payroll" value={fmt(kpi.totalPayroll)} />
+        <KpiCard icon={IndianRupee}  label="Total Gross Payroll" value={fmt(kpi.totalPayroll)} trend={momDelta} />
         <KpiCard icon={CheckCircle2} label="Net Salary Disbursed" value={fmt(kpi.totalNet)}    accent="bg-emerald-50" />
         <KpiCard icon={Users}        label="Employees Paid"       value={kpi.employeesPaid || 0} />
         <KpiCard icon={Clock}        label="Pending Runs"         value={kpi.pendingRuns || 0}  accent="bg-amber-50" />

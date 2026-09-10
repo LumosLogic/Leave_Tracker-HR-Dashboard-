@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, Trash2, Search, Download, SortDesc, X, CalendarRange, Send, Eye, User } from 'lucide-react';
+import { Plus, ClipboardList, CheckCircle2, XCircle, Clock, ChevronRight, ChevronLeft, Trash2, Search, Download, SortDesc, X, CalendarRange, Send, Eye, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -71,9 +71,17 @@ function ReviewModal({ open, onClose, request }) {
           </div>
           <div className="grid grid-cols-2 gap-2 pt-2">
             <div className="text-xs"><span className="text-[#777587]">Date</span><p className="font-semibold text-[#151c27]">{fmtDate(request.date)}</p></div>
-            {request.requested_check_in  && <div className="text-xs"><span className="text-[#777587]">Requested In</span><p className="font-semibold text-[#151c27]">{request.requested_check_in}</p></div>}
-            {request.requested_check_out && <div className="text-xs"><span className="text-[#777587]">Requested Out</span><p className="font-semibold text-[#151c27]">{request.requested_check_out}</p></div>}
+            {request.requested_check_in  && <div className="text-xs"><span className="text-[#777587]">Requested In</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.requested_check_in)}</p></div>}
+            {request.requested_check_out && <div className="text-xs"><span className="text-[#777587]">Requested Out</span><p className="font-semibold text-[#151c27]">{fmtTime12(request.requested_check_out)}</p></div>}
           </div>
+          {/* EHN_REG_001: Show original system-recorded attendance */}
+          {(request.actual_check_in || request.actual_check_out) && (
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#f0f3ff]">
+              <div className="col-span-2 text-[0.65rem] font-bold text-[#777587] uppercase tracking-wide">System Recorded (Original)</div>
+              {request.actual_check_in  && <div className="text-xs"><span className="text-[#777587]">Original In</span><p className="font-semibold text-orange-700">{fmtTime12(request.actual_check_in)}</p></div>}
+              {request.actual_check_out && <div className="text-xs"><span className="text-[#777587]">Original Out</span><p className="font-semibold text-orange-700">{fmtTime12(request.actual_check_out)}</p></div>}
+            </div>
+          )}
           <div className="text-xs pt-1 border-t border-[#f0f3ff]">
             <span className="text-[#777587]">Reason</span>
             <p className="text-[#151c27] mt-0.5 italic">"{request.reason}"</p>
@@ -142,10 +150,26 @@ function ApplyModal({ open, onClose, initialDate }) {
   const qc    = useQueryClient();
   const [form, setForm] = useState({ date: initialDate || '', requested_check_in: '', requested_check_out: '', reason: '' });
   const [timeErr, setTimeErr] = useState('');
+  // EHN_REGU_002: attendance record for selected date
+  const [attRecord,    setAttRecord]    = useState(null);
+  const [attLoading,   setAttLoading]   = useState(false);
+  // EHN_REGU_001: pending dates set
+  const [pendingDates, setPendingDates] = useState(new Set());
 
   useEffect(() => {
     if (open && initialDate) setForm(f => ({ ...f, date: initialDate }));
   }, [open, initialDate]);
+
+  // Fetch pending dates for this employee when modal opens
+  useEffect(() => {
+    if (!open) return;
+    apiGet('/regularization').then(data => {
+      if (Array.isArray(data)) {
+        const pending = new Set(data.filter(r => r.status === 'pending').map(r => r.date));
+        setPendingDates(pending);
+      }
+    }).catch(() => {});
+  }, [open]);
   const set = (k, v) => {
     setForm(f => {
       const updated = { ...f, [k]: v };
@@ -189,8 +213,40 @@ function ApplyModal({ open, onClose, initialDate }) {
       <div className="space-y-4">
         <div>
           <label className="form-label">Date *</label>
-          <input type="date" className="form-control" value={form.date} onChange={e => set('date', e.target.value)} max={new Date().toISOString().split('T')[0]} />
+          <input type="date" className={`form-control ${form.date && pendingDates.has(form.date) ? 'border-amber-400' : ''}`}
+            value={form.date}
+            onChange={e => {
+              const val = e.target.value;
+              set('date', val);
+              setAttRecord(null);
+              // EHN_REGU_002: fetch attendance for this date
+              if (val) {
+                setAttLoading(true);
+                apiGet('/attendance/my-record', { date: val }).then(d => { setAttRecord(d); }).catch(() => setAttRecord(null)).finally(() => setAttLoading(false));
+              }
+            }}
+            max={new Date().toISOString().split('T')[0]} />
+          {/* EHN_REGU_001: warn if date already has a pending request */}
+          {form.date && pendingDates.has(form.date) && (
+            <p className="text-xs text-amber-600 mt-1 flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center text-[0.6rem] shrink-0">!</span>
+              A pending request already exists for this date.
+            </p>
+          )}
         </div>
+        {/* EHN_REGU_002: Show attendance record for selected date */}
+        {attLoading && <p className="text-xs text-[#777587]">Loading attendance…</p>}
+        {attRecord && !attLoading && (
+          <div className="rounded-xl bg-[#f0f3ff] border border-[#c7c4d8] p-3 text-xs space-y-1.5">
+            <p className="font-bold text-[#3525cd] text-[0.65rem] uppercase tracking-wide">System Recorded Attendance</p>
+            <div className="grid grid-cols-2 gap-2">
+              {attRecord.check_in  && <div><span className="text-[#777587]">Check In</span><p className="font-semibold text-[#151c27]">{fmtTime12(attRecord.check_in)}</p></div>}
+              {attRecord.check_out && <div><span className="text-[#777587]">Check Out</span><p className="font-semibold text-[#151c27]">{fmtTime12(attRecord.check_out)}</p></div>}
+              {attRecord.work_hours && <div><span className="text-[#777587]">Working Hours</span><p className="font-semibold text-[#151c27]">{Number(attRecord.work_hours).toFixed(1)}h</p></div>}
+              {attRecord.status    && <div><span className="text-[#777587]">Status</span><p className="font-semibold text-[#151c27] capitalize">{attRecord.status.replace(/_/g,' ')}</p></div>}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="form-label">Correct Check-in</label>
@@ -560,6 +616,7 @@ function MultiDayApplyModal({ open, onClose, initialDate }) {
   );
 }
 
+const PAGE_SIZE_OPTIONS = [10, 15, 25, 50];
 const PAGE_SIZE = 15;
 
 function fmtUpdated(dateStr) {
@@ -626,6 +683,9 @@ export default function Regularization() {
   const [dateTo,       setDateTo]       = useState('');
   const [sortBy,       setSortBy]       = useState('newest');
   const [employeeId,   setEmployeeId]   = useState('');
+  const [page,         setPage]         = useState(1);
+  const [rowsPerPage,  setRowsPerPage]  = useState(PAGE_SIZE);
+  // Keep visibleCount for backward compat — used in highlight scroll
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const toast = useToast();
   const qc    = useQueryClient();
@@ -740,16 +800,19 @@ export default function Regularization() {
     setDateTo('');
     setSortBy('newest');
     setEmployeeId('');
+    setPage(1);
     setVisibleCount(PAGE_SIZE);
   };
 
-  // Reset visible count when filters change
+  // Reset page when filters change
   useEffect(() => {
+    setPage(1);
     setVisibleCount(PAGE_SIZE);
   }, [filter, searchQuery, dateFrom, dateTo, sortBy, employeeId]);
 
-  const visibleRows = filtered.slice(0, visibleCount);
-  const remaining   = filtered.length - visibleCount;
+  const totalPages  = Math.ceil(filtered.length / rowsPerPage);
+  const visibleRows = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const remaining   = 0; // legacy — pagination replaces load-more
 
   return (
     <div className={wrap}>
@@ -1035,14 +1098,38 @@ export default function Regularization() {
             );
           })}
 
-          {/* Load More */}
-          {remaining > 0 && (
-            <button
-              className="mt-2 w-full py-2.5 rounded-xl border border-[#c7c4d8] bg-white text-sm font-semibold text-[#464555] hover:border-[#3525cd]/50 hover:text-[#3525cd] hover:bg-[#f5f4ff] transition-all"
-              onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-            >
-              Load More (+{remaining} remaining)
-            </button>
+          {/* EHN_REG_004: Pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#f0f3ff]">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#777587]">Rows per page</span>
+                <select className="form-control py-1 text-xs w-auto"
+                  value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }}>
+                  {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-[#777587]">Page {page} of {totalPages}</span>
+                <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
+                  className="p-1.5 rounded-lg border border-[#c7c4d8] text-[#777587] hover:text-[#3525cd] hover:border-[#3525cd] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <ChevronLeft size={14} />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                  const p = start + i;
+                  return p <= totalPages ? (
+                    <button key={p} onClick={() => setPage(p)}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors ${p === page ? 'bg-[#3525cd] text-white' : 'border border-[#c7c4d8] text-[#464555] hover:border-[#3525cd] hover:text-[#3525cd]'}`}>
+                      {p}
+                    </button>
+                  ) : null;
+                })}
+                <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
+                  className="p-1.5 rounded-lg border border-[#c7c4d8] text-[#777587] hover:text-[#3525cd] hover:border-[#3525cd] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

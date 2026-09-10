@@ -289,8 +289,17 @@ export default function RootDashboard() {
     : (trendSlice[trendSlice.length - 1]?.pct ?? 0);
 
   // ── Today's Workforce chart data ─────────────────────────────────────────────
+  // EHN_DASH_001: Compute absent count if backend doesn't include it
+  const accountedFor = (attendanceBreakdown.present || 0) + (attendanceBreakdown.wfh || 0) +
+    (attendanceBreakdown.on_leave || 0) + (attendanceBreakdown.half_day || 0) +
+    (attendanceBreakdown.holiday || 0) + (attendanceBreakdown.early_leave || 0);
+  const computedAbsent = Math.max(0, totalEmployees - accountedFor);
+  const enrichedBreakdown = {
+    ...attendanceBreakdown,
+    absent: (attendanceBreakdown.absent || 0) > 0 ? (attendanceBreakdown.absent || 0) : computedAbsent,
+  };
   const workforceEntries = Object.entries(WORKFORCE_STATUS)
-    .map(([key, cfg]) => ({ ...cfg, key, value: attendanceBreakdown[key] || 0 }))
+    .map(([key, cfg]) => ({ ...cfg, key, value: enrichedBreakdown[key] || 0 }))
     .filter(e => e.value > 0);
   const totalWorkforce = workforceEntries.reduce((s, e) => s + e.value, 0);
 

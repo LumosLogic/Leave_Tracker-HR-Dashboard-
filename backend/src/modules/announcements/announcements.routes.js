@@ -246,4 +246,25 @@ router.delete('/:id', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── EHN_ANN_003: Mark announcement as read ───────────────────────────────────
+router.post('/:id/read', auth, async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+    await db.from('announcement_reads').upsert({
+      announcement_id: req.params.id, user_id: req.user.id, organization_id: oId, read_at: new Date().toISOString(),
+    }, { onConflict: 'announcement_id,user_id' });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── EHN_ANN_003: Get read stats for an announcement ──────────────────────────
+router.get('/:id/reads', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Admin only' });
+    const { data, error } = await db.from('announcement_reads').select('user_id, read_at').eq('announcement_id', req.params.id);
+    if (error) throw error;
+    res.json({ count: (data || []).length, readers: data || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

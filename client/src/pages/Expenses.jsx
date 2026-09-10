@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight, AlertTriangle, Download, X as XIcon, FileText } from 'lucide-react';
+import { Plus, Receipt, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Trash2, ChevronRight, AlertTriangle, Download, X as XIcon, FileText, Search, Filter, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -20,7 +20,8 @@ const STATUS_CFG = {
   rejected:         { cls: 'badge-rejected', icon: <XCircle size={11} />,      label: 'Rejected'      },
 };
 
-const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+// ENH_EXP_004: Consistent currency format with 2 decimal places
+const fmt = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function ExpenseModal({ open, onClose, expense, allExpenses = [] }) {
   const toast  = useToast();
@@ -434,6 +435,13 @@ export default function ExpensesPage() {
   const [confirmDel,       setConfirmDel]       = useState(null);
   const [filter,           setFilter]           = useState('all');
   const [viewReceipt,      setViewReceipt]      = useState(null);
+  // ENH_EXP_002: Advanced search/filter state
+  const [expSearch,        setExpSearch]        = useState('');
+  const [expCatFilt,       setExpCatFilt]       = useState('');
+  const [expAmtMin,        setExpAmtMin]        = useState('');
+  const [expAmtMax,        setExpAmtMax]        = useState('');
+  const [expDateFrom,      setExpDateFrom]      = useState('');
+  const [expDateTo,        setExpDateTo]        = useState('');
 
   // BUG_094: read ?highlight=X from URL for notification-driven scrolling
   const highlightExpId = searchParams.get('highlight') ? parseInt(searchParams.get('highlight'), 10) : null;
@@ -500,8 +508,8 @@ export default function ExpensesPage() {
         ))}
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      {/* Filter tabs */}
+      <div className="flex gap-2 mb-3 flex-wrap">
         {[
           { key: 'all',              label: 'All' },
           { key: 'pending',          label: 'Pending' },
@@ -515,6 +523,37 @@ export default function ExpensesPage() {
           </button>
         ))}
       </div>
+
+      {/* ENH_EXP_002: Advanced search/filter bar */}
+      {(() => {
+        const isAdvancedFilterActive = !!(expSearch || expCatFilt || expAmtMin || expAmtMax || expDateFrom || expDateTo);
+        return (
+          <div className="flex flex-wrap gap-2 mb-4 p-3 bg-[#f9f9ff] border border-[#e7eefe] rounded-xl">
+            <div className="relative flex-1 min-w-[160px]">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777587]" />
+              <input className="form-control pl-8 py-1.5 text-xs" placeholder="Search by name, ID…"
+                value={expSearch} onChange={e => setExpSearch(e.target.value)} />
+            </div>
+            <select className="form-control py-1.5 text-xs w-auto" value={expCatFilt} onChange={e => setExpCatFilt(e.target.value)}>
+              <option value="">All Categories</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABELS[c]}</option>)}
+            </select>
+            <div className="flex items-center gap-1.5">
+              <input type="number" className="form-control py-1.5 text-xs w-24" placeholder="Min ₹" value={expAmtMin} onChange={e => setExpAmtMin(e.target.value)} />
+              <span className="text-xs text-[#777587]">–</span>
+              <input type="number" className="form-control py-1.5 text-xs w-24" placeholder="Max ₹" value={expAmtMax} onChange={e => setExpAmtMax(e.target.value)} />
+            </div>
+            <input type="date" className="form-control py-1.5 text-xs w-auto" value={expDateFrom} onChange={e => setExpDateFrom(e.target.value)} title="Date from" />
+            <input type="date" className="form-control py-1.5 text-xs w-auto" value={expDateTo} onChange={e => setExpDateTo(e.target.value)} title="Date to" />
+            {isAdvancedFilterActive && (
+              <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors"
+                onClick={() => { setExpSearch(''); setExpCatFilt(''); setExpAmtMin(''); setExpAmtMax(''); setExpDateFrom(''); setExpDateTo(''); }}>
+                <X size={11} />Clear
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {isLoading ? (
         <div className="loading"><div className="spinner" />Loading…</div>
@@ -536,7 +575,18 @@ export default function ExpensesPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {expenses.map(e => {
+          {expenses.filter(e => {
+            if (expSearch) {
+              const q = expSearch.toLowerCase();
+              if (!e.title?.toLowerCase().includes(q) && !String(e.id).includes(q)) return false;
+            }
+            if (expCatFilt && e.category !== expCatFilt) return false;
+            if (expAmtMin && Number(e.amount) < Number(expAmtMin)) return false;
+            if (expAmtMax && Number(e.amount) > Number(expAmtMax)) return false;
+            if (expDateFrom && e.expense_date < expDateFrom) return false;
+            if (expDateTo   && e.expense_date > expDateTo)   return false;
+            return true;
+          }).map(e => {
             const cfg = STATUS_CFG[e.status] || STATUS_CFG.pending;
             return (
               <div key={e.id} id={`exp-${e.id}`} className={`card p-4 hover:shadow-card-hover transition-all duration-200 ${highlightActive && highlightExpId != null && String(e.id) === String(highlightExpId) ? 'bg-[#f0f3ff] ring-4 ring-[#3525cd] ring-offset-2 border-[#3525cd]/40' : ''}`}>

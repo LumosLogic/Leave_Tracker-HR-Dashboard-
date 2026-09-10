@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw, Users, ChevronUp, ChevronDown } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Calendar, Edit, Trash2, CheckCircle, X, Home, CheckCircle2, Inbox, AlertTriangle, RotateCcw, Users, ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -319,14 +319,32 @@ export default function Leaves() {
             <div className="p-5 space-y-0">
               {policies.length === 0
                 ? <p className="text-xs text-[#9ca3af] text-center py-4">No leave policies configured</p>
-                : policies.filter(p => p.active).map(p => (
-                  <div key={p.leave_type} className="flex items-center justify-between py-2.5 border-b border-[#f0f3ff] last:border-0">
-                    <LeaveTypeBadge type={p.leave_type} />
-                    <span className="text-xs font-semibold text-[#464555]">
-                      {p.annual_quota > 0 ? `${p.annual_quota} days / yr` : '—'}
-                    </span>
+                : policies.filter(p => p.active).map(p => {
+                  // ENH_LEAVES_006: show used/remaining for non-admin
+                  const bal = !isAdmin ? myBalanceByType?.[p.leave_type] : null;
+                  return (
+                  <div key={p.leave_type} className="py-2.5 border-b border-[#f0f3ff] last:border-0">
+                    <div className="flex items-center justify-between">
+                      <LeaveTypeBadge type={p.leave_type} />
+                      <span className="text-xs font-semibold text-[#464555]">
+                        {p.annual_quota > 0 ? `${p.annual_quota} days` : '—'}
+                      </span>
+                    </div>
+                    {bal && p.annual_quota > 0 && (
+                      <div className="mt-1.5">
+                        <div className="flex justify-between text-[0.62rem] text-[#777587] mb-1">
+                          <span>{bal.used || 0} used</span>
+                          <span className={`font-bold ${(bal.remaining || 0) <= 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{bal.remaining || 0} left</span>
+                        </div>
+                        <div className="h-1 bg-[#f0f3ff] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(100, ((bal.used || 0) / p.annual_quota) * 100)}%`, background: (bal.remaining || 0) <= 0 ? '#ef4444' : '#3525cd' }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))
+                  );
+                })
               }
             </div>
           </div>
@@ -415,6 +433,22 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
   const isRootAdmin = user?.role === 'root_admin';
   // BUG_094: show highlight ring; fade out after 3 seconds
   const [lit, setLit] = useState(!!isHighlighted);
+  // ENH_LEAVES_004: Comment thread state
+  const [showComments, setShowComments] = useState(false);
+  const [newComment,   setNewComment]   = useState('');
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const { data: comments = [] } = useQuery({
+    queryKey: ['leave-comments', l.id],
+    queryFn: () => apiGet(`/leaves/${l.id}/comments`).catch(() => []),
+    enabled: showComments,
+    staleTime: 30000,
+  });
+  const commentMut = useMutation({
+    mutationFn: () => apiPost(`/leaves/${l.id}/comments`, { comment: newComment }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['leave-comments', l.id] }); setNewComment(''); toast('Comment added', 'success'); },
+    onError: e => toast(e.message, 'error'),
+  });
   useEffect(() => {
     if (!isHighlighted) return;
     setLit(true); // ensure ring shows even if component was already mounted
@@ -579,6 +613,10 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
+        {/* ENH_LEAVES_004: Comment thread toggle */}
+        <button className="btn btn-outline btn-sm text-xs py-1 px-2 flex items-center gap-1" onClick={() => setShowComments(c => !c)}>
+          💬 {comments.length > 0 ? comments.length : ''}Comments
+        </button>
         {(isAdmin || l.status !== 'approved') && (
           <button className="btn btn-outline btn-sm text-xs py-1 px-2" onClick={onEdit}><Edit size={12} /> Edit</button>
         )}
@@ -586,6 +624,35 @@ function LeaveCard({ leave: l, isAdmin, user, onApprove, onReject, onRevert, onC
           <button className="btn btn-danger btn-sm text-xs py-1 px-2" onClick={onDelete}><Trash2 size={12} /></button>
         )}
       </div>
+
+      {/* ENH_LEAVES_004: Comment thread */}
+      {showComments && (
+        <div className="mt-3 pt-3 border-t border-[#f0f3ff] space-y-2 w-full">
+          {comments.length === 0 ? (
+            <p className="text-xs text-[#9ca3af] italic">No comments yet. Add a note for context.</p>
+          ) : (
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {comments.map(c => (
+                <div key={c.id} className="bg-[#f9f9ff] border border-[#f0f3ff] rounded-lg px-3 py-1.5">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-bold text-[#151c27]">{c.commenter_name || 'User'}</span>
+                    <span className="text-[0.6rem] text-[#9ca3af]">{new Date(c.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}</span>
+                  </div>
+                  <p className="text-xs text-[#464555]">{c.comment}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input className="form-control flex-1 py-1.5 text-xs" placeholder="Add a comment…" value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && newComment.trim()) commentMut.mutate(); }} />
+            <button className="btn btn-primary btn-sm" onClick={() => commentMut.mutate()} disabled={!newComment.trim() || commentMut.isPending}>
+              Send
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -737,7 +804,10 @@ export function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClo
     start: '', end: '',
     wfh_date: '', wfh_time: 'full',
     reason: '',
+    attachment_url: '', // ENH_LEAVE_003: for sick leave documents
+    attachment_name: '',
   });
+  const [uploadingAttIdx, setUploadingAttIdx] = useState(null);
   const [forms, setForms] = useState([blank()]);
 
   // Fetch holidays for current year and next year
@@ -989,6 +1059,38 @@ export function ApplyLeaveModal({ employees, isAdmin, allLeaves, policies, onClo
                   <label className="form-label">Reason <span className="text-rose-500">*</span></label>
                   <textarea className="form-control" rows="2" placeholder="Reason is required…" value={f.reason} onChange={e => update(i, 'reason', e.target.value)} />
                 </div>
+
+                {/* ENH_LEAVE_003: Document attachment for Sick Leave */}
+                {f.request_type === 'leave' && f.type === 'sick' && (
+                  <div>
+                    <label className="form-label">Supporting Document <span className="font-normal text-[#777587] normal-case tracking-normal">(optional — medical certificate)</span></label>
+                    {f.attachment_url ? (
+                      <div className="flex items-center gap-2 p-2.5 bg-[#f0f3ff] border border-[#3525cd]/30 rounded-xl">
+                        <span className="text-xs font-semibold text-[#3525cd] flex-1 truncate">{f.attachment_name || 'Attached file'}</span>
+                        <button type="button" onClick={() => update(i, 'attachment_url', '')} className="text-[#777587] hover:text-rose-600 transition-colors">✕</button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-2 cursor-pointer w-full p-2.5 border-2 border-dashed border-[#c7c4d8] hover:border-[#3525cd] bg-[#f9f9ff] hover:bg-[#f0f3ff] rounded-xl text-xs font-bold text-[#3525cd] transition-all">
+                        {uploadingAttIdx === i ? <><span className="spinner w-4 h-4" />Uploading…</> : <>📎 Upload Document</>}
+                        <input type="file" className="hidden" accept="image/*,application/pdf,.doc,.docx"
+                          onChange={async e => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            setUploadingAttIdx(i);
+                            try {
+                              const token = localStorage.getItem('lt_token');
+                              const fd = new FormData(); fd.append('file', file);
+                              const res = await fetch('/api/announcements/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Upload failed');
+                              update(i, 'attachment_url', data.file_url);
+                              update(i, 'attachment_name', file.name);
+                            } catch (err) { toast(err.message, 'error'); }
+                            finally { setUploadingAttIdx(null); }
+                          }} />
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             <button className="btn btn-outline btn-sm text-xs" onClick={add}><Plus size={12} /> Add Another</button>
@@ -1201,12 +1303,31 @@ function LeaveSummaryTable({ employees, leaves, policies, filterStart, filterEnd
             </span>
           )}
         </div>
-        {cyclePeriod && (
-          <div className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-[#464555] bg-[#f8f9ff] border border-[#e7eefe] rounded-lg px-3 py-1.5">
-            <Calendar size={12} className="text-[#3525cd]" />
-            Leave Year: <span className="text-[#3525cd] font-black">{cyclePeriod}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {/* ENH_LEAVES_005: Export leave summary to CSV */}
+          <button className="btn btn-outline btn-sm" onClick={() => {
+            const headers = ['Employee', 'Department', ...activePolicies.map(p => p.label), 'WFH', 'Total', 'Pending'];
+            const rows = sorted.map(r => [
+              r.name, r.department || '',
+              ...activePolicies.map(p => r.byType[p.leave_type] || 0),
+              r.totalWfh, r.totalApproved, r.totalPending,
+            ]);
+            const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `leave_summary_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+            URL.revokeObjectURL(url);
+          }}>
+            <Download size={13} />Export CSV
+          </button>
+          {cyclePeriod && (
+            <div className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-[#464555] bg-[#f8f9ff] border border-[#e7eefe] rounded-lg px-3 py-1.5">
+              <Calendar size={12} className="text-[#3525cd]" />
+              Leave Year: <span className="text-[#3525cd] font-black">{cyclePeriod}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card overflow-x-auto">

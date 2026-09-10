@@ -457,6 +457,26 @@ function ManualModal({ employee, onClose, onSaved, modeToggle }) {
           </div>
         </div>
 
+        {/* EHN_PAYROLL_008: Sticky summary bar always visible */}
+        <div className="flex items-center gap-4 px-6 py-2.5 bg-[#f9f9ff] border-b border-[#e7eefe] flex-shrink-0 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-[#777587]">Gross:</span>
+            <span className="font-black text-emerald-700">{fmtD(gross)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-[#777587]">Deductions:</span>
+            <span className="font-black text-rose-600">{fmtD(empDed)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-[#777587]">Est. Net:</span>
+            <span className="font-black text-[#151c27]">{fmtD(netEstimate)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs ml-auto">
+            <span className="text-[#777587]">CTC/mo:</span>
+            <span className="font-black text-[#3525cd]">{fmtD(ctc)}</span>
+          </div>
+        </div>
+
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
           {/* Effective From — visible in both create and revision modes so HR can */}
           {/* set the payroll month this structure applies from (e.g. Aug 1, 2026). */}

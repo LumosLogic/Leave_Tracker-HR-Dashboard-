@@ -696,7 +696,7 @@ export default function Dashboard() {
   const [attModal, setAttModal] = useState(null);
 
   const qs = dashDate ? { date: dashDate } : {};
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['dashboard', dashDate],
     queryFn: async () => {
       const [d, culture] = await Promise.all([
@@ -707,6 +707,13 @@ export default function Dashboard() {
     },
     retry: 1,
   });
+  // ENH_DASH_004: compute how long ago data was updated
+  const lastUpdatedLabel = dataUpdatedAt ? (() => {
+    const diff = Math.floor((Date.now() - dataUpdatedAt) / 60000);
+    if (diff < 1) return 'just now';
+    if (diff === 1) return '1 min ago';
+    return `${diff} min ago`;
+  })() : null;
 
   const { data: analytics } = useQuery({
     queryKey: ['analytics'],
@@ -845,7 +852,7 @@ export default function Dashboard() {
               <h1 className="text-xl font-black text-white tracking-tight">
                 {getGreeting()}, {user?.name?.split(' ')[0]}!
               </h1>
-              <p className="text-white/65 text-sm mt-1">Here's what's happening in your organization today.</p>
+              <p className="text-white/65 text-sm mt-1">Here's what's happening in your organization today.{lastUpdatedLabel && <span className="ml-2 text-white/40 text-xs">· Updated {lastUpdatedLabel}</span>}</p>
             </div>
             {dashDate && (
               <button className="flex items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-xl shrink-0"
@@ -865,14 +872,28 @@ export default function Dashboard() {
             <span className="text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg">
               ✨ {season}
             </span>
-            <label className="ml-auto flex items-center gap-1.5 text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg border border-white/20 cursor-pointer hover:bg-white/20 transition-colors"
-              title="View attendance for a specific date">
-              <CalendarDays size={11} className="shrink-0" />
-              <span className="hidden sm:inline">Jump to date</span>
-              <input type="date" className="bg-transparent text-white text-[0.72rem] font-semibold cursor-pointer outline-none w-28"
-                style={{ colorScheme: 'dark' }}
-                value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
-            </label>
+            {/* ENH_DASH_007: Quick-select date range presets */}
+            <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+              {[
+                { label: 'Yesterday', days: -1 },
+                { label: 'Last Week', days: -7 },
+              ].map(p => (
+                <button key={p.label} onClick={() => {
+                  const d = new Date(); d.setDate(d.getDate() + p.days);
+                  setDashDate(d.toISOString().split('T')[0]);
+                }} className="text-white/70 text-[0.65rem] font-bold bg-white/10 px-2 py-1 rounded-lg border border-white/20 hover:bg-white/20 transition-colors whitespace-nowrap">
+                  {p.label}
+                </button>
+              ))}
+              <label className="flex items-center gap-1.5 text-white/70 text-[0.72rem] font-semibold bg-white/10 px-2.5 py-1 rounded-lg border border-white/20 cursor-pointer hover:bg-white/20 transition-colors"
+                title="View attendance for a specific date">
+                <CalendarDays size={11} className="shrink-0" />
+                <span className="hidden sm:inline">Jump to date</span>
+                <input type="date" className="bg-transparent text-white text-[0.72rem] font-semibold cursor-pointer outline-none w-28"
+                  style={{ colorScheme: 'dark' }}
+                  value={dashDate} max={todayStr()} onChange={e => setDashDate(e.target.value)} />
+              </label>
+            </div>
           </div>
         </div>
       </div>

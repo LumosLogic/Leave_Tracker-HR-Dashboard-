@@ -128,6 +128,27 @@ function ShiftModal({ open, onClose, shift }) {
       }>
       <div className="space-y-4">
 
+        {/* EHN_SR_002: Shift Templates */}
+        {!isEdit && (
+          <div>
+            <p className="text-xs font-bold text-[#777587] uppercase tracking-wide mb-2">Quick Templates</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'Morning',   start: '06:00', end: '14:00', days: [1,2,3,4,5], color: '#F59E0B' },
+                { label: 'Afternoon', start: '14:00', end: '22:00', days: [1,2,3,4,5], color: '#3525cd' },
+                { label: 'Night',     start: '22:00', end: '06:00', days: [1,2,3,4,5], color: '#1e1b5e' },
+                { label: 'General',   start: '09:00', end: '18:00', days: [1,2,3,4,5], color: '#10B981' },
+              ].map(t => (
+                <button key={t.label} type="button" onClick={() => setForm(f => ({ ...f, name: `${t.label} Shift`, start_time: t.start, end_time: t.end, color: t.color, days_of_week: t.days }))}
+                  className="flex items-center gap-2 p-2.5 rounded-xl border border-[#e7eefe] text-xs font-bold text-[#464555] hover:border-[#3525cd] hover:bg-[#f0f3ff] transition-colors text-left">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: t.color }} />
+                  {t.label}<span className="font-normal text-[#777587] ml-auto">{t.start}–{t.end}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Shift Name */}
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -858,10 +879,16 @@ export default function Shifts() {
                         )}
                       </div>
 
-                      {/* Name + time */}
-                      <div className="font-black text-[#151c27]">{s.name}</div>
+                      {/* Name + time — EHN_SR_001: overnight indicator */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-black text-[#151c27]">{s.name}</div>
+                        {s.start_time && s.end_time && s.end_time < s.start_time && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.6rem] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">🌙 Overnight</span>
+                        )}
+                      </div>
                       <div className="text-sm font-bold mt-0.5" style={{ color: s.color }}>
                         {s.start_time} – {s.end_time}
+                        {s.start_time && s.end_time && s.end_time < s.start_time && <span className="text-xs font-normal text-indigo-600 ml-1">(next day)</span>}
                       </div>
 
                       {/* Day pills */}

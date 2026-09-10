@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, CalendarDays, Globe, Star, PartyPopper, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, CalendarDays, Globe, Star, PartyPopper, ChevronLeft, ChevronRight, Copy, LayoutGrid, List, MapPin, History } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
@@ -14,6 +14,53 @@ const TYPE_CONFIG = {
 };
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ALL_MONTHS   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// ── Calendar View Component (EHN_Holidays_004) ────────────────────────────────
+function CalendarView({ holidays, year }) {
+  const today = new Date().toISOString().split('T')[0];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      {ALL_MONTHS.map((monthName, mIdx) => {
+        const firstDay = new Date(year, mIdx, 1).getDay();
+        const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
+        const pad = Array(firstDay).fill(null);
+        const holidayMap = {};
+        holidays.forEach(h => {
+          const [hy, hm, hd] = h.date.split('-').map(Number);
+          if (hy === year && hm - 1 === mIdx) holidayMap[hd] = h;
+        });
+        return (
+          <div key={mIdx} className="bg-white border border-[#e7eefe] rounded-xl p-3 shadow-sm">
+            <p className="text-xs font-black text-[#3525cd] uppercase tracking-wide mb-2 text-center">{monthName} {year}</p>
+            <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                <div key={d} className="text-[0.55rem] font-bold text-[#c7c4d8] uppercase">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-0.5">
+              {pad.map((_, i) => <div key={`p${i}`} />)}
+              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                const h = holidayMap[day];
+                const cfg = h ? (TYPE_CONFIG[h.type] || TYPE_CONFIG.public) : null;
+                const dateStr = `${year}-${String(mIdx+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isPast  = dateStr < today;
+                return (
+                  <div key={day} title={h ? h.name : ''}
+                    className={`flex items-center justify-center text-[0.6rem] rounded w-full aspect-square font-semibold
+                      ${h ? `${cfg.bg} ${cfg.text} font-black ring-1 ring-offset-0 cursor-pointer` : 'text-[#464555]'}
+                      ${isPast && !h ? 'opacity-40' : ''}`}>
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function HolidayModal({ open, onClose, holiday }) {
   const toast  = useToast();
@@ -73,6 +120,23 @@ function HolidayModal({ open, onClose, holiday }) {
           </label>
           <input className="form-control" placeholder="e.g. Wishing everyone a joyful holiday!" value={form.specific_msg} onChange={e => set('specific_msg', e.target.value)} />
         </div>
+        {/* EHN_Holidays_005: History section in edit modal */}
+        {isEdit && (holiday.created_by_name || holiday.updated_by_name || holiday.created_at) && (
+          <div className="rounded-xl bg-[#f9f9ff] border border-[#e7eefe] p-3 space-y-1">
+            <div className="flex items-center gap-1.5 mb-2">
+              <History size={13} className="text-[#3525cd]" />
+              <p className="text-xs font-bold text-[#464555] uppercase tracking-wide">Change History</p>
+            </div>
+            {holiday.created_by_name && (
+              <p className="text-xs text-[#777587]">Added by <span className="font-semibold text-[#464555]">{holiday.created_by_name}</span>
+                {holiday.created_at && <> · {new Date(holiday.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</>}
+              </p>
+            )}
+            {holiday.updated_by_name && holiday.updated_by_name !== holiday.created_by_name && (
+              <p className="text-xs text-[#777587]">Last edited by <span className="font-semibold text-[#464555]">{holiday.updated_by_name}</span></p>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -83,10 +147,13 @@ export default function HolidaysPage() {
   const qc    = useQueryClient();
   const now   = new Date();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [year,       setYear]       = useState(now.getFullYear());
-  const [addOpen,    setAddOpen]    = useState(false);
-  const [editH,      setEditH]      = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
+  const [year,        setYear]        = useState(now.getFullYear());
+  const [addOpen,     setAddOpen]     = useState(false);
+  const [editH,       setEditH]       = useState(null);
+  const [confirmDel,  setConfirmDel]  = useState(null);
+  const [viewMode,    setViewMode]    = useState('list');   // 'list' | 'calendar'
+  const [branchId,    setBranchId]    = useState('');       // EHN_Holidays_003
+  const [copyConfirm, setCopyConfirm] = useState(false);    // EHN_Holidays_002
 
   // Auto-open Add Holiday modal when navigated with ?action=add
   useEffect(() => {
@@ -96,13 +163,28 @@ export default function HolidaysPage() {
     }
   }, []);
 
-  const { data: _hData, isLoading } = useQuery({ queryKey: ['holidays', year], queryFn: () => apiGet('/holidays', { year }) });
+  // EHN_Holidays_003: fetch branches for filter
+  const { data: branchList = [] } = useQuery({ queryKey: ['branches'], queryFn: () => apiGet('/branches').catch(() => []), staleTime: 5 * 60 * 1000 });
+
+  const queryParams = { year };
+  if (branchId) queryParams.branch_id = branchId;
+  const { data: _hData, isLoading } = useQuery({ queryKey: ['holidays', year, branchId], queryFn: () => apiGet('/holidays', queryParams) });
   const holidays = Array.isArray(_hData) ? _hData : [];
+
+  // EHN_Holidays_002: fetch prev-year count for copy confirmation
+  const { data: prevYearData = [] } = useQuery({ queryKey: ['holidays', year - 1, ''], queryFn: () => apiGet('/holidays', { year: year - 1 }), enabled: copyConfirm });
 
   const delMut = useMutation({
     mutationFn: id => apiDelete(`/holidays/${id}`),
     onSuccess: () => { toast('Holiday removed', 'warning'); qc.invalidateQueries({ queryKey: ['holidays'] }); },
     onError: e => toast(e.message, 'error'),
+  });
+
+  // EHN_Holidays_002: copy from previous year mutation
+  const copyMut = useMutation({
+    mutationFn: () => apiPost('/holidays/copy-from-year', { from_year: year - 1, to_year: year }),
+    onSuccess: (res) => { toast(`Copied ${res.copied} holidays from ${year - 1}!`, 'success'); qc.invalidateQueries({ queryKey: ['holidays'] }); setCopyConfirm(false); },
+    onError: e => { toast(e.message, 'error'); setCopyConfirm(false); },
   });
 
   // Group by month
@@ -125,7 +207,17 @@ export default function HolidaysPage() {
           <h1 className="page-title">Holidays</h1>
           <p className="page-subtitle">{holidays.length} holidays in {year} · {upcoming} upcoming</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* EHN_Holidays_003: Branch filter */}
+          {branchList.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <MapPin size={13} className="text-[#777587]" />
+              <select className="form-control py-1.5 text-xs pr-7 min-w-[120px]" value={branchId} onChange={e => setBranchId(e.target.value)}>
+                <option value="">All Branches</option>
+                {branchList.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
           {/* Year picker */}
           <div className="flex items-center gap-1 bg-white border border-[#c7c4d8] rounded-lg px-2 py-1.5 shadow-sm">
             <button onClick={() => setYear(y => y - 1)} className="w-7 h-7 flex items-center justify-center rounded text-[#777587] hover:text-[#3525cd] hover:bg-[#f0f3ff] transition-colors">
@@ -136,17 +228,32 @@ export default function HolidaysPage() {
               <ChevronRight size={15} />
             </button>
           </div>
+          {/* EHN_Holidays_004: View toggle */}
+          <div className="flex items-center gap-0.5 bg-white border border-[#c7c4d8] rounded-lg p-0.5">
+            <button onClick={() => setViewMode('list')} title="List view"
+              className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-[#3525cd] text-white' : 'text-[#777587] hover:bg-[#f0f3ff]'}`}>
+              <List size={14} />
+            </button>
+            <button onClick={() => setViewMode('calendar')} title="Calendar view"
+              className={`p-1.5 rounded transition-colors ${viewMode === 'calendar' ? 'bg-[#3525cd] text-white' : 'text-[#777587] hover:bg-[#f0f3ff]'}`}>
+              <LayoutGrid size={14} />
+            </button>
+          </div>
+          {/* EHN_Holidays_002: Copy from previous year */}
+          <button className="btn btn-outline" onClick={() => setCopyConfirm(true)} title={`Copy holidays from ${year - 1}`}>
+            <Copy size={13} />Copy from {year - 1}
+          </button>
           <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Plus size={15} />Add Holiday</button>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — EHN_Holidays_001: Past card uses orange/amber */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { label: 'Total Holidays',  value: holidays.length, color: 'from-[#f0f3ff] to-[#e7eefe]', top: '#3525cd', text: 'text-[#3525cd]' },
+          { label: 'Total Holidays',  value: holidays.length, color: 'from-[#f0f3ff] to-[#e7eefe]',   top: '#3525cd', text: 'text-[#3525cd]'   },
           { label: 'Upcoming',        value: upcoming,         color: 'from-emerald-50 to-emerald-100', top: '#10B981', text: 'text-emerald-700' },
-          { label: 'Public Holidays', value: publicH,          color: 'from-amber-50 to-amber-100', top: '#F59E0B', text: 'text-amber-700' },
-          { label: 'Past',            value: past,             color: 'from-[#f9f9ff] to-[#f0f3ff]', top: '#c7c4d8', text: 'text-[#777587]' },
+          { label: 'Public Holidays', value: publicH,          color: 'from-amber-50 to-amber-100',     top: '#F59E0B', text: 'text-amber-700'   },
+          { label: 'Past',            value: past,             color: 'from-orange-50 to-orange-100',   top: '#EA580C', text: 'text-orange-700'  },
         ].map(s => (
           <div key={s.label} className={`rounded-xl p-5 bg-gradient-to-br ${s.color} border border-[#c7c4d8] shadow-card relative overflow-hidden`}>
             <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-xl" style={{ background: s.top }} />
@@ -165,6 +272,9 @@ export default function HolidaysPage() {
           <p className="text-sm mb-4">Add public holidays and company events for the year</p>
           <button className="btn btn-primary" onClick={() => setAddOpen(true)}><Plus size={14} />Add First Holiday</button>
         </div>
+      ) : viewMode === 'calendar' ? (
+        /* EHN_Holidays_004: Calendar view */
+        <CalendarView holidays={holidays} year={year} />
       ) : (
         <div className="space-y-8">
           {Object.entries(byMonth).sort().map(([month, items]) => {
@@ -192,7 +302,7 @@ export default function HolidaysPage() {
                           <div className="text-[0.6rem] font-bold text-[#777587]">{MONTHS_SHORT[d.getMonth()]}</div>
                         </div>
                         {/* Divider */}
-                        <div className="w-px h-10 flex-shrink-0" style={{ background: cfg.dot.replace('bg-', '') + '40' }} />
+                        <div className="w-px h-10 flex-shrink-0 bg-[#e7eefe]" />
                         <div className="flex-1 min-w-0">
                           <div className="font-black text-[#151c27] truncate">{h.name}</div>
                           {h.description && <div className="text-xs text-[#777587] mt-0.5 truncate">{h.description}</div>}
@@ -219,6 +329,12 @@ export default function HolidaysPage() {
       <ConfirmModal open={!!confirmDel} title="Remove Holiday"
         message={`Remove "${confirmDel?.name}" from the holiday calendar?`}
         confirmLabel="Remove" onConfirm={() => { delMut.mutate(confirmDel.id); setConfirmDel(null); }} onCancel={() => setConfirmDel(null)} />
+      {/* EHN_Holidays_002: Copy from previous year confirm */}
+      <ConfirmModal open={copyConfirm} title={`Copy Holidays from ${year - 1}`}
+        message={`This will copy all holidays from ${year - 1} to ${year}, skipping dates that already exist. Continue?`}
+        confirmLabel={copyMut.isPending ? 'Copying…' : 'Copy Holidays'}
+        onConfirm={() => copyMut.mutate()}
+        onCancel={() => setCopyConfirm(false)} />
     </div>
   );
 }

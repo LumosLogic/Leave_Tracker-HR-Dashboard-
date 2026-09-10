@@ -940,11 +940,11 @@ export default function MyLeaves() {
                           </div>
                         )}
                       </div>
-                      {/* Cancel button (pending only) */}
-                      {l.status === 'pending' && (
+                      {/* ENH_LEAVE_004: Cancel button for any pending status */}
+                      {['pending', 'pending_dept', 'pending_root', 'pending_approval'].includes(l.status) && (
                         <button onClick={() => setDelTarget(l)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-[#c7c4d8] hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0">
-                          <Trash2 size={13} />
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-[#c7c4d8] hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0">
+                          <Trash2 size={11} />Withdraw
                         </button>
                       )}
                     </div>

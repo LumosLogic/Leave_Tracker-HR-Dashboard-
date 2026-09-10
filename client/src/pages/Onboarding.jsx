@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Circle, UserPlus, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, Circle, UserPlus, ClipboardList, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
@@ -181,7 +181,10 @@ function MyOnboarding() {
 function AdminOnboarding() {
   const toast = useToast();
   const qc    = useQueryClient();
-  const [expanded, setExpanded] = useState(null);
+  const [expanded,    setExpanded]    = useState(null);
+  // ENH_ONBOARD_007: search and filter state
+  const [onbSearch,   setOnbSearch]   = useState('');
+  const [onbFilter,   setOnbFilter]   = useState('all'); // 'all' | 'incomplete' | 'complete' | 'stuck'
 
   const { data: _ovData, isLoading } = useQuery({ queryKey: ['onboarding-overview'], queryFn: () => apiGet('/onboarding/overview') });
   const { data: _eData }             = useQuery({ queryKey: ['employees'],            queryFn: () => apiGet('/employees') });
@@ -226,10 +229,37 @@ function AdminOnboarding() {
         </div>
       )}
 
+      {/* ENH_ONBOARD_007: Search/filter bar */}
+      {overview.length > 0 && (
+        <div className="flex flex-wrap gap-2 p-3 bg-[#f9f9ff] border border-[#e7eefe] rounded-xl">
+          <div className="relative flex-1 min-w-[160px]">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777587]" />
+            <input className="form-control pl-8 py-1.5 text-xs" placeholder="Search by name or department…"
+              value={onbSearch} onChange={e => setOnbSearch(e.target.value)} />
+          </div>
+          {['all','incomplete','complete','stuck'].map(f => (
+            <button key={f} onClick={() => setOnbFilter(f)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${onbFilter === f ? 'bg-[#3525cd] text-white border-[#3525cd]' : 'border-[#c7c4d8] text-[#464555] hover:border-[#3525cd] hover:text-[#3525cd]'}`}>
+              {f === 'all' ? 'All' : f === 'incomplete' ? 'In Progress' : f === 'complete' ? 'Completed' : 'Stuck (<50%)'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {isLoading ? <div className="loading"><div className="spinner" />Loading…</div>
         : overview.length === 0
           ? <div className="empty-state"><ClipboardList size={48} className="mx-auto mb-3 text-[#c7c4d8]" /><p className="font-semibold text-[#464555] mb-1">No onboarding in progress</p><p className="text-sm">Click on an employee above to start their onboarding checklist</p></div>
-          : overview.map(o => {
+          : overview.filter(o => {
+              const pct = o.total > 0 ? Math.round((o.completed / o.total) * 100) : 0;
+              if (onbSearch) {
+                const q = onbSearch.toLowerCase();
+                if (!(o.user?.name || '').toLowerCase().includes(q) && !(o.user?.department || '').toLowerCase().includes(q)) return false;
+              }
+              if (onbFilter === 'complete' && pct < 100) return false;
+              if (onbFilter === 'incomplete' && pct >= 100) return false;
+              if (onbFilter === 'stuck' && pct >= 50) return false;
+              return true;
+            }).map(o => {
               const pct    = o.total > 0 ? Math.round((o.completed / o.total) * 100) : 0;
               const isOpen = expanded === o.user?.id;
               return (

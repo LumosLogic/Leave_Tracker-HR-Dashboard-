@@ -2861,6 +2861,33 @@ export default function Employees() {
             className="text-xs font-bold text-white/70 hover:text-white transition-colors">
             Deselect all
           </button>
+          {/* ENH_EMP_002: Bulk change Department/Status/Type */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <select className="text-xs font-bold rounded-lg px-2 py-1.5 border border-white/30 bg-white/15 text-white"
+              defaultValue=""
+              onChange={async e => {
+                const dept = e.target.value; if (!dept) return; e.target.value = '';
+                const ids = [...selected];
+                await Promise.all(ids.map(id => apiPut(`/employees/${id}`, { department: dept })));
+                toast(`Department updated for ${ids.length} employees`, 'success');
+                qc.invalidateQueries({ queryKey: ['employees'] });
+              }}>
+              <option value="" disabled>Change Dept…</option>
+              {[...new Set(employees.map(e => e.department).filter(Boolean))].sort().map(d => <option key={d} value={d} className="text-[#151c27]">{d}</option>)}
+            </select>
+            <select className="text-xs font-bold rounded-lg px-2 py-1.5 border border-white/30 bg-white/15 text-white"
+              defaultValue=""
+              onChange={async e => {
+                const status = e.target.value; if (!status) return; e.target.value = '';
+                const ids = [...selected];
+                await Promise.all(ids.map(id => apiPut(`/employees/${id}`, { employee_status: status })));
+                toast(`Status updated for ${ids.length} employees`, 'success');
+                qc.invalidateQueries({ queryKey: ['employees'] });
+              }}>
+              <option value="" disabled>Change Status…</option>
+              {['active','probation','inactive','terminated','resigned'].map(s => <option key={s} value={s} className="text-[#151c27] capitalize">{s}</option>)}
+            </select>
+          </div>
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => exportEmployeesCSV(employees.filter(e => selected.has(e.id)), 'selected_employees.csv')}

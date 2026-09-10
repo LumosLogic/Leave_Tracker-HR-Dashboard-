@@ -300,6 +300,27 @@ export default function Reports() {
   // Biometric punch log expansion (Relitrade / first_in_last_out orgs only)
   // Use attendance record id as key — user_id can be null causing all rows to expand
   const [expandedRowId,   setExpandedRowId]   = useState(null);
+  // EHN_RA_002: Saved filter views (localStorage)
+  const SAVED_VIEWS_KEY = 'reports_saved_views';
+  const [savedViews, setSavedViews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_VIEWS_KEY) || '[]'); } catch { return []; }
+  });
+  function saveCurrentView(name) {
+    const view = { name, active, deptFilter, statusFilter, leaveTypeFilter, attStatusFilter, empTypeFilter, selectedEmpId };
+    const updated = [...savedViews.filter(v => v.name !== name), view];
+    setSavedViews(updated);
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updated));
+  }
+  function loadView(view) {
+    setActive(view.active);
+    setDeptFilter(view.deptFilter || '');
+    setStatusFilter(view.statusFilter || '');
+    setLeaveTypeFilter(view.leaveTypeFilter || '');
+    setAttStatusFilter(view.attStatusFilter || '');
+    setEmpTypeFilter(view.empTypeFilter || '');
+    setSelectedEmpId(view.selectedEmpId || '');
+  }
+  function deleteView(name) { const updated = savedViews.filter(v => v.name !== name); setSavedViews(updated); localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(updated)); }
 
   function handleTabChange(tab) {
     setActive(tab);
@@ -784,6 +805,25 @@ export default function Reports() {
               </select>
             </>
           )}
+
+          {/* EHN_RA_002: Save current filter combination */}
+          {anyFilter && (
+            <button onClick={() => {
+              const name = window.prompt('Name this filter view (e.g. "QA Pending Leaves"):');
+              if (name?.trim()) { saveCurrentView(name.trim()); }
+            }} className="flex items-center gap-1 text-xs font-bold text-[#3525cd] px-2 py-1.5 rounded-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+              Save View
+            </button>
+          )}
+          {savedViews.length > 0 && !anyFilter && savedViews.map(v => (
+            <div key={v.name} className="flex items-center gap-0.5">
+              <button onClick={() => loadView(v)}
+                className="flex items-center gap-1 text-xs font-bold text-[#3525cd] px-2 py-1.5 rounded-l-lg border border-[#c7c4d8] hover:bg-[#f0f3ff] transition-all">
+                {v.name}
+              </button>
+              <button onClick={() => deleteView(v.name)} className="px-1.5 py-1.5 rounded-r-lg border border-l-0 border-[#c7c4d8] text-[#c7c4d8] hover:text-rose-500 hover:border-rose-200 text-xs transition-all">×</button>
+            </div>
+          ))}
 
           {anyFilter && (
             <button onClick={() => { setSelectedEmpId(''); setDeptFilter(''); setStatusFilter(''); setLeaveTypeFilter(''); setAttStatusFilter(''); setEmpTypeFilter(''); }}

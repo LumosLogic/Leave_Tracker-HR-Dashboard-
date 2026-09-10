@@ -173,6 +173,9 @@ export default function PendingApprovals() {
   const [page,        setPage]        = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [reviewExpense, setReviewExpense] = useState(null);
+  // EHN_PA_001: Bulk selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [historyTab,  setHistoryTab]  = useState(false); // EHN_PA_007
 
   // ── Queries ─────────────────────────────────────────────────────────────────
   // Fetch ALL leaves in any pending state so root/HR admin see the full picture.
@@ -252,8 +255,30 @@ export default function PendingApprovals() {
     onError:    e  => toast(e.message, 'error'),
   });
 
+  // EHN_PA_007: My Approval History
+  const { data: approvalHistory = [] } = useQuery({
+    queryKey: ['my-approval-history'],
+    queryFn:  () => apiGet('/leaves/my-history').catch(() => []),
+    enabled: historyTab,
+    staleTime: 60000,
+  });
+
   const isBusy = approveLeaveMut.isPending || rejectLeaveMut.isPending ||
     approveRegMut.isPending || rejectRegMut.isPending;
+
+  // EHN_PA_001: Bulk approve/reject
+  async function handleBulkApprove() {
+    const items = paginated.filter(i => selectedIds.has(`${i._flow}-${i.id}`) && i._kind !== 'expense');
+    for (const item of items) { await handleApprove(item); }
+    setSelectedIds(new Set());
+    toast(`${items.length} items approved`, 'success');
+  }
+  async function handleBulkReject() {
+    const items = paginated.filter(i => selectedIds.has(`${i._flow}-${i.id}`) && i._kind !== 'expense');
+    for (const item of items) { await handleReject(item); }
+    setSelectedIds(new Set());
+    toast(`${items.length} items rejected`, 'warning');
+  }
 
   const isWfh = l => l.leave_type === 'wfh' || l.leave_time === 'wfh';
 
@@ -461,6 +486,11 @@ export default function PendingApprovals() {
             )}
           </div>
         </div>
+        {/* EHN_PA_007: My Approval History button */}
+        <button onClick={() => setHistoryTab(h => !h)}
+          className={`btn ${historyTab ? 'btn-primary' : 'btn-outline'} btn-sm`}>
+          {historyTab ? 'Back to Pending' : 'Approval History'}
+        </button>
       </div>
 
       {/* Summary Cards */}
@@ -475,8 +505,43 @@ export default function PendingApprovals() {
         ))}
       </div>
 
+      {/* EHN_PA_007: Approval History tab */}
+      {historyTab && (
+        <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm p-5">
+          <p className="text-sm font-black text-[#151c27] mb-3">My Recent Approval Actions (past 30 days)</p>
+          {approvalHistory.length === 0 ? (
+            <p className="text-sm text-[#777587] text-center py-6">No recent approval activity.</p>
+          ) : (
+            <div className="space-y-2">
+              {approvalHistory.slice(0, 20).map((h, idx) => (
+                <div key={idx} className="flex items-center gap-3 py-2 px-3 rounded-xl bg-[#f9f9ff] border border-[#f0f3ff]">
+                  <span className={`w-2 h-2 rounded-full ${h.action === 'approved' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-[#151c27] truncate">{h.employee_name || h.user_name || 'Employee'}</p>
+                    <p className="text-[0.65rem] text-[#777587]">{h.leave_type?.replace('_',' ')} · {h.start_date || ''}</p>
+                  </div>
+                  <span className={`text-[0.65rem] font-bold px-2 py-0.5 rounded-full border ${h.action === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                    {h.action}
+                  </span>
+                  <span className="text-[0.6rem] text-[#9ca3af]">{h.created_at ? new Date(h.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' }) : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table Card */}
-      <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+      {!historyTab && <div className="bg-white rounded-xl border border-[#c7c4d8] shadow-sm overflow-hidden">
+        {/* EHN_PA_001: Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-5 py-3 bg-[#f0f3ff] border-b border-[#c7c4d8]">
+            <span className="text-sm font-bold text-[#3525cd]">{selectedIds.size} selected</span>
+            <button onClick={handleBulkApprove} className="btn btn-primary btn-sm">Approve Selected</button>
+            <button onClick={handleBulkReject} className="btn btn-outline btn-sm text-rose-600 border-rose-200 hover:bg-rose-50">Reject Selected</button>
+            <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-xs text-[#777587] hover:text-[#3525cd]">Clear</button>
+          </div>
+        )}
         {/* Tabs */}
         <div className="flex gap-1 px-5 pt-4 border-b border-[#e7eefe] overflow-x-auto">
           {TABS.map(t => (
@@ -523,7 +588,7 @@ export default function PendingApprovals() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#f0f3ff] bg-[#fafaff]">
-                  {['Type','Employee','Department','Details','Applied','Stage','Actions'].map(h => (
+                  {['','Type','Employee','Department','Details','Applied','Stage','Actions'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-[0.65rem] font-black uppercase tracking-wider text-[#9ca3af]">{h}</th>
                   ))}
                 </tr>
@@ -531,6 +596,12 @@ export default function PendingApprovals() {
               <tbody className="divide-y divide-[#f9f9ff]">
                 {paginated.map(item => (
                   <tr key={`${item._flow || item._kind}-${item.id}`} className="hover:bg-[#fafaff] transition-colors">
+                    {/* EHN_PA_001: Checkbox for bulk selection */}
+                    <td className="px-4 py-3">
+                      <input type="checkbox" className="w-4 h-4 accent-[#3525cd]"
+                        checked={selectedIds.has(`${item._flow}-${item.id}`)}
+                        onChange={e => setSelectedIds(prev => { const n = new Set(prev); const key = `${item._flow}-${item.id}`; e.target.checked ? n.add(key) : n.delete(key); return n; })} />
+                    </td>
                     <td className="px-4 py-3"><TypeBadge kind={item._kind} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -545,6 +616,18 @@ export default function PendingApprovals() {
                     <td className="px-4 py-3"><DetailsCell item={item} /></td>
                     <td className="px-4 py-3 text-xs text-[#777587] whitespace-nowrap">
                       {item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      {/* EHN_PA_002: SLA aging badge */}
+                      {(() => {
+                        if (!item.created_at) return null;
+                        const days = Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86400000);
+                        if (days < 3) return null;
+                        const isUrgent = days >= 7;
+                        return (
+                          <span className={`ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.58rem] font-bold border ${isUrgent ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                            {isUrgent ? '⚠' : '!'} {days}d
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 max-w-[150px] overflow-hidden"><StatusCell item={item} /></td>
                     <td className="px-4 py-3"><ActionsCell item={item} /></td>
@@ -593,7 +676,7 @@ export default function PendingApprovals() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Info banner */}
       <div className="rounded-xl border border-[#e7eefe] bg-[#f9f9ff] px-5 py-4 text-xs text-[#777587] space-y-1">

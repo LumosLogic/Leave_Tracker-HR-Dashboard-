@@ -5,7 +5,7 @@ import {
   ToggleLeft, ToggleRight, ShieldCheck, Building2, Briefcase,
   CalendarDays, Bell, BellOff, Wrench, Settings2, ChevronRight,
   ChevronDown, MailCheck, Star, BarChart3, AlarmClock, SlidersHorizontal,
-  Lock, MessageSquare, Calendar, GitBranch, Sparkles,
+  Lock, MessageSquare, Calendar, GitBranch, Sparkles, Search,
   Eye, EyeOff, Save, CheckCircle2,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -268,6 +268,23 @@ function WorkSchedulePanel({ schedule, isAdmin, onSaved }) {
               </div>
             </div>
 
+            {/* EHN_SETTING_005: Live preview of total scheduled work hours */}
+            {form.start_time && form.end_time && (() => {
+              const [sh, sm] = form.start_time.split(':').map(Number);
+              const [eh, em] = form.end_time.split(':').map(Number);
+              const startMin = sh * 60 + sm, endMin = eh * 60 + em;
+              const totalMin = endMin > startMin ? endMin - startMin : (endMin + 1440) - startMin;
+              const hrs = Math.floor(totalMin / 60), mins = totalMin % 60;
+              const halfDayMin = Math.floor(totalMin / 2);
+              return (
+                <div className="p-3 bg-[#f0f3ff] border border-[#dde1f0] rounded-xl flex flex-wrap items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5"><Clock size={13} className="text-[#3525cd]" /><span className="font-bold text-[#151c27]">Total: {hrs}h{mins > 0 ? ` ${mins}m` : ''} / day</span></div>
+                  <div className="text-[#777587]">Half Day threshold: <strong>{Math.floor(halfDayMin / 60)}h{halfDayMin % 60 > 0 ? ` ${halfDayMin % 60}m` : ''}</strong></div>
+                  <div className="text-[#777587]">Weekly: <strong>{(hrs + mins/60) * form.work_days.length}h</strong> ({form.work_days.length} days)</div>
+                </div>
+              );
+            })()}
+
             <div>
               <label className="form-label">Working Days</label>
               <div className="flex gap-2 flex-wrap mt-2">
@@ -282,10 +299,14 @@ function WorkSchedulePanel({ schedule, isAdmin, onSaved }) {
             </div>
 
             {isAdmin && (
-              <div className="pt-2">
+              <div className="pt-2 flex items-center gap-3 flex-wrap">
                 <button className="btn btn-primary" onClick={() => { if (validate()) mutation.mutate(); }} disabled={mutation.isPending}>
                   {mutation.isPending ? <><span className="spinner w-4 h-4" /> Saving…</> : 'Save Work Schedule'}
                 </button>
+                {/* EHN_SETTING_004: Link to Holiday Calendar */}
+                <a href="/root/holidays" className="btn btn-outline flex items-center gap-1.5 text-xs">
+                  <CalendarDays size={13} />View Holiday Calendar
+                </a>
               </div>
             )}
           </>
@@ -692,6 +713,9 @@ function LeaveWorkflowPanel() {
           <p className="text-sm font-bold text-[#151c27] mb-1">Current Configuration</p>
           <p className="text-sm text-[#777587]">
             <strong className="text-[#151c27]">{levelCount}</strong> approval level{levelCount !== 1 ? 's' : ''} configured
+            {/* EHN_SETTING_010: Cap/guidance on approval levels */}
+            {levelCount >= 4 && <span className="ml-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Recommended: max 5 levels</span>}
+            {levelCount >= 5 && <span className="ml-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Warning: long chains reduce completion rate</span>}
           </p>
           {workflow?.levels?.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap mt-3">
@@ -1260,6 +1284,7 @@ export default function Settings() {
   const [active,         setActive]       = useState(() => firstVisible(role));
   const [openGroups,     setOpenGroups]   = useState(() => new Set(NAV_GROUPS.map(g => g.id)));
   const [mobileNavOpen,  setMobileNavOpen] = useState(false);
+  const [settingsSearch, setSettingsSearch] = useState(''); // EHN_SETTING_013
 
   if (isLoading) return <div className="loading"><div className="spinner" /> Loading…</div>;
 
@@ -1385,13 +1410,23 @@ export default function Settings() {
       {/* ── Desktop layout: sidebar + content (hidden on mobile) ─────────────── */}
       <div className="hidden lg:flex gap-5 items-start min-h-[calc(100vh-200px)]">
 
-        {/* Desktop sidebar */}
-        <div className="w-64 flex-shrink-0 sticky top-4">
+        {/* Desktop sidebar — EHN_SETTNG_001: wider width so group names don't truncate */}
+        <div className="w-72 flex-shrink-0 sticky top-4">
           <div className="bg-white border border-[#e7eefe] rounded-2xl overflow-hidden shadow-sm">
+            {/* EHN_SETTING_013: Settings search bar */}
+            <div className="p-3 border-b border-[#f0f3ff]">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
+                <input type="text" className="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border border-[#e7eefe] focus:border-[#3525cd] focus:outline-none bg-[#f9f9ff]"
+                  placeholder="Search settings…" value={settingsSearch} onChange={e => setSettingsSearch(e.target.value)} />
+              </div>
+            </div>
             {NAV_GROUPS.map((group, gi) => {
               const GroupIcon  = group.icon;
               const isOpen     = openGroups.has(group.id);
-              const visibleItems = group.items.filter(i => i.roles.includes(role));
+              const visibleItems = group.items.filter(i => i.roles.includes(role)).filter(i =>
+                !settingsSearch || i.label.toLowerCase().includes(settingsSearch.toLowerCase()) || group.label.toLowerCase().includes(settingsSearch.toLowerCase())
+              );
               if (!visibleItems.length) return null;
 
               return (
@@ -1402,7 +1437,7 @@ export default function Settings() {
                       style={{ background: group.color + '18' }}>
                       <GroupIcon size={13} style={{ color: group.color }} />
                     </span>
-                    <span className="flex-1 text-[0.7rem] font-black uppercase tracking-widest text-[#8b87a2] truncate">{group.label}</span>
+                    <span className="flex-1 text-[0.7rem] font-black uppercase tracking-wider text-[#8b87a2] leading-tight">{group.label}</span>
                     <ChevronDown size={13} className={`text-[#c7c4d8] flex-shrink-0 transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
                   </button>
 

@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LogOut, CheckSquare, Square, AlertTriangle, ChevronDown, ChevronUp,
   ClipboardList, Clock, CheckCircle2, XCircle, TrendingUp, Shield,
-  CalendarDays, Timer, Trash2, FileText,
+  CalendarDays, Timer, Trash2, FileText, UserCheck,
 } from 'lucide-react';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -322,6 +323,13 @@ function ExitCard({ req, isAdmin }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const [open, setOpen] = useState(false);
+  // EHN_EXIT_MNG_006: reject with reason
+  const [rejectOpen,  setRejectOpen]  = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  // EHN_EXIT_MNG_005: rehire eligible edit
+  const [rehireOpen,  setRehireOpen]  = useState(false);
+  const [rehireVal,   setRehireVal]   = useState(req.rehire_eligible || '');
+
   const cfg = STATUS_CFG[req.status] || STATUS_CFG.pending;
   const clearanceCount = CLEARANCE_FIELDS.filter(f => req[f.key]).length;
 
@@ -445,17 +453,13 @@ function ExitCard({ req, isAdmin }) {
 
             {/* Admin actions */}
             {isAdmin && (
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-wrap gap-2 pt-2">
                 {req.status === 'pending' && (
                   <>
                     <button className="btn btn-primary btn-sm" onClick={() => updateMut.mutate({ status: 'approved' })} disabled={updateMut.isPending}>Accept Resignation</button>
+                    {/* EHN_EXIT_MNG_006: Reject with reason */}
                     <button className="btn btn-outline btn-sm text-rose-600 border-rose-200 hover:bg-rose-50"
-                      onClick={() => updateMut.mutate({
-                        status: 'rejected',
-                        // Auto-clear all clearance selections on rejection
-                        ...Object.fromEntries(CLEARANCE_FIELDS.map(f => [f.key, false])),
-                      })}
-                      disabled={updateMut.isPending}>Reject</button>
+                      onClick={() => setRejectOpen(true)} disabled={updateMut.isPending}>Decline</button>
                   </>
                 )}
                 {req.status === 'approved' && clearanceCount === CLEARANCE_FIELDS.length && (
@@ -463,11 +467,77 @@ function ExitCard({ req, isAdmin }) {
                     <CheckSquare size={13} />Mark Offboarding Complete
                   </button>
                 )}
+                {/* EHN_EXIT_MNG_005: Rehire Eligible (shown once completed) */}
+                {req.status === 'completed' && (
+                  <button className="btn btn-outline btn-sm flex items-center gap-1.5" onClick={() => { setRehireVal(req.rehire_eligible || ''); setRehireOpen(true); }}>
+                    <UserCheck size={12} />
+                    {req.rehire_eligible
+                      ? <span>Rehire: <strong>{req.rehire_eligible === 'yes' ? 'Yes' : req.rehire_eligible === 'no' ? 'No' : 'With Conditions'}</strong></span>
+                      : 'Set Rehire Eligibility'}
+                  </button>
+                )}
+              </div>
+            )}
+            {/* EHN_EXIT_MNG_005: Show Rehire Eligible field (read-only in non-admin view) */}
+            {req.rehire_eligible && !isAdmin && (
+              <div className="flex items-center gap-2 pt-2 text-xs">
+                <UserCheck size={12} className="text-[#777587]" />
+                <span className="text-[#777587]">Rehire Eligible:</span>
+                <span className={`font-semibold ${req.rehire_eligible === 'yes' ? 'text-emerald-700' : req.rehire_eligible === 'no' ? 'text-rose-700' : 'text-amber-700'}`}>
+                  {req.rehire_eligible === 'yes' ? 'Yes' : req.rehire_eligible === 'no' ? 'No' : 'With Conditions'}
+                </span>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* EHN_EXIT_MNG_006: Reject modal with reason */}
+      <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="Decline Resignation" size="sm"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={() => setRejectOpen(false)}>Cancel</button>
+            <button className="btn btn-danger" disabled={!rejectReason.trim() || updateMut.isPending}
+              onClick={() => { updateMut.mutate({ status: 'rejected', rejection_reason: rejectReason, ...Object.fromEntries(CLEARANCE_FIELDS.map(f => [f.key, false])) }); setRejectOpen(false); }}>
+              Decline Request
+            </button>
+          </div>
+        }>
+        <div className="space-y-3">
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700 flex items-start gap-2">
+            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+            Declining will notify the employee. Please provide a reason.
+          </div>
+          <div>
+            <label className="form-label">Reason for declining *</label>
+            <textarea className="form-control" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+              placeholder="e.g. Request submitted in error, under discussion with manager…" />
+          </div>
+        </div>
+      </Modal>
+
+      {/* EHN_EXIT_MNG_005: Set Rehire Eligible modal */}
+      <Modal open={rehireOpen} onClose={() => setRehireOpen(false)} title="Set Rehire Eligibility" size="sm"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button className="btn btn-outline" onClick={() => setRehireOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => { updateMut.mutate({ rehire_eligible: rehireVal }); setRehireOpen(false); }}>
+              Save
+            </button>
+          </div>
+        }>
+        <div className="space-y-3">
+          <p className="text-sm text-[#777587]">Would you rehire this employee in the future?</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[{v:'yes',l:'Yes',c:'border-emerald-400 bg-emerald-50 text-emerald-700'},{v:'no',l:'No',c:'border-rose-400 bg-rose-50 text-rose-700'},{v:'with_conditions',l:'With Conditions',c:'border-amber-400 bg-amber-50 text-amber-700'}].map(opt => (
+              <button key={opt.v} type="button" onClick={() => setRehireVal(opt.v)}
+                className={`p-3 rounded-xl border-2 text-xs font-bold transition-all text-center ${rehireVal === opt.v ? opt.c + ' border-2' : 'border-[#e7eefe] text-[#777587] hover:border-[#c7c4d8]'}`}>
+                {opt.l}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

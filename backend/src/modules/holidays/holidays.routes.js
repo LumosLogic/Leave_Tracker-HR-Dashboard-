@@ -90,6 +90,37 @@ router.delete('/:id', auth, hasPermission('holidays', 'manage'), async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/holidays/copy-from-year — EHN_Holidays_002
+router.post('/copy-from-year', auth, hasPermission('holidays', 'manage'), async (req, res) => {
+  try {
+    const oId = req.user.organization_id;
+    const { from_year, to_year } = req.body;
+    if (!from_year || !to_year) return res.status(400).json({ error: 'from_year and to_year are required' });
+    const { data: source } = await db.from('holidays')
+      .select('*').eq('organization_id', oId)
+      .gte('date', `${from_year}-01-01`).lte('date', `${from_year}-12-31`);
+    if (!source?.length) return res.json({ copied: 0, skipped: 0, message: `No holidays found in ${from_year}` });
+    const { data: existing } = await db.from('holidays')
+      .select('date').eq('organization_id', oId)
+      .gte('date', `${to_year}-01-01`).lte('date', `${to_year}-12-31`);
+    const existingDates = new Set((existing || []).map(h => h.date.substring(5)));
+    const toInsert = source
+      .filter(h => !existingDates.has(h.date.substring(5)))
+      .map(h => ({
+        name: h.name, type: h.type, description: h.description || '',
+        specific_msg: h.specific_msg || '', organization_id: oId,
+        date: `${to_year}-${h.date.substring(5)}`,
+      }));
+    let copied = 0;
+    if (toInsert.length > 0) {
+      const { data: inserted, error } = await db.from('holidays').insert(toInsert).select();
+      if (error) throw error;
+      copied = (inserted || []).length;
+    }
+    res.json({ copied, skipped: source.length - toInsert.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // POST /api/holidays/bulk — import multiple holidays
 router.post('/bulk', auth, hasPermission('holidays', 'manage'), async (req, res) => {
   try {

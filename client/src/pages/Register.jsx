@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, User, Mail, Phone, Globe, MessageSquare, CheckCircle2, ArrowRight, Clock, FileText, Users, Briefcase } from 'lucide-react';
+import { Building2, User, Mail, Phone, Globe, MessageSquare, CheckCircle2, ArrowRight, Clock, FileText, Users, Briefcase, ChevronDown } from 'lucide-react';
 import { apiPost } from '@/lib/api';
 
 const COMPANY_SIZES = [
@@ -342,7 +342,9 @@ export default function Register() {
                 <label className="form-label">Company Size <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
                 <div className="relative">
                   <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
-                  <select className="form-control pl-9 appearance-none"
+                  {/* ENH_REG_001: ChevronDown icon for dropdown visibility */}
+                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  <select className="form-control pl-9 pr-8 appearance-none"
                     value={form.company_size}
                     onChange={e => setOther('company_size', e.target.value)}>
                     <option value="">Select…</option>
@@ -356,7 +358,8 @@ export default function Register() {
                 <label className="form-label">Industry <span className="text-[#777587] font-normal normal-case tracking-normal">(Optional)</span></label>
                 <div className="relative">
                   <Briefcase size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
-                  <select className="form-control pl-9 appearance-none"
+                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777587] pointer-events-none" />
+                  <select className="form-control pl-9 pr-8 appearance-none"
                     value={form.industry}
                     onChange={e => setOther('industry', e.target.value)}>
                     <option value="">Select…</option>

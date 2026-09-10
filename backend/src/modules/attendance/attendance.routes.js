@@ -51,6 +51,18 @@ router.get('/today', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Attendance: My record for a specific date (EHN_REGU_002) ────────────────
+router.get('/my-record', auth, async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'date query param required' });
+    const { data } = await db.from('attendance')
+      .select('date, check_in, check_out, work_hours, status, gross_hours, total_break_minutes')
+      .eq('user_id', req.user.id).eq('date', date).maybeSingle();
+    res.json(data || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Fetch the employee's active shift config for a given date (including attendance rule columns).
 // Returns null when no shift assignment applies for that date.
 async function getActiveShiftConfig(userId, today) {
