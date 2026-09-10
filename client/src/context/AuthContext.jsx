@@ -130,6 +130,7 @@ export function AuthProvider({ children }) {
       organization,
       permissions,
       hasPermission,
+      can: hasPermission,
     }}>
       {children}
     </AuthContext.Provider>
