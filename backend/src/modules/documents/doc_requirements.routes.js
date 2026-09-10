@@ -501,4 +501,161 @@ router.post('/:id/submit', auth, upload.single('file'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/doc-requirements/for-employee/:userId
+// Admin: fetch active requirements applicable to a specific employee + that employee's submission status
+router.get('/for-employee/:userId', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const oId   = req.user.organization_id;
+    const empId = parseInt(req.params.userId);
+    if (isNaN(empId)) return res.status(400).json({ error: 'Invalid employee ID' });
+
+    const { data: emp } = await db.from('users')
+      .select('id, organization_id')
+      .eq('id', empId).eq('organization_id', oId).maybeSingle();
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    const { data: requirements, error } = await db
+      .from('document_requirements')
+      .select('*')
+      .eq('organization_id', oId)
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
+      .order('created_at',    { ascending: true });
+    if (error) throw error;
+
+    const applicable = (requirements || []).filter(r =>
+      !r.assigned_employee_ids ||
+      r.assigned_employee_ids.length === 0 ||
+      r.assigned_employee_ids.includes(empId)
+    );
+    if (!applicable.length) return res.json([]);
+
+    const reqIds = applicable.map(r => r.id);
+    const { data: subs } = await db
+      .from('employee_doc_submissions')
+      .select('*, reviewer:users!employee_doc_submissions_reviewed_by_fkey(name)')
+      .eq('user_id', empId)
+      .eq('organization_id', oId)
+      .in('requirement_id', reqIds);
+
+    const subMap = {};
+    (subs || []).forEach(s => { subMap[s.requirement_id] = s; });
+
+    res.json(applicable.map(r => ({ ...r, _submission: subMap[r.id] || null })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/doc-requirements/:id/submit-for/:userId
+// Admin uploads a document on behalf of a specific employee
+router.post('/:id/submit-for/:userId', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!isAdmin(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    const oId   = req.user.organization_id;
+    const reqId = Number(req.params.id);
+    const empId = Number(req.params.userId);
+    if (isNaN(reqId) || isNaN(empId)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const { data: emp } = await db.from('users')
+      .select('id, name, organization_id')
+      .eq('id', empId).eq('organization_id', oId).maybeSingle();
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+    if (!ALLOWED_MIMES.includes(req.file.mimetype))
+      return res.status(400).json({ error: 'Invalid file type. Only PDF, images, and Word documents are allowed.' });
+
+    const { data: requirement } = await db.from('document_requirements')
+      .select('*').eq('id', reqId).eq('organization_id', oId).single();
+    if (!requirement)           return res.status(404).json({ error: 'Requirement not found' });
+    if (!requirement.is_active) return res.status(400).json({ error: 'This document requirement is no longer active' });
+
+    const maxBytes = (requirement.max_file_size_mb || 10) * 1024 * 1024;
+    if (req.file.size > maxBytes)
+      return res.status(400).json({ error: `File size exceeds the ${requirement.max_file_size_mb || 10} MB limit for "${requirement.name}".` });
+    if (req.file.size === 0)
+      return res.status(400).json({ error: 'Empty files are not allowed.' });
+
+    const { data: existing } = await db.from('employee_doc_submissions')
+      .select('*').eq('requirement_id', reqId).eq('user_id', empId).maybeSingle();
+
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `hrms/${oId}/doc-submissions`, resource_type: 'auto' },
+        (err, r) => err ? reject(err) : resolve(r)
+      ).end(req.file.buffer);
+    });
+
+    if (existing?.cloudinary_public_id) {
+      try { await cloudinary.uploader.destroy(existing.cloudinary_public_id); } catch {}
+    }
+
+    const { expiry_date } = req.body;
+    let submission;
+
+    if (existing) {
+      const { data, error } = await db.from('employee_doc_submissions')
+        .update({
+          file_url:             result.secure_url,
+          file_type:            req.file.mimetype,
+          file_size:            req.file.size,
+          file_name:            req.file.originalname,
+          cloudinary_public_id: result.public_id,
+          status:               'under_review',
+          rejection_reason:     null,
+          expiry_date:          expiry_date || null,
+          reviewed_by:          null,
+          reviewed_at:          null,
+          uploaded_at:          new Date().toISOString(),
+          updated_at:           new Date().toISOString(),
+          version:              (existing.version || 1) + 1,
+        })
+        .eq('id', existing.id)
+        .select().single();
+      if (error) throw error;
+      submission = data;
+
+      await db.from('doc_submission_activity').insert({
+        requirement_id: reqId, user_id: empId, organization_id: oId,
+        action: 're_uploaded',
+        details: `Re-uploaded "${requirement.name}" on behalf of ${emp.name} by ${req.user.name}`,
+        actor_id: req.user.id,
+      });
+    } else {
+      const { data, error } = await db.from('employee_doc_submissions').insert({
+        requirement_id:       reqId,
+        user_id:              empId,
+        organization_id:      oId,
+        file_url:             result.secure_url,
+        file_type:            req.file.mimetype,
+        file_size:            req.file.size,
+        file_name:            req.file.originalname,
+        cloudinary_public_id: result.public_id,
+        status:               'under_review',
+        expiry_date:          expiry_date || null,
+        version:              1,
+      }).select().single();
+      if (error) throw error;
+      submission = data;
+
+      await db.from('doc_submission_activity').insert({
+        requirement_id: reqId, user_id: empId, organization_id: oId,
+        action: 'uploaded',
+        details: `Uploaded "${requirement.name}" on behalf of ${emp.name} by ${req.user.name}`,
+        actor_id: req.user.id,
+      });
+    }
+
+    await db.from('notifications').insert({
+      user_id:         empId,
+      title:           'Document Uploaded',
+      message:         `Your "${requirement.name}" has been uploaded by ${req.user.name} and is pending verification.`,
+      type:            'document',
+      organization_id: oId,
+    }).catch(() => {});
+
+    res.json(submission);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,7 +8,8 @@ import {
   Building2, Award, BookOpen, Activity, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, Loader2, X, Save, Eye, EyeOff, Banknote,
   Globe, Fingerprint, Clock, AlarmClock, Timer, Coffee,
-  History, TrendingUp, TrendingDown, Upload,
+  History, TrendingUp, TrendingDown, Upload, CheckSquare, XCircle,
+  FileCheck, FileClock, FileX, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -116,13 +117,14 @@ const TABS_ALL = [
 ];
 
 // ─── Section: Personal Tab ───────────────────────────────────────────────────
+// Uses inline editing: clicking Edit Section reveals the form within the card itself.
 
 function PersonalTab({ empId, isAdmin }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [editModal, setEditModal]   = useState(null); // 'basic'|'address'|'emergency'|'health'
-  const [form, setForm]             = useState({});
-  const [ecModal, setEcModal]       = useState(null); // null | record (for edit)
+  const [editSection, setEditSection] = useState(null); // 'basic'|'address'|'health' — null = view mode
+  const [form, setForm]               = useState({});
+  const [ecModal, setEcModal]         = useState(null); // null | record (for edit)
   const [familyModal, setFamilyModal] = useState(null); // null | record (for edit)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -145,12 +147,12 @@ function PersonalTab({ empId, isAdmin }) {
 
   const saveMut = useMutation({
     mutationFn: (body) => apiPut(`/profile/${empId}/personal`, body),
-    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-personal', empId] }); setEditModal(null); },
+    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-personal', empId] }); qc.invalidateQueries({ queryKey: ['epv2-overview', empId] }); setEditSection(null); },
     onError: e => toast(e.message, 'error'),
   });
   const saveHealthMut = useMutation({
     mutationFn: (body) => apiPut(`/profile/${empId}/health`, body),
-    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-health', empId] }); setEditModal(null); },
+    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-health', empId] }); setEditSection(null); },
     onError: e => toast(e.message, 'error'),
   });
   const ecMut = useMutation({
@@ -176,10 +178,11 @@ function PersonalTab({ empId, isAdmin }) {
 
   if (pLoad) return <LoadingSection />;
 
-  const openBasic = () => { setForm({ ...personal }); setEditModal('basic'); };
-  const openAddress = () => { setForm({ ...personal }); setEditModal('address'); };
-  const openHealth = () => { setForm({ ...health }); setEditModal('health'); };
-  const openEc = (rec = {}) => { setForm({ contact_name: rec.contact_name || '', relationship: rec.relationship || '', mobile_number: rec.mobile_number || '', alternate_number: rec.alternate_number || '', email: rec.email || '', address: rec.address || '', is_primary: rec.is_primary || false }); setEcModal(rec); };
+  const openBasic   = () => { setForm({ ...personal }); setEditSection('basic'); };
+  const openAddress = () => { setForm({ ...personal }); setEditSection('address'); };
+  const openHealth  = () => { setForm({ ...health });   setEditSection('health'); };
+  const cancelEdit  = () => setEditSection(null);
+  const openEc     = (rec = {}) => { setForm({ contact_name: rec.contact_name || '', relationship: rec.relationship || '', mobile_number: rec.mobile_number || '', alternate_number: rec.alternate_number || '', email: rec.email || '', address: rec.address || '', is_primary: rec.is_primary || false }); setEcModal(rec); };
   const openFamily = (rec = {}) => { setForm({ relationship: rec.relationship||'', name: rec.name||'', date_of_birth: rec.date_of_birth||'', gender: rec.gender||'', occupation: rec.occupation||'', contact_number: rec.contact_number||'', dependent: rec.dependent||false }); setFamilyModal(rec); };
 
   const REL_ORDER = ['father','mother','spouse','child','sibling','other'];
@@ -189,66 +192,209 @@ function PersonalTab({ empId, isAdmin }) {
     return acc;
   }, {});
 
+  const InlineSaveBar = ({ onSave, onCancel, isPending }) => (
+    <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+      <button className="btn btn-outline" onClick={onCancel}>Cancel</button>
+      <button className="btn btn-primary" onClick={onSave} disabled={isPending}>
+        {isPending ? <><Loader2 size={13} className="animate-spin mr-1" />Saving…</> : <><Save size={13} className="mr-1" />Save</>}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {/* Basic Info */}
+    <div className="space-y-5">
+      {/* ── Basic Information ── */}
       <SectionCard title="Basic Information" icon={User}
-        action={isAdmin && <AdminBtn onClick={openBasic} />}>
-        <InfoRow label="Salutation" value={personal.salutation} />
-        <InfoRow label="Full Name" value={[personal.salutation, personal.name, personal.middle_name, personal.surname].filter(Boolean).join(' ')} icon={User} />
-        <InfoRow label="Date of Birth" value={personal.date_of_birth ? fmtDate(personal.date_of_birth) : null} />
-        <InfoRow label="Gender" value={personal.gender} />
-        <InfoRow label="Blood Group" value={personal.blood_group} icon={Heart} />
-        <InfoRow label="Marital Status" value={personal.marital_status} />
-        <InfoRow label="Nationality" value={personal.nationality} />
-        <InfoRow label="Religion" value={personal.religion} />
-        <InfoRow label="Citizenship" value={personal.citizenship} icon={Globe} />
-        <InfoRow label="Height" value={personal.height} />
-        <InfoRow label="Weight" value={personal.weight} />
+        action={isAdmin && editSection !== 'basic' && <AdminBtn onClick={openBasic} />}>
+        {editSection === 'basic' ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="form-label">Salutation</label>
+                <select className="form-control" value={form.salutation||''} onChange={e=>set('salutation',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['Mr.','Mrs.','Ms.','Miss','Dr.','Prof.'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">First Name</label><input className="form-control" value={form.name||''} onChange={e=>set('name',e.target.value)}/></div>
+              <div><label className="form-label">Middle Name</label><input className="form-control" value={form.middle_name||''} onChange={e=>set('middle_name',e.target.value)}/></div>
+              <div><label className="form-label">Last Name</label><input className="form-control" value={form.surname||''} onChange={e=>set('surname',e.target.value)}/></div>
+              <div><label className="form-label">Mobile</label><input className="form-control" type="tel" value={form.phone||''} onChange={e=>set('phone',e.target.value)}/></div>
+              <div><label className="form-label">Personal Email</label><input className="form-control" type="email" value={form.personal_email||''} onChange={e=>set('personal_email',e.target.value)}/></div>
+              <div><label className="form-label">Date of Birth</label><input className="form-control" type="date" value={form.date_of_birth||''} onChange={e=>set('date_of_birth',e.target.value)}/></div>
+              <div><label className="form-label">Gender</label>
+                <select className="form-control" value={form.gender||''} onChange={e=>set('gender',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['Male','Female','Other','Prefer not to say'].map(g=><option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Blood Group</label>
+                <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Marital Status</label>
+                <select className="form-control" value={form.marital_status||''} onChange={e=>set('marital_status',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['Single','Married','Divorced','Widowed','Separated'].map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Nationality</label>
+                <input className="form-control" list="nationality-list" value={form.nationality||''} onChange={e=>set('nationality',e.target.value)}/>
+                <datalist id="nationality-list">{['Indian','American','British','Canadian','Australian','Other'].map(n=><option key={n} value={n}/>)}</datalist>
+              </div>
+              <div><label className="form-label">Religion</label>
+                <select className="form-control" value={form.religion||''} onChange={e=>set('religion',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['Hindu','Muslim','Christian','Sikh','Buddhist','Jain','Parsi','Jewish','Other'].map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Citizenship</label><input className="form-control" value={form.citizenship||''} onChange={e=>set('citizenship',e.target.value)}/></div>
+              <div><label className="form-label">Height (cm)</label><input className="form-control" type="number" min="0" step="0.1" value={form.height||''} onChange={e=>set('height',e.target.value)}/></div>
+              <div><label className="form-label">Weight (kg)</label><input className="form-control" type="number" min="0" step="0.1" value={form.weight||''} onChange={e=>set('weight',e.target.value)}/></div>
+            </div>
+            <InlineSaveBar onSave={() => saveMut.mutate(form)} onCancel={cancelEdit} isPending={saveMut.isPending} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <InfoRow label="Full Name" value={[personal.salutation, personal.name, personal.middle_name, personal.surname].filter(Boolean).join(' ')} icon={User} />
+            <InfoRow label="Date of Birth" value={personal.date_of_birth ? fmtDate(personal.date_of_birth) : null} />
+            <InfoRow label="Gender" value={personal.gender} />
+            <InfoRow label="Blood Group" value={personal.blood_group} icon={Heart} />
+            <InfoRow label="Marital Status" value={personal.marital_status} />
+            <InfoRow label="Nationality" value={personal.nationality} />
+            <InfoRow label="Religion" value={personal.religion} />
+            <InfoRow label="Citizenship" value={personal.citizenship} icon={Globe} />
+            <InfoRow label="Height (cm)" value={personal.height} />
+            <InfoRow label="Weight (kg)" value={personal.weight} />
+            <InfoRow label="Company Email" value={personal.email} icon={Mail} />
+            <InfoRow label="Personal Email" value={personal.personal_email} icon={Mail} />
+            <InfoRow label="Mobile" value={personal.phone} icon={Phone} />
+          </div>
+        )}
       </SectionCard>
 
-      {/* Contact */}
-      <SectionCard title="Contact Information" icon={Phone}
-        action={isAdmin && <AdminBtn onClick={openBasic} />}>
-        <InfoRow label="Company Email" value={personal.email} icon={Mail} />
-        <InfoRow label="Personal Email" value={personal.personal_email} icon={Mail} />
-        <InfoRow label="Mobile" value={personal.phone} icon={Phone} />
+      {/* ── Addresses ── */}
+      <SectionCard title="Addresses" icon={MapPin}
+        action={isAdmin && editSection !== 'address' && <AdminBtn onClick={openAddress} />}>
+        {editSection === 'address' ? (
+          <div className="space-y-4">
+            <p className="text-xs font-black text-[#777587] uppercase tracking-wider">Current Address</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="form-label">Address Line 1</label><input className="form-control" value={form.current_address_line1||''} onChange={e=>set('current_address_line1',e.target.value)}/></div>
+              <div><label className="form-label">Address Line 2</label><input className="form-control" value={form.current_address_line2||''} onChange={e=>set('current_address_line2',e.target.value)}/></div>
+              <div><label className="form-label">Country</label>
+                <select className="form-control" value={form.current_country||''} onChange={e=>{set('current_country',e.target.value); set('current_state',''); set('current_city','');}}>
+                  <option value="">— Select Country —</option>
+                  {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">State / Province</label>
+                {form.current_country ? (
+                  <select className="form-control" value={form.current_state||''} onChange={e=>{set('current_state',e.target.value); set('current_city','');}}>
+                    <option value="">— Select State —</option>
+                    {getStates(form.current_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
+                  </select>
+                ) : <input className="form-control" placeholder="Select country first" disabled />}
+              </div>
+              <div><label className="form-label">City</label>
+                {form.current_state ? (
+                  <select className="form-control" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)}>
+                    <option value="">— Select City —</option>
+                    {getCities(form.current_country, form.current_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
+                    <option value="__other__">Other (type below)</option>
+                  </select>
+                ) : <input className="form-control" placeholder="Select state first" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)} />}
+                {form.current_city === '__other__' && <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('current_city',e.target.value)}/>}
+              </div>
+              <div><label className="form-label">Postal Code</label><input className="form-control" value={form.current_postal_code||''} onChange={e=>set('current_postal_code',e.target.value)}/></div>
+            </div>
+            <p className="text-xs font-black text-[#777587] uppercase tracking-wider mt-2">Permanent Address</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2"><label className="form-label">Address</label><input className="form-control" value={form.permanent_address||''} onChange={e=>set('permanent_address',e.target.value)}/></div>
+              <div><label className="form-label">Country</label>
+                <select className="form-control" value={form.permanent_country||''} onChange={e=>{set('permanent_country',e.target.value); set('permanent_state',''); set('permanent_city','');}}>
+                  <option value="">— Select Country —</option>
+                  {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">State / Province</label>
+                {form.permanent_country ? (
+                  <select className="form-control" value={form.permanent_state||''} onChange={e=>{set('permanent_state',e.target.value); set('permanent_city','');}}>
+                    <option value="">— Select State —</option>
+                    {getStates(form.permanent_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
+                  </select>
+                ) : <input className="form-control" placeholder="Select country first" disabled />}
+              </div>
+              <div><label className="form-label">City</label>
+                {form.permanent_state ? (
+                  <select className="form-control" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)}>
+                    <option value="">— Select City —</option>
+                    {getCities(form.permanent_country, form.permanent_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
+                    <option value="__other__">Other (type below)</option>
+                  </select>
+                ) : <input className="form-control" placeholder="Select state first" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)} />}
+                {form.permanent_city === '__other__' && <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('permanent_city',e.target.value)}/>}
+              </div>
+              <div><label className="form-label">Postal Code</label><input className="form-control" value={form.permanent_postal_code||''} onChange={e=>set('permanent_postal_code',e.target.value)}/></div>
+            </div>
+            <InlineSaveBar onSave={() => saveMut.mutate(form)} onCancel={cancelEdit} isPending={saveMut.isPending} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <div>
+              <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider mb-2">Current</p>
+              <InfoRow label="Address Line 1" value={personal.current_address_line1} />
+              <InfoRow label="Address Line 2" value={personal.current_address_line2} />
+              <InfoRow label="City" value={personal.current_city} />
+              <InfoRow label="State" value={personal.current_state} />
+              <InfoRow label="Country" value={personal.current_country} />
+              <InfoRow label="Postal Code" value={personal.current_postal_code} />
+            </div>
+            <div>
+              <p className="text-[0.65rem] font-black text-[#777587] uppercase tracking-wider mb-2">Permanent</p>
+              <InfoRow label="Address" value={personal.permanent_address} />
+              <InfoRow label="City" value={personal.permanent_city} />
+              <InfoRow label="State" value={personal.permanent_state} />
+              <InfoRow label="Country" value={personal.permanent_country} />
+              <InfoRow label="Postal Code" value={personal.permanent_postal_code} />
+            </div>
+          </div>
+        )}
       </SectionCard>
 
-      {/* Current Address */}
-      <SectionCard title="Current Address" icon={MapPin}
-        action={isAdmin && <AdminBtn onClick={openAddress} />}>
-        <InfoRow label="Address Line 1" value={personal.current_address_line1} />
-        <InfoRow label="Address Line 2" value={personal.current_address_line2} />
-        <InfoRow label="City" value={personal.current_city} />
-        <InfoRow label="State" value={personal.current_state} />
-        <InfoRow label="Country" value={personal.current_country} />
-        <InfoRow label="Postal Code" value={personal.current_postal_code} />
-      </SectionCard>
-
-      {/* Permanent Address */}
-      <SectionCard title="Permanent Address" icon={Home}
-        action={isAdmin && <AdminBtn onClick={openAddress} />}>
-        <InfoRow label="Address" value={personal.permanent_address} />
-        <InfoRow label="City" value={personal.permanent_city} />
-        <InfoRow label="State" value={personal.permanent_state} />
-        <InfoRow label="Country" value={personal.permanent_country} />
-        <InfoRow label="Postal Code" value={personal.permanent_postal_code} />
-      </SectionCard>
-
-      {/* Health */}
+      {/* ── Health Information ── */}
       <SectionCard title="Health Information" icon={Heart}
-        action={isAdmin && <AdminBtn onClick={openHealth} />}>
-        <InfoRow label="Blood Group" value={health.blood_group} />
-        <InfoRow label="Allergies" value={health.allergies} />
-        <InfoRow label="Medical Conditions" value={health.medical_conditions} />
-        <InfoRow label="Disabilities" value={health.disabilities} />
-        {isAdmin && <InfoRow label="Health Insurance" value={health.health_insurance_provider} />}
-        {isAdmin && <InfoRow label="Insurance Number" value={health.health_insurance_number} />}
-        <InfoRow label="Emergency Medical Notes" value={health.emergency_medical_notes} />
+        action={isAdmin && editSection !== 'health' && <AdminBtn onClick={openHealth} />}>
+        {editSection === 'health' ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="form-label">Blood Group</label>
+                <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              {[['allergies','Allergies'],['medical_conditions','Medical Conditions'],['disabilities','Disabilities'],['emergency_medical_notes','Emergency Notes'],['health_insurance_provider','Insurance Provider'],['health_insurance_number','Insurance Number'],['health_insurance_expiry','Insurance Expiry','date']].map(([k,l,t])=>(
+                <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
+              ))}
+            </div>
+            <InlineSaveBar onSave={() => saveHealthMut.mutate(form)} onCancel={cancelEdit} isPending={saveHealthMut.isPending} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <InfoRow label="Blood Group" value={health.blood_group} />
+            <InfoRow label="Allergies" value={health.allergies} />
+            <InfoRow label="Medical Conditions" value={health.medical_conditions} />
+            <InfoRow label="Disabilities" value={health.disabilities} />
+            {isAdmin && <InfoRow label="Insurance Provider" value={health.health_insurance_provider} />}
+            {isAdmin && <InfoRow label="Insurance Number" value={health.health_insurance_number} />}
+            <InfoRow label="Emergency Notes" value={health.emergency_medical_notes} />
+          </div>
+        )}
       </SectionCard>
 
-      {/* Emergency Contacts */}
+      {/* ── Emergency Contacts ── */}
       <SectionCard title="Emergency Contacts" icon={AlertCircle}
         action={isAdmin && <AdminBtn onClick={() => openEc()} label="Add" />}>
         {cLoad ? <LoadingSection /> : contacts.length === 0
@@ -274,7 +420,7 @@ function PersonalTab({ empId, isAdmin }) {
         }
       </SectionCard>
 
-      {/* Family Members */}
+      {/* ── Family Members ── */}
       <SectionCard title="Family Members" icon={Users}
         action={isAdmin && <AdminBtn onClick={() => openFamily()} label="Add" />}>
         {family.length === 0 ? <EmptyState icon={Users} text="No family members added" /> : (
@@ -339,183 +485,21 @@ function PersonalTab({ empId, isAdmin }) {
         </div>
       </Modal>
 
-      {/* Edit Basic Modal */}
-      <Modal open={editModal === 'basic'} onClose={() => setEditModal(null)} title="Edit Basic Information" size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Salutation */}
-          <div><label className="form-label">Salutation</label>
-            <select className="form-control" value={form.salutation||''} onChange={e=>set('salutation',e.target.value)}>
-              <option value="">— Select —</option>
-              {['Mr.','Mrs.','Ms.','Miss','Dr.','Prof.'].map(s=><option key={s} value={s}>{s}</option>)}
-            </select></div>
-          {/* First Name */}
-          <div><label className="form-label">First Name</label><input className="form-control" value={form.name||''} onChange={e=>set('name',e.target.value)}/></div>
-          {/* Middle Name */}
-          <div><label className="form-label">Middle Name</label><input className="form-control" value={form.middle_name||''} onChange={e=>set('middle_name',e.target.value)}/></div>
-          {/* Last Name / Surname */}
-          <div><label className="form-label">Last Name</label><input className="form-control" value={form.surname||''} onChange={e=>set('surname',e.target.value)}/></div>
-          {/* Mobile */}
-          <div><label className="form-label">Mobile</label><input className="form-control" type="tel" value={form.phone||''} onChange={e=>set('phone',e.target.value)}/></div>
-          {/* Personal Email */}
-          <div><label className="form-label">Personal Email</label><input className="form-control" type="email" value={form.personal_email||''} onChange={e=>set('personal_email',e.target.value)}/></div>
-          {/* Date of Birth */}
-          <div><label className="form-label">Date of Birth</label><input className="form-control" type="date" value={form.date_of_birth||''} onChange={e=>set('date_of_birth',e.target.value)}/></div>
-          {/* Gender */}
-          <div><label className="form-label">Gender</label>
-            <select className="form-control" value={form.gender||''} onChange={e=>set('gender',e.target.value)}>
-              <option value="">— Select —</option>
-              {['Male','Female','Other','Prefer not to say'].map(g=><option key={g} value={g}>{g}</option>)}
-            </select></div>
-          {/* Blood Group */}
-          <div><label className="form-label">Blood Group</label>
-            <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
-              <option value="">— Select —</option>
-              {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
-            </select></div>
-          {/* Marital Status */}
-          <div><label className="form-label">Marital Status</label>
-            <select className="form-control" value={form.marital_status||''} onChange={e=>set('marital_status',e.target.value)}>
-              <option value="">— Select —</option>
-              {['Single','Married','Divorced','Widowed','Separated'].map(m=><option key={m} value={m}>{m}</option>)}
-            </select></div>
-          {/* Nationality */}
-          <div><label className="form-label">Nationality</label>
-            <input className="form-control" list="nationality-list" value={form.nationality||''} onChange={e=>set('nationality',e.target.value)}/>
-            <datalist id="nationality-list">
-              {['Indian','American','British','Canadian','Australian','Other'].map(n=><option key={n} value={n}/>)}
-            </datalist></div>
-          {/* Religion */}
-          <div><label className="form-label">Religion</label>
-            <select className="form-control" value={form.religion||''} onChange={e=>set('religion',e.target.value)}>
-              <option value="">— Select —</option>
-              {['Hindu','Muslim','Christian','Sikh','Buddhist','Jain','Parsi','Jewish','Other'].map(r=><option key={r} value={r}>{r}</option>)}
-            </select></div>
-          {/* Citizenship */}
-          <div><label className="form-label">Citizenship</label><input className="form-control" value={form.citizenship||''} onChange={e=>set('citizenship',e.target.value)}/></div>
-          {/* Height */}
-          <div><label className="form-label">Height (cm)</label><input className="form-control" type="number" min="0" step="0.1" value={form.height||''} onChange={e=>set('height',e.target.value)}/></div>
-          {/* Weight */}
-          <div><label className="form-label">Weight (kg)</label><input className="form-control" type="number" min="0" step="0.1" value={form.weight||''} onChange={e=>set('weight',e.target.value)}/></div>
-        </div>
-      </Modal>
-
-      {/* Edit Address Modal */}
-      <Modal open={editModal === 'address'} onClose={() => setEditModal(null)} title="Edit Addresses" size="lg"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}>{saveMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
-        <div className="space-y-4">
-          <p className="text-xs font-black text-[#777587] uppercase tracking-wider">Current Address</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="form-label">Address Line 1</label><input className="form-control" value={form.current_address_line1||''} onChange={e=>set('current_address_line1',e.target.value)}/></div>
-            <div><label className="form-label">Address Line 2</label><input className="form-control" value={form.current_address_line2||''} onChange={e=>set('current_address_line2',e.target.value)}/></div>
-            <div><label className="form-label">Country</label>
-              <select className="form-control" value={form.current_country||''} onChange={e=>{set('current_country',e.target.value); set('current_state',''); set('current_city','');}}>
-                <option value="">— Select Country —</option>
-                {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
-              </select>
-            </div>
-            <div><label className="form-label">State / Province</label>
-              {form.current_country ? (
-                <select className="form-control" value={form.current_state||''} onChange={e=>{set('current_state',e.target.value); set('current_city','');}}>
-                  <option value="">— Select State —</option>
-                  {getStates(form.current_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
-                </select>
-              ) : <input className="form-control" placeholder="Select country first" disabled />}
-            </div>
-            <div><label className="form-label">City</label>
-              {form.current_state ? (
-                <select className="form-control" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)}>
-                  <option value="">— Select City —</option>
-                  {getCities(form.current_country, form.current_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
-                  <option value="__other__">Other (type below)</option>
-                </select>
-              ) : <input className="form-control" placeholder="Select state first" value={form.current_city||''} onChange={e=>set('current_city',e.target.value)} />}
-              {form.current_city === '__other__' && (
-                <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('current_city',e.target.value)}/>
-              )}
-            </div>
-            <div><label className="form-label">Postal Code</label><input className="form-control" value={form.current_postal_code||''} onChange={e=>set('current_postal_code',e.target.value)}/></div>
-          </div>
-
-          <p className="text-xs font-black text-[#777587] uppercase tracking-wider mt-2">Permanent Address</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2"><label className="form-label">Address</label><input className="form-control" value={form.permanent_address||''} onChange={e=>set('permanent_address',e.target.value)}/></div>
-            <div><label className="form-label">Country</label>
-              <select className="form-control" value={form.permanent_country||''} onChange={e=>{set('permanent_country',e.target.value); set('permanent_state',''); set('permanent_city','');}}>
-                <option value="">— Select Country —</option>
-                {ALL_COUNTRIES.map(c=><option key={c.isoCode} value={c.name}>{c.name}</option>)}
-              </select>
-            </div>
-            <div><label className="form-label">State / Province</label>
-              {form.permanent_country ? (
-                <select className="form-control" value={form.permanent_state||''} onChange={e=>{set('permanent_state',e.target.value); set('permanent_city','');}}>
-                  <option value="">— Select State —</option>
-                  {getStates(form.permanent_country).map(s=><option key={s.isoCode} value={s.name}>{s.name}</option>)}
-                </select>
-              ) : <input className="form-control" placeholder="Select country first" disabled />}
-            </div>
-            <div><label className="form-label">City</label>
-              {form.permanent_state ? (
-                <select className="form-control" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)}>
-                  <option value="">— Select City —</option>
-                  {getCities(form.permanent_country, form.permanent_state).map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
-                  <option value="__other__">Other (type below)</option>
-                </select>
-              ) : <input className="form-control" placeholder="Select state first" value={form.permanent_city||''} onChange={e=>set('permanent_city',e.target.value)} />}
-              {form.permanent_city === '__other__' && (
-                <input className="form-control mt-1" placeholder="Enter city name" onChange={e=>set('permanent_city',e.target.value)}/>
-              )}
-            </div>
-            <div><label className="form-label">Postal Code</label><input className="form-control" value={form.permanent_postal_code||''} onChange={e=>set('permanent_postal_code',e.target.value)}/></div>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Edit Health Modal */}
-      <Modal open={editModal === 'health'} onClose={() => setEditModal(null)} title="Edit Health Information" size="md"
-        footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEditModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => saveHealthMut.mutate(form)} disabled={saveHealthMut.isPending}>{saveHealthMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
-        <div className="grid grid-cols-2 gap-4">
-          <div><label className="form-label">Blood Group</label>
-            <select className="form-control" value={form.blood_group||''} onChange={e=>set('blood_group',e.target.value)}>
-              <option value="">— Select —</option>
-              {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
-          {[['allergies','Allergies'],['medical_conditions','Medical Conditions'],['disabilities','Disabilities'],['emergency_medical_notes','Emergency Medical Notes'],['health_insurance_provider','Insurance Provider'],['health_insurance_number','Insurance Number'],['health_insurance_expiry','Insurance Expiry','date']].map(([k,l,t])=>(
-            <div key={k}><label className="form-label">{l}</label><input className="form-control" type={t||'text'} value={form[k]||''} onChange={e=>set(k,e.target.value)}/></div>
-          ))}
-        </div>
-      </Modal>
-
       {/* Emergency Contact Modal */}
       <Modal open={ecModal !== null} onClose={() => setEcModal(null)} title={ecModal?.id ? 'Edit Emergency Contact' : 'Add Emergency Contact'} size="md"
         footer={<div className="flex justify-end gap-3"><button className="btn btn-outline" onClick={() => setEcModal(null)}>Cancel</button><button className="btn btn-primary" onClick={() => ecMut.mutate(form)} disabled={ecMut.isPending}>{ecMut.isPending ? 'Saving…' : 'Save'}</button></div>}>
-        {/* Import from family — only shown when adding and family members exist */}
         {!ecModal?.id && family.length > 0 && (
           <div className="mb-4 p-3 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg flex items-center gap-3">
             <Users size={15} className="text-[#3525cd] flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-[#3525cd] mb-1">Import from Family Members</p>
-              <select
-                className="form-control text-sm"
-                defaultValue=""
-                onChange={e => {
-                  const member = family.find(f => String(f.id) === e.target.value);
-                  if (!member) return;
-                  setForm(prev => ({
-                    ...prev,
-                    contact_name:   member.name            || '',
-                    relationship:   member.relationship    || '',
-                    mobile_number:  member.contact_number  || '',
-                  }));
-                }}
-              >
+              <select className="form-control text-sm" defaultValue="" onChange={e => {
+                const member = family.find(f => String(f.id) === e.target.value);
+                if (!member) return;
+                setForm(prev => ({ ...prev, contact_name: member.name||'', relationship: member.relationship||'', mobile_number: member.contact_number||'' }));
+              }}>
                 <option value="">— Select a family member —</option>
-                {family.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.relationship ? ` (${m.relationship})` : ''}
-                  </option>
-                ))}
+                {family.map(m => <option key={m.id} value={m.id}>{m.name}{m.relationship ? ` (${m.relationship})` : ''}</option>)}
               </select>
             </div>
           </div>
@@ -553,16 +537,33 @@ function deriveWeeklyOff(weeklyOffDay, workSchedule) {
 function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [skillModal, setSkillModal]   = useState(null);
-  const [expModal, setExpModal]       = useState(null);
-  const [orgStructOpen, setOrgStructOpen] = useState(false);
-  const [form, setForm]               = useState({});
+  const [skillModal, setSkillModal]             = useState(null);
+  const [expModal, setExpModal]                 = useState(null);
+  const [orgStructEditing, setOrgStructEditing] = useState(false);
+  const [empDetailsEditing, setEmpDetailsEditing] = useState(false);
+  const [form, setForm]                         = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => apiGet('/branches'),
     staleTime: 5 * 60 * 1000,
+  });
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => apiGet('/departments'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations'],
+    queryFn: () => apiGet('/designations'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: allEmployees = [] } = useQuery({
+    queryKey: ['employees-list'],
+    queryFn: () => apiGet('/employees'),
+    staleTime: 5 * 60 * 1000,
+    enabled: isAdmin,
   });
 
   const orgStructMut = useMutation({
@@ -571,7 +572,18 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
       toast('Organisation structure updated', 'success');
       qc.invalidateQueries({ queryKey: ['epv2-professional', empId] });
       qc.invalidateQueries({ queryKey: ['epv2-overview',     empId] });
-      setOrgStructOpen(false);
+      setOrgStructEditing(false);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const empDetailsMut = useMutation({
+    mutationFn: (body) => apiPut(`/profile/${empId}/professional`, body),
+    onSuccess: () => {
+      toast('Employment details updated', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-professional', empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',     empId] });
+      setEmpDetailsEditing(false);
     },
     onError: e => toast(e.message, 'error'),
   });
@@ -633,7 +645,7 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
       weekly_off_day:     prof.weekly_off_day     || '',
       work_hours_per_day: prof.work_hours_per_day || 8,
     });
-    setOrgStructOpen(true);
+    setOrgStructEditing(true);
   };
 
   const openSkill = (rec = {}) => { setForm({ skill_name: rec.skill_name||'', skill_category: rec.skill_category||'technical', proficiency_level: rec.proficiency_level||'intermediate', years_of_experience: rec.years_of_experience||'', can_read: rec.can_read||false, can_write: rec.can_write||false, can_speak: rec.can_speak||false }); setSkillModal(rec); };
@@ -647,78 +659,173 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {/* Employment Details */}
+      {/* Employment Details — inline editing */}
       <SectionCard title="Employment Details" icon={Briefcase}
-        action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'employment')} />}>
-        <InfoRow label="Employee ID" value={prof.employee_id || emp?.employee_id || `EMP${String(empId).padStart(3, '0')}`} />
-        <InfoRow label="Department" value={prof.departments?.map(d => d.name).join(', ') || prof.department} icon={Building2} />
-        <InfoRow label="Designation" value={prof.position} />
-        <InfoRow label="Grade" value={prof.grade} />
-        <InfoRow label="Pay Cadre" value={prof.pay_cadre} />
-        <InfoRow label="Cost Centre" value={prof.cost_centre} />
-        <InfoRow label="Division" value={prof.division} />
-        <InfoRow label="Employment Type" value={prof.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} />
-        <InfoRow label="Work Mode" value={prof.work_mode?.replace(/\b\w/g, c => c.toUpperCase())} />
-        <InfoRow label="Status" value={prof.employee_status?.replace(/\b\w/g, c => c.toUpperCase())} />
+        action={isAdmin && !empDetailsEditing && <AdminBtn onClick={() => {
+          setForm({
+            employee_id:     prof.employee_id     || '',
+            department_ids:  prof.departments?.map(d => d.id) || [],
+            designation_id:  prof.designation_id  || '',
+            position:        prof.position        || '',
+            grade:           prof.grade           || '',
+            pay_cadre:       prof.pay_cadre       || '',
+            cost_centre:     prof.cost_centre     || '',
+            division:        prof.division        || '',
+            sub_division:    prof.sub_division    || '',
+            employment_type: prof.employment_type || '',
+            work_mode:       prof.work_mode       || '',
+            employee_status: prof.employee_status || '',
+            reporting_to:    prof.reporting_to    || '',
+            hod_id:          prof.hod_id          || '',
+            confirmation_date: prof.confirmation_date?.slice(0,10) || '',
+            probation_applicable: prof.probation_applicable || false,
+            probation_months:    prof.probation_months     || '',
+          });
+          setEmpDetailsEditing(true);
+        }} />}>
+        {empDetailsEditing ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="form-label">Employee ID</label><input className="form-control" value={form.employee_id||''} onChange={e=>set('employee_id',e.target.value)}/></div>
+              <div><label className="form-label">Department(s)</label>
+                <select className="form-control" multiple size={3} value={form.department_ids||[]} onChange={e=>set('department_ids',Array.from(e.target.selectedOptions,o=>Number(o.value)))}>
+                  {departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <p className="text-[0.65rem] text-[#777587] mt-0.5">Hold Ctrl/Cmd to select multiple</p>
+              </div>
+              <div><label className="form-label">Designation</label>
+                <select className="form-control" value={form.designation_id||''} onChange={e=>set('designation_id',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {designations.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Position / Title</label><input className="form-control" value={form.position||''} onChange={e=>set('position',e.target.value)}/></div>
+              <div><label className="form-label">Grade</label><input className="form-control" value={form.grade||''} onChange={e=>set('grade',e.target.value)}/></div>
+              <div><label className="form-label">Pay Cadre</label><input className="form-control" value={form.pay_cadre||''} onChange={e=>set('pay_cadre',e.target.value)}/></div>
+              <div><label className="form-label">Cost Centre</label><input className="form-control" value={form.cost_centre||''} onChange={e=>set('cost_centre',e.target.value)}/></div>
+              <div><label className="form-label">Division</label><input className="form-control" value={form.division||''} onChange={e=>set('division',e.target.value)}/></div>
+              <div><label className="form-label">Sub Division</label><input className="form-control" value={form.sub_division||''} onChange={e=>set('sub_division',e.target.value)}/></div>
+              <div><label className="form-label">Employment Type</label>
+                <select className="form-control" value={form.employment_type||''} onChange={e=>set('employment_type',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {[['full_time','Full Time'],['part_time','Part Time'],['contract','Contract'],['intern','Intern'],['consultant','Consultant'],['probation','Probation']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Work Mode</label>
+                <select className="form-control" value={form.work_mode||''} onChange={e=>set('work_mode',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {[['office','Office'],['remote','Remote'],['hybrid','Hybrid'],['wfh','WFH']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Employee Status</label>
+                <select className="form-control" value={form.employee_status||''} onChange={e=>set('employee_status',e.target.value)}>
+                  <option value="">— Select —</option>
+                  {[['active','Active'],['probation','Probation'],['on_leave','On Leave'],['inactive','Inactive'],['resigned','Resigned'],['terminated','Terminated']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Reporting Manager</label>
+                <select className="form-control" value={form.reporting_to||''} onChange={e=>set('reporting_to',e.target.value)}>
+                  <option value="">— None —</option>
+                  {allEmployees.filter(e=>e.id!==empId).map(e=><option key={e.id} value={e.id}>{e.name}{e.position?` (${e.position})`:''}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">HOD</label>
+                <select className="form-control" value={form.hod_id||''} onChange={e=>set('hod_id',e.target.value)}>
+                  <option value="">— None —</option>
+                  {allEmployees.filter(e=>e.id!==empId).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div><label className="form-label">Confirmation Date</label><input type="date" className="form-control" value={form.confirmation_date||''} onChange={e=>set('confirmation_date',e.target.value)}/></div>
+              <label className="flex items-center gap-2 text-sm col-span-2">
+                <input type="checkbox" checked={form.probation_applicable||false} onChange={e=>set('probation_applicable',e.target.checked)} className="accent-[#3525cd]"/>
+                Probation Applicable
+              </label>
+              {form.probation_applicable && (
+                <div><label className="form-label">Probation Months</label><input type="number" className="form-control" min="1" max="24" value={form.probation_months||''} onChange={e=>set('probation_months',e.target.value)}/></div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+              <button className="btn btn-outline" onClick={() => setEmpDetailsEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => empDetailsMut.mutate(form)} disabled={empDetailsMut.isPending}>
+                {empDetailsMut.isPending ? <><Loader2 size={13} className="animate-spin mr-1" />Saving…</> : <><Save size={13} className="mr-1" />Save</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <InfoRow label="Employee ID" value={prof.employee_id || emp?.employee_id || `EMP${String(empId).padStart(3, '0')}`} />
+            <InfoRow label="Department" value={prof.departments?.map(d => d.name).join(', ') || prof.department} icon={Building2} />
+            <InfoRow label="Designation" value={prof.position} />
+            <InfoRow label="Grade" value={prof.grade} />
+            <InfoRow label="Pay Cadre" value={prof.pay_cadre} />
+            <InfoRow label="Cost Centre" value={prof.cost_centre} />
+            <InfoRow label="Division" value={prof.division} />
+            <InfoRow label="Employment Type" value={prof.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} />
+            <InfoRow label="Work Mode" value={prof.work_mode?.replace(/\b\w/g, c => c.toUpperCase())} />
+            <InfoRow label="Status" value={prof.employee_status?.replace(/\b\w/g, c => c.toUpperCase())} />
+            {prof.reporting_to && <InfoRow label="Reporting Manager" value={prof.manager?.name} icon={User} />}
+          </div>
+        )}
       </SectionCard>
 
       {/* Org Structure */}
       <SectionCard title="Organisation Structure" icon={Users}
-        action={isAdmin && <AdminBtn onClick={openOrgStruct} />}>
-        <InfoRow label="Joining Date" value={prof.joining_date ? fmtDate(prof.joining_date) : null} />
-        <InfoRow label="HOD" value={prof.hod?.name} />
-        <InfoRow label="Branch" value={prof.branch?.name} icon={MapPin} />
-        <InfoRow label="Work Location" value={prof.location} />
-        <InfoRow label="Weekly Off" value={deriveWeeklyOff(prof.weekly_off_day, workSchedule)} />
-        <InfoRow label="Work Hours/Day" value={prof.work_hours_per_day ? `${prof.work_hours_per_day}h` : null} />
-        {prof.probation_applicable && <InfoRow label="Probation" value={`${prof.probation_months} months`} />}
+        action={isAdmin && !orgStructEditing && <AdminBtn onClick={openOrgStruct} />}>
+        {orgStructEditing ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="form-label">Branch</label>
+                <select className="form-control" value={form.branch_id || ''} onChange={e => {
+                  const bId = e.target.value;
+                  set('branch_id', bId);
+                  const branch = branches.find(b => String(b.id) === String(bId));
+                  if (branch?.location) set('location', branch.location);
+                  else if (!bId) set('location', '');
+                }}>
+                  <option value="">— No branch —</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Joining Date</label>
+                <input type="date" className="form-control" value={form.joining_date || ''} onChange={e => set('joining_date', e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">Work Location</label>
+                <input className="form-control" placeholder="e.g. Ahmedabad, Gujarat" value={form.location || ''} onChange={e => set('location', e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">Weekly Off</label>
+                <select className="form-control" value={form.weekly_off_day || ''} onChange={e => set('weekly_off_day', e.target.value)}>
+                  <option value="">— Select —</option>
+                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Work Hours/Day</label>
+                <input type="number" className="form-control" min="1" max="24" value={form.work_hours_per_day || ''} onChange={e => set('work_hours_per_day', Number(e.target.value))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+              <button className="btn btn-outline" onClick={() => setOrgStructEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => orgStructMut.mutate(form)} disabled={orgStructMut.isPending}>
+                {orgStructMut.isPending ? <><Loader2 size={13} className="animate-spin mr-1" />Saving…</> : <><Save size={13} className="mr-1" />Save</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <InfoRow label="Joining Date" value={prof.joining_date ? fmtDate(prof.joining_date) : null} />
+            <InfoRow label="HOD" value={prof.hod?.name} />
+            <InfoRow label="Branch" value={prof.branch?.name} icon={MapPin} />
+            <InfoRow label="Work Location" value={prof.location} />
+            <InfoRow label="Weekly Off" value={deriveWeeklyOff(prof.weekly_off_day, workSchedule)} />
+            <InfoRow label="Work Hours/Day" value={prof.work_hours_per_day ? `${prof.work_hours_per_day}h` : null} />
+            {prof.probation_applicable && <InfoRow label="Probation" value={`${prof.probation_months} months`} />}
+          </div>
+        )}
       </SectionCard>
-
-      {/* Organisation Structure edit modal */}
-      <Modal open={orgStructOpen} onClose={() => setOrgStructOpen(false)} title="Edit Organisation Structure" size="md"
-        footer={
-          <div className="flex justify-end gap-3">
-            <button className="btn btn-outline" onClick={() => setOrgStructOpen(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={() => orgStructMut.mutate(form)} disabled={orgStructMut.isPending}>
-              {orgStructMut.isPending ? 'Saving…' : 'Save Changes'}
-            </button>
-          </div>
-        }>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="form-label">Branch</label>
-            <select className="form-control" value={form.branch_id || ''} onChange={e => {
-              const bId = e.target.value;
-              set('branch_id', bId);
-              const branch = branches.find(b => String(b.id) === String(bId));
-              if (branch?.location) set('location', branch.location);
-              else if (!bId) set('location', '');
-            }}>
-              <option value="">— No branch —</option>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}{b.location ? ` · ${b.location}` : ''}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Joining Date</label>
-            <input type="date" className="form-control" value={form.joining_date || ''} onChange={e => set('joining_date', e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Work Location</label>
-            <input className="form-control" placeholder="e.g. Ahmedabad, Gujarat" value={form.location || ''} onChange={e => set('location', e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Weekly Off</label>
-            <select className="form-control" value={form.weekly_off_day || ''} onChange={e => set('weekly_off_day', e.target.value)}>
-              <option value="">— Select —</option>
-              {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Work Hours/Day</label>
-            <input type="number" className="form-control" min="1" max="24" value={form.work_hours_per_day || ''} onChange={e => set('work_hours_per_day', Number(e.target.value))} />
-          </div>
-        </div>
-      </Modal>
 
       {/* Skills */}
       <SectionCard title="Skills" icon={Award}
@@ -1296,10 +1403,45 @@ function CompensationTab({ empId, isAdmin, onEdit, emp }) {
 function ComplianceTab({ empId, onEdit, emp }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [docModal,  setDocModal]  = useState(null);
-  const [immiModal, setImmiModal] = useState(null);
+  const [docModal,    setDocModal]    = useState(null);
+  const [immiModal,   setImmiModal]   = useState(null);
+  const [statEditing, setStatEditing] = useState(false);
   const [form, setForm] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const statMut = useMutation({
+    mutationFn: (body) => apiPut(`/profile/${empId}/statutory`, body),
+    onSuccess: () => {
+      toast('Statutory information updated', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-stat', empId] });
+      setStatEditing(false);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const openStat = (s) => {
+    setForm({
+      pf_applicable:   s.pf_applicable   ?? false,
+      pf_no:           s.pf_no           || '',
+      uan_no:          s.uan_no          || '',
+      esi_applicable:  s.esi_applicable  ?? false,
+      esi_no:          s.esi_no          || '',
+      esi_dispensary:  s.esi_dispensary  || '',
+      pt_applicable:   s.pt_applicable   ?? false,
+      pt_rule:         s.pt_rule         || '',
+      aadhar_no:       s.aadhar_no       || '',
+      pan_number:      s.pan_number      || '',
+      gratuity_applicable: s.gratuity_applicable ?? false,
+      ot_applicable:   s.ot_applicable   ?? false,
+      ot_rate:         s.ot_rate         || '',
+      bonus_applicable: s.bonus_applicable ?? false,
+      lwf_applicable:  s.lwf_applicable  ?? false,
+      vpf_applicable:  s.vpf_applicable  ?? false,
+      vpf_percentage:  s.vpf_percentage  || '',
+      is_pf_on_gross:  s.is_pf_on_gross  ?? false,
+    });
+    setStatEditing(true);
+  };
 
   const { data: govDocs = [],  isLoading: dLoad } = useQuery({ queryKey: ['epv2-govdocs',  empId], queryFn: () => apiGet(`/profile/${empId}/government-docs`) });
   const { data: immigration = [] } = useQuery({ queryKey: ['epv2-immig',    empId], queryFn: () => apiGet(`/profile/${empId}/immigration`) });
@@ -1375,14 +1517,83 @@ function ComplianceTab({ empId, onEdit, emp }) {
         </SectionCard>
       )}
 
-      {/* Statutory */}
+      {/* Statutory — inline editing */}
       <SectionCard title="Statutory Information" icon={Shield}
-        action={<AdminBtn onClick={() => onEdit(emp, 'statutory')} />}>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6">
-          {[['PF Applicable', statutory.pf_applicable ? 'Yes' : 'No'],['PF Number', statutory.pf_no],['UAN Number', statutory.uan_no],['ESI Applicable', statutory.esi_applicable ? 'Yes' : 'No'],['ESI Number', statutory.esi_no],['ESI Dispensary', statutory.esi_dispensary],['PT Applicable', statutory.pt_applicable ? 'Yes' : 'No'],['PT Rule', statutory.pt_rule],['Aadhar', statutory.aadhar_no],['PAN', statutory.pan_number],['Gratuity', statutory.gratuity_applicable ? 'Yes' : 'No'],['OT Applicable', statutory.ot_applicable ? 'Yes' : 'No'],['OT Rate', statutory.ot_rate],['Bonus', statutory.bonus_applicable ? 'Yes' : 'No']].map(([l,v])=>(
-            <InfoRow key={l} label={l} value={v} />
-          ))}
-        </div>
+        action={!statEditing && <AdminBtn onClick={() => openStat(statutory)} />}>
+        {statEditing ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              {/* PF */}
+              <label className="flex items-center gap-2 text-sm col-span-2">
+                <input type="checkbox" checked={form.pf_applicable||false} onChange={e=>set('pf_applicable',e.target.checked)} className="accent-[#3525cd]"/> PF Applicable
+              </label>
+              {form.pf_applicable && (
+                <>
+                  <div><label className="form-label">PF Number</label><input className="form-control" value={form.pf_no||''} onChange={e=>set('pf_no',e.target.value)}/></div>
+                  <div><label className="form-label">UAN Number</label><input className="form-control" value={form.uan_no||''} onChange={e=>set('uan_no',e.target.value)}/></div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.is_pf_on_gross||false} onChange={e=>set('is_pf_on_gross',e.target.checked)} className="accent-[#3525cd]"/> PF on Gross
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.vpf_applicable||false} onChange={e=>set('vpf_applicable',e.target.checked)} className="accent-[#3525cd]"/> VPF Applicable
+                  </label>
+                  {form.vpf_applicable && (
+                    <div><label className="form-label">VPF %</label><input type="number" className="form-control" min="0" max="100" value={form.vpf_percentage||''} onChange={e=>set('vpf_percentage',e.target.value)}/></div>
+                  )}
+                </>
+              )}
+              {/* ESI */}
+              <label className="flex items-center gap-2 text-sm col-span-2">
+                <input type="checkbox" checked={form.esi_applicable||false} onChange={e=>set('esi_applicable',e.target.checked)} className="accent-[#3525cd]"/> ESI Applicable
+              </label>
+              {form.esi_applicable && (
+                <>
+                  <div><label className="form-label">ESI Number</label><input className="form-control" value={form.esi_no||''} onChange={e=>set('esi_no',e.target.value)}/></div>
+                  <div><label className="form-label">ESI Dispensary</label><input className="form-control" value={form.esi_dispensary||''} onChange={e=>set('esi_dispensary',e.target.value)}/></div>
+                </>
+              )}
+              {/* PT */}
+              <label className="flex items-center gap-2 text-sm col-span-2">
+                <input type="checkbox" checked={form.pt_applicable||false} onChange={e=>set('pt_applicable',e.target.checked)} className="accent-[#3525cd]"/> PT Applicable
+              </label>
+              {form.pt_applicable && (
+                <div><label className="form-label">PT Rule</label><input className="form-control" value={form.pt_rule||''} onChange={e=>set('pt_rule',e.target.value)}/></div>
+              )}
+              {/* Identity */}
+              <div><label className="form-label">Aadhar Number</label><input className="form-control" value={form.aadhar_no||''} onChange={e=>set('aadhar_no',e.target.value)}/></div>
+              <div><label className="form-label">PAN Number</label><input className="form-control" value={form.pan_number||''} onChange={e=>set('pan_number',e.target.value)}/></div>
+              {/* OT */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.ot_applicable||false} onChange={e=>set('ot_applicable',e.target.checked)} className="accent-[#3525cd]"/> OT Applicable
+              </label>
+              {form.ot_applicable && (
+                <div><label className="form-label">OT Rate (per hr)</label><input type="number" className="form-control" min="0" value={form.ot_rate||''} onChange={e=>set('ot_rate',e.target.value)}/></div>
+              )}
+              {/* Others */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.gratuity_applicable||false} onChange={e=>set('gratuity_applicable',e.target.checked)} className="accent-[#3525cd]"/> Gratuity Applicable
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.bonus_applicable||false} onChange={e=>set('bonus_applicable',e.target.checked)} className="accent-[#3525cd]"/> Bonus Applicable
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.lwf_applicable||false} onChange={e=>set('lwf_applicable',e.target.checked)} className="accent-[#3525cd]"/> LWF Applicable
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+              <button className="btn btn-outline" onClick={() => setStatEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => statMut.mutate(form)} disabled={statMut.isPending}>
+                {statMut.isPending ? <><Loader2 size={13} className="animate-spin mr-1" />Saving…</> : <><Save size={13} className="mr-1" />Save</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6">
+            {[['PF Applicable', statutory.pf_applicable ? 'Yes' : 'No'],['PF Number', statutory.pf_no],['UAN Number', statutory.uan_no],['ESI Applicable', statutory.esi_applicable ? 'Yes' : 'No'],['ESI Number', statutory.esi_no],['ESI Dispensary', statutory.esi_dispensary],['PT Applicable', statutory.pt_applicable ? 'Yes' : 'No'],['PT Rule', statutory.pt_rule],['Aadhar', statutory.aadhar_no],['PAN', statutory.pan_number],['Gratuity', statutory.gratuity_applicable ? 'Yes' : 'No'],['OT Applicable', statutory.ot_applicable ? 'Yes' : 'No'],['OT Rate', statutory.ot_rate],['Bonus', statutory.bonus_applicable ? 'Yes' : 'No']].map(([l,v])=>(
+              <InfoRow key={l} label={l} value={v} />
+            ))}
+          </div>
+        )}
       </SectionCard>
 
       {/* Immigration */}
@@ -1447,6 +1658,157 @@ function ComplianceTab({ empId, onEdit, emp }) {
 
 // ─── Section: Work Tab ────────────────────────────────────────────────────────
 // Reuses existing query keys so data comes from cache if already loaded
+
+// ─── Document Requirements Section ───────────────────────────────────────────
+// Shows org-level document requirements applicable to this employee (from Documents module).
+// Admins can upload documents on behalf of the employee.
+
+const DOC_STATUS_CFG = {
+  under_review:       { label: 'Pending Review',     cls: 'bg-amber-100 text-amber-700',   icon: FileClock },
+  hr_approved:        { label: 'HR Approved',         cls: 'bg-blue-100 text-blue-700',     icon: FileCheck },
+  approved:           { label: 'Approved',             cls: 'bg-emerald-100 text-emerald-700', icon: FileCheck },
+  rejected:           { label: 'Rejected',             cls: 'bg-rose-100 text-rose-700',     icon: FileX },
+  re_upload_requested:{ label: 'Re-upload Requested', cls: 'bg-orange-100 text-orange-700', icon: RefreshCw },
+};
+
+function DocumentRequirementsSection({ empId, isAdmin }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const fileInputRefs = useRef({});
+  const [uploading, setUploading] = useState({});
+
+  const { data: requirements = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ['emp-doc-requirements', empId],
+    queryFn:  () => apiGet(`/doc-requirements/for-employee/${empId}`),
+    enabled:  !!empId && isAdmin,
+    staleTime: 30000,
+  });
+
+  const handleUpload = async (reqId, file) => {
+    if (!file) return;
+    setUploading(u => ({ ...u, [reqId]: true }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = localStorage.getItem('lt_token');
+      const res = await fetch(`/api/doc-requirements/${reqId}/submit-for/${empId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      toast('Document uploaded successfully', 'success');
+      qc.invalidateQueries({ queryKey: ['emp-doc-requirements', empId] });
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setUploading(u => ({ ...u, [reqId]: false }));
+      if (fileInputRefs.current[reqId]) fileInputRefs.current[reqId].value = '';
+    }
+  };
+
+  if (!isAdmin) return null;
+  if (isLoading) return <SectionCard title="Document Requirements" icon={FileText}><LoadingSection /></SectionCard>;
+  if (isError)   return (
+    <SectionCard title="Document Requirements" icon={FileText}>
+      <div className="text-center py-6">
+        <p className="text-sm text-rose-600 mb-2">Failed to load document requirements</p>
+        <button onClick={() => refetch()} className="text-xs text-[#3525cd] underline">Retry</button>
+      </div>
+    </SectionCard>
+  );
+  if (!requirements.length) return (
+    <SectionCard title="Document Requirements" icon={FileText}>
+      <EmptyState icon={FileText} text="No document requirements defined for this employee" />
+    </SectionCard>
+  );
+
+  return (
+    <SectionCard title="Document Requirements" icon={FileText}>
+      <p className="text-xs text-[#777587] mb-4">Fetched from the Documents module. Only requirements applicable to this employee are shown.</p>
+      <div className="space-y-3">
+        {requirements.map(req => {
+          const sub    = req._submission;
+          const status = sub?.status;
+          const cfg    = status ? DOC_STATUS_CFG[status] : null;
+          const StatusIcon = cfg?.icon;
+          const notUploaded = !sub;
+          const canReplace  = sub && req.allow_reupload && status !== 'approved';
+
+          return (
+            <div key={req.id} className="p-4 rounded-xl border border-[#e7eefe] bg-[#f9f9ff] space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-bold text-[#151c27]">{req.name}</p>
+                    {req.is_required
+                      ? <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">Required</span>
+                      : <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">Optional</span>
+                    }
+                    {cfg && (
+                      <span className={`flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
+                        {StatusIcon && <StatusIcon size={9} />} {cfg.label}
+                      </span>
+                    )}
+                    {!sub && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">Not Uploaded</span>}
+                  </div>
+                  {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
+                  {sub?.rejection_reason && (
+                    <p className="text-xs text-rose-600 mt-1 flex items-start gap-1">
+                      <XCircle size={11} className="flex-shrink-0 mt-0.5" />
+                      {sub.rejection_reason}
+                    </p>
+                  )}
+                  {sub?.uploaded_at && (
+                    <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
+                      Uploaded {fmtDate(sub.uploaded_at)}
+                      {sub.reviewer?.name && ` · Reviewed by ${sub.reviewer.name}`}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {sub?.file_url && (
+                    <a href={sub.file_url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+                      <Download size={11} /> View
+                    </a>
+                  )}
+                  {(notUploaded || canReplace) && (
+                    <>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept={req.accepted_formats?.map(f => `.${f}`).join(',') || '.pdf,.jpg,.png'}
+                        ref={el => { fileInputRefs.current[req.id] = el; }}
+                        onChange={e => handleUpload(req.id, e.target.files?.[0])}
+                      />
+                      <button
+                        onClick={() => fileInputRefs.current[req.id]?.click()}
+                        disabled={uploading[req.id]}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#3525cd] text-white text-[0.7rem] font-bold hover:bg-[#4f46e5] transition-colors disabled:opacity-60">
+                        {uploading[req.id]
+                          ? <><Loader2 size={11} className="animate-spin" /> Uploading…</>
+                          : <><Upload size={11} /> {sub ? 'Replace' : 'Upload'}</>
+                        }
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {req.accepted_formats?.length > 0 && (
+                <p className="text-[0.6rem] text-[#9ca3af]">
+                  Accepted: {req.accepted_formats.join(', ').toUpperCase()}
+                  {req.max_file_size_mb ? ` · Max ${req.max_file_size_mb} MB` : ''}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
+  );
+}
 
 function WorkTab({ empId, isAdmin, emp }) {
   const { user }  = useAuth();
@@ -1522,6 +1884,9 @@ function WorkTab({ empId, isAdmin, emp }) {
           </div>
         </button>
       </div>
+
+      {/* ── Document Requirements (from Documents module) ── */}
+      <DocumentRequirementsSection empId={empId} isAdmin={isAdmin} />
 
       {/* ── Leave Balance ── */}
       <LeaveBalanceSection empId={empId} isAdmin={isAdmin} />
@@ -2213,68 +2578,107 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
         ))}
       </div>
 
-      {/* ── Horizontal Tab Navigation + Content ── */}
-      <div className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm">
-        {/* Tab bar */}
-        <div className="flex overflow-x-auto border-b border-[#f0f3ff]">
-          {TABS.map(tab => {
-            const Icon     = tab.icon;
-            const isActive = currentTab === tab.id;
-            return (
-              <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
-                className={`flex items-center gap-1.5 px-5 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
-                  isActive
-                    ? 'border-[#3525cd] text-[#3525cd]'
-                    : 'border-transparent text-[#777587] hover:text-[#151c27] hover:border-[#c7c4d8]'
-                }`}>
-                <Icon size={14} className={isActive ? 'text-[#3525cd]' : ''} />
-                {tab.label}
-              </button>
-            );
-          })}
+      {/* ── Two-Column Layout: Vertical Nav + Content ── */}
+      <div className="flex gap-4 items-start">
+
+        {/* ── Left sidebar navigation (desktop) ── */}
+        <div className="hidden sm:block w-48 flex-shrink-0">
+          <nav className="bg-white rounded-2xl border border-[#c7c4d8] shadow-sm p-2 sticky top-4">
+            {TABS.map(tab => {
+              const Icon     = tab.icon;
+              const isActive = currentTab === tab.id;
+              return (
+                <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[0.8rem] font-semibold text-left transition-all mb-0.5 last:mb-0 ${
+                    isActive
+                      ? 'bg-[#3525cd] text-white shadow-sm'
+                      : 'text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd]'
+                  }`}>
+                  <Icon size={14} className={isActive ? 'text-white' : 'text-[#9ca3af]'} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Tab content */}
-        <div className="p-5">
-          {currentTab === 'overview' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[
-                ['Department',   deptLabel,              Building2],
-                ['Position',     emp.position,           Briefcase],
-                ['Employment',   emp.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), Users],
-                ['Work Mode',    emp.work_mode,          Home],
-                ['Grade',        emp.grade,              Award],
-                ['Branch',       overview.branch?.name,  MapPin],
-                ['Manager',      overview.manager?.name, User],
-                ['Joining Date', emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
-                ['Status',       statusCfg.label,        CheckCircle2],
-              ].map(([l, v, Icon]) => (
-                <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                  <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
-                    <Icon size={14} className="text-[#3525cd]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
-                    <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
-                  </div>
-                </div>
-              ))}
-              {overview.sectionCounts && Object.entries(overview.sectionCounts).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
-                  <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
-                  <span className="text-sm font-black text-[#3525cd]">{v} records</span>
-                </div>
-              ))}
+        {/* ── Right content panel ── */}
+        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#c7c4d8] shadow-sm">
+
+          {/* Mobile: horizontal scroll tab bar */}
+          <div className="flex overflow-x-auto border-b border-[#f0f3ff] sm:hidden">
+            {TABS.map(tab => {
+              const Icon     = tab.icon;
+              const isActive = currentTab === tab.id;
+              return (
+                <button key={tab.id} onClick={() => setCurrentTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                    isActive
+                      ? 'border-[#3525cd] text-[#3525cd]'
+                      : 'border-transparent text-[#777587] hover:text-[#151c27] hover:border-[#c7c4d8]'
+                  }`}>
+                  <Icon size={13} className={isActive ? 'text-[#3525cd]' : ''} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Section title pill */}
+          <div className="px-5 pt-4 pb-1 hidden sm:block">
+            <div className="flex items-center gap-2">
+              {(() => { const t = TABS.find(t => t.id === currentTab); return t ? <><t.icon size={14} className="text-[#3525cd]" /><span className="text-xs font-black text-[#464555] uppercase tracking-wider">{t.label}</span></> : null; })()}
             </div>
-          )}
-          {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
-          {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} emp={emp} />}
-          {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} isAdmin={isAdmin} />}
-          {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
+          </div>
+
+          {/* Content */}
+          <div className="p-5">
+            {currentTab === 'overview' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    ['Department',   deptLabel,              Building2],
+                    ['Position',     emp.position,           Briefcase],
+                    ['Employment',   emp.employment_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), Users],
+                    ['Work Mode',    emp.work_mode,          Home],
+                    ['Grade',        emp.grade,              Award],
+                    ['Branch',       overview.branch?.name,  MapPin],
+                    ['Manager',      overview.manager?.name, User],
+                    ['Joining Date', emp.joining_date ? fmtDate(emp.joining_date) : null, Calendar],
+                    ['Status',       statusCfg.label,        CheckCircle2],
+                  ].map(([l, v, Icon]) => (
+                    <div key={l} className="flex items-center gap-3 p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                      <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center flex-shrink-0">
+                        <Icon size={14} className="text-[#3525cd]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
+                        <p className="text-sm font-bold text-[#151c27] truncate">{v || '—'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {overview.sectionCounts && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {Object.entries(overview.sectionCounts).map(([k, v]) => (
+                      <div key={k} className="flex items-center justify-between p-3 rounded-xl border border-[#f0f3ff] bg-[#f9f9ff]">
+                        <span className="text-xs font-semibold text-[#464555] capitalize">{k}</span>
+                        <span className="text-sm font-black text-[#3525cd]">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} emp={emp} />}
+            {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
+          </div>
         </div>
       </div>
     </div>
