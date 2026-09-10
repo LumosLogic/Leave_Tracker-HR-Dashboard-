@@ -3007,7 +3007,7 @@ export default function Employees() {
                 </button>
                 <button
                   className="py-2 px-3 rounded-lg text-xs font-bold text-[#3525cd] bg-white border border-[#c7c4d8] hover:bg-[#f0f3ff] hover:border-[#3525cd]/50 transition-all"
-                  onClick={() => setEditEmp(emp)}>
+                  onClick={() => openProfile(emp)}>
                   <Pencil size={12} />
                 </button>
                 {emp.id !== user?.id && (
@@ -3109,7 +3109,7 @@ export default function Employees() {
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
                             <User size={12} /> View Profile
                           </button>
-                          <button onClick={() => setEditEmp(emp)}
+                          <button onClick={() => openProfile(emp)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-colors">
                             <Pencil size={12} /> Edit Employee
                           </button>

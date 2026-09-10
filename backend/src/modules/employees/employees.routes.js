@@ -21,6 +21,8 @@ const EMPLOYEE_PUBLIC_COLS = [
   'device_enrollment_id', 'branch_id', 'grade', 'division', 'sub_division',
   'salutation', 'middle_name', 'surname', 'location', 'pay_cadre',
   'weekly_off_day', 'work_hours_per_day',
+  // payroll / internal settings (needed for SystemTab display)
+  'salary_on', 'salary_structure',
   // personal profile fields
   'gender', 'blood_group', 'marital_status', 'nationality', 'religion',
   'citizenship', 'height', 'weight',

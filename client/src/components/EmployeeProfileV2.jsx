@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { useFeature } from '@/context/FeatureFlagContext';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
@@ -2094,8 +2095,9 @@ function PerformanceTab({ empId, isAdmin }) {
 const AVATAR_COLORS_OPTS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
 
 function SystemTab({ emp, onEdit }) {
-  const toast = useToast();
-  const qc    = useQueryClient();
+  const toast           = useToast();
+  const qc              = useQueryClient();
+  const biometricEnabled = useFeature('biometric');
   const [internalEditing, setInternalEditing] = useState(false);
   const [form, setForm] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -2139,10 +2141,10 @@ function SystemTab({ emp, onEdit }) {
       <SectionCard title="Account Actions" icon={Settings}>
         <div className="space-y-1">
           {[
-            ['Reset Password',     'Send a password reset to the employee\'s company email', 'account',  Key],
-            ['Edit Role & Status', 'Change role, employment status, avatar colour',          'account',  Pencil],
-            ['Biometric / RFID',   'Update device enrollment PIN or RFID card number',      'extended', Fingerprint],
-          ].map(([label, desc, tab, Icon]) => (
+            ['Reset Password',     'Send a password reset to the employee\'s company email', 'account',  Key,         true],
+            ['Edit Role & Status', 'Change role, employment status, avatar colour',          'account',  Pencil,      true],
+            ['Biometric / RFID',   'Update device enrollment PIN or RFID card number',      'extended', Fingerprint, biometricEnabled],
+          ].filter(([,,,,show]) => show).map(([label, desc, tab, Icon]) => (
             <div key={label} className="flex items-center justify-between py-3 border-b border-[#f0f3ff] last:border-0">
               <div>
                 <p className="text-sm font-semibold text-[#151c27]">{label}</p>
@@ -2657,10 +2659,6 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
         <div className="flex-1" />
         {isAdmin && (
           <>
-            <button onClick={() => onEdit(emp)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3525cd] text-white text-xs font-bold hover:bg-[#4f46e5] transition-colors">
-              <Pencil size={12} /> Edit Profile
-            </button>
             <button onClick={() => onEdit(emp, 'account')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
               <Key size={12} /> Reset Password
