@@ -70,9 +70,19 @@ router.put('/:id/professional', auth, adminOnly, async (req, res) => {
     } = req.body;
 
     const update = {
-      employee_id, department, position, grade, pay_cadre, cost_centre,
-      division, sub_division, location, employment_type, work_mode,
-      employee_status, joining_date: joining_date || null,
+      employee_id:     employee_id     || null,
+      department:      department      || null,
+      position:        position        || null,
+      grade:           grade           || null,
+      pay_cadre:       pay_cadre       || null,
+      cost_centre:     cost_centre     || null,
+      division:        division        || null,
+      sub_division:    sub_division    || null,
+      location:        location        || null,
+      employment_type: employment_type || null,
+      work_mode:       work_mode       || null,
+      employee_status: employee_status || null,
+      joining_date:    joining_date    || null,
       confirmation_date: confirmation_date || null,
       probation_applicable, probation_months: probation_months || null,
       salary_on: salary_on || null, salary_structure: salary_structure || null,
