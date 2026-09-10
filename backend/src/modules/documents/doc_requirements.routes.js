@@ -567,8 +567,18 @@ router.post('/:id/submit-for/:userId', auth, upload.single('file'), async (req, 
 
     const { data: requirement } = await db.from('document_requirements')
       .select('*').eq('id', reqId).eq('organization_id', oId).single();
+
+    // Step 4: requirement belongs to same organization (enforced by .eq above)
     if (!requirement)           return res.status(404).json({ error: 'Requirement not found' });
     if (!requirement.is_active) return res.status(400).json({ error: 'This document requirement is no longer active' });
+
+    // Step 5: requirement must be applicable to this specific employee
+    // NULL or empty assigned_employee_ids = applies to everyone in the org
+    // Non-empty array = only applies to the listed employee IDs
+    const assignedIds = requirement.assigned_employee_ids;
+    const appliesTo = !assignedIds || assignedIds.length === 0 || assignedIds.includes(empId);
+    if (!appliesTo)
+      return res.status(403).json({ error: 'This document requirement does not apply to the selected employee' });
 
     const maxBytes = (requirement.max_file_size_mb || 10) * 1024 * 1024;
     if (req.file.size > maxBytes)
@@ -593,66 +603,64 @@ router.post('/:id/submit-for/:userId', auth, upload.single('file'), async (req, 
     const { expiry_date } = req.body;
     let submission;
 
+    // Admin uploads are auto-approved — no verification queue needed
+    const now = new Date().toISOString();
+    const adminPayload = {
+      file_url:             result.secure_url,
+      file_type:            req.file.mimetype,
+      file_size:            req.file.size,
+      file_name:            req.file.originalname,
+      cloudinary_public_id: result.public_id,
+      status:               'approved',
+      rejection_reason:     null,
+      expiry_date:          expiry_date || null,
+      reviewed_by:          req.user.id,
+      reviewed_at:          now,
+      uploaded_at:          now,
+      updated_at:           now,
+    };
+
     if (existing) {
       const { data, error } = await db.from('employee_doc_submissions')
-        .update({
-          file_url:             result.secure_url,
-          file_type:            req.file.mimetype,
-          file_size:            req.file.size,
-          file_name:            req.file.originalname,
-          cloudinary_public_id: result.public_id,
-          status:               'under_review',
-          rejection_reason:     null,
-          expiry_date:          expiry_date || null,
-          reviewed_by:          null,
-          reviewed_at:          null,
-          uploaded_at:          new Date().toISOString(),
-          updated_at:           new Date().toISOString(),
-          version:              (existing.version || 1) + 1,
-        })
+        .update({ ...adminPayload, version: (existing.version || 1) + 1 })
         .eq('id', existing.id)
         .select().single();
       if (error) throw error;
       submission = data;
-
-      await db.from('doc_submission_activity').insert({
-        requirement_id: reqId, user_id: empId, organization_id: oId,
-        action: 're_uploaded',
-        details: `Re-uploaded "${requirement.name}" on behalf of ${emp.name} by ${req.user.name}`,
-        actor_id: req.user.id,
-      });
     } else {
       const { data, error } = await db.from('employee_doc_submissions').insert({
-        requirement_id:       reqId,
-        user_id:              empId,
-        organization_id:      oId,
-        file_url:             result.secure_url,
-        file_type:            req.file.mimetype,
-        file_size:            req.file.size,
-        file_name:            req.file.originalname,
-        cloudinary_public_id: result.public_id,
-        status:               'under_review',
-        expiry_date:          expiry_date || null,
-        version:              1,
+        requirement_id:   reqId,
+        user_id:          empId,
+        organization_id:  oId,
+        ...adminPayload,
+        version:          1,
       }).select().single();
       if (error) throw error;
       submission = data;
-
-      await db.from('doc_submission_activity').insert({
-        requirement_id: reqId, user_id: empId, organization_id: oId,
-        action: 'uploaded',
-        details: `Uploaded "${requirement.name}" on behalf of ${emp.name} by ${req.user.name}`,
-        actor_id: req.user.id,
-      });
     }
 
-    await db.from('notifications').insert({
-      user_id:         empId,
-      title:           'Document Uploaded',
-      message:         `Your "${requirement.name}" has been uploaded by ${req.user.name} and is pending verification.`,
-      type:            'document',
-      organization_id: oId,
-    }).catch(() => {});
+    // Log activity (fire-and-forget, must not throw)
+    try {
+      await db.from('doc_submission_activity').insert({
+        requirement_id:  reqId,
+        user_id:         empId,
+        organization_id: oId,
+        action:          'approved',
+        details:         `"${requirement.name}" uploaded and approved by admin ${req.user.name} on behalf of ${emp.name}`,
+        actor_id:        req.user.id,
+      });
+    } catch (_) {}
+
+    // Notify employee that document was uploaded and approved by admin
+    try {
+      await db.from('notifications').insert({
+        user_id:         empId,
+        title:           'Document Uploaded & Approved',
+        message:         `Your "${requirement.name}" has been uploaded and approved by ${req.user.name}.`,
+        type:            'document',
+        organization_id: oId,
+      });
+    } catch (_) {}
 
     res.json(submission);
   } catch (err) { res.status(500).json({ error: err.message }); }

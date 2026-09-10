@@ -112,6 +112,7 @@ const TABS_ALL = [
   { id: 'compensation', label: 'Compensation', icon: Banknote,  adminOnly: true },
   { id: 'compliance',   label: 'Compliance',   icon: Shield,    adminOnly: true },
   { id: 'work',         label: 'Work',         icon: Clock },
+  { id: 'documents',    label: 'Documents',    icon: FileText,  adminOnly: true },
   { id: 'performance',  label: 'Performance',  icon: Activity },
   { id: 'system',       label: 'System',       icon: Settings,  rootOnly: true },
 ];
@@ -167,12 +168,12 @@ function PersonalTab({ empId, isAdmin }) {
   });
   const familyMut = useMutation({
     mutationFn: (body) => familyModal?.id ? apiPut(`/profile/${empId}/family/${familyModal.id}`, body) : apiPost(`/profile/${empId}/family`, body),
-    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-family', empId] }); setFamilyModal(null); },
+    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-family', empId] }); qc.invalidateQueries({ queryKey: ['epv2-overview', empId] }); setFamilyModal(null); },
     onError: e => toast(e.message, 'error'),
   });
   const delFamilyMut = useMutation({
     mutationFn: (id) => apiDelete(`/profile/${empId}/family/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['epv2-family', empId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['epv2-family', empId] }); qc.invalidateQueries({ queryKey: ['epv2-overview', empId] }); },
     onError: e => toast(e.message, 'error'),
   });
 
@@ -610,12 +611,12 @@ function ProfessionalTab({ empId, isAdmin, onEdit, emp }) {
 
   const skillMut = useMutation({
     mutationFn: (body) => skillModal?.id ? apiPut(`/profile/${empId}/skills/${skillModal.id}`, body) : apiPost(`/profile/${empId}/skills`, body),
-    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-skills', empId] }); setSkillModal(null); },
+    onSuccess: () => { toast('Saved', 'success'); qc.invalidateQueries({ queryKey: ['epv2-skills', empId] }); qc.invalidateQueries({ queryKey: ['epv2-overview', empId] }); setSkillModal(null); },
     onError: e => toast(e.message, 'error'),
   });
   const delSkillMut = useMutation({
     mutationFn: (id) => apiDelete(`/profile/${empId}/skills/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['epv2-skills', empId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['epv2-skills', empId] }); qc.invalidateQueries({ queryKey: ['epv2-overview', empId] }); },
     onError: e => toast(e.message, 'error'),
   });
   const expMut = useMutation({
@@ -977,10 +978,10 @@ function EducationTab({ empId, isAdmin }) {
   const { data: training  = [] } = useQuery({ queryKey: ['epv2-training',   empId], queryFn: () => apiGet(`/profile/${empId}/training`) });
   const { data: certs     = [] } = useQuery({ queryKey: ['epv2-certs',      empId], queryFn: () => apiGet(`/profile/${empId}/certifications`) });
 
-  const eduMut   = useMutation({ mutationFn: b => eduModal?.id  ? apiPut(`/profile/${empId}/education/${eduModal.id}`, b)    : apiPost(`/profile/${empId}/education`, b),    onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-education',empId]}); setEduModal(null);  }, onError: e=>toast(e.message,'error') });
+  const eduMut   = useMutation({ mutationFn: b => eduModal?.id  ? apiPut(`/profile/${empId}/education/${eduModal.id}`, b)    : apiPost(`/profile/${empId}/education`, b),    onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-education',empId]}); qc.invalidateQueries({queryKey:['epv2-overview',empId]}); setEduModal(null);  }, onError: e=>toast(e.message,'error') });
   const trainMut = useMutation({ mutationFn: b => trainModal?.id? apiPut(`/profile/${empId}/training/${trainModal.id}`, b)   : apiPost(`/profile/${empId}/training`, b),     onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-training',empId]}); setTrainModal(null);}, onError: e=>toast(e.message,'error') });
   const certMut  = useMutation({ mutationFn: b => certModal?.id ? apiPut(`/profile/${empId}/certifications/${certModal.id}`,b): apiPost(`/profile/${empId}/certifications`,b), onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-certs',empId]});  setCertModal(null); }, onError: e=>toast(e.message,'error') });
-  const delEdu   = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/education/${id}`),        onSuccess: () => qc.invalidateQueries({queryKey:['epv2-education',empId]}) });
+  const delEdu   = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/education/${id}`),        onSuccess: () => { qc.invalidateQueries({queryKey:['epv2-education',empId]}); qc.invalidateQueries({queryKey:['epv2-overview',empId]}); } });
   const delTrain = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/training/${id}`),         onSuccess: () => qc.invalidateQueries({queryKey:['epv2-training',empId]}) });
   const delCert  = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/certifications/${id}`),   onSuccess: () => qc.invalidateQueries({queryKey:['epv2-certs',empId]}) });
 
@@ -1232,8 +1233,9 @@ function EducationTab({ empId, isAdmin }) {
 function CompensationTab({ empId, isAdmin, onEdit, emp }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [bankModal, setBankModal]   = useState(null);
-  const [nomModal,  setNomModal]    = useState(null);
+  const [bankModal,    setBankModal]    = useState(null);
+  const [nomModal,     setNomModal]     = useState(null);
+  const [salaryEditing, setSalaryEditing] = useState(false);
   const [form, setForm] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -1241,46 +1243,96 @@ function CompensationTab({ empId, isAdmin, onEdit, emp }) {
   const { data: banking  = [], isLoading: bLoad } = useQuery({ queryKey: ['epv2-banking',  empId], queryFn: () => apiGet(`/profile/${empId}/banking`) });
   const { data: nominees = [] } = useQuery({ queryKey: ['epv2-nominees', empId], queryFn: () => apiGet(`/profile/${empId}/nominees`) });
 
-  const bankMut = useMutation({ mutationFn: b => bankModal?.id ? apiPut(`/profile/${empId}/banking/${bankModal.id}`,b) : apiPost(`/profile/${empId}/banking`,b), onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-banking',empId]}); setBankModal(null); }, onError: e=>toast(e.message,'error') });
-  const delBank = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/banking/${id}`), onSuccess: () => qc.invalidateQueries({queryKey:['epv2-banking',empId]}) });
+  // Salary CTC is stored on the users row via the professional endpoint (adminOnly on backend)
+  const salaryMut = useMutation({
+    mutationFn: (body) => apiPut(`/profile/${empId}/professional`, body),
+    onSuccess: () => {
+      toast('Salary details saved', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-payroll',       empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-professional',  empId] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',      empId] });
+      setSalaryEditing(false);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const bankMut = useMutation({ mutationFn: b => bankModal?.id ? apiPut(`/profile/${empId}/banking/${bankModal.id}`,b) : apiPost(`/profile/${empId}/banking`,b), onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-banking',empId]}); qc.invalidateQueries({queryKey:['epv2-overview',empId]}); setBankModal(null); }, onError: e=>toast(e.message,'error') });
+  const delBank = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/banking/${id}`), onSuccess: () => { qc.invalidateQueries({queryKey:['epv2-banking',empId]}); qc.invalidateQueries({queryKey:['epv2-overview',empId]}); } });
   const nomMut  = useMutation({ mutationFn: b => nomModal?.id  ? apiPut(`/profile/${empId}/nominees/${nomModal.id}`,b)  : apiPost(`/profile/${empId}/nominees`,b),  onSuccess: () => { toast('Saved','success'); qc.invalidateQueries({queryKey:['epv2-nominees',empId]}); setNomModal(null); }, onError: e=>toast(e.message,'error') });
   const delNom  = useMutation({ mutationFn: id => apiDelete(`/profile/${empId}/nominees/${id}`), onSuccess: () => qc.invalidateQueries({queryKey:['epv2-nominees',empId]}) });
 
   const openBank = (r={}) => { setForm({bank_name:r.bank_name||'',branch_name:r.branch_name||'',branch_code:r.branch_code||'',account_number:r.account_number||'',account_holder_name:r.account_holder_name||'',account_type:r.account_type||'savings',ifsc_code:r.ifsc_code||'',payment_method:r.payment_method||'bank_transfer',is_primary:r.is_primary||false}); setBankModal(r); };
   const openNom  = (r={}) => { setForm({nominee_name:r.nominee_name||'',relationship:r.relationship||'',date_of_birth:r.date_of_birth||'',percentage_share:r.percentage_share||'',contact_number:r.contact_number||'',address:r.address||''}); setNomModal(r); };
+  const openSalary = () => {
+    setForm({ ctc: emp.ctc || '', salary_effective_date: emp.salary_effective_date?.slice(0,10) || '' });
+    setSalaryEditing(true);
+  };
 
   const totalNomShare = nominees.reduce((s, n) => s + (parseFloat(n.percentage_share) || 0), 0);
 
   return (
     <div className="space-y-5">
-      {/* Salary Overview */}
+      {/* Salary Overview — inline CTC edit; full structure stays in Payroll module */}
       <SectionCard title="Salary Overview" icon={Banknote}
-        action={isAdmin && <AdminBtn onClick={() => onEdit(emp, 'salary')} />}>
-        {isAdmin && (
-          <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg">
-            <Banknote size={13} className="text-[#3525cd] mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-[#464555]">Full salary structure can be configured from the <span className="font-bold text-[#3525cd]">Payroll</span> module.</p>
-          </div>
-        )}
-        {pLoad ? <LoadingSection /> : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {[
-              ['CTC (Annual)', payroll?.ctc ? `₹${(Number(payroll.ctc) * 12).toLocaleString('en-IN')}` : emp.ctc ? `₹${Number(emp.ctc).toLocaleString('en-IN')}` : null],
-              ['Effective From', payroll?.effective_from ? fmtDate(payroll.effective_from) : null],
-              ['Net Salary', payroll?.gross_salary ? `₹${(Number(payroll.gross_salary) - [payroll.employee_pf,payroll.employee_esi,payroll.professional_tax,payroll.tds,payroll.other_deductions,payroll.retention].reduce((s,v)=>s+Number(v||0),0)).toLocaleString('en-IN')}` : null],
-              ['Basic', payroll?.basic ? `₹${Number(payroll.basic).toLocaleString('en-IN')}` : null],
-              ['HRA', payroll?.hra ? `₹${Number(payroll.hra).toLocaleString('en-IN')}` : null],
-              ['Gross Salary', payroll?.gross_salary ? `₹${Number(payroll.gross_salary).toLocaleString('en-IN')}` : null],
-              ['PF (Employee)', payroll?.employee_pf ? `₹${Number(payroll.employee_pf).toLocaleString('en-IN')}` : null],
-              ['Prof. Tax', payroll?.professional_tax ? `₹${Number(payroll.professional_tax).toLocaleString('en-IN')}` : null],
-              ['Retention', payroll?.retention ? `₹${Number(payroll.retention).toLocaleString('en-IN')}` : null],
-            ].map(([l,v])=>(
-              <div key={l} className="bg-[#f9f9ff] rounded-xl p-3 border border-[#f0f3ff]">
-                <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
-                <p className="text-sm font-black text-[#151c27] mt-0.5">{v || '—'}</p>
+        action={isAdmin && !salaryEditing && <AdminBtn onClick={openSalary} />}>
+        {salaryEditing ? (
+          <div>
+            <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <p className="text-xs text-amber-700 font-semibold">CTC and effective date only. Full salary structure (HRA, PF, components) is managed in the Payroll module.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">CTC (Annual) <span className="text-rose-500">*</span></label>
+                <input className="form-control" type="number" min="0" placeholder="e.g. 600000"
+                  value={form.ctc||''} onChange={e=>set('ctc',e.target.value)} />
               </div>
-            ))}
+              <div>
+                <label className="form-label">Effective Date</label>
+                <input className="form-control" type="date"
+                  value={form.salary_effective_date||''} onChange={e=>set('salary_effective_date',e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+              <button className="btn btn-outline" onClick={() => setSalaryEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={salaryMut.isPending}
+                onClick={() => {
+                  const ctcVal = parseFloat(form.ctc);
+                  if (form.ctc && (isNaN(ctcVal) || ctcVal < 0)) { toast('CTC must be a positive number','error'); return; }
+                  salaryMut.mutate({ ctc: form.ctc || null, salary_effective_date: form.salary_effective_date || null });
+                }}>
+                {salaryMut.isPending ? <><Loader2 size={13} className="animate-spin mr-1"/>Saving…</> : <><Save size={13} className="mr-1"/>Save</>}
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            {isAdmin && (
+              <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-[#f0f3ff] border border-[#c7c4d8] rounded-lg">
+                <Banknote size={13} className="text-[#3525cd] mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-[#464555]">Full salary structure can be configured from the <span className="font-bold text-[#3525cd]">Payroll</span> module.</p>
+              </div>
+            )}
+            {pLoad ? <LoadingSection /> : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  ['CTC (Annual)', payroll?.ctc ? `₹${(Number(payroll.ctc)*12).toLocaleString('en-IN')}` : emp.ctc ? `₹${Number(emp.ctc).toLocaleString('en-IN')}` : null],
+                  ['Effective From', payroll?.effective_from ? fmtDate(payroll.effective_from) : emp.salary_effective_date ? fmtDate(emp.salary_effective_date) : null],
+                  ['Net Salary', payroll?.gross_salary ? `₹${(Number(payroll.gross_salary)-[payroll.employee_pf,payroll.employee_esi,payroll.professional_tax,payroll.tds,payroll.other_deductions,payroll.retention].reduce((s,v)=>s+Number(v||0),0)).toLocaleString('en-IN')}` : null],
+                  ['Basic',        payroll?.basic        ? `₹${Number(payroll.basic).toLocaleString('en-IN')}` : null],
+                  ['HRA',          payroll?.hra          ? `₹${Number(payroll.hra).toLocaleString('en-IN')}` : null],
+                  ['Gross Salary', payroll?.gross_salary ? `₹${Number(payroll.gross_salary).toLocaleString('en-IN')}` : null],
+                  ['PF (Employee)',payroll?.employee_pf   ? `₹${Number(payroll.employee_pf).toLocaleString('en-IN')}` : null],
+                  ['Prof. Tax',    payroll?.professional_tax ? `₹${Number(payroll.professional_tax).toLocaleString('en-IN')}` : null],
+                  ['Retention',    payroll?.retention    ? `₹${Number(payroll.retention).toLocaleString('en-IN')}` : null],
+                ].map(([l,v])=>(
+                  <div key={l} className="bg-[#f9f9ff] rounded-xl p-3 border border-[#f0f3ff]">
+                    <p className="text-[0.65rem] text-[#777587] font-medium">{l}</p>
+                    <p className="text-sm font-black text-[#151c27] mt-0.5">{v || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </SectionCard>
 
@@ -1671,11 +1723,55 @@ const DOC_STATUS_CFG = {
   re_upload_requested:{ label: 'Re-upload Requested', cls: 'bg-orange-100 text-orange-700', icon: RefreshCw },
 };
 
+function DocViewerModal({ url, name, onClose }) {
+  if (!url) return null;
+  const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('/pdf') || url.includes('application/pdf');
+  const isImg = /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url) || url.includes('image/');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-3xl max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#f0f3ff] flex-shrink-0">
+          <p className="text-sm font-bold text-[#151c27] truncate">{name}</p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a href={url} download target="_blank" rel="noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+              <Download size={11} /> Download
+            </a>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#f0f3ff] text-[#777587] hover:text-[#151c27]">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-auto bg-[#f9f9ff] flex items-center justify-center min-h-[400px]">
+          {isPdf ? (
+            <iframe src={url} title={name} className="w-full h-[70vh]" />
+          ) : isImg ? (
+            <img src={url} alt={name} className="max-w-full max-h-[70vh] object-contain rounded-lg shadow" />
+          ) : (
+            <div className="text-center py-12">
+              <FileText size={48} className="mx-auto mb-3 text-[#c7c4d8]" />
+              <p className="text-sm text-[#464555] mb-3">Preview not available for this file type.</p>
+              <a href={url} download target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#3525cd] text-white text-sm font-bold hover:bg-[#4f46e5] transition-colors">
+                <Download size={14} /> Download File
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DocumentRequirementsSection({ empId, isAdmin }) {
   const toast = useToast();
   const qc    = useQueryClient();
   const fileInputRefs = useRef({});
   const [uploading, setUploading] = useState({});
+  const [viewDoc, setViewDoc]     = useState(null); // { url, name }
 
   const { data: requirements = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['emp-doc-requirements', empId],
@@ -1698,7 +1794,7 @@ function DocumentRequirementsSection({ empId, isAdmin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      toast('Document uploaded successfully', 'success');
+      toast('Document uploaded and approved', 'success');
       qc.invalidateQueries({ queryKey: ['emp-doc-requirements', empId] });
     } catch (err) {
       toast(err.message, 'error');
@@ -1725,88 +1821,97 @@ function DocumentRequirementsSection({ empId, isAdmin }) {
   );
 
   return (
-    <SectionCard title="Document Requirements" icon={FileText}>
-      <p className="text-xs text-[#777587] mb-4">Fetched from the Documents module. Only requirements applicable to this employee are shown.</p>
-      <div className="space-y-3">
-        {requirements.map(req => {
-          const sub    = req._submission;
-          const status = sub?.status;
-          const cfg    = status ? DOC_STATUS_CFG[status] : null;
-          const StatusIcon = cfg?.icon;
-          const notUploaded = !sub;
-          const canReplace  = sub && req.allow_reupload && status !== 'approved';
+    <>
+      {viewDoc && <DocViewerModal url={viewDoc.url} name={viewDoc.name} onClose={() => setViewDoc(null)} />}
+      <SectionCard title="Document Requirements" icon={FileText}>
+        <p className="text-xs text-[#777587] mb-4">
+          Requirements from the Documents module. Admin-uploaded documents are auto-approved.
+        </p>
+        <div className="space-y-3">
+          {requirements.map(req => {
+            const sub        = req._submission;
+            const status     = sub?.status;
+            const cfg        = status ? DOC_STATUS_CFG[status] : null;
+            const StatusIcon = cfg?.icon;
+            const notUploaded = !sub;
+            // Admin can always replace (they auto-approved it, so they can update it any time)
+            const canReplace  = !!sub;
 
-          return (
-            <div key={req.id} className="p-4 rounded-xl border border-[#e7eefe] bg-[#f9f9ff] space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-bold text-[#151c27]">{req.name}</p>
-                    {req.is_required
-                      ? <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">Required</span>
-                      : <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">Optional</span>
-                    }
-                    {cfg && (
-                      <span className={`flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
-                        {StatusIcon && <StatusIcon size={9} />} {cfg.label}
-                      </span>
+            return (
+              <div key={req.id} className="p-4 rounded-xl border border-[#e7eefe] bg-[#f9f9ff] space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-bold text-[#151c27]">{req.name}</p>
+                      {req.is_required
+                        ? <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">Required</span>
+                        : <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#3525cd]">Optional</span>
+                      }
+                      {cfg && (
+                        <span className={`flex items-center gap-1 text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full ${cfg.cls}`}>
+                          {StatusIcon && <StatusIcon size={9} />} {cfg.label}
+                        </span>
+                      )}
+                      {!sub && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">Not Uploaded</span>}
+                    </div>
+                    {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
+                    {sub?.rejection_reason && (
+                      <p className="text-xs text-rose-600 mt-1 flex items-start gap-1">
+                        <XCircle size={11} className="flex-shrink-0 mt-0.5" />
+                        {sub.rejection_reason}
+                      </p>
                     )}
-                    {!sub && <span className="text-[0.6rem] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">Not Uploaded</span>}
+                    {sub?.uploaded_at && (
+                      <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
+                        Uploaded {fmtDate(sub.uploaded_at)}
+                        {sub.reviewer?.name && ` · By ${sub.reviewer.name}`}
+                      </p>
+                    )}
                   </div>
-                  {req.description && <p className="text-xs text-[#777587] mt-0.5">{req.description}</p>}
-                  {sub?.rejection_reason && (
-                    <p className="text-xs text-rose-600 mt-1 flex items-start gap-1">
-                      <XCircle size={11} className="flex-shrink-0 mt-0.5" />
-                      {sub.rejection_reason}
-                    </p>
-                  )}
-                  {sub?.uploaded_at && (
-                    <p className="text-[0.65rem] text-[#9ca3af] mt-0.5">
-                      Uploaded {fmtDate(sub.uploaded_at)}
-                      {sub.reviewer?.name && ` · Reviewed by ${sub.reviewer.name}`}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {sub?.file_url && (
-                    <a href={sub.file_url} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
-                      <Download size={11} /> View
-                    </a>
-                  )}
-                  {(notUploaded || canReplace) && (
-                    <>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept={req.accepted_formats?.map(f => `.${f}`).join(',') || '.pdf,.jpg,.png'}
-                        ref={el => { fileInputRefs.current[req.id] = el; }}
-                        onChange={e => handleUpload(req.id, e.target.files?.[0])}
-                      />
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* In-app viewer — opens a modal, NOT a new tab */}
+                    {sub?.file_url && (
                       <button
-                        onClick={() => fileInputRefs.current[req.id]?.click()}
-                        disabled={uploading[req.id]}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#3525cd] text-white text-[0.7rem] font-bold hover:bg-[#4f46e5] transition-colors disabled:opacity-60">
-                        {uploading[req.id]
-                          ? <><Loader2 size={11} className="animate-spin" /> Uploading…</>
-                          : <><Upload size={11} /> {sub ? 'Replace' : 'Upload'}</>
-                        }
+                        onClick={() => setViewDoc({ url: sub.file_url, name: req.name })}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#c7c4d8] bg-white text-[0.7rem] font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] transition-all">
+                        <Eye size={11} /> View
                       </button>
-                    </>
-                  )}
+                    )}
+                    {/* Upload / Replace */}
+                    {(notUploaded || canReplace) && (
+                      <>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept={req.accepted_formats?.map(f => `.${f}`).join(',') || '.pdf,.jpg,.png'}
+                          ref={el => { fileInputRefs.current[req.id] = el; }}
+                          onChange={e => handleUpload(req.id, e.target.files?.[0])}
+                        />
+                        <button
+                          onClick={() => fileInputRefs.current[req.id]?.click()}
+                          disabled={uploading[req.id]}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#3525cd] text-white text-[0.7rem] font-bold hover:bg-[#4f46e5] transition-colors disabled:opacity-60">
+                          {uploading[req.id]
+                            ? <><Loader2 size={11} className="animate-spin" /> Uploading…</>
+                            : <><Upload size={11} /> {sub ? 'Replace' : 'Upload'}</>
+                          }
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
+                {req.accepted_formats?.length > 0 && (
+                  <p className="text-[0.6rem] text-[#9ca3af]">
+                    Accepted: {req.accepted_formats.join(', ').toUpperCase()}
+                    {req.max_file_size_mb ? ` · Max ${req.max_file_size_mb} MB` : ''}
+                  </p>
+                )}
               </div>
-              {req.accepted_formats?.length > 0 && (
-                <p className="text-[0.6rem] text-[#9ca3af]">
-                  Accepted: {req.accepted_formats.join(', ').toUpperCase()}
-                  {req.max_file_size_mb ? ` · Max ${req.max_file_size_mb} MB` : ''}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </SectionCard>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </>
   );
 }
 
@@ -1884,9 +1989,6 @@ function WorkTab({ empId, isAdmin, emp }) {
           </div>
         </button>
       </div>
-
-      {/* ── Document Requirements (from Documents module) ── */}
-      <DocumentRequirementsSection empId={empId} isAdmin={isAdmin} />
 
       {/* ── Leave Balance ── */}
       <LeaveBalanceSection empId={empId} isAdmin={isAdmin} />
@@ -1989,10 +2091,42 @@ function PerformanceTab({ empId, isAdmin }) {
 // ─── Section: System Tab ─────────────────────────────────────────────────────
 // Visible only to root_admin — login info, roles, internal settings
 
+const AVATAR_COLORS_OPTS = ['#3525cd','#10B981','#F59E0B','#EF4444','#712ae2','#F97316','#4f46e5','#EC4899'];
+
 function SystemTab({ emp, onEdit }) {
+  const toast = useToast();
+  const qc    = useQueryClient();
+  const [internalEditing, setInternalEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Internal settings are saved through the professional endpoint (adminOnly on backend)
+  const internalMut = useMutation({
+    mutationFn: (body) => apiPut(`/profile/${emp.id}/professional`, body),
+    onSuccess: () => {
+      toast('Internal settings saved', 'success');
+      qc.invalidateQueries({ queryKey: ['epv2-professional', emp.id] });
+      qc.invalidateQueries({ queryKey: ['epv2-overview',     emp.id] });
+      setInternalEditing(false);
+    },
+    onError: e => toast(e.message, 'error'),
+  });
+
+  const openInternal = () => {
+    setForm({
+      salary_on:          emp.salary_on         || 'Month',
+      salary_structure:   emp.salary_structure  || 'GROSS',
+      work_hours_per_day: emp.work_hours_per_day || 8,
+      weekly_off_day:     emp.weekly_off_day     || '',
+      device_enrollment_id: emp.device_enrollment_id || '',
+      avatar_color:       emp.avatar_color       || AVATAR_COLORS_OPTS[0],
+    });
+    setInternalEditing(true);
+  };
+
   return (
     <div className="space-y-5">
-      {/* Login Information */}
+      {/* Login Information — display only, not editable here */}
       <SectionCard title="Login Information" icon={Key}>
         <InfoRow label="Company Email"   value={emp.email}           icon={Mail} />
         <InfoRow label="Role"            value={emp.role}            icon={Shield} />
@@ -2001,13 +2135,13 @@ function SystemTab({ emp, onEdit }) {
         <InfoRow label="Account Created" value={emp.created_at ? fmtDate(emp.created_at) : null} />
       </SectionCard>
 
-      {/* Account Actions */}
+      {/* Account Actions — these are account-level actions, intentionally kept as action buttons */}
       <SectionCard title="Account Actions" icon={Settings}>
         <div className="space-y-1">
           {[
-            ['Reset Password',         'Send a password reset to the employee\'s company email', 'account', Key],
-            ['Edit Role & Status',     'Change role, employment status, avatar colour',          'account', Pencil],
-            ['Biometric / RFID',       'Update device enrollment PIN or RFID card number',      'extended', Fingerprint],
+            ['Reset Password',     'Send a password reset to the employee\'s company email', 'account',  Key],
+            ['Edit Role & Status', 'Change role, employment status, avatar colour',          'account',  Pencil],
+            ['Biometric / RFID',   'Update device enrollment PIN or RFID card number',      'extended', Fingerprint],
           ].map(([label, desc, tab, Icon]) => (
             <div key={label} className="flex items-center justify-between py-3 border-b border-[#f0f3ff] last:border-0">
               <div>
@@ -2023,24 +2157,77 @@ function SystemTab({ emp, onEdit }) {
         </div>
       </SectionCard>
 
-      {/* Internal Settings */}
-      <SectionCard title="Internal Settings" icon={Settings}>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6">
-          {[
-            ['Salary On',        emp.salary_on],
-            ['Salary Structure', emp.salary_structure],
-            ['Work Hours / Day', emp.work_hours_per_day ? `${emp.work_hours_per_day}h` : null],
-            ['Weekly Off',       emp.weekly_off_day],
-            ['Device PIN',       emp.device_pin],
-            ['Avatar Colour',    emp.avatar_color],
-          ].map(([l,v]) => <InfoRow key={l} label={l} value={v} />)}
-        </div>
-        <div className="mt-3 pt-3 border-t border-[#f0f3ff]">
-          <button onClick={() => onEdit(emp, 'extended')}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#c7c4d8] bg-white text-xs font-bold text-[#464555] hover:bg-[#f0f3ff] hover:text-[#3525cd] hover:border-[#3525cd]/40 transition-all">
-            <Pencil size={12}/> Edit Internal Settings
-          </button>
-        </div>
+      {/* Internal Settings — inline editable */}
+      <SectionCard title="Internal Settings" icon={Settings}
+        action={!internalEditing && <AdminBtn onClick={openInternal} />}>
+        {internalEditing ? (
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Salary On</label>
+                <select className="form-control" value={form.salary_on||'Month'} onChange={e=>set('salary_on',e.target.value)}>
+                  {['Month','Day','Hour'].map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Salary Structure</label>
+                <select className="form-control" value={form.salary_structure||'GROSS'} onChange={e=>set('salary_structure',e.target.value)}>
+                  {['GROSS','CTC','NET'].map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Work Hours / Day</label>
+                <input type="number" className="form-control" min="1" max="24" value={form.work_hours_per_day||8} onChange={e=>set('work_hours_per_day',Number(e.target.value))}/>
+              </div>
+              <div>
+                <label className="form-label">Weekly Off</label>
+                <select className="form-control" value={form.weekly_off_day||''} onChange={e=>set('weekly_off_day',e.target.value)}>
+                  <option value="">— None / Use org schedule —</option>
+                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=><option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Device / Biometric PIN</label>
+                <input className="form-control" value={form.device_enrollment_id||''} onChange={e=>set('device_enrollment_id',e.target.value)} placeholder="Enrollment ID"/>
+              </div>
+              <div>
+                <label className="form-label">Avatar Colour</label>
+                <div className="flex gap-2 flex-wrap mt-1">
+                  {AVATAR_COLORS_OPTS.map(c=>(
+                    <button key={c} type="button" onClick={()=>set('avatar_color',c)}
+                      className="w-7 h-7 rounded-full border-2 flex-shrink-0 transition-transform hover:scale-110"
+                      style={{ background:c, borderColor: form.avatar_color===c ? '#151c27' : 'transparent', outline: form.avatar_color===c ? '2px solid #BAE6FD' : 'none' }}/>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-[#f0f3ff]">
+              <button className="btn btn-outline" onClick={() => setInternalEditing(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={internalMut.isPending}
+                onClick={() => {
+                  const hrs = Number(form.work_hours_per_day);
+                  if (isNaN(hrs) || hrs < 1 || hrs > 24) { toast('Work hours must be between 1 and 24','error'); return; }
+                  internalMut.mutate(form);
+                }}>
+                {internalMut.isPending ? <><Loader2 size={13} className="animate-spin mr-1"/>Saving…</> : <><Save size={13} className="mr-1"/>Save</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6">
+            <InfoRow label="Salary On"        value={emp.salary_on} />
+            <InfoRow label="Salary Structure" value={emp.salary_structure} />
+            <InfoRow label="Work Hours / Day" value={emp.work_hours_per_day ? `${emp.work_hours_per_day}h` : null} />
+            <InfoRow label="Weekly Off"       value={emp.weekly_off_day} />
+            <InfoRow label="Device PIN"       value={emp.device_enrollment_id} />
+            <InfoRow label="Avatar Colour" value={emp.avatar_color ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 rounded-full inline-block border border-[#c7c4d8]" style={{ background: emp.avatar_color }}/>
+                {emp.avatar_color}
+              </span>
+            ) : null} />
+          </div>
+        )}
       </SectionCard>
     </div>
   );
@@ -2670,14 +2857,15 @@ export default function EmployeeProfileV2({ emp, onBack, onEdit }) {
                 )}
               </div>
             )}
-            {currentTab === 'personal'     && <PersonalTab     empId={emp.id} isAdmin={isAdmin} />}
-            {currentTab === 'professional' && <ProfessionalTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-            {currentTab === 'education'    && <EducationTab    empId={emp.id} isAdmin={isAdmin} />}
-            {currentTab === 'compensation' && <CompensationTab empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
-            {currentTab === 'compliance'   && <ComplianceTab   empId={emp.id} onEdit={onEdit} emp={emp} />}
-            {currentTab === 'work'         && <WorkTab         empId={emp.id} isAdmin={isAdmin} emp={emp} />}
-            {currentTab === 'performance'  && <PerformanceTab  empId={emp.id} isAdmin={isAdmin} />}
-            {currentTab === 'system'       && <SystemTab       emp={emp} onEdit={onEdit} />}
+            {currentTab === 'personal'     && <PersonalTab                 empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'professional' && <ProfessionalTab             empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'education'    && <EducationTab                empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'compensation' && <CompensationTab             empId={emp.id} isAdmin={isAdmin} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'compliance'   && <ComplianceTab               empId={emp.id} onEdit={onEdit} emp={emp} />}
+            {currentTab === 'work'         && <WorkTab                     empId={emp.id} isAdmin={isAdmin} emp={emp} />}
+            {currentTab === 'documents'    && <DocumentRequirementsSection empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'performance'  && <PerformanceTab              empId={emp.id} isAdmin={isAdmin} />}
+            {currentTab === 'system'       && <SystemTab                   emp={emp} onEdit={onEdit} />}
           </div>
         </div>
       </div>
