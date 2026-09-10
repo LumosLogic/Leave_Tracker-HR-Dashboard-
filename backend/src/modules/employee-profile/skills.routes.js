@@ -64,7 +64,9 @@ router.put('/:id/skills/:recordId', auth, async (req, res) => {
     const { skill_name, skill_category, proficiency_level, years_of_experience, can_read, can_write, can_speak } = req.body;
 
     const { data, error } = await db.from('employee_skills').update({
-      skill_name, skill_category, proficiency_level,
+      skill_name,
+      skill_category:      skill_category      || 'technical',
+      proficiency_level:   proficiency_level   || 'intermediate',
       years_of_experience: years_of_experience || null,
       can_read, can_write, can_speak,
       updated_at: new Date().toISOString(), updated_by: req.user.id,

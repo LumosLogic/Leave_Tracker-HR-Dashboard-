@@ -61,11 +61,19 @@ router.post('/:id/education', auth, async (req, res) => {
 
     const { data, error } = await db.from('employee_qualifications').insert({
       user_id: empId, organization_id: orgId(req),
-      degree_level, institution, board_university, specialization,
+      degree_level:        degree_level        || null,
+      institution,
+      board_university:    board_university    || null,
+      specialization:      specialization      || null,
       from_year: fy, to_year: ty, year_of_passing: yp,
-      result_type: result_type || 'percentage',
-      percentage: percentage || null, cgpa: cgpa || null, degree_class,
-      education_mode, education_country, enrollment_number, remarks,
+      result_type:         result_type         || 'percentage',
+      percentage:          percentage          || null,
+      cgpa:                cgpa                || null,
+      degree_class:        degree_class        || null,
+      education_mode:      education_mode      || null,
+      education_country:   education_country   || null,
+      enrollment_number:   enrollment_number   || null,
+      remarks:             remarks             || null,
       created_by: req.user.id,
       updated_at: new Date().toISOString(),
     }).select().single();
@@ -113,11 +121,19 @@ router.put('/:id/education/:recordId', auth, async (req, res) => {
       return res.status(400).json({ error: 'CGPA must be between 0 and 10.' });
 
     const { data, error } = await db.from('employee_qualifications').update({
-      degree_level, institution, board_university, specialization,
+      degree_level:        degree_level        || null,
+      institution:         institution         || null,
+      board_university:    board_university    || null,
+      specialization:      specialization      || null,
       from_year: fy, to_year: ty, year_of_passing: yp,
-      result_type: result_type || 'percentage',
-      percentage: percentage || null, cgpa: cgpa || null, degree_class,
-      education_mode, education_country, enrollment_number, remarks,
+      result_type:         result_type         || 'percentage',
+      percentage:          percentage          || null,
+      cgpa:                cgpa                || null,
+      degree_class:        degree_class        || null,
+      education_mode:      education_mode      || null,
+      education_country:   education_country   || null,
+      enrollment_number:   enrollment_number   || null,
+      remarks:             remarks             || null,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
     }).eq('id', recordId).eq('user_id', empId).eq('organization_id', orgId(req)).select().single();
     if (error) throw error;

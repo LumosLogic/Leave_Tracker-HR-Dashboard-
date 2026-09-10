@@ -63,9 +63,13 @@ router.put('/:id/nominees/:recordId', auth, async (req, res) => {
     const { nominee_name, relationship, date_of_birth, percentage_share, address, contact_number, is_primary } = req.body;
 
     const { data, error } = await db.from('employee_nominees').update({
-      nominee_name, relationship, date_of_birth: date_of_birth || null,
+      nominee_name:     nominee_name     || null,
+      relationship:     relationship     || null,
+      date_of_birth:    date_of_birth    || null,
       percentage_share: percentage_share || null,
-      address, contact_number, is_primary,
+      address:          address          || null,
+      contact_number:   contact_number   || null,
+      is_primary,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
     }).eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req)).select().single();
     if (error) throw error;

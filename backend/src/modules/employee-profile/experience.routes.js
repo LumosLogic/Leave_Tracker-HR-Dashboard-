@@ -39,7 +39,11 @@ router.post('/:id/experience', auth, async (req, res) => {
 
     const { data, error } = await db.from('employee_experiences').insert({
       user_id: empId, organization_id: orgId(req),
-      company_name, designation, industry, department, employment_type,
+      company_name,
+      designation:     designation     || null,
+      industry:        industry        || null,
+      department:      department      || null,
+      employment_type: employment_type || null,
       start_date: start_date || null, end_date: end_date || null,
       ctc: ctc || null, last_salary: last_salary || null,
       total_years: total_years || null, manager_name, reason_leaving,
@@ -69,7 +73,11 @@ router.put('/:id/experience/:recordId', auth, async (req, res) => {
     }
 
     const { data, error } = await db.from('employee_experiences').update({
-      company_name, designation, industry, department, employment_type,
+      company_name:    company_name    || null,
+      designation:     designation     || null,
+      industry:        industry        || null,
+      department:      department      || null,
+      employment_type: employment_type || null,
       start_date: start_date || null, end_date: end_date || null,
       ctc: ctc || null, last_salary: last_salary || null,
       total_years: total_years || null, manager_name, reason_leaving,

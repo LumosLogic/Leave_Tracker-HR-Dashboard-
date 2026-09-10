@@ -89,10 +89,17 @@ router.put('/:id/banking/:recordId', auth, selfOrAdmin(SELF_EDITABLE), async (re
     }
 
     const { data, error } = await db.from('employee_bank_accounts').update({
-      bank_name, branch_name, branch_code, account_number,
-      account_holder_name: account_holder_name || null,
-      account_type, ifsc_code, swift_code: swift_code || null,
-      payment_method, is_primary, is_salary_account,
+      bank_name:            bank_name             || null,
+      branch_name:          branch_name           || null,
+      branch_code:          branch_code           || null,
+      account_number:       account_number        || null,
+      account_holder_name:  account_holder_name   || null,
+      account_type:         account_type          || 'savings',
+      ifsc_code:            ifsc_code             || null,
+      swift_code:           swift_code            || null,
+      payment_method:       payment_method        || 'bank_transfer',
+      is_primary,
+      is_salary_account,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
     }).eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req)).select().single();
     if (error) throw error;

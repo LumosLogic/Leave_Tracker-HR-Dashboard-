@@ -60,10 +60,14 @@ router.put('/:id/training/:recordId', auth, adminOnly, async (req, res) => {
     } = req.body;
 
     const { data, error } = await db.from('employee_training').update({
-      training_name, training_type, training_provider: training_provider || null,
-      start_date: start_date || null, end_date: end_date || null,
-      duration_hours: duration_hours || null,
-      completion_status, score: score || null,
+      training_name:     training_name     || null,
+      training_type:     training_type     || 'other',
+      training_provider: training_provider || null,
+      start_date:        start_date        || null,
+      end_date:          end_date          || null,
+      duration_hours:    duration_hours    || null,
+      completion_status: completion_status || 'in_progress',
+      score: score || null,
       certificate_url: certificate_url || null, remarks: remarks || null,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
     }).eq('id', parseInt(req.params.recordId))

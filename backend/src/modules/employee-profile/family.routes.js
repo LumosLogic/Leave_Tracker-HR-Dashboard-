@@ -47,7 +47,10 @@ router.post('/:id/family', auth, async (req, res) => {
     const { data, error } = await db.from('employee_family_members').insert({
       employee_id: empId, organization_id: orgId(req),
       relationship, name, date_of_birth: date_of_birth || null,
-      gender, occupation, contact_number, dependent: dependent || false,
+      gender:         gender         || null,
+      occupation:     occupation     || null,
+      contact_number: contact_number || null,
+      dependent: dependent || false,
       created_by: req.user.id, updated_at: new Date().toISOString(),
     }).select().single();
     if (error) throw error;
@@ -72,8 +75,13 @@ router.put('/:id/family/:recordId', auth, async (req, res) => {
       return res.status(400).json({ error: 'Date of birth cannot be a future date.' });
 
     const { data, error } = await db.from('employee_family_members').update({
-      relationship, name, date_of_birth: date_of_birth || null,
-      gender, occupation, contact_number, dependent,
+      relationship:   relationship   || null,
+      name:           name           || null,
+      date_of_birth:  date_of_birth  || null,
+      gender:         gender         || null,
+      occupation:     occupation     || null,
+      contact_number: contact_number || null,
+      dependent,
       updated_at: new Date().toISOString(), updated_by: req.user.id,
     }).eq('id', recordId).eq('employee_id', empId).eq('organization_id', orgId(req)).select().single();
     if (error) throw error;
