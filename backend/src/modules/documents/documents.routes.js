@@ -158,6 +158,10 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
       ).end(req.file.buffer);
     });
 
+    // Admin uploads are pre-verified — no review needed.
+    // Employee uploads default to 'pending_review' (DB default) and trigger an HR notification.
+    const docStatus = isAdmin(req.user.role) ? 'verified' : 'pending_review';
+
     const { data: doc, error } = await db.from('employee_documents').insert({
       user_id:         targetId,
       name:            name || req.file.originalname,
@@ -169,10 +173,11 @@ router.post('/upload', auth, hasPermission('documents', 'upload'), upload.single
       uploaded_by:     req.user.id,
       organization_id: oId,
       visibility:      docVisibility,
+      status:          docStatus,
     }).select().single();
     if (error) throw error;
 
-    // Notify HR admins when a non-admin employee uploads a document (pre-onboarding or regular)
+    // Notify HR admins only when an employee (non-admin) uploads — admin uploads need no review.
     if (!isAdmin(req.user.role)) {
       db.from('users').select('id').eq('organization_id', oId).in('role', ['admin', 'root_admin'])
         .then(({ data: admins }) => {
@@ -283,6 +288,12 @@ router.patch('/:id', auth, upload.single('file'), async (req, res) => {
       expiry_date: expiry_date !== undefined ? (expiry_date || null) : doc.expiry_date,
       visibility:  newVisibility,
     };
+
+    // Admin edits/replaces a document → mark as verified immediately (no review queue needed).
+    // Employee edits their own document → preserve the existing status (pending_review stays pending_review).
+    if (isAdmin(req.user.role)) {
+      updates.status = 'verified';
+    }
 
     // Admin can re-assign the target employee for 'self' visibility
     if (isAdmin(req.user.role) && newVisibility === 'self' && targetUserId) {
