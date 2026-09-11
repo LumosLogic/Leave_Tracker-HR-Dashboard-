@@ -11,10 +11,9 @@
     height: 100%;
     width: 100%;
     overflow: hidden;
-    position: fixed;
-    inset: 0;
+    /* position: fixed was removed — it freezes the page on iOS Safari */
   }
-  
+
   html { font-size: 14px; scroll-behavior: smooth; }
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -22,12 +21,16 @@
     -moz-osx-font-smoothing: grayscale;
     background-color: #f9f9ff;
     color: #151c27;
+    /* Prevent iOS Safari address bar bounce affecting layout */
+    overscroll-behavior: none;
   }
-  
+
   #root {
     height: 100%;
     width: 100%;
     overflow: hidden;
+    /* Enable smooth momentum scrolling in inner containers on iOS */
+    -webkit-overflow-scrolling: touch;
   }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
