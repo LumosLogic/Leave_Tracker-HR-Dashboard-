@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
@@ -9,68 +9,86 @@ import { EmployeeLayout } from '@/components/layout/EmployeeLayout';
 import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
 import { Lock } from 'lucide-react';
 
-import MaintenancePage  from '@/pages/MaintenancePage';
-import LandingPage      from '@/pages/LandingPage';
-import Login            from '@/pages/Login';
-import Register         from '@/pages/Register';
-import ForgotPassword   from '@/pages/ForgotPassword';
-import ResetPassword    from '@/pages/ResetPassword';
+// ── Lazy-loaded pages (fixes iOS Safari call stack overflow on startup) ──
+const MaintenancePage  = lazy(() => import('@/pages/MaintenancePage'));
+const LandingPage      = lazy(() => import('@/pages/LandingPage'));
+const Login            = lazy(() => import('@/pages/Login'));
+const Register         = lazy(() => import('@/pages/Register'));
+const ForgotPassword   = lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword    = lazy(() => import('@/pages/ResetPassword'));
 
 // ── HR Admin / Root Admin pages ──
-import Dashboard        from '@/pages/Dashboard';
-import Calendar         from '@/pages/Calendar';
-import Leaves           from '@/pages/Leaves';
-import Employees        from '@/pages/Employees';
-import Settings         from '@/pages/Settings';
-import RootDashboard    from '@/pages/RootDashboard';
-import ManageHR         from '@/pages/ManageHR';
-import ManageRootAdmins from '@/pages/ManageRootAdmins';
-import Broadcast        from '@/pages/Broadcast';
-import MyProfile        from '@/pages/MyProfile';
-import Departments      from '@/pages/Departments';
-import HolidaysPage     from '@/pages/Holidays';
-import LeavePolicies    from '@/pages/LeavePolicies';
-import Regularization   from '@/pages/Regularization';
-import Reports          from '@/pages/Reports';
-import Documents        from '@/pages/Documents';
-import Payroll             from '@/pages/Payroll';
-import SalaryStructure     from '@/pages/SalaryStructure';
-import PayrollSettings     from '@/pages/PayrollSettings';
-import PayrollGeneration   from '@/pages/PayrollGeneration';
-import PayrollRunDetails   from '@/pages/PayrollRunDetails';
-import PayslipDetails      from '@/pages/PayslipDetails';
-import PayrollDashboard    from '@/pages/PayrollDashboard';
-import PayrollReports      from '@/pages/PayrollReports';
-import StatutoryConfig     from '@/pages/StatutoryConfig';
-import ComplianceDashboard from '@/pages/ComplianceDashboard';
-import TaxDeclaration      from '@/pages/TaxDeclaration';
-import Assets           from '@/pages/Assets';
-import ExpensesPage     from '@/pages/Expenses';
-import AnnouncementsPage from '@/pages/Announcements';
-import Shifts           from '@/pages/Shifts';
-import Performance      from '@/pages/Performance';
-import Onboarding       from '@/pages/Onboarding';
-import ExitManagement   from '@/pages/ExitManagement';
-import NotificationCenter from '@/pages/NotificationCenter';
-import Branches              from '@/pages/Branches';
-import BiometricDevices      from '@/pages/BiometricDevices';
-import BiometricPinMapping   from '@/pages/BiometricPinMapping';
-import BiometricLogs         from '@/pages/BiometricLogs';
-import BiometricLiveLogs     from '@/pages/BiometricLiveLogs';
-import BiometricSettings        from '@/pages/BiometricSettings';
-import BiometricHistoricalSync  from '@/pages/BiometricHistoricalSync';
-import PendingApprovals      from '@/pages/PendingApprovals';
-import RoleManagement        from '@/pages/RoleManagement';
-import PermissionMatrix      from '@/pages/PermissionMatrix';
-import LeaveWorkflowSettings from '@/pages/LeaveWorkflowSettings';
+const Dashboard        = lazy(() => import('@/pages/Dashboard'));
+const Calendar         = lazy(() => import('@/pages/Calendar'));
+const Leaves           = lazy(() => import('@/pages/Leaves'));
+const Employees        = lazy(() => import('@/pages/Employees'));
+const Settings         = lazy(() => import('@/pages/Settings'));
+const RootDashboard    = lazy(() => import('@/pages/RootDashboard'));
+const ManageHR         = lazy(() => import('@/pages/ManageHR'));
+const ManageRootAdmins = lazy(() => import('@/pages/ManageRootAdmins'));
+const Broadcast        = lazy(() => import('@/pages/Broadcast'));
+const MyProfile        = lazy(() => import('@/pages/MyProfile'));
+const Departments      = lazy(() => import('@/pages/Departments'));
+const HolidaysPage     = lazy(() => import('@/pages/Holidays'));
+const LeavePolicies    = lazy(() => import('@/pages/LeavePolicies'));
+const Regularization   = lazy(() => import('@/pages/Regularization'));
+const Reports          = lazy(() => import('@/pages/Reports'));
+const Documents        = lazy(() => import('@/pages/Documents'));
+const Payroll             = lazy(() => import('@/pages/Payroll'));
+const SalaryStructure     = lazy(() => import('@/pages/SalaryStructure'));
+const PayrollSettings     = lazy(() => import('@/pages/PayrollSettings'));
+const PayrollGeneration   = lazy(() => import('@/pages/PayrollGeneration'));
+const PayrollRunDetails   = lazy(() => import('@/pages/PayrollRunDetails'));
+const PayslipDetails      = lazy(() => import('@/pages/PayslipDetails'));
+const PayrollDashboard    = lazy(() => import('@/pages/PayrollDashboard'));
+const PayrollReports      = lazy(() => import('@/pages/PayrollReports'));
+const StatutoryConfig     = lazy(() => import('@/pages/StatutoryConfig'));
+const ComplianceDashboard = lazy(() => import('@/pages/ComplianceDashboard'));
+const TaxDeclaration      = lazy(() => import('@/pages/TaxDeclaration'));
+const Assets           = lazy(() => import('@/pages/Assets'));
+const ExpensesPage     = lazy(() => import('@/pages/Expenses'));
+const AnnouncementsPage = lazy(() => import('@/pages/Announcements'));
+const Shifts           = lazy(() => import('@/pages/Shifts'));
+const Performance      = lazy(() => import('@/pages/Performance'));
+const Onboarding       = lazy(() => import('@/pages/Onboarding'));
+const ExitManagement   = lazy(() => import('@/pages/ExitManagement'));
+const NotificationCenter = lazy(() => import('@/pages/NotificationCenter'));
+const Branches              = lazy(() => import('@/pages/Branches'));
+const BiometricDevices      = lazy(() => import('@/pages/BiometricDevices'));
+const BiometricPinMapping   = lazy(() => import('@/pages/BiometricPinMapping'));
+const BiometricLogs         = lazy(() => import('@/pages/BiometricLogs'));
+const BiometricLiveLogs     = lazy(() => import('@/pages/BiometricLiveLogs'));
+const BiometricSettings        = lazy(() => import('@/pages/BiometricSettings'));
+const BiometricHistoricalSync  = lazy(() => import('@/pages/BiometricHistoricalSync'));
+const PendingApprovals      = lazy(() => import('@/pages/PendingApprovals'));
+const RoleManagement        = lazy(() => import('@/pages/RoleManagement'));
+const PermissionMatrix      = lazy(() => import('@/pages/PermissionMatrix'));
+const LeaveWorkflowSettings = lazy(() => import('@/pages/LeaveWorkflowSettings'));
 
 // ── Employee portal pages ──
-import EmployeeHome            from '@/pages/EmployeeHome';
-import MyLeaves                from '@/pages/MyLeaves';
-import MyAttendance            from '@/pages/MyAttendance';
-import TeamCalendar            from '@/pages/TeamCalendar';
-import EmployeePortalProfile   from '@/pages/EmployeePortalProfile';
-import DeptHeadApprovals       from '@/pages/DeptHeadApprovals';
+const EmployeeHome            = lazy(() => import('@/pages/EmployeeHome'));
+const MyLeaves                = lazy(() => import('@/pages/MyLeaves'));
+const MyAttendance            = lazy(() => import('@/pages/MyAttendance'));
+const TeamCalendar            = lazy(() => import('@/pages/TeamCalendar'));
+const EmployeePortalProfile   = lazy(() => import('@/pages/EmployeePortalProfile'));
+const DeptHeadApprovals       = lazy(() => import('@/pages/DeptHeadApprovals'));
+
+// ── Shown while any lazy page is loading ──
+function PageLoader() {
+  return (
+    <div style={{
+      minHeight: '100%', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: '#f9f9ff',
+    }}>
+      <div style={{
+        width: '32px', height: '32px', borderRadius: '50%',
+        border: '3px solid #e5e3f0', borderTopColor: '#3525cd',
+        animation: 'spin 0.8s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 // Shows a locked screen when a feature is disabled for the org
 function FeatureRoute({ featureKey, children }) {
@@ -334,7 +352,9 @@ export default function App() {
         <ToastProvider>
           <MaintenanceGate>
             <FeatureFlagProvider>
-              <AppRoutes />
+              <Suspense fallback={<PageLoader />}>
+                <AppRoutes />
+              </Suspense>
               <ForcePasswordChangeModal />
             </FeatureFlagProvider>
           </MaintenanceGate>

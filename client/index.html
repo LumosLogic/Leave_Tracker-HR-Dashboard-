@@ -8,25 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="icon" href="/LogoWithoutName.svg" type="image/svg+xml" />
-  <!-- TEMPORARY iOS DEBUG — remove after diagnosis -->
-  <script>
-    window.onerror = function(msg, src, line, col, err) {
-      document.body.style.cssText = 'background:#fff;color:#000;font-family:monospace;padding:20px;font-size:13px;';
-      document.body.innerHTML = '<h2 style="color:red">JS Error (iOS Debug)</h2>'
-        + '<p><b>Message:</b> ' + msg + '</p>'
-        + '<p><b>File:</b> ' + src + '</p>'
-        + '<p><b>Line:</b> ' + line + ':' + col + '</p>'
-        + '<p><b>UA:</b> ' + navigator.userAgent + '</p>'
-        + (err ? '<pre>' + err.stack + '</pre>' : '');
-    };
-    window.onunhandledrejection = function(e) {
-      document.body.style.cssText = 'background:#fff;color:#000;font-family:monospace;padding:20px;font-size:13px;';
-      document.body.innerHTML = '<h2 style="color:red">Unhandled Promise Rejection (iOS Debug)</h2>'
-        + '<p><b>Reason:</b> ' + (e.reason || e) + '</p>'
-        + '<p><b>UA:</b> ' + navigator.userAgent + '</p>'
-        + (e.reason && e.reason.stack ? '<pre>' + e.reason.stack + '</pre>' : '');
-    };
-  </script>
 </head>
 <body>
   <div id="root"></div>
