@@ -1,9 +1,27 @@
 const express = require('express');
 const router  = express.Router();
 const { db } = require('../../config/db');
+const { pool } = require('../../config/db-pg-adapter');
 const { auth, isAdminRole } = require('../../middleware/auth');
 const { hasPermission } = require('../../middleware/permissions');
 const { localDateStr, localTimeStr, flat, orgId, toMinutes, getSettings, isWorkingDay } = require('../../utils/helpers');
+
+// ── One-time table bootstrap for attendance audit log ─────────────────────────
+pool.query(`
+  CREATE TABLE IF NOT EXISTS attendance_audit_log (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    organization_id INTEGER NOT NULL,
+    action          TEXT    NOT NULL,
+    issue_type      TEXT,
+    date            DATE,
+    source          TEXT,
+    description     TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_att_audit_user_date
+    ON attendance_audit_log (user_id, date);
+`).catch(err => console.warn('[AttendanceRoutes] audit log table bootstrap:', err.message));
 
 // ─── Attendance: List ─────────────────────────────────────────────────────────
 router.get('/', auth, async (req, res) => {
@@ -429,6 +447,156 @@ router.post('/cleanup-orphaned', auth, async (req, res) => {
     if (toDelete.length) await db.from('attendance').delete().eq('organization_id', oid).in('id', toDelete);
     res.json({ removed: toDelete.length, success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Attendance: Issues (Smart Attendance Assistant — mobile/web) ─────────────
+// Returns today's attendance issues (missing check-in/out, long break, anomalies)
+// for the authenticated employee.
+// Guards: approved leave, org-wide holiday, and exempt attendance statuses are all
+// excluded so reminders are never raised on days off.
+// Grace period for delayed biometric sync: CHECKIN_GRACE=30 min, CHECKOUT_GRACE=60 min.
+router.get('/issues', auth, async (req, res) => {
+  try {
+    const today  = localDateStr();
+    const uid    = req.user.id;
+    const oId    = orgId(req);
+
+    // IST "now" in minutes since midnight
+    const istParts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date());
+    const istH  = parseInt(istParts.find(p => p.type === 'hour')?.value   || '0', 10);
+    const istM  = parseInt(istParts.find(p => p.type === 'minute')?.value || '0', 10);
+    const nowMin = istH * 60 + istM;
+
+    // Fetch attendance, approved leave, holiday and shift in parallel
+    const [attRes, leaveRes, holidayRes, shiftCfg] = await Promise.all([
+      db.from('attendance').select('*').eq('user_id', uid).eq('date', today).maybeSingle(),
+      db.from('leaves').select('id, leave_time').eq('user_id', uid).eq('organization_id', oId)
+        .eq('status', 'approved').lte('start_date', today).gte('end_date', today).maybeSingle(),
+      db.from('holidays').select('id').eq('organization_id', oId).eq('date', today).maybeSingle(),
+      getActiveShiftConfig(uid, today),
+    ]);
+
+    const att     = attRes.data;
+    const leave   = leaveRes.data;
+    const holiday = holidayRes.data;
+
+    // If the employee has an approved leave or there is an org holiday, return no issues
+    if (leave || holiday) return res.json({ issues: [] });
+
+    // Exempt attendance statuses
+    const EXEMPT = new Set(['on_leave', 'weekly_off', 'holiday', 'wfh']);
+    if (att?.status && EXEMPT.has(att.status)) return res.json({ issues: [] });
+
+    const shiftStart = shiftCfg?.start_time ? toMinutes(shiftCfg.start_time) : 9 * 60;
+    const shiftEnd   = shiftCfg?.end_time   ? toMinutes(shiftCfg.end_time)   : 18 * 60;
+
+    const CHECKIN_GRACE  = 30;  // minutes after shift start before raising missing check-in
+    const CHECKOUT_GRACE = 60;  // minutes after shift end before raising missing check-out
+    const MAX_BREAK_MIN  = 60;  // break duration that triggers long-break issue
+
+    const issues = [];
+
+    // ── Missing check-in ─────────────────────────────────────────────────────
+    if (!att?.check_in && nowMin > shiftStart + CHECKIN_GRACE && nowMin < shiftEnd + 120) {
+      issues.push({
+        type:    'missing_checkin',
+        date:    today,
+        message: `No check-in recorded — shift started at ${shiftCfg?.start_time || '09:00'}.`,
+        severity: 'high',
+      });
+    }
+
+    // ── Missing check-out (60 min grace accommodates delayed biometric sync) ─
+    if (att?.check_in && !att?.check_out && nowMin > shiftEnd + CHECKOUT_GRACE) {
+      issues.push({
+        type:    'missing_checkout',
+        date:    today,
+        message: `No check-out recorded — shift ended at ${shiftCfg?.end_time || '18:00'}.`,
+        severity: 'high',
+      });
+    }
+
+    // ── Long break ───────────────────────────────────────────────────────────
+    if (att?.check_in && !att?.check_out && att?.break_start && !att?.break_end) {
+      const bsMin = toMinutes(att.break_start.slice(0, 5));
+      const duration = nowMin - bsMin;
+      if (duration > MAX_BREAK_MIN) {
+        issues.push({
+          type:    'long_break',
+          date:    today,
+          message: `Break has been running for ${duration} minutes.`,
+          severity: 'medium',
+        });
+      }
+    }
+
+    // ── Anomaly: check-in time is after shift end ────────────────────────────
+    if (att?.check_in && !att?.check_out && toMinutes(att.check_in.slice(0, 5)) > shiftEnd) {
+      issues.push({
+        type:    'anomaly',
+        date:    today,
+        message: 'Check-in was recorded after the configured shift end time.',
+        severity: 'low',
+      });
+    }
+
+    res.json({ issues });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Attendance: Audit Log (write) ───────────────────────────────────────────
+// Records reminder events and actions taken by the mobile/web attendance assistant.
+// Writes to attendance_audit_log (created on startup above — never breaks if absent).
+router.post('/audit-log', auth, async (req, res) => {
+  try {
+    const { action, issue_type, date, source, description } = req.body;
+    if (!action) return res.status(400).json({ error: 'action is required' });
+
+    await pool.query(
+      `INSERT INTO attendance_audit_log
+         (user_id, organization_id, action, issue_type, date, source, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        req.user.id, orgId(req),
+        action,
+        issue_type || null,
+        date || localDateStr(),
+        source || 'mobile_app',
+        description || null,
+      ]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    // Non-fatal — table may not yet exist on first deploy; log and return ok
+    console.warn('[AttAuditLog] write failed:', err.message);
+    res.json({ ok: true, warning: 'audit log unavailable' });
+  }
+});
+
+// ─── Attendance: Audit Log (read) ────────────────────────────────────────────
+// Returns recent audit log entries for the authenticated employee.
+router.get('/audit-log', auth, async (req, res) => {
+  try {
+    const uid   = req.user.id;
+    const date  = req.query.date || localDateStr();
+    const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+
+    const result = await pool.query(
+      `SELECT id, action, issue_type, date, source, description, created_at
+         FROM attendance_audit_log
+        WHERE user_id = $1 AND date = $2::date
+        ORDER BY created_at DESC
+        LIMIT $3`,
+      [uid, date, limit]
+    );
+    res.json({ entries: result.rows });
+  } catch (err) {
+    // Non-fatal — table may not yet exist
+    console.warn('[AttAuditLog] read failed:', err.message);
+    res.json({ entries: [] });
+  }
 });
 
 module.exports = router;
