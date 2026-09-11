@@ -143,11 +143,11 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
     if (clearance_finance !== undefined) updates.clearance_finance = !!clearance_finance;
     if (clearance_admin   !== undefined) updates.clearance_admin   = !!clearance_admin;
     if (status             !== undefined) {
-      if (!['approved', 'rejected'].includes(status))
-        return res.status(400).json({ error: "status must be 'approved' or 'rejected'" });
+      if (!['approved', 'rejected', 'completed'].includes(status))
+        return res.status(400).json({ error: "status must be 'approved', 'rejected', or 'completed'" });
       updates.status = status;
     }
-    const isStatusChange = updates.status === 'approved' || updates.status === 'rejected';
+    const isStatusChange = ['approved', 'rejected', 'completed'].includes(updates.status);
 
     // Guard against empty update object (would cause a DB error)
     if (Object.keys(updates).length === 0) {
@@ -165,9 +165,16 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
         const { data: existing } = await db.from('exit_requests').select('*').eq('id', req.params.id).single();
         return res.json(existing);
       }
-      if (current.status === 'approved' || current.status === 'rejected') {
+      // Allow approved → completed; block everything else from approved/rejected/completed
+      if (current.status === 'rejected' || current.status === 'completed') {
         return res.status(409).json({
           error: `Request already ${current.status}. Cannot change status again.`,
+          current_status: current.status,
+        });
+      }
+      if (current.status === 'approved' && updates.status !== 'completed') {
+        return res.status(409).json({
+          error: 'Request already approved. It can only be marked as completed.',
           current_status: current.status,
         });
       }
@@ -184,8 +191,8 @@ router.put('/:id', auth, hasPermission('exit', 'manage'), async (req, res) => {
       // Notify the employee
       db.from('notifications').insert({
         user_id: data.user_id,
-        title:   `Exit Request ${updates.status === 'approved' ? 'Accepted' : 'Reviewed'}`,
-        message: `Your resignation has been ${updates.status}.`,
+        title:   updates.status === 'approved' ? 'Exit Request Accepted' : updates.status === 'completed' ? 'Offboarding Complete' : 'Exit Request Reviewed',
+        message: updates.status === 'completed' ? 'Your offboarding process has been completed.' : `Your resignation has been ${updates.status}.`,
         type:    'exit', organization_id: oId,
       }).then(() => {});
 
